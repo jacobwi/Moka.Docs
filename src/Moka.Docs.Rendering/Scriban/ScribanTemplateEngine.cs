@@ -74,6 +74,16 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         return basePath + (route.StartsWith('/') ? route : "/" + route);
     }
 
+    private static string RewriteContentLinks(string html, string basePath)
+    {
+        if (basePath == "/" || string.IsNullOrEmpty(html)) return html;
+        // Rewrite href="/..." and src="/..." in rendered markdown content
+        return System.Text.RegularExpressions.Regex.Replace(
+            html,
+            """(href|src)="(/(?!/)(?![a-zA-Z]+:))""",
+            $"""$1="{basePath}$2""");
+    }
+
     private static ScriptObject BuildScriptObject(DocPage page, ThemeRenderContext ctx)
     {
         var so = new ScriptObject();
@@ -88,7 +98,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         {
             { "title", page.FrontMatter.Title },
             { "description", page.FrontMatter.Description },
-            { "content", page.Content.Html },
+            { "content", RewriteContentLinks(page.Content.Html, bp) },
             { "route", PrefixRoute(page.Route, bp) },
             { "toc", BuildTocObject(page.TableOfContents) },
             {
