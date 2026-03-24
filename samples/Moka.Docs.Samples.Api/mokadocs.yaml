@@ -1,0 +1,33 @@
+site:
+  title: "SampleApi Docs"
+  description: "Documentation for the SampleApi minimal API project"
+
+content:
+  docs: ./docs
+  projects:
+    - path: ./SampleApi.csproj
+      label: "SampleApi"
+
+theme:
+  name: default
+  options:
+    primaryColor: "#059669"
+    accentColor: "#f59e0b"
+    codeTheme: github-dark
+
+nav:
+  - label: "Guide"
+    path: /guide
+    expanded: true
+  - label: "REST API"
+    path: /rest-api
+  - label: "API Reference"
+    path: /api
+    autoGenerate: true
+
+plugins:
+  - name: openapi
+    options:
+      spec: ./openapi.json
+      label: "REST API"
+      routePrefix: /rest-api

@@ -1,0 +1,33 @@
+<Project>
+	<PropertyGroup>
+		<TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+		<LangVersion>latest</LangVersion>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<RootNamespace>Moka.Docs</RootNamespace>
+		<Authors>jacobwi, BCat, Moka</Authors>
+		<Copyright>Copyright (c) Moka 2026</Copyright>
+		<Company>Moka</Company>
+		<Product>Moka.Docs</Product>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/jacobwi/Moka.Docs</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/jacobwi/Moka.Docs</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>documentation;dotnet;docs;api;static-site-generator;xml-docs;csharp</PackageTags>
+		<PackageIcon>icon.png</PackageIcon>
+		<PackageReadmeFile>README.nuget.md</PackageReadmeFile>
+		<Version>1.0.0</Version>
+	</PropertyGroup>
+
+	<!-- Include README.md and icon in NuGet packages (skip test projects) -->
+	<ItemGroup Condition="'$(IsPackable)' != 'false'">
+		<None Include="$(MSBuildThisFileDirectory)README.nuget.md" Pack="true" PackagePath="\" />
+		<None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="\" />
+	</ItemGroup>
+</Project>

@@ -1,0 +1,36 @@
+<Solution>
+  <Folder Name="/solution-items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="README.md" />
+    <File Path="README.nuget.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Moka.Docs.Core/Moka.Docs.Core.csproj" />
+    <Project Path="src/Moka.Docs.Cli/Moka.Docs.Cli.csproj" />
+    <Project Path="src/Moka.Docs.Engine/Moka.Docs.Engine.csproj" />
+    <Project Path="src/Moka.Docs.Parsing/Moka.Docs.Parsing.csproj" />
+    <Project Path="src/Moka.Docs.Rendering/Moka.Docs.Rendering.csproj" />
+    <Project Path="src/Moka.Docs.CSharp/Moka.Docs.CSharp.csproj" />
+    <Project Path="src/Moka.Docs.Themes/Moka.Docs.Themes.csproj" />
+    <Project Path="src/Moka.Docs.Plugins/Moka.Docs.Plugins.csproj" />
+    <Project Path="src/Moka.Docs.Search/Moka.Docs.Search.csproj" />
+    <Project Path="src/Moka.Docs.Serve/Moka.Docs.Serve.csproj" />
+    <Project Path="src/Moka.Docs.Versioning/Moka.Docs.Versioning.csproj" />
+    <Project Path="src/Moka.Docs.Cloud/Moka.Docs.Cloud.csproj" />
+    <Project Path="src/Moka.Docs.AspNetCore/Moka.Docs.AspNetCore.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Moka.Docs.Core.Tests/Moka.Docs.Core.Tests.csproj" />
+    <Project Path="tests/Moka.Docs.Parsing.Tests/Moka.Docs.Parsing.Tests.csproj" />
+    <Project Path="tests/Moka.Docs.Engine.Tests/Moka.Docs.Engine.Tests.csproj" />
+    <Project Path="tests/Moka.Docs.CSharp.Tests/Moka.Docs.CSharp.Tests.csproj" />
+    <Project Path="tests/Moka.Docs.Integration.Tests/Moka.Docs.Integration.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Moka.Docs.Samples.Library/Moka.Docs.Samples.Library.csproj" />
+    <Project Path="samples/Moka.Docs.Samples.Api/Moka.Docs.Samples.Api.csproj" />
+    <Project Path="samples/Moka.Docs.Samples.AspNetCore/Moka.Docs.Samples.AspNetCore.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Moka.Docs.Cli</RootNamespace>
+    <AssemblyName>mokadocs</AssemblyName>
+    <Description>CLI entry point for MokaDocs — a modern .NET documentation site generator.</Description>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>mokadocs</ToolCommandName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Parsing\Moka.Docs.Parsing.csproj" />
+    <ProjectReference Include="..\Moka.Docs.CSharp\Moka.Docs.CSharp.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Rendering\Moka.Docs.Rendering.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Themes\Moka.Docs.Themes.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Plugins\Moka.Docs.Plugins.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Search\Moka.Docs.Search.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Versioning\Moka.Docs.Versioning.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Serve\Moka.Docs.Serve.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Cloud\Moka.Docs.Cloud.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.FeatureManagement" />
+  </ItemGroup>
+
+</Project>

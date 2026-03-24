@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Moka.Docs.Integration.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Moka.Docs.Cli\Moka.Docs.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Moka.Docs.Serve\Moka.Docs.Serve.csproj" />
+    <ProjectReference Include="..\..\src\Moka.Docs.Versioning\Moka.Docs.Versioning.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Verify.XunitV3" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+</Project>

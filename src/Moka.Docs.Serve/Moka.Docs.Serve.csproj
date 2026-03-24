@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Moka.Docs.Serve</RootNamespace>
+    <Description>Local dev server with hot-reload for MokaDocs.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Moka.Docs.CSharp</RootNamespace>
+    <Description>Roslyn-based C# project analysis and API model extraction for MokaDocs.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Parsing\Moka.Docs.Parsing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>
