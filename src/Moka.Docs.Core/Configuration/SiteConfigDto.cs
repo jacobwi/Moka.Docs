@@ -175,4 +175,5 @@ internal sealed class BuildConfigDto
     public bool? Sitemap { get; set; }
     public bool? Robots { get; set; }
     public bool? Cache { get; set; }
+    public string? BasePath { get; set; }
 }

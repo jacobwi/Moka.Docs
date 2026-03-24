@@ -38,6 +38,8 @@ internal static class BuildCommand
         var verboseOption = new Option<bool>("--verbose") { Description = "Enable verbose logging" };
         var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
         var noCacheOption = new Option<bool>("--no-cache") { Description = "Force full rebuild without caching" };
+        var basePathOption = new Option<string?>("--base-path")
+            { Description = "Base path for subdirectory deployment (e.g., /Moka.Docs for GitHub Pages)" };
 
         var command = new Command("build", "Build the documentation site")
         {
@@ -46,7 +48,8 @@ internal static class BuildCommand
             outputOption,
             verboseOption,
             draftOption,
-            noCacheOption
+            noCacheOption,
+            basePathOption
         };
 
         command.SetAction(async (parseResult, _) =>
@@ -57,6 +60,7 @@ internal static class BuildCommand
             var verbose = parseResult.GetValue(verboseOption);
             var draft = parseResult.GetValue(draftOption);
             var noCache = parseResult.GetValue(noCacheOption);
+            var basePath = parseResult.GetValue(basePathOption);
 
             var sw = Stopwatch.StartNew();
 
@@ -91,6 +95,8 @@ internal static class BuildCommand
             // Apply CLI overrides
             if (output is not null)
                 config = config with { Build = config.Build with { Output = output } };
+            if (basePath is not null)
+                config = config with { Build = config.Build with { BasePath = basePath } };
 
             var outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
 

@@ -52,7 +52,7 @@ jobs:
           path: '**/test-results.trx'
 
       - name: Build documentation site
-        run: dotnet run --project src/Moka.Docs.Cli --configuration Release --framework net9.0 -- build --output ./_site
+        run: dotnet run --project src/Moka.Docs.Cli --configuration Release --framework net9.0 -- build --output ./_site --base-path /Moka.Docs
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

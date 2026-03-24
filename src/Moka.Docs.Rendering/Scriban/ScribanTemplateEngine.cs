@@ -67,9 +67,20 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         return template;
     }
 
+    private static string PrefixRoute(string route, string basePath)
+    {
+        if (basePath == "/") return route;
+        if (string.IsNullOrEmpty(route) || route == "/") return basePath + "/";
+        return basePath + (route.StartsWith('/') ? route : "/" + route);
+    }
+
     private static ScriptObject BuildScriptObject(DocPage page, ThemeRenderContext ctx)
     {
         var so = new ScriptObject();
+        var bp = ctx.Config.Build.BasePath;
+
+        // Base path for templates and JS
+        so.SetValue("base_path", bp == "/" ? "" : bp, false);
 
         #region Page Data
 
@@ -78,7 +89,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
             { "title", page.FrontMatter.Title },
             { "description", page.FrontMatter.Description },
             { "content", page.Content.Html },
-            { "route", page.Route },
+            { "route", PrefixRoute(page.Route, bp) },
             { "toc", BuildTocObject(page.TableOfContents) },
             {
                 "show_toc",
@@ -147,19 +158,19 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         #region Navigation and Breadcrumbs
 
         var pageRoutes = new HashSet<string>(ctx.AllPages.Select(p => p.Route), StringComparer.OrdinalIgnoreCase);
-        so.SetValue("nav", BuildNavObject(ctx.Navigation, page.Route, pageRoutes), false);
+        so.SetValue("nav", BuildNavObject(ctx.Navigation, page.Route, pageRoutes, bp), false);
 
-        so.SetValue("breadcrumbs", BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, pageRoutes),
-            false);
+        so.SetValue("breadcrumbs",
+            BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, pageRoutes, bp), false);
 
         #endregion
 
         // Partials (injected as strings so templates can use {{ partials.head }})
         so.SetValue("partials", BuildPartialsObject(ctx), false);
 
-        // CSS/JS paths
-        so.SetValue("css_files", ctx.CssFiles, false);
-        so.SetValue("js_files", ctx.JsFiles, false);
+        // CSS/JS paths (prefixed with base path)
+        so.SetValue("css_files", ctx.CssFiles.Select(f => PrefixRoute(f, bp)).ToList(), false);
+        so.SetValue("js_files", ctx.JsFiles.Select(f => PrefixRoute(f, bp)).ToList(), false);
 
         #region Version Data
 
@@ -210,7 +221,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
                 so.SetValue("prev_page", new ScriptObject
                 {
                     { "title", prev.FrontMatter.Title },
-                    { "route", prev.Route }
+                    { "route", PrefixRoute(prev.Route, bp) }
                 }, false);
             }
 
@@ -220,7 +231,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
                 so.SetValue("next_page", new ScriptObject
                 {
                     { "title", next.FrontMatter.Title },
-                    { "route", next.Route }
+                    { "route", PrefixRoute(next.Route, bp) }
                 }, false);
             }
         }
@@ -253,16 +264,18 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         return obj;
     }
 
-    private static ScriptArray BuildNavObject(NavigationTree? nav, string activeRoute, HashSet<string> pageRoutes)
+    private static ScriptArray BuildNavObject(NavigationTree? nav, string activeRoute, HashSet<string> pageRoutes,
+        string basePath)
     {
         if (nav is null) return [];
 
         var arr = new ScriptArray();
-        foreach (var node in nav.Items) arr.Add(BuildNavNodeObject(node, activeRoute, pageRoutes));
+        foreach (var node in nav.Items) arr.Add(BuildNavNodeObject(node, activeRoute, pageRoutes, basePath));
         return arr;
     }
 
-    private static ScriptObject BuildNavNodeObject(NavigationNode node, string activeRoute, HashSet<string> pageRoutes)
+    private static ScriptObject BuildNavNodeObject(NavigationNode node, string activeRoute, HashSet<string> pageRoutes,
+        string basePath)
     {
         var hasActiveChild = HasActiveDescendant(node, activeRoute);
         var hasChildren = node.Children.Count > 0;
@@ -276,7 +289,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         var obj = new ScriptObject
         {
             { "label", node.Label },
-            { "route", node.Route ?? "" },
+            { "route", !string.IsNullOrEmpty(node.Route) ? PrefixRoute(node.Route, basePath) : "" },
             { "icon", ResolveIcon(node.Icon) },
             { "expanded", node.Expanded || hasActiveChild },
             { "is_active", isActive },
@@ -286,7 +299,8 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
         };
 
         var children = new ScriptArray();
-        foreach (var child in node.Children) children.Add(BuildNavNodeObject(child, activeRoute, pageRoutes));
+        foreach (var child in node.Children)
+            children.Add(BuildNavNodeObject(child, activeRoute, pageRoutes, basePath));
         obj.SetValue("children", children, false);
 
         return obj;
@@ -311,12 +325,13 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
     }
 
     private static ScriptArray BuildBreadcrumbs(string route, string pageTitle, NavigationTree? nav,
-        HashSet<string> pageRoutes)
+        HashSet<string> pageRoutes, string basePath)
     {
         var crumbs = new ScriptArray();
 
         // Always start with Home
-        crumbs.Add(new ScriptObject { { "label", "Home" }, { "url", "/" }, { "is_current", false } });
+        crumbs.Add(new ScriptObject
+            { { "label", "Home" }, { "url", PrefixRoute("/", basePath) }, { "is_current", false } });
 
         var segments = route.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length == 0) return crumbs;
@@ -335,7 +350,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
             crumbs.Add(new ScriptObject
             {
                 { "label", label },
-                { "url", hasPage ? pathSoFar + "/" : "" },
+                { "url", hasPage ? PrefixRoute(pathSoFar + "/", basePath) : "" },
                 { "is_current", false },
                 { "has_page", hasPage }
             });
@@ -343,7 +358,10 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
         // Current page
         crumbs.Add(new ScriptObject
-            { { "label", pageTitle }, { "url", route }, { "is_current", true }, { "has_page", true } });
+        {
+            { "label", pageTitle }, { "url", PrefixRoute(route, basePath) }, { "is_current", true },
+            { "has_page", true }
+        });
 
         return crumbs;
     }
