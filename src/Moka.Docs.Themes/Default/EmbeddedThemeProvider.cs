@@ -3023,7 +3023,7 @@ public static class EmbeddedThemeProvider
                                               activeIdx = -1;
                                               searchInput.focus();
                                               if (!searchData) {
-                                                  fetch('/search-index.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(d => { searchData = d; }).catch(() => {
+                                                  fetch((document.documentElement.dataset.basePath || '') + '/search-index.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(d => { searchData = d; }).catch(() => {
                                                       searchResults.innerHTML = '<div class="search-empty">Search unavailable</div>';
                                                   });
                                               }
@@ -3213,7 +3213,7 @@ public static class EmbeddedThemeProvider
                                                   localStorage.setItem(storageKey, JSON.stringify(helpful));
                                                   showThanks(helpful);
                                                   try {
-                                                      fetch('/api/feedback', {
+                                                      fetch((document.documentElement.dataset.basePath || '') + '/api/feedback', {
                                                           method: 'POST',
                                                           headers: { 'Content-Type': 'application/json' },
                                                           body: JSON.stringify({ page: window.location.pathname, helpful: helpful })
@@ -3282,7 +3282,7 @@ public static class EmbeddedThemeProvider
 
     private const string DefaultLayout = """
                                          <!DOCTYPE html>
-                                         <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if theme.show_animations == false }} data-no-animations{{ end }}>
+                                         <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}>
                                          <head>
                                              <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'ocean';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
                                              <meta charset="utf-8" />
@@ -3306,7 +3306,7 @@ public static class EmbeddedThemeProvider
                                          <body>
                                              <header class="site-header">
                                                  <div class="header-inner">
-                                                     <a class="site-logo" href="/">
+                                                     <a class="site-logo" href="{{ base_path }}/">
                                                          {{ if site.logo != "" }}<img src="{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
                                                          <span class="site-name">{{ site.title }}</span>
                                                      </a>
@@ -3321,7 +3321,7 @@ public static class EmbeddedThemeProvider
                                                              <ul class="version-dropdown" role="listbox" hidden>
                                                                  {{ for v in versions }}
                                                                  <li role="option"{{ if v.label == current_version }} aria-selected="true"{{ end }}>
-                                                                     <a class="version-option{{ if v.label == current_version }} active{{ end }}" href="{{ if v.is_default }}/{{ else }}/{{ v.slug }}/{{ end }}" data-version-slug="{{ v.slug }}">
+                                                                     <a class="version-option{{ if v.label == current_version }} active{{ end }}" href="{{ if v.is_default }}{{ base_path }}/{{ else }}{{ base_path }}/{{ v.slug }}/{{ end }}" data-version-slug="{{ v.slug }}">
                                                                          <span class="version-option-label">{{ v.label }}</span>
                                                                          {{ if v.is_default }}<span class="version-badge version-badge-default">latest</span>{{ end }}
                                                                          {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">pre</span>{{ end }}
@@ -3678,7 +3678,7 @@ public static class EmbeddedThemeProvider
 
     private const string LandingLayout = """
                                          <!DOCTYPE html>
-                                         <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if theme.show_animations == false }} data-no-animations{{ end }}>
+                                         <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}>
                                          <head>
                                              <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'ocean';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
                                              <meta charset="utf-8" />
@@ -3694,7 +3694,7 @@ public static class EmbeddedThemeProvider
                                          <body class="landing">
                                              <header class="site-header">
                                                  <div class="header-inner">
-                                                     <a class="site-logo" href="/">
+                                                     <a class="site-logo" href="{{ base_path }}/">
                                                          {{ if site.logo != "" }}<img src="{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ end }}
                                                          <span class="site-name">{{ site.title }}</span>
                                                      </a>
@@ -3764,7 +3764,7 @@ public static class EmbeddedThemeProvider
                                                  <h1 class="landing-hero-title">{{ site.title }}</h1>
                                                  <p class="landing-hero-subtitle">{{ page.description }}</p>
                                                  <div class="landing-hero-actions">
-                                                     <a class="landing-btn landing-btn-primary" href="{{ nav[0].route ?? '/docs/' }}">
+                                                     <a class="landing-btn landing-btn-primary" href="{{ nav[0].route ?? (base_path + '/docs/') }}">
                                                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                                                          Get Started
                                                      </a>

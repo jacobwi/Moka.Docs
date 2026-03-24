@@ -299,8 +299,18 @@ public sealed class SiteConfigReader
                 "GENERATE_SITEMAP", dto.Sitemap, MokaDefaults.GenerateSitemap),
             Robots = MokaDefaults.ResolveBool(
                 "GENERATE_ROBOTS", dto.Robots, MokaDefaults.GenerateRobots),
-            Cache = dto.Cache ?? true
+            Cache = dto.Cache ?? true,
+            BasePath = NormalizBasePath(dto.BasePath)
         };
+    }
+
+    private static string NormalizBasePath(string? basePath)
+    {
+        if (string.IsNullOrWhiteSpace(basePath)) return "/";
+        var p = basePath.Trim();
+        if (!p.StartsWith('/')) p = "/" + p;
+        if (p.EndsWith('/') && p.Length > 1) p = p.TrimEnd('/');
+        return p;
     }
 
     private static SiteConfigDto MapToDto(SiteConfig config)
@@ -374,7 +384,8 @@ public sealed class SiteConfigReader
                 Minify = config.Build.Minify,
                 Sitemap = config.Build.Sitemap,
                 Robots = config.Build.Robots,
-                Cache = config.Build.Cache
+                Cache = config.Build.Cache,
+                BasePath = config.Build.BasePath == "/" ? null : config.Build.BasePath
             }
         };
     }

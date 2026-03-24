@@ -115,11 +115,12 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
         var outputPath = fs.Path.Combine(context.OutputDirectory, "search-index.json");
 
         // Serialize entries with compact field names for smaller payload
+        var bp = context.Config.Build.BasePath;
         var entries = searchIndex.Entries.Select(e => new
         {
             t = e.Title,
             s = e.Section ?? "",
-            r = e.Route,
+            r = bp == "/" ? e.Route : bp + e.Route,
             c = e.Content.Length > 300 ? e.Content[..300] : e.Content,
             g = e.Category
         });
@@ -137,6 +138,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
         var config = context.Config;
         var path = fs.Path.Combine(context.OutputDirectory, "404.html");
 
+        var bp = config.Build.BasePath == "/" ? "" : config.Build.BasePath;
         var html = $"""
                     <!DOCTYPE html>
                     <html lang="en" data-theme="light" data-code-theme="{config.Theme.Options.CodeTheme}">
@@ -144,12 +146,12 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
                         <meta charset="utf-8" />
                         <meta name="viewport" content="width=device-width, initial-scale=1" />
                         <title>Page Not Found — {HttpUtility.HtmlEncode(config.Site.Title)}</title>
-                        <link rel="stylesheet" href="/_theme/css/main.css" />
+                        <link rel="stylesheet" href="{bp}/_theme/css/main.css" />
                     </head>
                     <body>
                         <header class="site-header">
                             <div class="header-inner">
-                                <a class="site-logo" href="/">
+                                <a class="site-logo" href="{bp}/">
                                     <span class="site-name">{HttpUtility.HtmlEncode(config.Site.Title)}</span>
                                 </a>
                                 <div class="header-actions">
@@ -163,7 +165,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
                         <main style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 200px);text-align:center;padding:2rem;">
                             <h1 style="font-size:6rem;font-weight:800;color:var(--color-primary);margin:0;line-height:1;">404</h1>
                             <p style="font-size:1.25rem;color:var(--color-text-secondary);margin:1rem 0 2rem;">This page could not be found.</p>
-                            <a href="/" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.625rem 1.5rem;background:var(--color-primary);color:white;border-radius:var(--radius);font-weight:600;text-decoration:none;transition:opacity 150ms;">
+                            <a href="{bp}/" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.625rem 1.5rem;background:var(--color-primary);color:white;border-radius:var(--radius);font-weight:600;text-decoration:none;transition:opacity 150ms;">
                                 ← Back to Home
                             </a>
                         </main>
@@ -172,7 +174,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
                                 <span class="built-with">Built with <a href="https://mokadocs.dev">MokaDocs</a></span>
                             </div>
                         </footer>
-                        <script src="/_theme/js/main.js"></script>
+                        <script src="{bp}/_theme/js/main.js"></script>
                     </body>
                     </html>
                     """;

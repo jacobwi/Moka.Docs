@@ -353,4 +353,11 @@ public sealed record BuildConfig
 
     /// <summary>Cache intermediate results for faster rebuilds.</summary>
     public bool Cache { get; init; } = true;
+
+    /// <summary>
+    ///     Base path for the generated site when deployed to a subdirectory.
+    ///     For example, "/Moka.Docs" for GitHub Pages at https://user.github.io/Moka.Docs/.
+    ///     Defaults to "/" (site root).
+    /// </summary>
+    public string BasePath { get; init; } = "/";
 }
