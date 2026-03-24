@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Moka.Docs.Plugins</RootNamespace>
+    <Description>Plugin host, built-in plugins, and plugin abstractions for MokaDocs.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" />
+  </ItemGroup>
+
+</Project>

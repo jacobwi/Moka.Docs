@@ -1,0 +1,28 @@
+site:
+  title: "SampleLibrary Docs"
+  description: "Documentation for the SampleLibrary demo project"
+  url: "https://sample.mokadocs.dev"
+  copyright: "© 2026 MokaDocs"
+
+content:
+  docs: ./docs
+  projects: []
+
+theme:
+  name: default
+  options:
+    primaryColor: "#6366f1"
+    accentColor: "#f59e0b"
+    showEditLink: false
+    showLastUpdated: true
+
+features:
+  search:
+    enabled: true
+    provider: pagefind
+
+build:
+  output: ./_site
+  clean: true
+  sitemap: true
+  robots: true

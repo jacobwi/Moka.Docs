@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Moka.Docs.Engine</RootNamespace>
+    <Description>Build pipeline orchestration for MokaDocs.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Parsing\Moka.Docs.Parsing.csproj" />
+    <ProjectReference Include="..\Moka.Docs.CSharp\Moka.Docs.CSharp.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Rendering\Moka.Docs.Rendering.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Themes\Moka.Docs.Themes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.FeatureManagement" />
+    <PackageReference Include="System.IO.Abstractions" />
+  </ItemGroup>
+
+</Project>

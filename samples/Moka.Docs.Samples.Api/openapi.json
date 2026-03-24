@@ -1,0 +1,291 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SampleApi",
+    "description": "A modern minimal API for todo management and weather forecasting.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/todos": {
+      "get": {
+        "tags": ["Todos"],
+        "summary": "Get all todos",
+        "description": "Returns all todo items, ordered by creation date.",
+        "operationId": "getTodos",
+        "responses": {
+          "200": {
+            "description": "A list of todo items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TodoItem" }
+                },
+                "example": [
+                  {
+                    "id": 1,
+                    "title": "Buy groceries",
+                    "isCompleted": false,
+                    "priority": "Medium",
+                    "dueDate": "2026-03-25",
+                    "createdAt": "2026-03-19T10:30:00Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Todos"],
+        "summary": "Create a new todo",
+        "description": "Creates a new todo item. The ID is auto-generated.",
+        "operationId": "createTodo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTodoRequest" },
+              "example": {
+                "title": "Buy groceries",
+                "priority": "High",
+                "dueDate": "2026-03-25"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created todo item",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TodoItem" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/todos/{id}": {
+      "get": {
+        "tags": ["Todos"],
+        "summary": "Get a todo by ID",
+        "description": "Returns a single todo item by its unique identifier.",
+        "operationId": "getTodoById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The unique ID of the todo item",
+            "schema": { "type": "integer", "format": "int32" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The todo item",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TodoItem" }
+              }
+            }
+          },
+          "404": {
+            "description": "Todo not found"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Todos"],
+        "summary": "Update an existing todo",
+        "description": "Updates an existing todo item. Only provided fields are changed.",
+        "operationId": "updateTodo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The unique ID of the todo item to update",
+            "schema": { "type": "integer", "format": "int32" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTodoRequest" },
+              "example": {
+                "title": "Buy organic groceries",
+                "isCompleted": true,
+                "priority": "Low"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Todo updated successfully"
+          },
+          "404": {
+            "description": "Todo not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Todos"],
+        "summary": "Delete a todo",
+        "description": "Permanently deletes a todo item.",
+        "operationId": "deleteTodo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The unique ID of the todo item to delete",
+            "schema": { "type": "integer", "format": "int32" }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Todo deleted successfully"
+          },
+          "404": {
+            "description": "Todo not found"
+          }
+        }
+      }
+    },
+    "/api/weather/forecast": {
+      "get": {
+        "tags": ["Weather"],
+        "summary": "Get weather forecast",
+        "description": "Returns a weather forecast for the specified number of days (default: 5).",
+        "operationId": "getWeatherForecast",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "description": "Number of forecast days (1-14)",
+            "schema": { "type": "integer", "format": "int32", "default": 5, "minimum": 1, "maximum": 14 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of weather forecasts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/WeatherForecast" }
+                },
+                "example": [
+                  {
+                    "date": "2026-03-20",
+                    "temperatureC": 22,
+                    "temperatureF": 71,
+                    "condition": "Sunny",
+                    "summary": "Clear skies with mild temperatures"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/weather/current": {
+      "get": {
+        "tags": ["Weather"],
+        "summary": "Get current weather conditions",
+        "description": "Returns the current weather conditions including temperature, humidity, and wind speed.",
+        "operationId": "getCurrentWeather",
+        "responses": {
+          "200": {
+            "description": "Current weather conditions",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CurrentWeather" },
+                "example": {
+                  "temperatureC": 24,
+                  "temperatureF": 75,
+                  "humidity": 65,
+                  "windSpeedKmh": 12,
+                  "condition": "PartlyCloudy",
+                  "summary": "Partly cloudy with gentle breeze"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TodoItem": {
+        "type": "object",
+        "required": ["id", "title", "isCompleted", "priority", "createdAt"],
+        "properties": {
+          "id": { "type": "integer", "format": "int32", "description": "Unique identifier" },
+          "title": { "type": "string", "description": "Title or description of the todo" },
+          "isCompleted": { "type": "boolean", "description": "Whether the todo is completed" },
+          "priority": { "$ref": "#/components/schemas/TodoPriority" },
+          "dueDate": { "type": "string", "format": "date", "nullable": true, "description": "Optional due date" },
+          "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+        }
+      },
+      "CreateTodoRequest": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string", "description": "Title of the todo to create" },
+          "priority": { "$ref": "#/components/schemas/TodoPriority", "description": "Priority level (default: Medium)" },
+          "dueDate": { "type": "string", "format": "date", "nullable": true, "description": "Optional due date" }
+        }
+      },
+      "UpdateTodoRequest": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "nullable": true, "description": "Updated title, or null to keep current" },
+          "isCompleted": { "type": "boolean", "nullable": true, "description": "Updated completion status" },
+          "priority": { "$ref": "#/components/schemas/TodoPriority", "nullable": true, "description": "Updated priority" },
+          "dueDate": { "type": "string", "format": "date", "nullable": true, "description": "Updated due date" }
+        }
+      },
+      "TodoPriority": {
+        "type": "string",
+        "enum": ["Low", "Medium", "High", "Critical"],
+        "description": "Priority levels for a todo item"
+      },
+      "WeatherForecast": {
+        "type": "object",
+        "required": ["date", "temperatureC", "temperatureF", "condition", "summary"],
+        "properties": {
+          "date": { "type": "string", "format": "date", "description": "Forecast date" },
+          "temperatureC": { "type": "integer", "description": "Temperature in Celsius" },
+          "temperatureF": { "type": "integer", "description": "Temperature in Fahrenheit" },
+          "condition": { "$ref": "#/components/schemas/WeatherCondition" },
+          "summary": { "type": "string", "description": "Human-readable weather summary" }
+        }
+      },
+      "CurrentWeather": {
+        "type": "object",
+        "required": ["temperatureC", "temperatureF", "humidity", "windSpeedKmh", "condition", "summary"],
+        "properties": {
+          "temperatureC": { "type": "integer", "description": "Current temperature in Celsius" },
+          "temperatureF": { "type": "integer", "description": "Current temperature in Fahrenheit" },
+          "humidity": { "type": "integer", "description": "Humidity percentage (0-100)" },
+          "windSpeedKmh": { "type": "number", "format": "double", "description": "Wind speed in km/h" },
+          "condition": { "$ref": "#/components/schemas/WeatherCondition" },
+          "summary": { "type": "string", "description": "Human-readable weather description" }
+        }
+      },
+      "WeatherCondition": {
+        "type": "string",
+        "enum": ["Sunny", "PartlyCloudy", "Cloudy", "Rainy", "Stormy", "Snowy", "Foggy", "Windy"],
+        "description": "Possible weather conditions"
+      }
+    }
+  }
+}

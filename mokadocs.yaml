@@ -1,0 +1,87 @@
+site:
+  title: "MokaDocs"
+  description: "Modern documentation site generator for .NET libraries"
+  url: "https://mokadocs.dev"
+  copyright: "© 2026 MokaDocs"
+
+content:
+  docs: ./docs
+  projects:
+    - path: ./src/Moka.Docs.Core/Moka.Docs.Core.csproj
+      label: "Core"
+    - path: ./src/Moka.Docs.Parsing/Moka.Docs.Parsing.csproj
+      label: "Parsing"
+    - path: ./src/Moka.Docs.Engine/Moka.Docs.Engine.csproj
+      label: "Engine"
+    - path: ./src/Moka.Docs.Rendering/Moka.Docs.Rendering.csproj
+      label: "Rendering"
+    - path: ./src/Moka.Docs.Plugins/Moka.Docs.Plugins.csproj
+      label: "Plugins"
+    - path: ./src/Moka.Docs.CSharp/Moka.Docs.CSharp.csproj
+      label: "CSharp"
+    - path: ./src/Moka.Docs.Serve/Moka.Docs.Serve.csproj
+      label: "Serve"
+    - path: ./src/Moka.Docs.Search/Moka.Docs.Search.csproj
+      label: "Search"
+    - path: ./src/Moka.Docs.Themes/Moka.Docs.Themes.csproj
+      label: "Themes"
+    - path: ./src/Moka.Docs.Versioning/Moka.Docs.Versioning.csproj
+      label: "Versioning"
+
+theme:
+  name: default
+  options:
+    primaryColor: "#0ea5e9"
+    showEditLink: false
+    showLastUpdated: true
+
+features:
+  search:
+    enabled: true
+    provider: pagefind
+  versioning:
+    enabled: true
+    strategy: dropdown-only
+    versions:
+      - label: "v1.0"
+        branch: main
+        default: true
+
+plugins:
+  - name: mokadocs-repl
+  - name: mokadocs-blazor-preview
+
+nav:
+  - label: "Getting Started"
+    path: /getting-started
+    icon: rocket
+    expanded: true
+  - label: "Guide"
+    path: /guide
+    icon: book-open
+    expanded: true
+  - label: "Configuration"
+    path: /configuration
+    icon: settings
+    expanded: true
+  - label: "Plugins"
+    path: /plugins
+    icon: package
+    expanded: true
+  - label: "Themes"
+    path: /themes
+    icon: palette
+  - label: "Advanced"
+    path: /advanced
+    icon: code
+    expanded: true
+  - label: "API Reference"
+    path: /api
+    icon: code
+    autoGenerate: true
+
+build:
+  output: ./_site
+  clean: true
+  sitemap: true
+  robots: true
