@@ -1403,6 +1403,9 @@ public static class EmbeddedThemeProvider
                                            color: var(--color-text-muted);
                                        }
                                        .built-with a { color: var(--color-text-secondary); }
+                                       .footer-social { display: flex; align-items: center; gap: 0.75rem; }
+                                       .footer-social a { color: var(--color-text-muted); transition: color var(--transition); display: flex; }
+                                       .footer-social a:hover { color: var(--color-primary); }
 
                                        /* Heading anchor links */
                                        .page-content h2, .page-content h3, .page-content h4 { position: relative; }
@@ -3609,7 +3612,8 @@ public static class EmbeddedThemeProvider
                                              <footer class="site-footer">
                                                  <div class="footer-inner">
                                                      {{ if site.copyright }}<span>{{ site.copyright }}</span>{{ end }}
-                                                     <span class="built-with">Built with <a href="https://mokadocs.dev">MokaDocs</a></span>
+                                                     {{ if theme.social_links.size > 0 }}<div class="footer-social">{{ for link in theme.social_links }}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" aria-label="{{ link.icon }}">{{ link.icon_svg }}</a>{{ end }}</div>{{ end }}
+                                                     <span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a></span>
                                                  </div>
                                              </footer>
 
