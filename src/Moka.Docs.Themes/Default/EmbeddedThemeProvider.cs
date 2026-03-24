@@ -2458,6 +2458,15 @@ public static class EmbeddedThemeProvider
                                            margin: 0 auto;
                                            padding: 0 2rem 3rem;
                                        }
+                                       .landing-md-content h2 { text-align: center; font-size: 1.75rem; margin: 2.5rem 0 1rem; }
+                                       .landing-md-content table {
+                                           width: 100%; border-collapse: collapse; font-size: 0.875rem; margin: 1rem 0;
+                                           background: var(--color-bg); border-radius: var(--radius); overflow: hidden;
+                                           border: 1px solid var(--color-border);
+                                       }
+                                       .landing-md-content th { background: var(--color-bg-secondary); font-weight: 600; text-align: left; }
+                                       .landing-md-content th, .landing-md-content td { padding: 0.625rem 1rem; border: 1px solid var(--color-border); }
+                                       .landing-md-content tr:hover td { background: var(--color-bg-secondary); }
 
                                        /* Landing footer */
                                        .landing-footer {
@@ -3840,7 +3849,7 @@ public static class EmbeddedThemeProvider
 
                                              <!-- Footer -->
                                              <footer class="landing-footer">
-                                                 <p>Built with <span class="landing-footer-heart">&#x2764;</span> using <a href="https://mokadocs.dev">MokaDocs</a></p>
+                                                 <p>Built with <span class="landing-footer-heart">&#x2764;</span> using <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a></p>
                                                  {{ if site.copyright }}<p style="margin-top:0.5rem;">{{ site.copyright }}</p>{{ end }}
                                              </footer>
 
