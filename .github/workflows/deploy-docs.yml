@@ -43,7 +43,7 @@ jobs:
         run: dotnet build MokaDocs.sln --configuration Release
 
       - name: Generate documentation site
-        run: dotnet run --project src/Moka.Docs.CLI --configuration Release -- build --output ./_site
+        run: dotnet run --project src/Moka.Docs.Cli --configuration Release -- build --output ./_site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
