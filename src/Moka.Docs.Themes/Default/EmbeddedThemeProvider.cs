@@ -3314,6 +3314,7 @@ public static class EmbeddedThemeProvider
                                              {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
                                              {{ end }}
                                              {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
+                                             {{ if site.favicon != "" }}<link rel="icon" href="{{ base_path }}/{{ site.favicon }}" />{{ end }}
                                          </head>
                                          <body>
                                              <header class="site-header">
@@ -3703,6 +3704,7 @@ public static class EmbeddedThemeProvider
                                              {{ end }}
                                              <style>{{ css_inline }}</style>
                                              {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
+                                             {{ if site.favicon != "" }}<link rel="icon" href="{{ base_path }}/{{ site.favicon }}" />{{ end }}
                                          </head>
                                          <body class="landing">
                                              <header class="site-header">

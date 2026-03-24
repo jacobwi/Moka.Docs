@@ -123,7 +123,8 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
             { "description", ctx.Config.Site.Description },
             { "url", ctx.Config.Site.Url },
             { "copyright", ctx.Config.Site.Copyright ?? "" },
-            { "logo", ctx.Config.Site.Logo ?? "" }
+            { "logo", ctx.Config.Site.Logo ?? "" },
+            { "favicon", ctx.Config.Site.Favicon ?? "" }
         }, false);
 
         #endregion
