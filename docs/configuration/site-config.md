@@ -706,6 +706,20 @@ build:
   output: "./_site"
 ```
 
+### `basePath`
+
+- **Type:** `string`
+- **Default:** `""` (empty — site is served from root)
+
+A path prefix added to all generated routes, asset links, and navigation URLs. Use this when deploying to a subdirectory, such as GitHub Pages project sites (`/repo-name`) or IIS virtual directories.
+
+```yaml
+build:
+  basePath: /my-project
+```
+
+This can also be set via the `--base-path` CLI flag, which takes precedence over the config value.
+
 ### `clean`
 
 - **Type:** `bool`
@@ -879,6 +893,7 @@ nav:
 
 build:
   output: "./_site"
+  basePath: ""
   clean: true
   minify: true
   sitemap: true

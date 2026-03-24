@@ -88,17 +88,25 @@ jobs:
 3. Push the workflow file to your `main` branch.
 4. The documentation will build and deploy automatically on each push to `main`.
 
-### Base URL for GitHub Pages Project Sites
+### Base Path for GitHub Pages Project Sites
 
-If your site is hosted at `https://username.github.io/repo-name/` (not at the root of a custom domain), configure the base URL:
+If your site is hosted at `https://username.github.io/repo-name/` (not at the root of a custom domain), you need to set the base path so all links and assets include the correct prefix.
+
+**Option 1: CLI flag** (recommended for CI)
+
+```bash
+mokadocs build --base-path /repo-name
+```
+
+**Option 2: Config file**
 
 ```yaml
 # mokadocs.yaml
-site:
-  baseUrl: /repo-name/
+build:
+  basePath: /repo-name
 ```
 
-This ensures all internal links and asset references include the correct path prefix.
+The `--base-path` CLI flag takes precedence over the config value. This prefixes all routes, CSS/JS paths, navigation links, search index entries, and the 404 page with the specified path.
 
 ## Netlify
 
