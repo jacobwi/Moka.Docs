@@ -37,10 +37,10 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore MokaDocs.sln
 
       - name: Build
-        run: dotnet build --configuration Release
+        run: dotnet build MokaDocs.sln --configuration Release
 
       - name: Generate documentation site
         run: dotnet run --project src/Moka.Docs.CLI --configuration Release -- build --output ./_site

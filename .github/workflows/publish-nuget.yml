@@ -43,13 +43,13 @@ jobs:
           echo "Publishing version: $VERSION"
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore MokaDocs.sln
 
       - name: Build
-        run: dotnet build --no-restore --configuration Release -p:Version=${{ steps.version.outputs.version }}
+        run: dotnet build MokaDocs.sln --no-restore --configuration Release -p:Version=${{ steps.version.outputs.version }}
 
       - name: Test
-        run: dotnet test --no-build --configuration Release
+        run: dotnet test MokaDocs.sln --no-build --configuration Release
 
       - name: Pack NuGet packages
         run: |
