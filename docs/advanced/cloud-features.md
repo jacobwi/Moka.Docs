@@ -1,6 +1,7 @@
 ---
 title: Cloud Features
 order: 6
+requires: Cloud
 ---
 
 # Cloud Features
