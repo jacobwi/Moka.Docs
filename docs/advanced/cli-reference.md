@@ -65,6 +65,7 @@ Builds the documentation site by running the full build pipeline. This processes
 | `--watch` | Watch for file changes and rebuild automatically | Off |
 | `--verbose` | Enable verbose/debug logging for troubleshooting | Off |
 | `--draft` | Include pages that have `visibility: draft` in their front matter | Off |
+| `--base-path <path>` | Path prefix for subdirectory deployments (e.g. `/repo-name` for GitHub Pages) | Empty |
 | `--no-cache` | Force a full rebuild, skipping any cached results from previous builds | Off |
 
 ### Exit Codes
@@ -107,6 +108,9 @@ mokadocs build --watch
 
 # Full clean rebuild with debug logging
 mokadocs build --no-cache --verbose
+
+# Build for GitHub Pages subdirectory deployment
+mokadocs build --base-path /my-repo
 
 # Combine options
 mokadocs build --config mokadocs.yaml --output ./dist --draft --verbose
