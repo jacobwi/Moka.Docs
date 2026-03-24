@@ -34,6 +34,9 @@ theme:
     primaryColor: "#0ea5e9"
     showEditLink: false
     showLastUpdated: true
+    socialLinks:
+      - icon: github
+        url: "https://github.com/jacobwi/Moka.Docs"
 
 features:
   search:

@@ -320,7 +320,11 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
     private static ScriptArray BuildSocialLinks(List<SocialLink> links)
     {
         var arr = new ScriptArray();
-        foreach (var link in links) arr.Add(new ScriptObject { { "icon", link.Icon }, { "url", link.Url } });
+        foreach (var link in links)
+        {
+            var iconSvg = LucideIcons.Get(link.Icon) ?? link.Icon;
+            arr.Add(new ScriptObject { { "icon", link.Icon }, { "url", link.Url }, { "icon_svg", iconSvg } });
+        }
         return arr;
     }
 
