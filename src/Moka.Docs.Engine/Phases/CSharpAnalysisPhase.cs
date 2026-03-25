@@ -146,14 +146,14 @@ public sealed class CSharpAnalysisPhase(
         foreach (var ns in context.ApiModel.Namespaces)
         {
             indexHtml.AppendLine($"<h2>{HttpUtility.HtmlEncode(ns.Name)}</h2>");
-            indexHtml.AppendLine("<table>");
+            indexHtml.AppendLine("<div class=\"table-responsive\"><table class=\"api-member-table\">");
             indexHtml.AppendLine("<thead><tr><th>Name</th><th>Kind</th><th>Description</th></tr></thead>");
             indexHtml.AppendLine("<tbody>");
             foreach (var type in ns.Types)
             {
                 var route = $"/api/{ns.Name.Replace('.', '/')}/{type.Name}".ToLowerInvariant();
                 var kindBadge = type.Kind.ToString().ToLowerInvariant();
-                var summary = HttpUtility.HtmlEncode(type.Documentation?.Summary ?? "");
+                var summary = type.Documentation?.Summary ?? "";
                 indexHtml.AppendLine("<tr>");
                 indexHtml.AppendLine($"<td><a href=\"{route}\">{HttpUtility.HtmlEncode(type.Name)}</a></td>");
                 indexHtml.AppendLine($"<td><span class=\"api-badge api-badge-{kindBadge}\">{type.Kind}</span></td>");
@@ -162,7 +162,7 @@ public sealed class CSharpAnalysisPhase(
             }
 
             indexHtml.AppendLine("</tbody>");
-            indexHtml.AppendLine("</table>");
+            indexHtml.AppendLine("</table></div>");
         }
 
         var indexPage = new DocPage
