@@ -3320,8 +3320,8 @@ public static class EmbeddedThemeProvider
                                              <header class="site-header">
                                                  <div class="header-inner">
                                                      <a class="site-logo" href="{{ base_path }}/">
-                                                         {{ if site.logo != "" }}<img src="{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
-                                                         <span class="site-name">{{ site.title }}</span>
+                                                         {{ if site.logo != "" }}<img src="{{ base_path }}/{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+                                                         {{ if site.logo == "" }}<span class="site-name">{{ site.title }}</span>{{ end }}
                                                      </a>
                                                      <div class="header-actions">
                                                          {{ if versions.size > 0 }}
@@ -3710,8 +3710,8 @@ public static class EmbeddedThemeProvider
                                              <header class="site-header">
                                                  <div class="header-inner">
                                                      <a class="site-logo" href="{{ base_path }}/">
-                                                         {{ if site.logo != "" }}<img src="{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ end }}
-                                                         <span class="site-name">{{ site.title }}</span>
+                                                         {{ if site.logo != "" }}<img src="{{ base_path }}/{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ end }}
+                                                         {{ if site.logo == "" }}<span class="site-name">{{ site.title }}</span>{{ end }}
                                                      </a>
                                                      <div class="header-actions">
                                                          <button class="search-trigger" aria-label="Search">
@@ -3774,7 +3774,7 @@ public static class EmbeddedThemeProvider
                                              <section class="landing-hero">
                                                  <div class="hero-grid-pattern"></div>
                                                  <div class="landing-hero-icon">
-                                                     {{ if site.logo != "" }}<img src="{{ site.logo }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+                                                     {{ if site.logo != "" }}<img src="{{ base_path }}/{{ site.logo }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
                                                  </div>
                                                  <h1 class="landing-hero-title">{{ site.title }}</h1>
                                                  <p class="landing-hero-subtitle">{{ page.description }}</p>
