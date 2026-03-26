@@ -2,6 +2,7 @@ site:
   title: "MokaDocs"
   description: "Modern documentation site generator for .NET libraries"
   url: "https://jacobwi.github.io/Moka.Docs"
+  logo: "icon.png"
   favicon: "icon.png"
   copyright: "© 2026 MokaDocs"
 
