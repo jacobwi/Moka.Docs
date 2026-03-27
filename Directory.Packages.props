@@ -10,10 +10,10 @@
 		<PackageVersion Include="Spectre.Console" Version="0.54.0" />
 
 		<!-- Markdown -->
-		<PackageVersion Include="Markdig" Version="1.1.1" />
+		<PackageVersion Include="Markdig" Version="1.1.2" />
 
 		<!-- Templating -->
-		<PackageVersion Include="Scriban" Version="7.0.0" />
+		<PackageVersion Include="Scriban" Version="7.0.5" />
 
 		<!-- Roslyn / C# Analysis -->
 		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
@@ -52,7 +52,7 @@
 		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
 		<PackageVersion Include="FluentAssertions" Version="8.9.0" />
 		<PackageVersion Include="NSubstitute" Version="5.3.0" />
-		<PackageVersion Include="Verify.XunitV3" Version="31.13.2" />
+		<PackageVersion Include="Verify.XunitV3" Version="31.13.5" />
 		<PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
 	</ItemGroup>
 

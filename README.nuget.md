@@ -4,7 +4,7 @@
 
 Point MokaDocs at your `.csproj` and `docs/` folder — it auto-discovers your API surface, parses XML docs, and generates a complete documentation site.
 
-[![.NET 9/10](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com) [![MIT License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/jacobwi/Moka.Docs/blob/main/LICENSE) [![Tests](https://img.shields.io/badge/tests-384%20passed-brightgreen?style=flat-square)](https://github.com/jacobwi/Moka.Docs/actions) [![NuGet](https://img.shields.io/badge/NuGet-v1.0.0-orange?style=flat-square&logo=nuget)](https://www.nuget.org/packages/Moka.Docs.Core)
+[![.NET 9/10](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com) [![MIT License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/jacobwi/Moka.Docs/blob/main/LICENSE) [![Tests](https://img.shields.io/badge/tests-384%20passed-brightgreen?style=flat-square)](https://github.com/jacobwi/Moka.Docs/actions) [![NuGet](https://img.shields.io/nuget/v/Moka.Docs.Core?style=flat-square&logo=nuget&color=orange)](https://www.nuget.org/packages/Moka.Docs.Core)
 
 ## Quick Start
 
