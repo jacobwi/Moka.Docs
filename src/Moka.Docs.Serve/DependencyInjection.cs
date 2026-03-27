@@ -7,12 +7,12 @@ namespace Moka.Docs.Serve;
 /// </summary>
 public static class ServeServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs dev server services to the service collection.
-    /// </summary>
-    public static IServiceCollection AddMokaDocsServe(this IServiceCollection services)
-    {
-        services.AddSingleton<FileWatcher>();
-        return services;
-    }
+	/// <summary>
+	///     Adds MokaDocs dev server services to the service collection.
+	/// </summary>
+	public static IServiceCollection AddMokaDocsServe(this IServiceCollection services)
+	{
+		services.AddSingleton<FileWatcher>();
+		return services;
+	}
 }

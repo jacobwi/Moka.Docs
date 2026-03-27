@@ -18,328 +18,379 @@ namespace Moka.Docs.Serve;
 /// </summary>
 public sealed class BlazorPreviewService(ILogger<BlazorPreviewService> logger)
 {
-    /// <summary>Maximum source length to prevent abuse.</summary>
-    private const int MaxSourceLength = 50_000;
+	/// <summary>Maximum source length to prevent abuse.</summary>
+	private const int MaxSourceLength = 50_000;
 
-    /// <summary>
-    ///     Renders the given Blazor/Razor component source to a static HTML preview.
-    /// </summary>
-    /// <param name="source">The Razor component source code.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>The rendered HTML preview result.</returns>
-    public Task<BlazorPreviewResult> RenderAsync(string source, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(source))
-            return Task.FromResult(new BlazorPreviewResult { Error = "No source code provided." });
+	/// <summary>
+	///     Renders the given Blazor/Razor component source to a static HTML preview.
+	/// </summary>
+	/// <param name="source">The Razor component source code.</param>
+	/// <param name="ct">Cancellation token.</param>
+	/// <returns>The rendered HTML preview result.</returns>
+	public Task<BlazorPreviewResult> RenderAsync(string source, CancellationToken ct = default)
+	{
+		if (string.IsNullOrWhiteSpace(source))
+		{
+			return Task.FromResult(new BlazorPreviewResult { Error = "No source code provided." });
+		}
 
-        if (source.Length > MaxSourceLength)
-            return Task.FromResult(new BlazorPreviewResult
-            {
-                Error = $"Source exceeds maximum length of {MaxSourceLength:N0} characters."
-            });
+		if (source.Length > MaxSourceLength)
+		{
+			return Task.FromResult(new BlazorPreviewResult
+			{
+				Error = $"Source exceeds maximum length of {MaxSourceLength:N0} characters."
+			});
+		}
 
-        try
-        {
-            var result = RenderComponent(source);
-            logger.LogDebug("Blazor preview: Rendered {Length} characters of source", source.Length);
-            return Task.FromResult(result);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Blazor preview: Rendering error");
-            return Task.FromResult(new BlazorPreviewResult
-            {
-                Error = $"Rendering error: {ex.Message}"
-            });
-        }
-    }
+		try
+		{
+			BlazorPreviewResult result = RenderComponent(source);
+			logger.LogDebug("Blazor preview: Rendered {Length} characters of source", source.Length);
+			return Task.FromResult(result);
+		}
+		catch (Exception ex)
+		{
+			logger.LogWarning(ex, "Blazor preview: Rendering error");
+			return Task.FromResult(new BlazorPreviewResult
+			{
+				Error = $"Rendering error: {ex.Message}"
+			});
+		}
+	}
 
-    private static BlazorPreviewResult RenderComponent(string source)
-    {
-        // Split source into markup and code sections
-        var (markup, codeBlock, usingDirectives) = ExtractSections(source);
+	private static BlazorPreviewResult RenderComponent(string source)
+	{
+		// Split source into markup and code sections
+		(string markup, string codeBlock, List<string> usingDirectives) = ExtractSections(source);
 
-        // Parse field initializers from the code block
-        var fields = ParseFieldInitializers(codeBlock);
+		// Parse field initializers from the code block
+		Dictionary<string, string> fields = ParseFieldInitializers(codeBlock);
 
-        // Process the markup: substitute @expressions and clean up directives
-        var html = ProcessMarkup(markup, fields);
+		// Process the markup: substitute @expressions and clean up directives
+		string html = ProcessMarkup(markup, fields);
 
-        return new BlazorPreviewResult { Html = html };
-    }
+		return new BlazorPreviewResult { Html = html };
+	}
 
-    /// <summary>
-    ///     Splits the Razor source into its constituent parts: @using directives, markup, and @code block.
-    /// </summary>
-    private static (string Markup, string CodeBlock, List<string> Usings) ExtractSections(string source)
-    {
-        var usings = new List<string>();
-        var lines = source.Split('\n');
-        var markupLines = new List<string>();
-        var codeBlock = "";
+	/// <summary>
+	///     Splits the Razor source into its constituent parts: @using directives, markup, and @code block.
+	/// </summary>
+	private static (string Markup, string CodeBlock, List<string> Usings) ExtractSections(string source)
+	{
+		var usings = new List<string>();
+		string[] lines = source.Split('\n');
+		var markupLines = new List<string>();
+		string codeBlock = "";
 
-        // Extract @using directives from the top
-        var startIndex = 0;
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var trimmed = lines[i].TrimStart();
-            if (trimmed.StartsWith("@using ", StringComparison.Ordinal))
-            {
-                usings.Add(trimmed);
-                startIndex = i + 1;
-            }
-            else if (string.IsNullOrWhiteSpace(trimmed) && startIndex == i)
-            {
-                startIndex = i + 1; // skip blank lines between @using directives
-            }
-            else
-            {
-                break;
-            }
-        }
+		// Extract @using directives from the top
+		int startIndex = 0;
+		for (int i = 0; i < lines.Length; i++)
+		{
+			string trimmed = lines[i].TrimStart();
+			if (trimmed.StartsWith("@using ", StringComparison.Ordinal))
+			{
+				usings.Add(trimmed);
+				startIndex = i + 1;
+			}
+			else if (string.IsNullOrWhiteSpace(trimmed) && startIndex == i)
+			{
+				startIndex = i + 1; // skip blank lines between @using directives
+			}
+			else
+			{
+				break;
+			}
+		}
 
-        // Find @code { } block
-        var codeMatch = Regex.Match(source, @"@code\s*\{", RegexOptions.Singleline);
-        if (codeMatch.Success)
-        {
-            // Find the matching closing brace
-            var codeStart = codeMatch.Index + codeMatch.Length;
-            var braceDepth = 1;
-            var codeEnd = codeStart;
+		// Find @code { } block
+		Match codeMatch = Regex.Match(source, @"@code\s*\{", RegexOptions.Singleline);
+		if (codeMatch.Success)
+		{
+			// Find the matching closing brace
+			int codeStart = codeMatch.Index + codeMatch.Length;
+			int braceDepth = 1;
+			int codeEnd = codeStart;
 
-            for (var i = codeStart; i < source.Length; i++)
-                if (source[i] == '{')
-                {
-                    braceDepth++;
-                }
-                else if (source[i] == '}')
-                {
-                    braceDepth--;
-                    if (braceDepth == 0)
-                    {
-                        codeEnd = i;
-                        break;
-                    }
-                }
+			for (int i = codeStart; i < source.Length; i++)
+			{
+				if (source[i] == '{')
+				{
+					braceDepth++;
+				}
+				else if (source[i] == '}')
+				{
+					braceDepth--;
+					if (braceDepth == 0)
+					{
+						codeEnd = i;
+						break;
+					}
+				}
+			}
 
-            codeBlock = source[codeStart..codeEnd].Trim();
+			codeBlock = source[codeStart..codeEnd].Trim();
 
-            // Markup is everything between the using directives and the @code block
-            var markupSource = source[..codeMatch.Index];
-            // Strip @using lines from markup source
-            foreach (var line in markupSource.Split('\n'))
-            {
-                var trimmed = line.TrimStart();
-                if (!trimmed.StartsWith("@using ", StringComparison.Ordinal)) markupLines.Add(line);
-            }
-        }
-        else
-        {
-            // No @code block — everything (minus usings) is markup
-            for (var i = startIndex; i < lines.Length; i++) markupLines.Add(lines[i]);
-        }
+			// Markup is everything between the using directives and the @code block
+			string markupSource = source[..codeMatch.Index];
+			// Strip @using lines from markup source
+			foreach (string line in markupSource.Split('\n'))
+			{
+				string trimmed = line.TrimStart();
+				if (!trimmed.StartsWith("@using ", StringComparison.Ordinal))
+				{
+					markupLines.Add(line);
+				}
+			}
+		}
+		else
+		{
+			// No @code block — everything (minus usings) is markup
+			for (int i = startIndex; i < lines.Length; i++)
+			{
+				markupLines.Add(lines[i]);
+			}
+		}
 
-        var markup = string.Join('\n', markupLines).Trim();
-        return (markup, codeBlock, usings);
-    }
+		string markup = string.Join('\n', markupLines).Trim();
+		return (markup, codeBlock, usings);
+	}
 
-    /// <summary>
-    ///     Parses simple field initializers from the C# code block.
-    ///     Handles patterns like: <c>private int count = 0;</c>, <c>private string title = "Hello";</c>,
-    ///     and <c>private List&lt;string&gt; items = new() { "A", "B" };</c>
-    /// </summary>
-    private static Dictionary<string, string> ParseFieldInitializers(string codeBlock)
-    {
-        var fields = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (string.IsNullOrWhiteSpace(codeBlock)) return fields;
+	/// <summary>
+	///     Parses simple field initializers from the C# code block.
+	///     Handles patterns like: <c>private int count = 0;</c>, <c>private string title = "Hello";</c>,
+	///     and <c>private List&lt;string&gt; items = new() { "A", "B" };</c>
+	/// </summary>
+	private static Dictionary<string, string> ParseFieldInitializers(string codeBlock)
+	{
+		var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+		if (string.IsNullOrWhiteSpace(codeBlock))
+		{
+			return fields;
+		}
 
-        // Match field declarations with initializers
-        // Pattern: optional modifiers, type, name = value;
-        var fieldPattern = new Regex(
-            @"(?:private|protected|public|internal)?\s*(?:static\s+)?(?:readonly\s+)?" +
-            @"(?<type>[\w<>,\s\[\]?]+?)\s+(?<name>\w+)\s*=\s*(?<value>.+?)\s*;",
-            RegexOptions.Multiline);
+		// Match field declarations with initializers
+		// Pattern: optional modifiers, type, name = value;
+		var fieldPattern = new Regex(
+			@"(?:private|protected|public|internal)?\s*(?:static\s+)?(?:readonly\s+)?" +
+			@"(?<type>[\w<>,\s\[\]?]+?)\s+(?<name>\w+)\s*=\s*(?<value>.+?)\s*;",
+			RegexOptions.Multiline);
 
-        foreach (Match match in fieldPattern.Matches(codeBlock))
-        {
-            var name = match.Groups["name"].Value;
-            var value = match.Groups["value"].Value.Trim();
+		foreach (Match match in fieldPattern.Matches(codeBlock))
+		{
+			string name = match.Groups["name"].Value;
+			string value = match.Groups["value"].Value.Trim();
 
-            // Resolve simple literal values
-            var resolved = ResolveValue(value);
-            if (resolved is not null) fields[name] = resolved;
-        }
+			// Resolve simple literal values
+			string? resolved = ResolveValue(value);
+			if (resolved is not null)
+			{
+				fields[name] = resolved;
+			}
+		}
 
-        return fields;
-    }
+		return fields;
+	}
 
-    /// <summary>
-    ///     Resolves a C# expression to a display string for simple cases.
-    /// </summary>
-    private static string? ResolveValue(string expression)
-    {
-        // Numeric literals
-        if (int.TryParse(expression, out var intVal))
-            return intVal.ToString();
-        if (double.TryParse(expression, out var dblVal))
-            return dblVal.ToString();
+	/// <summary>
+	///     Resolves a C# expression to a display string for simple cases.
+	/// </summary>
+	private static string? ResolveValue(string expression)
+	{
+		// Numeric literals
+		if (int.TryParse(expression, out int intVal))
+		{
+			return intVal.ToString();
+		}
 
-        // Boolean literals
-        if (expression == "true") return "True";
-        if (expression == "false") return "False";
+		if (double.TryParse(expression, out double dblVal))
+		{
+			return dblVal.ToString();
+		}
 
-        // String literals
-        if (expression.StartsWith('"') && expression.EndsWith('"'))
-            return expression[1..^1];
+		// Boolean literals
+		if (expression == "true")
+		{
+			return "True";
+		}
 
-        // Interpolated string — return with expressions left as placeholders
-        if (expression.StartsWith("$\"") && expression.EndsWith('"'))
-            return expression[2..^1];
+		if (expression == "false")
+		{
+			return "False";
+		}
 
-        // new List/Array initializer — return a descriptive placeholder
-        if (expression.StartsWith("new", StringComparison.Ordinal))
-        {
-            // Try to extract inline collection items like new() { "A", "B", "C" }
-            var itemsMatch = Regex.Match(expression, @"\{\s*(.+?)\s*\}");
-            if (itemsMatch.Success) return itemsMatch.Groups[1].Value;
-            return "[collection]";
-        }
+		// String literals
+		if (expression.StartsWith('"') && expression.EndsWith('"'))
+		{
+			return expression[1..^1];
+		}
 
-        // Default — cannot resolve
-        return expression;
-    }
+		// Interpolated string — return with expressions left as placeholders
+		if (expression.StartsWith("$\"") && expression.EndsWith('"'))
+		{
+			return expression[2..^1];
+		}
 
-    /// <summary>
-    ///     Processes the Razor markup by substituting @expressions with field values
-    ///     and stripping Blazor event handler directives.
-    /// </summary>
-    private static string ProcessMarkup(string markup, Dictionary<string, string> fields)
-    {
-        if (string.IsNullOrWhiteSpace(markup)) return "";
+		// new List/Array initializer — return a descriptive placeholder
+		if (expression.StartsWith("new", StringComparison.Ordinal))
+		{
+			// Try to extract inline collection items like new() { "A", "B", "C" }
+			Match itemsMatch = Regex.Match(expression, @"\{\s*(.+?)\s*\}");
+			if (itemsMatch.Success)
+			{
+				return itemsMatch.Groups[1].Value;
+			}
 
-        var result = markup;
+			return "[collection]";
+		}
 
-        // Remove @using lines that might have slipped through
-        result = Regex.Replace(result, @"^@using\s+.+$", "", RegexOptions.Multiline);
+		// Default — cannot resolve
+		return expression;
+	}
 
-        // Strip Blazor event directives (@onclick, @onchange, @bind, @ref, etc.)
-        result = Regex.Replace(result, @"\s+@on\w+=""[^""]*""", "");
-        result = Regex.Replace(result, @"\s+@on\w+=\w+", "");
-        result = Regex.Replace(result, @"\s+@bind(?:-\w+)?=""[^""]*""", "");
-        result = Regex.Replace(result, @"\s+@bind(?:-\w+)?=\w+", "");
-        result = Regex.Replace(result, @"\s+@ref=""[^""]*""", "");
-        result = Regex.Replace(result, @"\s+@key=""[^""]*""", "");
+	/// <summary>
+	///     Processes the Razor markup by substituting @expressions with field values
+	///     and stripping Blazor event handler directives.
+	/// </summary>
+	private static string ProcessMarkup(string markup, Dictionary<string, string> fields)
+	{
+		if (string.IsNullOrWhiteSpace(markup))
+		{
+			return "";
+		}
 
-        // Substitute @variable references with field values
-        // Match @identifier that is NOT part of a directive (@code, @if, @foreach, etc.)
-        result = Regex.Replace(result,
-            @"@(?!code\b|if\b|else\b|foreach\b|for\b|while\b|switch\b|using\b|inject\b|page\b|layout\b|inherits\b|attribute\b|typeparam\b|on\w)(\w+)",
-            match =>
-            {
-                var name = match.Groups[1].Value;
-                return fields.TryGetValue(name, out var value) ? WebEncode(value) : $"@{name}";
-            });
+		string result = markup;
 
-        // Process simple @if blocks — evaluate if field is truthy
-        result = ProcessIfBlocks(result, fields);
+		// Remove @using lines that might have slipped through
+		result = Regex.Replace(result, @"^@using\s+.+$", "", RegexOptions.Multiline);
 
-        // Process simple @foreach blocks
-        result = ProcessForeachBlocks(result, fields);
+		// Strip Blazor event directives (@onclick, @onchange, @bind, @ref, etc.)
+		result = Regex.Replace(result, @"\s+@on\w+=""[^""]*""", "");
+		result = Regex.Replace(result, @"\s+@on\w+=\w+", "");
+		result = Regex.Replace(result, @"\s+@bind(?:-\w+)?=""[^""]*""", "");
+		result = Regex.Replace(result, @"\s+@bind(?:-\w+)?=\w+", "");
+		result = Regex.Replace(result, @"\s+@ref=""[^""]*""", "");
+		result = Regex.Replace(result, @"\s+@key=""[^""]*""", "");
 
-        return result.Trim();
-    }
+		// Substitute @variable references with field values
+		// Match @identifier that is NOT part of a directive (@code, @if, @foreach, etc.)
+		result = Regex.Replace(result,
+			@"@(?!code\b|if\b|else\b|foreach\b|for\b|while\b|switch\b|using\b|inject\b|page\b|layout\b|inherits\b|attribute\b|typeparam\b|on\w)(\w+)",
+			match =>
+			{
+				string name = match.Groups[1].Value;
+				return fields.TryGetValue(name, out string? value) ? WebEncode(value) : $"@{name}";
+			});
 
-    /// <summary>
-    ///     Processes simple @if (condition) { ... } blocks in the markup.
-    ///     Evaluates based on field truthiness (non-zero, non-empty, true).
-    /// </summary>
-    private static string ProcessIfBlocks(string markup, Dictionary<string, string> fields)
-    {
-        // Match @if (variable) { ... }
-        var pattern = new Regex(@"@if\s*\(\s*(\w+)\s*\)\s*\{([^{}]*)\}", RegexOptions.Singleline);
-        return pattern.Replace(markup, match =>
-        {
-            var variable = match.Groups[1].Value;
-            var body = match.Groups[2].Value;
+		// Process simple @if blocks — evaluate if field is truthy
+		result = ProcessIfBlocks(result, fields);
 
-            if (fields.TryGetValue(variable, out var value))
-            {
-                var isTruthy = !string.IsNullOrEmpty(value)
-                               && value != "0"
-                               && !string.Equals(value, "False", StringComparison.OrdinalIgnoreCase);
+		// Process simple @foreach blocks
+		result = ProcessForeachBlocks(result, fields);
 
-                return isTruthy ? body.Trim() : "";
-            }
+		return result.Trim();
+	}
 
-            return ""; // Unknown variable — hide the block
-        });
-    }
+	/// <summary>
+	///     Processes simple @if (condition) { ... } blocks in the markup.
+	///     Evaluates based on field truthiness (non-zero, non-empty, true).
+	/// </summary>
+	private static string ProcessIfBlocks(string markup, Dictionary<string, string> fields)
+	{
+		// Match @if (variable) { ... }
+		var pattern = new Regex(@"@if\s*\(\s*(\w+)\s*\)\s*\{([^{}]*)\}", RegexOptions.Singleline);
+		return pattern.Replace(markup, match =>
+		{
+			string variable = match.Groups[1].Value;
+			string body = match.Groups[2].Value;
 
-    /// <summary>
-    ///     Processes simple @foreach (var item in collection) { ... } blocks.
-    ///     For collections parsed from initializers, iterates over the items.
-    /// </summary>
-    private static string ProcessForeachBlocks(string markup, Dictionary<string, string> fields)
-    {
-        var pattern = new Regex(
-            @"@foreach\s*\(\s*var\s+(\w+)\s+in\s+(\w+)\s*\)\s*\{([^{}]*)\}",
-            RegexOptions.Singleline);
+			if (fields.TryGetValue(variable, out string? value))
+			{
+				bool isTruthy = !string.IsNullOrEmpty(value)
+				                && value != "0"
+				                && !string.Equals(value, "False", StringComparison.OrdinalIgnoreCase);
 
-        return pattern.Replace(markup, match =>
-        {
-            var itemVar = match.Groups[1].Value;
-            var collectionVar = match.Groups[2].Value;
-            var bodyTemplate = match.Groups[3].Value;
+				return isTruthy ? body.Trim() : "";
+			}
 
-            if (!fields.TryGetValue(collectionVar, out var collectionValue))
-                return "";
+			return ""; // Unknown variable — hide the block
+		});
+	}
 
-            // Try to split the collection value into individual items
-            var items = ParseCollectionItems(collectionValue);
-            if (items.Count == 0) return "";
+	/// <summary>
+	///     Processes simple @foreach (var item in collection) { ... } blocks.
+	///     For collections parsed from initializers, iterates over the items.
+	/// </summary>
+	private static string ProcessForeachBlocks(string markup, Dictionary<string, string> fields)
+	{
+		var pattern = new Regex(
+			@"@foreach\s*\(\s*var\s+(\w+)\s+in\s+(\w+)\s*\)\s*\{([^{}]*)\}",
+			RegexOptions.Singleline);
 
-            var sb = new StringBuilder();
-            foreach (var item in items)
-            {
-                var body = bodyTemplate.Replace($"@{itemVar}", WebEncode(item));
-                sb.AppendLine(body.Trim());
-            }
+		return pattern.Replace(markup, match =>
+		{
+			string itemVar = match.Groups[1].Value;
+			string collectionVar = match.Groups[2].Value;
+			string bodyTemplate = match.Groups[3].Value;
 
-            return sb.ToString().Trim();
-        });
-    }
+			if (!fields.TryGetValue(collectionVar, out string? collectionValue))
+			{
+				return "";
+			}
 
-    /// <summary>
-    ///     Parses a comma-separated collection of items (from field initializer parsing).
-    ///     Handles quoted strings and bare values.
-    /// </summary>
-    private static List<string> ParseCollectionItems(string value)
-    {
-        var items = new List<string>();
-        if (string.IsNullOrWhiteSpace(value) || value == "[collection]")
-            return items;
+			// Try to split the collection value into individual items
+			List<string> items = ParseCollectionItems(collectionValue);
+			if (items.Count == 0)
+			{
+				return "";
+			}
 
-        // Split by comma, trimming quotes
-        foreach (var part in value.Split(','))
-        {
-            var trimmed = part.Trim().Trim('"').Trim();
-            if (!string.IsNullOrEmpty(trimmed)) items.Add(trimmed);
-        }
+			var sb = new StringBuilder();
+			foreach (string item in items)
+			{
+				string body = bodyTemplate.Replace($"@{itemVar}", WebEncode(item));
+				sb.AppendLine(body.Trim());
+			}
 
-        return items;
-    }
+			return sb.ToString().Trim();
+		});
+	}
 
-    /// <summary>
-    ///     HTML-encodes a string value for safe embedding in the preview HTML.
-    /// </summary>
-    private static string WebEncode(string value)
-    {
-        return value
-            .Replace("&", "&amp;")
-            .Replace("<", "&lt;")
-            .Replace(">", "&gt;")
-            .Replace("\"", "&quot;");
-    }
+	/// <summary>
+	///     Parses a comma-separated collection of items (from field initializer parsing).
+	///     Handles quoted strings and bare values.
+	/// </summary>
+	private static List<string> ParseCollectionItems(string value)
+	{
+		var items = new List<string>();
+		if (string.IsNullOrWhiteSpace(value) || value == "[collection]")
+		{
+			return items;
+		}
+
+		// Split by comma, trimming quotes
+		foreach (string part in value.Split(','))
+		{
+			string trimmed = part.Trim().Trim('"').Trim();
+			if (!string.IsNullOrEmpty(trimmed))
+			{
+				items.Add(trimmed);
+			}
+		}
+
+		return items;
+	}
+
+	/// <summary>
+	///     HTML-encodes a string value for safe embedding in the preview HTML.
+	/// </summary>
+	private static string WebEncode(string value)
+	{
+		return value
+			.Replace("&", "&amp;")
+			.Replace("<", "&lt;")
+			.Replace(">", "&gt;")
+			.Replace("\"", "&quot;");
+	}
 }
 
 /// <summary>
@@ -347,9 +398,9 @@ public sealed class BlazorPreviewService(ILogger<BlazorPreviewService> logger)
 /// </summary>
 public sealed class BlazorPreviewResult
 {
-    /// <summary>The rendered HTML preview. Null if an error occurred.</summary>
-    public string? Html { get; init; }
+	/// <summary>The rendered HTML preview. Null if an error occurred.</summary>
+	public string? Html { get; init; }
 
-    /// <summary>Error message if rendering failed. Null if successful.</summary>
-    public string? Error { get; init; }
+	/// <summary>Error message if rendering failed. Null if successful.</summary>
+	public string? Error { get; init; }
 }

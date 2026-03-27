@@ -10,41 +10,41 @@ namespace Moka.Docs.Cli.Commands;
 /// </summary>
 internal static class InfoCommand
 {
-    /// <summary>Creates the info command.</summary>
-    public static Command Create()
-    {
-        var command = new Command("info", "Show environment and configuration information");
+	/// <summary>Creates the info command.</summary>
+	public static Command Create()
+	{
+		var command = new Command("info", "Show environment and configuration information");
 
-        command.SetAction(_ =>
-        {
-            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.1";
+		command.SetAction(_ =>
+		{
+			string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.1";
 
-            var table = new Table()
-                .Border(TableBorder.Rounded)
-                .Title("[bold blue]MokaDocs Info[/]");
+			Table table = new Table()
+				.Border(TableBorder.Rounded)
+				.Title("[bold blue]MokaDocs Info[/]");
 
-            table.AddColumn("Property");
-            table.AddColumn("Value");
+			table.AddColumn("Property");
+			table.AddColumn("Value");
 
-            table.AddRow("Version", version);
-            table.AddRow("Runtime", RuntimeInformation.FrameworkDescription);
-            table.AddRow("OS", RuntimeInformation.OSDescription);
-            table.AddRow("Working Directory", Directory.GetCurrentDirectory());
+			table.AddRow("Version", version);
+			table.AddRow("Runtime", RuntimeInformation.FrameworkDescription);
+			table.AddRow("OS", RuntimeInformation.OSDescription);
+			table.AddRow("Working Directory", Directory.GetCurrentDirectory());
 
-            var configPath = Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
-            table.AddRow("Config File", File.Exists(configPath) ? "[green]Found[/]" : "[dim]Not found[/]");
+			string configPath = Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
+			table.AddRow("Config File", File.Exists(configPath) ? "[green]Found[/]" : "[dim]Not found[/]");
 
-            var docsDir = Path.Combine(Directory.GetCurrentDirectory(), "docs");
-            table.AddRow("Docs Directory", Directory.Exists(docsDir) ? "[green]Found[/]" : "[dim]Not found[/]");
+			string docsDir = Path.Combine(Directory.GetCurrentDirectory(), "docs");
+			table.AddRow("Docs Directory", Directory.Exists(docsDir) ? "[green]Found[/]" : "[dim]Not found[/]");
 
-            var outputDir = Path.Combine(Directory.GetCurrentDirectory(), "_site");
-            table.AddRow("Output Directory",
-                Directory.Exists(outputDir) ? "[green]Exists[/]" : "[dim]Not built yet[/]");
+			string outputDir = Path.Combine(Directory.GetCurrentDirectory(), "_site");
+			table.AddRow("Output Directory",
+				Directory.Exists(outputDir) ? "[green]Exists[/]" : "[dim]Not built yet[/]");
 
-            AnsiConsole.Write(table);
-            return 0;
-        });
+			AnsiConsole.Write(table);
+			return 0;
+		});
 
-        return command;
-    }
+		return command;
+	}
 }

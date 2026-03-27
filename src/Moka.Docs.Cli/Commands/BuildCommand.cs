@@ -28,204 +28,229 @@ namespace Moka.Docs.Cli.Commands;
 /// </summary>
 internal static class BuildCommand
 {
-    /// <summary>Creates the build command.</summary>
-    public static Command Create()
-    {
-        var watchOption = new Option<bool>("--watch") { Description = "Watch for changes and rebuild automatically" };
-        var configOption = new Option<string?>("--config")
-            { Description = "Path to configuration file (default: mokadocs.yaml)" };
-        var outputOption = new Option<string?>("--output") { Description = "Output directory (default: _site/)" };
-        var verboseOption = new Option<bool>("--verbose") { Description = "Enable verbose logging" };
-        var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
-        var noCacheOption = new Option<bool>("--no-cache") { Description = "Force full rebuild without caching" };
-        var basePathOption = new Option<string?>("--base-path")
-            { Description = "Base path for subdirectory deployment (e.g., /Moka.Docs for GitHub Pages)" };
+	/// <summary>Creates the build command.</summary>
+	public static Command Create()
+	{
+		var watchOption = new Option<bool>("--watch") { Description = "Watch for changes and rebuild automatically" };
+		var configOption = new Option<string?>("--config")
+			{ Description = "Path to configuration file (default: mokadocs.yaml)" };
+		var outputOption = new Option<string?>("--output") { Description = "Output directory (default: _site/)" };
+		var verboseOption = new Option<bool>("--verbose") { Description = "Enable verbose logging" };
+		var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
+		var noCacheOption = new Option<bool>("--no-cache") { Description = "Force full rebuild without caching" };
+		var basePathOption = new Option<string?>("--base-path")
+			{ Description = "Base path for subdirectory deployment (e.g., /Moka.Docs for GitHub Pages)" };
 
-        var command = new Command("build", "Build the documentation site")
-        {
-            watchOption,
-            configOption,
-            outputOption,
-            verboseOption,
-            draftOption,
-            noCacheOption,
-            basePathOption
-        };
+		var command = new Command("build", "Build the documentation site")
+		{
+			watchOption,
+			configOption,
+			outputOption,
+			verboseOption,
+			draftOption,
+			noCacheOption,
+			basePathOption
+		};
 
-        command.SetAction(async (parseResult, _) =>
-        {
-            var watch = parseResult.GetValue(watchOption);
-            var configPath = parseResult.GetValue(configOption);
-            var output = parseResult.GetValue(outputOption);
-            var verbose = parseResult.GetValue(verboseOption);
-            var draft = parseResult.GetValue(draftOption);
-            var noCache = parseResult.GetValue(noCacheOption);
-            var basePath = parseResult.GetValue(basePathOption);
+		command.SetAction(async (parseResult, _) =>
+		{
+			bool watch = parseResult.GetValue(watchOption);
+			string? configPath = parseResult.GetValue(configOption);
+			string? output = parseResult.GetValue(outputOption);
+			bool verbose = parseResult.GetValue(verboseOption);
+			bool draft = parseResult.GetValue(draftOption);
+			bool noCache = parseResult.GetValue(noCacheOption);
+			string? basePath = parseResult.GetValue(basePathOption);
 
-            var sw = Stopwatch.StartNew();
+			var sw = Stopwatch.StartNew();
 
-            AnsiConsole.MarkupLine("[bold blue]MokaDocs[/] — Building documentation site...");
-            AnsiConsole.WriteLine();
+			AnsiConsole.MarkupLine("[bold blue]MokaDocs[/] — Building documentation site...");
+			AnsiConsole.WriteLine();
 
-            var rootDir = Directory.GetCurrentDirectory();
-            var resolvedConfigPath = configPath ?? Path.Combine(rootDir, "mokadocs.yaml");
+			string rootDir = Directory.GetCurrentDirectory();
+			string resolvedConfigPath = configPath ?? Path.Combine(rootDir, "mokadocs.yaml");
 
-            // Load config
-            SiteConfig config;
-            try
-            {
-                var fs = new FileSystem();
-                var reader = new SiteConfigReader(fs);
-                config = reader.Read(resolvedConfigPath);
-                AnsiConsole.MarkupLine(
-                    $"[green]✓ Config:[/] {Path.GetFileName(resolvedConfigPath)} — \"{Markup.Escape(config.Site.Title)}\"");
-            }
-            catch (FileNotFoundException)
-            {
-                AnsiConsole.MarkupLine($"[red]Error:[/] Config file not found: {resolvedConfigPath}");
-                AnsiConsole.MarkupLine("Run [bold]mokadocs init[/] to create a starter project.");
-                return 1;
-            }
-            catch (SiteConfigException ex)
-            {
-                AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
-                return 1;
-            }
+			// Load config
+			SiteConfig config;
+			try
+			{
+				var fs = new FileSystem();
+				var reader = new SiteConfigReader(fs);
+				config = reader.Read(resolvedConfigPath);
+				AnsiConsole.MarkupLine(
+					$"[green]✓ Config:[/] {Path.GetFileName(resolvedConfigPath)} — \"{Markup.Escape(config.Site.Title)}\"");
+			}
+			catch (FileNotFoundException)
+			{
+				AnsiConsole.MarkupLine($"[red]Error:[/] Config file not found: {resolvedConfigPath}");
+				AnsiConsole.MarkupLine("Run [bold]mokadocs init[/] to create a starter project.");
+				return 1;
+			}
+			catch (SiteConfigException ex)
+			{
+				AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+				return 1;
+			}
 
-            // Apply CLI overrides
-            if (output is not null)
-                config = config with { Build = config.Build with { Output = output } };
-            if (basePath is not null)
-                config = config with { Build = config.Build with { BasePath = basePath } };
+			// Apply CLI overrides
+			if (output is not null)
+			{
+				config = config with { Build = config.Build with { Output = output } };
+			}
 
-            var outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
+			if (basePath is not null)
+			{
+				config = config with { Build = config.Build with { BasePath = basePath } };
+			}
 
-            // Set up DI
-            await using var provider = BuildServices(config, verbose);
-            var pipeline = provider.GetRequiredService<BuildPipeline>();
+			string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
 
-            // Build context
-            var context = new BuildContext
-            {
-                Config = config,
-                FileSystem = new FileSystem(),
-                RootDirectory = rootDir,
-                OutputDirectory = outputDir
-            };
+			// Set up DI
+			await using ServiceProvider provider = BuildServices(config, verbose);
+			BuildPipeline pipeline = provider.GetRequiredService<BuildPipeline>();
 
-            // Wire version data from VersionManager into the build context
-            var versionManager = provider.GetRequiredService<VersionManager>();
-            if (versionManager.IsEnabled)
-            {
-                context.Versions.AddRange(versionManager.Versions);
-                context.CurrentVersion = versionManager.DefaultVersion;
-            }
+			// Build context
+			var context = new BuildContext
+			{
+				Config = config,
+				FileSystem = new FileSystem(),
+				RootDirectory = rootDir,
+				OutputDirectory = outputDir
+			};
 
-            // Execute pipeline
-            try
-            {
-                // Initialize plugins before pipeline so they can inject pages
-                var pluginHost = provider.GetRequiredService<PluginHost>();
-                await pluginHost.DiscoverAndInitializeAsync();
+			// Wire version data from VersionManager into the build context
+			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
+			if (versionManager.IsEnabled)
+			{
+				context.Versions.AddRange(versionManager.Versions);
+				context.CurrentVersion = versionManager.DefaultVersion;
+			}
 
-                // Run main pipeline — plugins execute as a hook after content phases
-                pipeline.PluginHook = async (ctx, ct) =>
-                {
-                    if (pluginHost.LoadedPlugins.Count > 0)
-                        await pluginHost.ExecuteAllAsync(ctx, ct);
-                };
+			// Execute pipeline
+			try
+			{
+				// Initialize plugins before pipeline so they can inject pages
+				PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
+				await pluginHost.DiscoverAndInitializeAsync();
 
-                await pipeline.ExecuteAsync(context);
-            }
-            catch (Exception ex)
-            {
-                AnsiConsole.MarkupLine($"[red]Build failed:[/] {Markup.Escape(ex.Message)}");
-                if (verbose) AnsiConsole.WriteException(ex);
-                return 1;
-            }
+				// Run main pipeline — plugins execute as a hook after content phases
+				pipeline.PluginHook = async (ctx, ct) =>
+				{
+					if (pluginHost.LoadedPlugins.Count > 0)
+					{
+						await pluginHost.ExecuteAllAsync(ctx, ct);
+					}
+				};
 
-            sw.Stop();
+				await pipeline.ExecuteAsync(context);
+			}
+			catch (Exception ex)
+			{
+				AnsiConsole.MarkupLine($"[red]Build failed:[/] {Markup.Escape(ex.Message)}");
+				if (verbose)
+				{
+					AnsiConsole.WriteException(ex);
+				}
 
-            // Build summary
-            var mdPages = context.Pages.Count(p => p.Origin == PageOrigin.Markdown);
-            var apiPages = context.Pages.Count(p => p.Origin == PageOrigin.ApiGenerated);
-            var apiTypes = context.ApiModel?.Namespaces.Sum(n => n.Types.Count) ?? 0;
-            var searchEntries = context.SearchIndex?.Entries.Count ?? 0;
+				return 1;
+			}
 
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"[green bold]✅ MokaDocs build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
-            AnsiConsole.MarkupLine($"📄 Pages:        {mdPages + apiPages} ({mdPages} markdown, {apiPages} generated)");
+			sw.Stop();
 
-            if (apiTypes > 0)
-                AnsiConsole.MarkupLine(
-                    $"🔧 API Types:    {apiTypes} across {context.ApiModel!.Assemblies.Count} assemblies");
+			// Build summary
+			int mdPages = context.Pages.Count(p => p.Origin == PageOrigin.Markdown);
+			int apiPages = context.Pages.Count(p => p.Origin == PageOrigin.ApiGenerated);
+			int apiTypes = context.ApiModel?.Namespaces.Sum(n => n.Types.Count) ?? 0;
+			int searchEntries = context.SearchIndex?.Entries.Count ?? 0;
 
-            if (searchEntries > 0)
-                AnsiConsole.MarkupLine($"🔍 Search Index: {searchEntries} entries");
+			AnsiConsole.WriteLine();
+			AnsiConsole.MarkupLine($"[green bold]✅ MokaDocs build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
+			AnsiConsole.MarkupLine($"📄 Pages:        {mdPages + apiPages} ({mdPages} markdown, {apiPages} generated)");
 
-            AnsiConsole.MarkupLine($"📦 Output:       {config.Build.Output}");
+			if (apiTypes > 0)
+			{
+				AnsiConsole.MarkupLine(
+					$"🔧 API Types:    {apiTypes} across {context.ApiModel!.Assemblies.Count} assemblies");
+			}
 
-            if (context.Diagnostics.HasWarnings || context.Diagnostics.HasErrors)
-            {
-                var warnings = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
-                var errors = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
-                AnsiConsole.MarkupLine($"⚠️  Diagnostics:  {warnings} warnings, {errors} errors");
+			if (searchEntries > 0)
+			{
+				AnsiConsole.MarkupLine($"🔍 Search Index: {searchEntries} entries");
+			}
 
-                if (verbose)
-                    foreach (var diag in context.Diagnostics.All)
-                    {
-                        var color = diag.Severity == DiagnosticSeverity.Error ? "red" : "yellow";
-                        AnsiConsole.MarkupLine($"  [{color}]{Markup.Escape(diag.ToString())}[/]");
-                    }
-                else
-                    AnsiConsole.MarkupLine("    [dim]Run with --verbose to see details[/]");
-            }
+			AnsiConsole.MarkupLine($"📦 Output:       {config.Build.Output}");
 
-            return 0;
-        });
+			if (context.Diagnostics.HasWarnings || context.Diagnostics.HasErrors)
+			{
+				int warnings = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
+				int errors = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
+				AnsiConsole.MarkupLine($"⚠️  Diagnostics:  {warnings} warnings, {errors} errors");
 
-        return command;
-    }
+				if (verbose)
+				{
+					foreach (Diagnostic diag in context.Diagnostics.All)
+					{
+						string color = diag.Severity == DiagnosticSeverity.Error ? "red" : "yellow";
+						AnsiConsole.MarkupLine($"  [{color}]{Markup.Escape(diag.ToString())}[/]");
+					}
+				}
+				else
+				{
+					AnsiConsole.MarkupLine("    [dim]Run with --verbose to see details[/]");
+				}
+			}
 
-    /// <summary>
-    ///     Builds the service provider with all MokaDocs services and plugins.
-    /// </summary>
-    internal static ServiceProvider BuildServices(SiteConfig config, bool verbose)
-    {
-        var services = new ServiceCollection();
-        services.AddLogging(b =>
-        {
-            if (verbose) b.SetMinimumLevel(LogLevel.Debug);
-            else b.SetMinimumLevel(LogLevel.Warning);
-        });
+			return 0;
+		});
 
-        // Feature management: MokaDefaults -> in-memory config, overridable via MOKADOCS_ env vars
-        var featureConfig = new ConfigurationBuilder()
-            .AddInMemoryCollection(
-                MokaFeatureConfiguration.GetDefaults()
-                    .ToDictionary(
-                        kv => $"FeatureManagement:{kv.Key}",
-                        kv => (string?)kv.Value.ToString()))
-            .AddEnvironmentVariables("MOKADOCS_")
-            .Build();
+		return command;
+	}
 
-        services.AddSingleton<IConfiguration>(featureConfig);
-        services.AddFeatureManagement(featureConfig.GetSection("FeatureManagement"));
+	/// <summary>
+	///     Builds the service provider with all MokaDocs services and plugins.
+	/// </summary>
+	internal static ServiceProvider BuildServices(SiteConfig config, bool verbose)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging(b =>
+		{
+			if (verbose)
+			{
+				b.SetMinimumLevel(LogLevel.Debug);
+			}
+			else
+			{
+				b.SetMinimumLevel(LogLevel.Warning);
+			}
+		});
 
-        services.AddSingleton<IFileSystem>(new FileSystem());
-        services.AddSingleton(config);
-        services.AddMokaDocsParsing();
-        services.AddMokaDocsCSharp();
-        services.AddMokaDocsEngine();
-        services.AddMokaDocsVersioning();
+		// Feature management: MokaDefaults -> in-memory config, overridable via MOKADOCS_ env vars
+		IConfigurationRoot featureConfig = new ConfigurationBuilder()
+			.AddInMemoryCollection(
+				MokaFeatureConfiguration.GetDefaults()
+					.ToDictionary(
+						kv => $"FeatureManagement:{kv.Key}",
+						kv => (string?)kv.Value.ToString()))
+			.AddEnvironmentVariables("MOKADOCS_")
+			.Build();
 
-        // Plugin system
-        services.AddSingleton<PluginHost>();
-        services.AddSingleton<IMokaPlugin, OpenApiPlugin>();
-        services.AddSingleton<IMokaPlugin, ReplPlugin>();
-        services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
-        services.AddSingleton<IMokaPlugin, ChangelogPlugin>();
+		services.AddSingleton<IConfiguration>(featureConfig);
+		services.AddFeatureManagement(featureConfig.GetSection("FeatureManagement"));
 
-        return services.BuildServiceProvider();
-    }
+		services.AddSingleton<IFileSystem>(new FileSystem());
+		services.AddSingleton(config);
+		services.AddMokaDocsParsing();
+		services.AddMokaDocsCSharp();
+		services.AddMokaDocsEngine();
+		services.AddMokaDocsVersioning();
+
+		// Plugin system
+		services.AddSingleton<PluginHost>();
+		services.AddSingleton<IMokaPlugin, OpenApiPlugin>();
+		services.AddSingleton<IMokaPlugin, ReplPlugin>();
+		services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
+		services.AddSingleton<IMokaPlugin, ChangelogPlugin>();
+
+		return services.BuildServiceProvider();
+	}
 }

@@ -187,6 +187,38 @@ A comparison table of the core types in SampleLibrary:
 
 ---
 
+## NuGet Install Widget
+
+The NuGet install widget appears automatically on the **API Reference** index page when your project has a `.csproj` with package metadata. It shows tabbed install commands for Package Manager, .NET CLI, and PackageReference — plus a direct link to the package on NuGet.org.
+
+Head to the [API Reference](/api) page to see it in action.
+
+---
+
+## Social Links
+
+Social links appear in the footer. Configure them in `mokadocs.yaml`:
+
+```yaml
+theme:
+  options:
+    socialLinks:
+      - icon: github
+        url: "https://github.com/your/repo"
+      - icon: nuget
+        url: "https://www.nuget.org/packages/YourPackage"
+      - icon: discord
+        url: "https://discord.gg/your-server"
+      - icon: twitter
+        url: "https://twitter.com/yourhandle"
+```
+
+Available icons: `github`, `nuget`, `discord`, `twitter`, `globe`, `mail`, and all 70+ [Lucide icons](https://lucide.dev).
+
+Scroll to the bottom of this page to see them in the footer.
+
+---
+
 ## Task Lists
 
 Track implementation progress with GitHub-style checkboxes:

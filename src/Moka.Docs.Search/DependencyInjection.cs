@@ -7,12 +7,12 @@ namespace Moka.Docs.Search;
 /// </summary>
 public static class SearchServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs search services to the service collection.
-    /// </summary>
-    public static IServiceCollection AddMokaDocsSearch(this IServiceCollection services)
-    {
-        // Will be populated in Phase 7
-        return services;
-    }
+	/// <summary>
+	///     Adds MokaDocs search services to the service collection.
+	/// </summary>
+	public static IServiceCollection AddMokaDocsSearch(this IServiceCollection services)
+	{
+		// Will be populated in Phase 7
+		return services;
+	}
 }

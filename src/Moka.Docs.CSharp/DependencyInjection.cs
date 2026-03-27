@@ -9,14 +9,14 @@ namespace Moka.Docs.CSharp;
 /// </summary>
 public static class CSharpServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs C# analysis services to the service collection.
-    /// </summary>
-    public static IServiceCollection AddMokaDocsCSharp(this IServiceCollection services)
-    {
-        services.AddSingleton<XmlDocParser>();
-        services.AddSingleton<InheritDocResolver>();
-        services.AddSingleton<AssemblyAnalyzer>();
-        return services;
-    }
+	/// <summary>
+	///     Adds MokaDocs C# analysis services to the service collection.
+	/// </summary>
+	public static IServiceCollection AddMokaDocsCSharp(this IServiceCollection services)
+	{
+		services.AddSingleton<XmlDocParser>();
+		services.AddSingleton<InheritDocResolver>();
+		services.AddSingleton<AssemblyAnalyzer>();
+		return services;
+	}
 }

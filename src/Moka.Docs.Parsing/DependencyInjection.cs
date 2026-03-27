@@ -9,15 +9,15 @@ namespace Moka.Docs.Parsing;
 /// </summary>
 public static class ParsingServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs parsing services to the service collection.
-    /// </summary>
-    public static IServiceCollection AddMokaDocsParsing(this IServiceCollection services)
-    {
-        services.AddSingleton<MarkdownParser>();
-        services.AddSingleton<MarkdownParserOptions>();
-        services.AddSingleton<FrontMatterExtractor>();
-        services.AddSingleton<TocGenerator>();
-        return services;
-    }
+	/// <summary>
+	///     Adds MokaDocs parsing services to the service collection.
+	/// </summary>
+	public static IServiceCollection AddMokaDocsParsing(this IServiceCollection services)
+	{
+		services.AddSingleton<MarkdownParser>();
+		services.AddSingleton<MarkdownParserOptions>();
+		services.AddSingleton<FrontMatterExtractor>();
+		services.AddSingleton<TocGenerator>();
+		return services;
+	}
 }

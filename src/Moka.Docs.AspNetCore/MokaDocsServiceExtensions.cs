@@ -3,6 +3,7 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Moka.Docs.AspNetCore.Phases;
 using Moka.Docs.AspNetCore.Reflection;
+using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.CSharp;
 using Moka.Docs.Engine;
@@ -19,59 +20,64 @@ namespace Moka.Docs.AspNetCore;
 /// </summary>
 public static class MokaDocsServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs documentation services to the application.
-    ///     Call <c>app.MapMokaDocs()</c> to serve the documentation site.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configure">Optional configuration action.</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddMokaDocs(
-        this IServiceCollection services,
-        Action<MokaDocsOptions>? configure = null)
-    {
-        var options = new MokaDocsOptions();
-        configure?.Invoke(options);
+	/// <summary>
+	///     Adds MokaDocs documentation services to the application.
+	///     Call <c>app.MapMokaDocs()</c> to serve the documentation site.
+	/// </summary>
+	/// <param name="services">The service collection.</param>
+	/// <param name="configure">Optional configuration action.</param>
+	/// <returns>The service collection for chaining.</returns>
+	public static IServiceCollection AddMokaDocs(
+		this IServiceCollection services,
+		Action<MokaDocsOptions>? configure = null)
+	{
+		var options = new MokaDocsOptions();
+		configure?.Invoke(options);
 
-        // Auto-discover calling assembly if none specified
-        if (options.Assemblies.Count == 0)
-        {
-            var callingAssembly = Assembly.GetCallingAssembly();
-            options.Assemblies.Add(callingAssembly);
-        }
+		// Auto-discover calling assembly if none specified
+		if (options.Assemblies.Count == 0)
+		{
+			var callingAssembly = Assembly.GetCallingAssembly();
+			options.Assemblies.Add(callingAssembly);
+		}
 
-        // Create SiteConfig from options
-        var siteConfig = SiteConfigFactory.Create(options);
+		// Create SiteConfig from options
+		SiteConfig siteConfig = SiteConfigFactory.Create(options);
 
-        // Register options and config
-        services.AddSingleton(options);
-        services.AddSingleton(siteConfig);
+		// Register options and config
+		services.AddSingleton(options);
+		services.AddSingleton(siteConfig);
 
-        // Register filesystem abstraction
-        services.AddSingleton<IFileSystem>(new FileSystem());
+		// Register filesystem abstraction
+		services.AddSingleton<IFileSystem>(new FileSystem());
 
-        // Register all MokaDocs subsystems
-        services.AddMokaDocsParsing();
-        services.AddMokaDocsCSharp();
-        services.AddMokaDocsEngine();
+		// Register all MokaDocs subsystems
+		services.AddMokaDocsParsing();
+		services.AddMokaDocsCSharp();
+		services.AddMokaDocsEngine();
 
-        // Register our reflection-based API page phase
-        services.AddSingleton<IBuildPhase, ReflectionApiPagePhase>();
+		// Register our reflection-based API page phase
+		services.AddSingleton<IBuildPhase, ReflectionApiPagePhase>();
 
-        // Plugin system
-        services.AddSingleton<PluginHost>();
-        services.AddSingleton<IMokaPlugin, OpenApiPlugin>();
+		// Plugin system
+		services.AddSingleton<PluginHost>();
+		services.AddSingleton<IMokaPlugin, OpenApiPlugin>();
 
-        if (options.EnableRepl)
-            services.AddSingleton<IMokaPlugin, ReplPlugin>();
-        if (options.EnableBlazorPreview)
-            services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
+		if (options.EnableRepl)
+		{
+			services.AddSingleton<IMokaPlugin, ReplPlugin>();
+		}
 
-        // ASP.NET Core integration services
-        services.AddSingleton<ReflectionApiModelBuilder>();
-        services.AddSingleton<InMemoryBuildOrchestrator>();
-        services.AddSingleton<MokaDocsService>();
+		if (options.EnableBlazorPreview)
+		{
+			services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
+		}
 
-        return services;
-    }
+		// ASP.NET Core integration services
+		services.AddSingleton<ReflectionApiModelBuilder>();
+		services.AddSingleton<InMemoryBuildOrchestrator>();
+		services.AddSingleton<MokaDocsService>();
+
+		return services;
+	}
 }

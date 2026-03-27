@@ -6,128 +6,125 @@ namespace Moka.Docs.Parsing.Tests.Markdown;
 
 public sealed class MermaidExtensionTests
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .Use<MermaidExtension>()
-        .Build();
+	private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+		.Use<MermaidExtension>()
+		.Build();
 
-    private static string Render(string md)
-    {
-        return Markdig.Markdown.ToHtml(md, Pipeline);
-    }
+	private static string Render(string md) => Markdig.Markdown.ToHtml(md, Pipeline);
 
-    [Fact]
-    public void MermaidBlock_ProducesPreWithMermaidClass()
-    {
-        const string md = """
-                          ```mermaid
-                          graph TD
-                              A --> B
-                          ```
-                          """;
+	[Fact]
+	public void MermaidBlock_ProducesPreWithMermaidClass()
+	{
+		const string md = """
+		                  ```mermaid
+		                  graph TD
+		                      A --> B
+		                  ```
+		                  """;
 
-        var html = Render(md);
+		string html = Render(md);
 
-        html.Should().Contain("<pre class=\"mermaid\">");
-        html.Should().Contain("graph TD");
-        html.Should().Contain("A --> B");
-        html.Should().NotContain("<code");
-    }
+		html.Should().Contain("<pre class=\"mermaid\">");
+		html.Should().Contain("graph TD");
+		html.Should().Contain("A --> B");
+		html.Should().NotContain("<code");
+	}
 
-    [Fact]
-    public void MermaidBlock_CaseInsensitive()
-    {
-        const string md = """
-                          ```Mermaid
-                          graph LR
-                              A --> B
-                          ```
-                          """;
+	[Fact]
+	public void MermaidBlock_CaseInsensitive()
+	{
+		const string md = """
+		                  ```Mermaid
+		                  graph LR
+		                      A --> B
+		                  ```
+		                  """;
 
-        var html = Render(md);
+		string html = Render(md);
 
-        html.Should().Contain("<pre class=\"mermaid\">");
-    }
+		html.Should().Contain("<pre class=\"mermaid\">");
+	}
 
-    [Fact]
-    public void RegularCodeBlock_NotAffected()
-    {
-        const string md = """
-                          ```csharp
-                          Console.WriteLine("Hello");
-                          ```
-                          """;
+	[Fact]
+	public void RegularCodeBlock_NotAffected()
+	{
+		const string md = """
+		                  ```csharp
+		                  Console.WriteLine("Hello");
+		                  ```
+		                  """;
 
-        var html = Render(md);
+		string html = Render(md);
 
-        html.Should().NotContain("<pre class=\"mermaid\">");
-        html.Should().Contain("<code");
-        html.Should().Contain("language-csharp");
-    }
+		html.Should().NotContain("<pre class=\"mermaid\">");
+		html.Should().Contain("<code");
+		html.Should().Contain("language-csharp");
+	}
 
-    [Fact]
-    public void EmptyMermaidBlock_RendersEmptyPre()
-    {
-        const string md = """
-                          ```mermaid
-                          ```
-                          """;
+	[Fact]
+	public void EmptyMermaidBlock_RendersEmptyPre()
+	{
+		const string md = """
+		                  ```mermaid
+		                  ```
+		                  """;
 
-        var html = Render(md);
+		string html = Render(md);
 
-        html.Should().Contain("<pre class=\"mermaid\">");
-        html.Should().Contain("</pre>");
-    }
+		html.Should().Contain("<pre class=\"mermaid\">");
+		html.Should().Contain("</pre>");
+	}
 
-    [Fact]
-    public void MermaidBlock_PreservesRawContent()
-    {
-        const string md = """
-                          ```mermaid
-                          sequenceDiagram
-                              Alice->>Bob: Hello Bob
-                              Bob-->>Alice: Hi Alice
-                          ```
-                          """;
+	[Fact]
+	public void MermaidBlock_PreservesRawContent()
+	{
+		const string md = """
+		                  ```mermaid
+		                  sequenceDiagram
+		                      Alice->>Bob: Hello Bob
+		                      Bob-->>Alice: Hi Alice
+		                  ```
+		                  """;
 
-        var html = Render(md);
+		string html = Render(md);
 
-        html.Should().Contain("sequenceDiagram");
-        html.Should().Contain("Alice->>Bob");
-    }
+		html.Should().Contain("sequenceDiagram");
+		html.Should().Contain("Alice->>Bob");
+	}
 
-    [Fact]
-    public void MultipleMermaidBlocks_AllRendered()
-    {
-        const string md = """
-                          ```mermaid
-                          graph TD
-                              A --> B
-                          ```
+	[Fact]
+	public void MultipleMermaidBlocks_AllRendered()
+	{
+		const string md = """
+		                  ```mermaid
+		                  graph TD
+		                      A --> B
+		                  ```
 
-                          Some text in between.
+		                  Some text in between.
 
-                          ```mermaid
-                          pie
-                              "A" : 50
-                              "B" : 50
-                          ```
-                          """;
+		                  ```mermaid
+		                  pie
+		                      "A" : 50
+		                      "B" : 50
+		                  ```
+		                  """;
 
-        var html = Render(md);
+		string html = Render(md);
 
-        // Both mermaid blocks should be rendered
-        var mermaidCount = html.Split("<pre class=\"mermaid\">").Length - 1;
-        mermaidCount.Should().Be(2);
-    }
+		// Both mermaid blocks should be rendered
+		int mermaidCount = html.Split("<pre class=\"mermaid\">").Length - 1;
+		mermaidCount.Should().Be(2);
+	}
 
-    [Fact]
-    public void NonCodeBlock_NotAffected()
-    {
-        const string md = "This is a paragraph with the word mermaid in it.";
+	[Fact]
+	public void NonCodeBlock_NotAffected()
+	{
+		const string md = "This is a paragraph with the word mermaid in it.";
 
-        var html = Render(md);
+		string html = Render(md);
 
-        html.Should().NotContain("<pre class=\"mermaid\">");
-        html.Should().Contain("mermaid");
-    }
+		html.Should().NotContain("<pre class=\"mermaid\">");
+		html.Should().Contain("mermaid");
+	}
 }

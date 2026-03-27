@@ -5,52 +5,52 @@ namespace Moka.Docs.Core.Diagnostics;
 /// </summary>
 public sealed class DiagnosticBag
 {
-    private readonly List<Diagnostic> _diagnostics = [];
+	private readonly List<Diagnostic> _diagnostics = [];
 
-    /// <summary>All collected diagnostics.</summary>
-    public IReadOnlyList<Diagnostic> All => _diagnostics;
+	/// <summary>All collected diagnostics.</summary>
+	public IReadOnlyList<Diagnostic> All => _diagnostics;
 
-    /// <summary>Whether there are any error-level diagnostics.</summary>
-    public bool HasErrors => _diagnostics.Exists(d => d.Severity == DiagnosticSeverity.Error);
+	/// <summary>Whether there are any error-level diagnostics.</summary>
+	public bool HasErrors => _diagnostics.Exists(d => d.Severity == DiagnosticSeverity.Error);
 
-    /// <summary>Whether there are any warning-level diagnostics.</summary>
-    public bool HasWarnings => _diagnostics.Exists(d => d.Severity == DiagnosticSeverity.Warning);
+	/// <summary>Whether there are any warning-level diagnostics.</summary>
+	public bool HasWarnings => _diagnostics.Exists(d => d.Severity == DiagnosticSeverity.Warning);
 
-    /// <summary>Number of diagnostics.</summary>
-    public int Count => _diagnostics.Count;
+	/// <summary>Number of diagnostics.</summary>
+	public int Count => _diagnostics.Count;
 
-    /// <summary>Add an error diagnostic.</summary>
-    public void Error(string message, string? source = null)
-    {
-        _diagnostics.Add(new Diagnostic
-        {
-            Severity = DiagnosticSeverity.Error,
-            Message = message,
-            Source = source
-        });
-    }
+	/// <summary>Add an error diagnostic.</summary>
+	public void Error(string message, string? source = null)
+	{
+		_diagnostics.Add(new Diagnostic
+		{
+			Severity = DiagnosticSeverity.Error,
+			Message = message,
+			Source = source
+		});
+	}
 
-    /// <summary>Add a warning diagnostic.</summary>
-    public void Warning(string message, string? source = null)
-    {
-        _diagnostics.Add(new Diagnostic
-        {
-            Severity = DiagnosticSeverity.Warning,
-            Message = message,
-            Source = source
-        });
-    }
+	/// <summary>Add a warning diagnostic.</summary>
+	public void Warning(string message, string? source = null)
+	{
+		_diagnostics.Add(new Diagnostic
+		{
+			Severity = DiagnosticSeverity.Warning,
+			Message = message,
+			Source = source
+		});
+	}
 
-    /// <summary>Add an info diagnostic.</summary>
-    public void Info(string message, string? source = null)
-    {
-        _diagnostics.Add(new Diagnostic
-        {
-            Severity = DiagnosticSeverity.Info,
-            Message = message,
-            Source = source
-        });
-    }
+	/// <summary>Add an info diagnostic.</summary>
+	public void Info(string message, string? source = null)
+	{
+		_diagnostics.Add(new Diagnostic
+		{
+			Severity = DiagnosticSeverity.Info,
+			Message = message,
+			Source = source
+		});
+	}
 }
 
 /// <summary>
@@ -58,20 +58,17 @@ public sealed class DiagnosticBag
 /// </summary>
 public sealed record Diagnostic
 {
-    /// <summary>The severity level.</summary>
-    public required DiagnosticSeverity Severity { get; init; }
+	/// <summary>The severity level.</summary>
+	public required DiagnosticSeverity Severity { get; init; }
 
-    /// <summary>The diagnostic message.</summary>
-    public required string Message { get; init; }
+	/// <summary>The diagnostic message.</summary>
+	public required string Message { get; init; }
 
-    /// <summary>The source file or phase that produced this diagnostic.</summary>
-    public string? Source { get; init; }
+	/// <summary>The source file or phase that produced this diagnostic.</summary>
+	public string? Source { get; init; }
 
-    /// <inheritdoc />
-    public override string ToString()
-    {
-        return $"[{Severity}] {Message}";
-    }
+	/// <inheritdoc />
+	public override string ToString() => $"[{Severity}] {Message}";
 }
 
 /// <summary>
@@ -79,12 +76,12 @@ public sealed record Diagnostic
 /// </summary>
 public enum DiagnosticSeverity
 {
-    /// <summary>Informational message.</summary>
-    Info,
+	/// <summary>Informational message.</summary>
+	Info,
 
-    /// <summary>Warning that should be reviewed.</summary>
-    Warning,
+	/// <summary>Warning that should be reviewed.</summary>
+	Warning,
 
-    /// <summary>Error that prevents correct output.</summary>
-    Error
+	/// <summary>Error that prevents correct output.</summary>
+	Error
 }

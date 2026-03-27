@@ -8,62 +8,78 @@ namespace Moka.Docs.Parsing.Markdown;
 /// </summary>
 internal static class MarkdigHelpers
 {
-    /// <summary>
-    ///     Counts consecutive occurrences of a character at the current position and advances past them.
-    /// </summary>
-    internal static int CountAndSkipChar(ref StringSlice slice, char c)
-    {
-        var count = 0;
-        while (slice.CurrentChar == c)
-        {
-            count++;
-            slice.SkipChar();
-        }
+	/// <summary>
+	///     Counts consecutive occurrences of a character at the current position and advances past them.
+	/// </summary>
+	internal static int CountAndSkipChar(ref StringSlice slice, char c)
+	{
+		int count = 0;
+		while (slice.CurrentChar == c)
+		{
+			count++;
+			slice.SkipChar();
+		}
 
-        return count;
-    }
+		return count;
+	}
 
-    /// <summary>
-    ///     Returns all descendant blocks from a Markdown document.
-    /// </summary>
-    internal static IEnumerable<Block> AllDescendants(this MarkdownDocument document)
-    {
-        foreach (var block in document)
-        {
-            yield return block;
+	/// <summary>
+	///     Returns all descendant blocks from a Markdown document.
+	/// </summary>
+	internal static IEnumerable<Block> AllDescendants(this MarkdownDocument document)
+	{
+		foreach (Block block in document)
+		{
+			yield return block;
 
-            if (block is ContainerBlock container)
-                foreach (var child in DescendantBlocksOfType<Block>(container))
-                    yield return child;
-        }
-    }
+			if (block is ContainerBlock container)
+			{
+				foreach (Block child in DescendantBlocksOfType<Block>(container))
+				{
+					yield return child;
+				}
+			}
+		}
+	}
 
-    /// <summary>
-    ///     Returns all descendant blocks of a specific type from a Markdown document.
-    /// </summary>
-    internal static IEnumerable<T> DescendantsOfType<T>(this MarkdownDocument document) where T : Block
-    {
-        foreach (var block in document)
-        {
-            if (block is T typed)
-                yield return typed;
+	/// <summary>
+	///     Returns all descendant blocks of a specific type from a Markdown document.
+	/// </summary>
+	internal static IEnumerable<T> DescendantsOfType<T>(this MarkdownDocument document) where T : Block
+	{
+		foreach (Block block in document)
+		{
+			if (block is T typed)
+			{
+				yield return typed;
+			}
 
-            if (block is ContainerBlock container)
-                foreach (var child in DescendantBlocksOfType<T>(container))
-                    yield return child;
-        }
-    }
+			if (block is ContainerBlock container)
+			{
+				foreach (T child in DescendantBlocksOfType<T>(container))
+				{
+					yield return child;
+				}
+			}
+		}
+	}
 
-    private static IEnumerable<T> DescendantBlocksOfType<T>(ContainerBlock container) where T : Block
-    {
-        foreach (var block in container)
-        {
-            if (block is T typed)
-                yield return typed;
+	private static IEnumerable<T> DescendantBlocksOfType<T>(ContainerBlock container) where T : Block
+	{
+		foreach (Block block in container)
+		{
+			if (block is T typed)
+			{
+				yield return typed;
+			}
 
-            if (block is ContainerBlock childContainer)
-                foreach (var child in DescendantBlocksOfType<T>(childContainer))
-                    yield return child;
-        }
-    }
+			if (block is ContainerBlock childContainer)
+			{
+				foreach (T child in DescendantBlocksOfType<T>(childContainer))
+				{
+					yield return child;
+				}
+			}
+		}
+	}
 }

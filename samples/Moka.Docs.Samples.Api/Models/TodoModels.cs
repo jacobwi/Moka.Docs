@@ -12,12 +12,12 @@ namespace SampleApi.Models;
 /// <param name="DueDate">Optional due date for the todo item.</param>
 /// <param name="CreatedAt">When the todo item was created.</param>
 public sealed record TodoItem(
-    int Id,
-    string Title,
-    bool IsCompleted,
-    TodoPriority Priority,
-    DateOnly? DueDate,
-    DateTime CreatedAt);
+	int Id,
+	string Title,
+	bool IsCompleted,
+	TodoPriority Priority,
+	DateOnly? DueDate,
+	DateTime CreatedAt);
 
 /// <summary>
 ///     Request model for creating a new todo item.
@@ -26,9 +26,9 @@ public sealed record TodoItem(
 /// <param name="Priority">The priority level. Defaults to <see cref="TodoPriority.Medium" />.</param>
 /// <param name="DueDate">Optional due date.</param>
 public sealed record CreateTodoRequest(
-    string Title,
-    TodoPriority Priority = TodoPriority.Medium,
-    DateOnly? DueDate = null);
+	string Title,
+	TodoPriority Priority = TodoPriority.Medium,
+	DateOnly? DueDate = null);
 
 /// <summary>
 ///     Request model for updating an existing todo item.
@@ -38,25 +38,25 @@ public sealed record CreateTodoRequest(
 /// <param name="Priority">The updated priority, or <c>null</c> to keep current.</param>
 /// <param name="DueDate">The updated due date, or <c>null</c> to keep current.</param>
 public sealed record UpdateTodoRequest(
-    string? Title = null,
-    bool? IsCompleted = null,
-    TodoPriority? Priority = null,
-    DateOnly? DueDate = null);
+	string? Title = null,
+	bool? IsCompleted = null,
+	TodoPriority? Priority = null,
+	DateOnly? DueDate = null);
 
 /// <summary>
 ///     Defines the priority levels for a todo item.
 /// </summary>
 public enum TodoPriority
 {
-    /// <summary>Low priority — can be done whenever.</summary>
-    Low,
+	/// <summary>Low priority — can be done whenever.</summary>
+	Low,
 
-    /// <summary>Medium priority — should be done soon.</summary>
-    Medium,
+	/// <summary>Medium priority — should be done soon.</summary>
+	Medium,
 
-    /// <summary>High priority — needs attention.</summary>
-    High,
+	/// <summary>High priority — needs attention.</summary>
+	High,
 
-    /// <summary>Critical priority — must be done immediately.</summary>
-    Critical
+	/// <summary>Critical priority — must be done immediately.</summary>
+	Critical
 }
