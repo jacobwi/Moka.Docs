@@ -2,7 +2,7 @@
   <a href="https://dotnet.microsoft.com"><img src="https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4?style=flat-square&logo=dotnet" alt=".NET 9/10" /></a>
   <a href="https://github.com/jacobwi/Moka.Docs/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
   <a href="https://github.com/jacobwi/Moka.Docs/actions"><img src="https://img.shields.io/badge/tests-384%20passed-brightgreen?style=flat-square" alt="Tests" /></a>
-  <a href="https://www.nuget.org/packages/Moka.Docs.Core"><img src="https://img.shields.io/badge/NuGet-v1.0.0-orange?style=flat-square&logo=nuget" alt="NuGet" /></a>
+  <a href="https://www.nuget.org/packages/Moka.Docs.Core"><img src="https://img.shields.io/nuget/v/Moka.Docs.Core?style=flat-square&logo=nuget&color=orange" alt="NuGet" /></a>
 </p>
 
 <p align="center">
