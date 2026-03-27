@@ -898,12 +898,18 @@ public static class EmbeddedThemeProvider
                                            margin: 1.5rem 0;
                                            border-collapse: collapse;
                                            font-size: 0.875rem;
+                                           display: block;
+                                           overflow-x: auto;
+                                           -webkit-overflow-scrolling: touch;
                                        }
+                                       .page-content thead, .page-content tbody, .page-content tr { width: 100%; }
                                        .page-content th, .page-content td {
                                            padding: 0.625rem 1rem;
                                            text-align: left;
                                            border: 1px solid var(--color-border);
+                                           white-space: nowrap;
                                        }
+                                       .page-content td:last-child { white-space: normal; }
                                        .page-content th { background: var(--color-bg-secondary); font-weight: 600; }
                                        .page-content tr:hover td { background: var(--color-bg-secondary); }
 
