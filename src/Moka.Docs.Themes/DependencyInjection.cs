@@ -7,12 +7,12 @@ namespace Moka.Docs.Themes;
 /// </summary>
 public static class ThemeServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs theme services to the service collection.
-    /// </summary>
-    public static IServiceCollection AddMokaDocsThemes(this IServiceCollection services)
-    {
-        // Will be populated in Phase 6
-        return services;
-    }
+	/// <summary>
+	///     Adds MokaDocs theme services to the service collection.
+	/// </summary>
+	public static IServiceCollection AddMokaDocsThemes(this IServiceCollection services)
+	{
+		// Will be populated in Phase 6
+		return services;
+	}
 }

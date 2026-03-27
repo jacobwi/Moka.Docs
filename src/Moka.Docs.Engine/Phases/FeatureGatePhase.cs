@@ -10,39 +10,43 @@ namespace Moka.Docs.Engine.Phases;
 ///     the corresponding feature flag is disabled in the feature manager.
 /// </summary>
 public sealed class FeatureGatePhase(
-    IFeatureManager featureManager,
-    ILogger<FeatureGatePhase> logger) : IBuildPhase
+	IFeatureManager featureManager,
+	ILogger<FeatureGatePhase> logger) : IBuildPhase
 {
-    /// <inheritdoc />
-    public string Name => "FeatureGate";
+	/// <inheritdoc />
+	public string Name => "FeatureGate";
 
-    /// <inheritdoc />
-    public int Order => 500;
+	/// <inheritdoc />
+	public int Order => 500;
 
-    /// <inheritdoc />
-    public async Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
-    {
-        var removed = 0;
+	/// <inheritdoc />
+	public async Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
+	{
+		int removed = 0;
 
-        for (var i = context.Pages.Count - 1; i >= 0; i--)
-        {
-            ct.ThrowIfCancellationRequested();
+		for (int i = context.Pages.Count - 1; i >= 0; i--)
+		{
+			ct.ThrowIfCancellationRequested();
 
-            var requiredFeature = context.Pages[i].FrontMatter.Requires;
-            if (string.IsNullOrWhiteSpace(requiredFeature))
-                continue;
+			string? requiredFeature = context.Pages[i].FrontMatter.Requires;
+			if (string.IsNullOrWhiteSpace(requiredFeature))
+			{
+				continue;
+			}
 
-            var isEnabled = await featureManager.IsEnabledAsync(requiredFeature);
-            if (!isEnabled)
-            {
-                logger.LogDebug("Excluding page {Route} — feature flag '{Feature}' is disabled",
-                    context.Pages[i].Route, requiredFeature);
-                context.Pages.RemoveAt(i);
-                removed++;
-            }
-        }
+			bool isEnabled = await featureManager.IsEnabledAsync(requiredFeature);
+			if (!isEnabled)
+			{
+				logger.LogDebug("Excluding page {Route} — feature flag '{Feature}' is disabled",
+					context.Pages[i].Route, requiredFeature);
+				context.Pages.RemoveAt(i);
+				removed++;
+			}
+		}
 
-        if (removed > 0)
-            logger.LogInformation("Feature gating excluded {Count} page(s)", removed);
-    }
+		if (removed > 0)
+		{
+			logger.LogInformation("Feature gating excluded {Count} page(s)", removed);
+		}
+	}
 }

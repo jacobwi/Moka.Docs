@@ -6,369 +6,369 @@ namespace Moka.Docs.Integration.Tests;
 
 public sealed class BlazorPreviewServiceTests
 {
-    private readonly BlazorPreviewService _service = new(
-        NullLogger<BlazorPreviewService>.Instance);
+	private readonly BlazorPreviewService _service = new(
+		NullLogger<BlazorPreviewService>.Instance);
 
-    #region Basic Rendering
+	#region Basic Rendering
 
-    [Fact]
-    public async Task RenderAsync_SimpleMarkup_ReturnsHtml()
-    {
-        const string source = "<h1>Hello World</h1>";
+	[Fact]
+	public async Task RenderAsync_SimpleMarkup_ReturnsHtml()
+	{
+		const string source = "<h1>Hello World</h1>";
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("<h1>Hello World</h1>");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("<h1>Hello World</h1>");
+	}
 
-    [Fact]
-    public async Task RenderAsync_EmptySource_ReturnsError()
-    {
-        var result = await _service.RenderAsync("");
+	[Fact]
+	public async Task RenderAsync_EmptySource_ReturnsError()
+	{
+		BlazorPreviewResult result = await _service.RenderAsync("");
 
-        result.Error.Should().NotBeNull();
-        result.Html.Should().BeNull();
-    }
+		result.Error.Should().NotBeNull();
+		result.Html.Should().BeNull();
+	}
 
-    [Fact]
-    public async Task RenderAsync_NullSource_ReturnsError()
-    {
-        var result = await _service.RenderAsync(null!);
+	[Fact]
+	public async Task RenderAsync_NullSource_ReturnsError()
+	{
+		BlazorPreviewResult result = await _service.RenderAsync(null!);
 
-        result.Error.Should().NotBeNull();
-    }
+		result.Error.Should().NotBeNull();
+	}
 
-    [Fact]
-    public async Task RenderAsync_WhitespaceSource_ReturnsError()
-    {
-        var result = await _service.RenderAsync("   ");
+	[Fact]
+	public async Task RenderAsync_WhitespaceSource_ReturnsError()
+	{
+		BlazorPreviewResult result = await _service.RenderAsync("   ");
 
-        result.Error.Should().NotBeNull();
-    }
+		result.Error.Should().NotBeNull();
+	}
 
-    [Fact]
-    public async Task RenderAsync_ExceedsMaxLength_ReturnsError()
-    {
-        var source = new string('x', 50_001);
+	[Fact]
+	public async Task RenderAsync_ExceedsMaxLength_ReturnsError()
+	{
+		string source = new('x', 50_001);
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().Contain("exceeds maximum length");
-    }
+		result.Error.Should().Contain("exceeds maximum length");
+	}
 
-    #endregion
+	#endregion
 
-    #region Variable Substitution
+	#region Variable Substitution
 
-    [Fact]
-    public async Task RenderAsync_VariableSubstitution_ReplacesStringField()
-    {
-        const string source = """
-                              <h1>@title</h1>
+	[Fact]
+	public async Task RenderAsync_VariableSubstitution_ReplacesStringField()
+	{
+		const string source = """
+		                      <h1>@title</h1>
 
-                              @code {
-                                  private string title = "Hello World";
-                              }
-                              """;
+		                      @code {
+		                          private string title = "Hello World";
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("Hello World");
-        result.Html.Should().NotContain("@title");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("Hello World");
+		result.Html.Should().NotContain("@title");
+	}
 
-    [Fact]
-    public async Task RenderAsync_VariableSubstitution_ReplacesIntField()
-    {
-        const string source = """
-                              <p>Count: @count</p>
+	[Fact]
+	public async Task RenderAsync_VariableSubstitution_ReplacesIntField()
+	{
+		const string source = """
+		                      <p>Count: @count</p>
 
-                              @code {
-                                  private int count = 42;
-                              }
-                              """;
+		                      @code {
+		                          private int count = 42;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("Count: 42");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("Count: 42");
+	}
 
-    [Fact]
-    public async Task RenderAsync_VariableSubstitution_ReplacesBoolField()
-    {
-        const string source = """
-                              <p>Active: @isActive</p>
+	[Fact]
+	public async Task RenderAsync_VariableSubstitution_ReplacesBoolField()
+	{
+		const string source = """
+		                      <p>Active: @isActive</p>
 
-                              @code {
-                                  private bool isActive = true;
-                              }
-                              """;
+		                      @code {
+		                          private bool isActive = true;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("Active: True");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("Active: True");
+	}
 
-    [Fact]
-    public async Task RenderAsync_UnknownVariable_LeftAsIs()
-    {
-        const string source = """
-                              <p>@unknownVar</p>
+	[Fact]
+	public async Task RenderAsync_UnknownVariable_LeftAsIs()
+	{
+		const string source = """
+		                      <p>@unknownVar</p>
 
-                              @code {
-                                  private string name = "Test";
-                              }
-                              """;
+		                      @code {
+		                          private string name = "Test";
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("@unknownVar");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("@unknownVar");
+	}
 
-    #endregion
-
-    #region Directive Stripping
+	#endregion
+
+	#region Directive Stripping
 
-    [Fact]
-    public async Task RenderAsync_StripsOnClickDirective()
-    {
-        const string source = """
-                              <button @onclick="HandleClick">Click me</button>
+	[Fact]
+	public async Task RenderAsync_StripsOnClickDirective()
+	{
+		const string source = """
+		                      <button @onclick="HandleClick">Click me</button>
 
-                              @code {
-                                  private void HandleClick() { }
-                              }
-                              """;
+		                      @code {
+		                          private void HandleClick() { }
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("<button");
-        result.Html.Should().Contain("Click me");
-        result.Html.Should().NotContain("@onclick");
-    }
-
-    [Fact]
-    public async Task RenderAsync_StripsBindDirective()
-    {
-        const string source = """
-                              <input @bind="name" />
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("<button");
+		result.Html.Should().Contain("Click me");
+		result.Html.Should().NotContain("@onclick");
+	}
+
+	[Fact]
+	public async Task RenderAsync_StripsBindDirective()
+	{
+		const string source = """
+		                      <input @bind="name" />
 
-                              @code {
-                                  private string name = "Test";
-                              }
-                              """;
+		                      @code {
+		                          private string name = "Test";
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("@bind");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("@bind");
+	}
 
-    [Fact]
-    public async Task RenderAsync_StripsRefDirective()
-    {
-        const string source = """
-                              <div @ref="myDiv">Content</div>
-
-                              @code {
-                                  private ElementReference myDiv;
-                              }
-                              """;
+	[Fact]
+	public async Task RenderAsync_StripsRefDirective()
+	{
+		const string source = """
+		                      <div @ref="myDiv">Content</div>
+
+		                      @code {
+		                          private ElementReference myDiv;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("@ref");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("@ref");
+	}
 
-    #endregion
-
-    #region @if Block Evaluation
-
-    [Fact]
-    public async Task RenderAsync_IfBlock_TruthyValue_ShowsContent()
-    {
-        const string source = """
-                              @if (showMessage) {<p>Visible!</p>}
-
-                              @code {
-                                  private bool showMessage = true;
-                              }
-                              """;
+	#endregion
+
+	#region @if Block Evaluation
+
+	[Fact]
+	public async Task RenderAsync_IfBlock_TruthyValue_ShowsContent()
+	{
+		const string source = """
+		                      @if (showMessage) {<p>Visible!</p>}
+
+		                      @code {
+		                          private bool showMessage = true;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("Visible!");
-        result.Html.Should().NotContain("@if");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("Visible!");
+		result.Html.Should().NotContain("@if");
+	}
 
-    [Fact]
-    public async Task RenderAsync_IfBlock_FalsyValue_HidesContent()
-    {
-        const string source = """
-                              @if (showMessage) {<p>Hidden!</p>}
+	[Fact]
+	public async Task RenderAsync_IfBlock_FalsyValue_HidesContent()
+	{
+		const string source = """
+		                      @if (showMessage) {<p>Hidden!</p>}
 
-                              @code {
-                                  private bool showMessage = false;
-                              }
-                              """;
+		                      @code {
+		                          private bool showMessage = false;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("Hidden!");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("Hidden!");
+	}
 
-    [Fact]
-    public async Task RenderAsync_IfBlock_ZeroIsFalsy()
-    {
-        const string source = """
-                              @if (count) {<p>Has items</p>}
+	[Fact]
+	public async Task RenderAsync_IfBlock_ZeroIsFalsy()
+	{
+		const string source = """
+		                      @if (count) {<p>Has items</p>}
 
-                              @code {
-                                  private int count = 0;
-                              }
-                              """;
+		                      @code {
+		                          private int count = 0;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("Has items");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("Has items");
+	}
 
-    [Fact]
-    public async Task RenderAsync_IfBlock_UnknownVariable_HidesContent()
-    {
-        const string source = """
-                              @if (unknown) {<p>Should be hidden</p>}
+	[Fact]
+	public async Task RenderAsync_IfBlock_UnknownVariable_HidesContent()
+	{
+		const string source = """
+		                      @if (unknown) {<p>Should be hidden</p>}
 
-                              @code {
-                              }
-                              """;
+		                      @code {
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("Should be hidden");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("Should be hidden");
+	}
 
-    #endregion
+	#endregion
 
-    #region @foreach Block Iteration
+	#region @foreach Block Iteration
 
-    [Fact]
-    public async Task RenderAsync_ForeachBlock_IteratesCollection()
-    {
-        const string source = """
-                              <ul>
-                              @foreach (var item in items) {<li>@item</li>}
-                              </ul>
+	[Fact]
+	public async Task RenderAsync_ForeachBlock_IteratesCollection()
+	{
+		const string source = """
+		                      <ul>
+		                      @foreach (var item in items) {<li>@item</li>}
+		                      </ul>
 
-                              @code {
-                                  private List<string> items = new() { "Apple", "Banana", "Cherry" };
-                              }
-                              """;
+		                      @code {
+		                          private List<string> items = new() { "Apple", "Banana", "Cherry" };
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("Apple");
-        result.Html.Should().Contain("Banana");
-        result.Html.Should().Contain("Cherry");
-        result.Html.Should().NotContain("@foreach");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("Apple");
+		result.Html.Should().Contain("Banana");
+		result.Html.Should().Contain("Cherry");
+		result.Html.Should().NotContain("@foreach");
+	}
 
-    [Fact]
-    public async Task RenderAsync_ForeachBlock_UnknownCollection_ProducesNothing()
-    {
-        const string source = """
-                              @foreach (var item in unknownList) {<li>@item</li>}
+	[Fact]
+	public async Task RenderAsync_ForeachBlock_UnknownCollection_ProducesNothing()
+	{
+		const string source = """
+		                      @foreach (var item in unknownList) {<li>@item</li>}
 
-                              @code {
-                              }
-                              """;
+		                      @code {
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("<li>");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("<li>");
+	}
 
-    #endregion
+	#endregion
 
-    #region Field Initializer Parsing
+	#region Field Initializer Parsing
 
-    [Fact]
-    public async Task RenderAsync_DoubleField_ResolvedCorrectly()
-    {
-        const string source = """
-                              <p>@price</p>
+	[Fact]
+	public async Task RenderAsync_DoubleField_ResolvedCorrectly()
+	{
+		const string source = """
+		                      <p>@price</p>
 
-                              @code {
-                                  private double price = 9.99;
-                              }
-                              """;
+		                      @code {
+		                          private double price = 9.99;
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("9.99");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("9.99");
+	}
 
-    [Fact]
-    public async Task RenderAsync_NoCodeBlock_JustMarkup()
-    {
-        const string source = "<div><p>Simple markup without code</p></div>";
+	[Fact]
+	public async Task RenderAsync_NoCodeBlock_JustMarkup()
+	{
+		const string source = "<div><p>Simple markup without code</p></div>";
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().Contain("<div><p>Simple markup without code</p></div>");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().Contain("<div><p>Simple markup without code</p></div>");
+	}
 
-    [Fact]
-    public async Task RenderAsync_UsingDirectives_StrippedFromOutput()
-    {
-        const string source = """
-                              @using System.Collections.Generic
+	[Fact]
+	public async Task RenderAsync_UsingDirectives_StrippedFromOutput()
+	{
+		const string source = """
+		                      @using System.Collections.Generic
 
-                              <p>Content</p>
+		                      <p>Content</p>
 
-                              @code {
-                              }
-                              """;
+		                      @code {
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("@using");
-        result.Html.Should().Contain("Content");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("@using");
+		result.Html.Should().Contain("Content");
+	}
 
-    [Fact]
-    public async Task RenderAsync_HtmlSpecialChars_Encoded()
-    {
-        const string source = """
-                              <p>@message</p>
+	[Fact]
+	public async Task RenderAsync_HtmlSpecialChars_Encoded()
+	{
+		const string source = """
+		                      <p>@message</p>
 
-                              @code {
-                                  private string message = "<script>alert('xss')</script>";
-                              }
-                              """;
+		                      @code {
+		                          private string message = "<script>alert('xss')</script>";
+		                      }
+		                      """;
 
-        var result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
+		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-        result.Error.Should().BeNull();
-        result.Html.Should().NotContain("<script>");
-        result.Html.Should().Contain("&lt;script&gt;");
-    }
+		result.Error.Should().BeNull();
+		result.Html.Should().NotContain("<script>");
+		result.Html.Should().Contain("&lt;script&gt;");
+	}
 
-    #endregion
+	#endregion
 }

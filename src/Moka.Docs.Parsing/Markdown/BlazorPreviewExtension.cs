@@ -1,4 +1,5 @@
 using Markdig;
+using Markdig.Helpers;
 using Markdig.Renderers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
@@ -19,34 +20,39 @@ namespace Moka.Docs.Parsing.Markdown;
 /// </remarks>
 public sealed class BlazorPreviewExtension : IMarkdownExtension
 {
-    /// <inheritdoc />
-    public void Setup(MarkdownPipelineBuilder pipeline)
-    {
-        // No block parser changes needed — we reuse the built-in FencedCodeBlock parser.
-    }
+	/// <inheritdoc />
+	public void Setup(MarkdownPipelineBuilder pipeline)
+	{
+		// No block parser changes needed — we reuse the built-in FencedCodeBlock parser.
+	}
 
-    /// <inheritdoc />
-    public void Setup(MarkdownPipeline pipeline, IMarkdownRenderer renderer)
-    {
-        if (renderer is HtmlRenderer htmlRenderer)
-        {
-            // Find whatever renderer currently handles CodeBlock (could be default
-            // CodeBlockRenderer or MermaidCodeBlockRenderer). We wrap it so all
-            // code block types are handled correctly.
-            IMarkdownObjectRenderer? existingRenderer = null;
-            foreach (var r in htmlRenderer.ObjectRenderers)
-                if (r is HtmlObjectRenderer<CodeBlock> codeBlockHandler)
-                {
-                    existingRenderer = codeBlockHandler;
-                    break;
-                }
+	/// <inheritdoc />
+	public void Setup(MarkdownPipeline pipeline, IMarkdownRenderer renderer)
+	{
+		if (renderer is HtmlRenderer htmlRenderer)
+		{
+			// Find whatever renderer currently handles CodeBlock (could be default
+			// CodeBlockRenderer or MermaidCodeBlockRenderer). We wrap it so all
+			// code block types are handled correctly.
+			IMarkdownObjectRenderer? existingRenderer = null;
+			foreach (IMarkdownObjectRenderer r in htmlRenderer.ObjectRenderers)
+			{
+				if (r is HtmlObjectRenderer<CodeBlock> codeBlockHandler)
+				{
+					existingRenderer = codeBlockHandler;
+					break;
+				}
+			}
 
-            if (existingRenderer != null) htmlRenderer.ObjectRenderers.Remove(existingRenderer);
+			if (existingRenderer != null)
+			{
+				htmlRenderer.ObjectRenderers.Remove(existingRenderer);
+			}
 
-            htmlRenderer.ObjectRenderers.AddIfNotAlready(
-                new BlazorPreviewCodeBlockRenderer(existingRenderer as HtmlObjectRenderer<CodeBlock>));
-        }
-    }
+			htmlRenderer.ObjectRenderers.AddIfNotAlready(
+				new BlazorPreviewCodeBlockRenderer(existingRenderer as HtmlObjectRenderer<CodeBlock>));
+		}
+	}
 }
 
 /// <summary>
@@ -55,53 +61,60 @@ public sealed class BlazorPreviewExtension : IMarkdownExtension
 ///     All other code blocks are delegated to the wrapped inner renderer.
 /// </summary>
 internal sealed class BlazorPreviewCodeBlockRenderer(HtmlObjectRenderer<CodeBlock>? innerRenderer)
-    : HtmlObjectRenderer<CodeBlock>
+	: HtmlObjectRenderer<CodeBlock>
 {
-    private readonly HtmlObjectRenderer<CodeBlock> _innerRenderer = innerRenderer ?? new CodeBlockRenderer();
+	private readonly HtmlObjectRenderer<CodeBlock> _innerRenderer = innerRenderer ?? new CodeBlockRenderer();
 
-    protected override void Write(HtmlRenderer renderer, CodeBlock block)
-    {
-        if (block is FencedCodeBlock fencedBlock && IsBlazorPreview(fencedBlock))
-            WriteBlazorPreviewBlock(renderer, fencedBlock);
-        else
-            // Delegate to inner renderer (which handles Mermaid + default code blocks)
-            _innerRenderer.Write(renderer, block);
-    }
+	protected override void Write(HtmlRenderer renderer, CodeBlock block)
+	{
+		if (block is FencedCodeBlock fencedBlock && IsBlazorPreview(fencedBlock))
+		{
+			WriteBlazorPreviewBlock(renderer, fencedBlock);
+		}
+		else
+			// Delegate to inner renderer (which handles Mermaid + default code blocks)
+		{
+			_innerRenderer.Write(renderer, block);
+		}
+	}
 
-    private static bool IsBlazorPreview(FencedCodeBlock block)
-    {
-        var info = block.Info?.Trim() ?? "";
-        return string.Equals(info, "blazor-preview", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(info, "razor-preview", StringComparison.OrdinalIgnoreCase);
-    }
+	private static bool IsBlazorPreview(FencedCodeBlock block)
+	{
+		string info = block.Info?.Trim() ?? "";
+		return string.Equals(info, "blazor-preview", StringComparison.OrdinalIgnoreCase)
+		       || string.Equals(info, "razor-preview", StringComparison.OrdinalIgnoreCase);
+	}
 
-    private static void WriteBlazorPreviewBlock(HtmlRenderer renderer, FencedCodeBlock block)
-    {
-        renderer.EnsureLine();
-        renderer.Write("<div class=\"blazor-preview-container\" data-blazor-preview=\"true\">");
+	private static void WriteBlazorPreviewBlock(HtmlRenderer renderer, FencedCodeBlock block)
+	{
+		renderer.EnsureLine();
+		renderer.Write("<div class=\"blazor-preview-container\" data-blazor-preview=\"true\">");
 
-        // Source code section
-        renderer.Write("<div class=\"blazor-preview-source\">");
-        renderer.Write("<pre><code class=\"language-razor\">");
+		// Source code section
+		renderer.Write("<div class=\"blazor-preview-source\">");
+		renderer.Write("<pre><code class=\"language-razor\">");
 
-        // Write the content of the code block with HTML encoding
-        var lines = block.Lines;
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var line = lines.Lines[i];
-            var slice = line.Slice;
-            if (i > 0) renderer.WriteLine();
+		// Write the content of the code block with HTML encoding
+		StringLineGroup lines = block.Lines;
+		for (int i = 0; i < lines.Count; i++)
+		{
+			StringLine line = lines.Lines[i];
+			StringSlice slice = line.Slice;
+			if (i > 0)
+			{
+				renderer.WriteLine();
+			}
 
-            renderer.WriteEscape(slice.AsSpan());
-        }
+			renderer.WriteEscape(slice.AsSpan());
+		}
 
-        renderer.Write("</code></pre>");
-        renderer.Write("</div>"); // .blazor-preview-source
+		renderer.Write("</code></pre>");
+		renderer.Write("</div>"); // .blazor-preview-source
 
-        // Render placeholder section
-        renderer.Write("<div class=\"blazor-preview-render\"></div>");
+		// Render placeholder section
+		renderer.Write("<div class=\"blazor-preview-render\"></div>");
 
-        renderer.Write("</div>"); // .blazor-preview-container
-        renderer.WriteLine();
-    }
+		renderer.Write("</div>"); // .blazor-preview-container
+		renderer.WriteLine();
+	}
 }

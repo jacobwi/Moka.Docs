@@ -9,34 +9,34 @@ namespace Moka.Docs.Samples.AspNetCore.Models;
 /// </remarks>
 public sealed class Product
 {
-    /// <summary>Unique product identifier.</summary>
-    public int Id { get; set; }
+	/// <summary>Unique product identifier.</summary>
+	public int Id { get; set; }
 
-    /// <summary>Product display name.</summary>
-    /// <example>Wireless Bluetooth Headphones</example>
-    public required string Name { get; set; }
+	/// <summary>Product display name.</summary>
+	/// <example>Wireless Bluetooth Headphones</example>
+	public required string Name { get; set; }
 
-    /// <summary>Detailed product description.</summary>
-    public string Description { get; set; } = "";
+	/// <summary>Detailed product description.</summary>
+	public string Description { get; set; } = "";
 
-    /// <summary>Price in USD.</summary>
-    /// <example>49.99</example>
-    public decimal Price { get; set; }
+	/// <summary>Price in USD.</summary>
+	/// <example>49.99</example>
+	public decimal Price { get; set; }
 
-    /// <summary>Product category.</summary>
-    public Category Category { get; set; } = Category.General;
+	/// <summary>Product category.</summary>
+	public Category Category { get; set; } = Category.General;
 
-    /// <summary>Number of units currently in stock.</summary>
-    public int StockQuantity { get; set; }
+	/// <summary>Number of units currently in stock.</summary>
+	public int StockQuantity { get; set; }
 
-    /// <summary>Whether the product is available for purchase.</summary>
-    public bool IsAvailable => StockQuantity > 0;
+	/// <summary>Whether the product is available for purchase.</summary>
+	public bool IsAvailable => StockQuantity > 0;
 
-    /// <summary>Date the product was added to the catalog.</summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	/// <summary>Date the product was added to the catalog.</summary>
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Optional tags for search and filtering.</summary>
-    public List<string> Tags { get; set; } = [];
+	/// <summary>Optional tags for search and filtering.</summary>
+	public List<string> Tags { get; set; } = [];
 }
 
 /// <summary>
@@ -44,23 +44,23 @@ public sealed class Product
 /// </summary>
 public enum Category
 {
-    /// <summary>General uncategorized products.</summary>
-    General,
+	/// <summary>General uncategorized products.</summary>
+	General,
 
-    /// <summary>Electronic devices and accessories.</summary>
-    Electronics,
+	/// <summary>Electronic devices and accessories.</summary>
+	Electronics,
 
-    /// <summary>Clothing and apparel.</summary>
-    Clothing,
+	/// <summary>Clothing and apparel.</summary>
+	Clothing,
 
-    /// <summary>Books and publications.</summary>
-    Books,
+	/// <summary>Books and publications.</summary>
+	Books,
 
-    /// <summary>Food and beverages.</summary>
-    Food,
+	/// <summary>Food and beverages.</summary>
+	Food,
 
-    /// <summary>Home and garden products.</summary>
-    Home
+	/// <summary>Home and garden products.</summary>
+	Home
 }
 
 /// <summary>
@@ -71,10 +71,10 @@ public enum Category
 /// <param name="Category">Product category.</param>
 /// <param name="StockQuantity">Initial stock quantity.</param>
 public sealed record CreateProductRequest(
-    string Name,
-    decimal Price,
-    Category Category = Category.General,
-    int StockQuantity = 0);
+	string Name,
+	decimal Price,
+	Category Category = Category.General,
+	int StockQuantity = 0);
 
 /// <summary>
 ///     Request model for updating an existing product.
@@ -83,6 +83,6 @@ public sealed record CreateProductRequest(
 /// <param name="Price">Updated price in USD.</param>
 /// <param name="StockQuantity">Updated stock quantity.</param>
 public sealed record UpdateProductRequest(
-    string? Name = null,
-    decimal? Price = null,
-    int? StockQuantity = null);
+	string? Name = null,
+	decimal? Price = null,
+	int? StockQuantity = null);

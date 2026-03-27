@@ -8,15 +8,15 @@ namespace Moka.Docs.Cloud;
 /// </summary>
 public static class CloudServiceExtensions
 {
-    /// <summary>
-    ///     Adds MokaDocs cloud services to the service collection.
-    ///     Services are always registered but behave as no-ops when
-    ///     cloud is disabled in configuration.
-    /// </summary>
-    public static IServiceCollection AddMokaDocsCloud(this IServiceCollection services)
-    {
-        services.AddSingleton<CloudFeatureService>();
-        services.AddSingleton<CredentialStore>();
-        return services;
-    }
+	/// <summary>
+	///     Adds MokaDocs cloud services to the service collection.
+	///     Services are always registered but behave as no-ops when
+	///     cloud is disabled in configuration.
+	/// </summary>
+	public static IServiceCollection AddMokaDocsCloud(this IServiceCollection services)
+	{
+		services.AddSingleton<CloudFeatureService>();
+		services.AddSingleton<CredentialStore>();
+		return services;
+	}
 }

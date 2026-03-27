@@ -12,44 +12,46 @@ namespace Moka.Docs.Cli.Commands;
 /// </summary>
 internal static class CleanCommand
 {
-    /// <summary>Creates the clean command.</summary>
-    public static Command Create()
-    {
-        var command = new Command("clean", "Delete the output directory");
+	/// <summary>Creates the clean command.</summary>
+	public static Command Create()
+	{
+		var command = new Command("clean", "Delete the output directory");
 
-        command.SetAction(_ =>
-        {
-            var rootDir = Directory.GetCurrentDirectory();
-            var configPath = Path.Combine(rootDir, "mokadocs.yaml");
+		command.SetAction(_ =>
+		{
+			string rootDir = Directory.GetCurrentDirectory();
+			string configPath = Path.Combine(rootDir, "mokadocs.yaml");
 
-            // Try to read the configured output directory
-            var outputDir = "_site";
-            if (File.Exists(configPath))
-                try
-                {
-                    var reader = new SiteConfigReader(new FileSystem());
-                    var config = reader.Read(configPath);
-                    outputDir = config.Build.Output;
-                }
-                catch
-                {
-                    // Fall back to default
-                }
+			// Try to read the configured output directory
+			string outputDir = "_site";
+			if (File.Exists(configPath))
+			{
+				try
+				{
+					var reader = new SiteConfigReader(new FileSystem());
+					SiteConfig config = reader.Read(configPath);
+					outputDir = config.Build.Output;
+				}
+				catch
+				{
+					// Fall back to default
+				}
+			}
 
-            var fullPath = Path.GetFullPath(Path.Combine(rootDir, outputDir));
-            if (Directory.Exists(fullPath))
-            {
-                Directory.Delete(fullPath, true);
-                AnsiConsole.MarkupLine($"[green]Deleted[/] {fullPath}");
-            }
-            else
-            {
-                AnsiConsole.MarkupLine("[dim]Output directory does not exist. Nothing to clean.[/]");
-            }
+			string fullPath = Path.GetFullPath(Path.Combine(rootDir, outputDir));
+			if (Directory.Exists(fullPath))
+			{
+				Directory.Delete(fullPath, true);
+				AnsiConsole.MarkupLine($"[green]Deleted[/] {fullPath}");
+			}
+			else
+			{
+				AnsiConsole.MarkupLine("[dim]Output directory does not exist. Nothing to clean.[/]");
+			}
 
-            return 0;
-        });
+			return 0;
+		});
 
-        return command;
-    }
+		return command;
+	}
 }

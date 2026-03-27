@@ -17,6 +17,15 @@ theme:
     accentColor: "#f59e0b"
     showEditLink: false
     showLastUpdated: true
+    socialLinks:
+      - icon: github
+        url: "https://github.com/jacobwi/Moka.Docs"
+      - icon: nuget
+        url: "https://www.nuget.org/packages/Moka.Docs.Core"
+      - icon: discord
+        url: "https://discord.gg/mokadocs"
+      - icon: twitter
+        url: "https://twitter.com/mokadocs"
 
 features:
   search:
