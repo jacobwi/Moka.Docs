@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Abstractions;
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -64,7 +65,12 @@ internal static class BuildCommand
 
 			var sw = Stopwatch.StartNew();
 
-			AnsiConsole.MarkupLine("[bold blue]MokaDocs[/] — Building documentation site...");
+			string version = Assembly.GetExecutingAssembly()
+				.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+				?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+			int plusIdx = version.IndexOf('+');
+			if (plusIdx >= 0) version = version[..plusIdx];
+			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Building documentation site...");
 			AnsiConsole.WriteLine();
 
 			string rootDir = Directory.GetCurrentDirectory();

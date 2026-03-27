@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Abstractions;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Configuration;
@@ -49,7 +50,13 @@ internal static class ServeCommand
 			string? output = parseResult.GetValue(outputOption);
 			bool open = parseResult.GetValue(openOption) && !parseResult.GetValue(noOpenOption);
 
-			AnsiConsole.MarkupLine("[bold blue]MokaDocs[/] — Dev server starting...");
+			string version = Assembly.GetExecutingAssembly()
+				.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+				?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+			// Strip build metadata (e.g. "+sha.abc123") if present
+			int plusIdx = version.IndexOf('+');
+			if (plusIdx >= 0) version = version[..plusIdx];
+			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Dev server starting...");
 			AnsiConsole.WriteLine();
 
 			string rootDir = Directory.GetCurrentDirectory();
