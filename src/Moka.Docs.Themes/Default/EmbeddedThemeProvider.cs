@@ -920,6 +920,35 @@ public static class EmbeddedThemeProvider
                                            margin-bottom: 2rem;
                                            overflow: hidden;
                                        }
+                                       .install-header {
+                                           display: flex;
+                                           align-items: center;
+                                           justify-content: space-between;
+                                           padding: 0.5rem 1rem;
+                                           background: var(--color-bg-secondary);
+                                           border-bottom: 1px solid var(--color-border);
+                                       }
+                                       .install-package-name {
+                                           font-weight: 600;
+                                           font-size: 0.875rem;
+                                           color: var(--color-text);
+                                       }
+                                       .install-nuget-link {
+                                           display: inline-flex;
+                                           align-items: center;
+                                           gap: 0.375rem;
+                                           font-size: 0.75rem;
+                                           font-weight: 500;
+                                           color: var(--color-text-secondary);
+                                           text-decoration: none;
+                                           padding: 0.25rem 0.5rem;
+                                           border-radius: var(--radius-sm, 4px);
+                                           transition: all var(--transition);
+                                       }
+                                       .install-nuget-link:hover {
+                                           color: var(--color-primary);
+                                           background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+                                       }
                                        .install-tabs {
                                            display: flex;
                                            gap: 0;
@@ -3502,6 +3531,7 @@ public static class EmbeddedThemeProvider
 
                                                          {{ if package && page.route == "/api" }}
                                                          <div class="package-install-widget">
+                                                             <div class="install-header"><span class="install-package-name">{{ package.name }}</span><a href="https://www.nuget.org/packages/{{ package.name }}" target="_blank" rel="noopener noreferrer" class="install-nuget-link" aria-label="View on NuGet.org"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 17.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M14 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><circle cx="7" cy="7" r="2"/></svg><span>NuGet</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
                                                              <div class="install-tabs" role="tablist">
                                                                  <button class="install-tab active" role="tab" aria-selected="true" data-tab="pm">Package Manager</button>
                                                                  <button class="install-tab" role="tab" aria-selected="false" data-tab="cli">.NET CLI</button>
