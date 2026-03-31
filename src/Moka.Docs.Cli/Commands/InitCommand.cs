@@ -8,7 +8,7 @@ namespace Moka.Docs.Cli.Commands;
 /// </summary>
 internal static class InitCommand
 {
-	private const string DefaultConfig =
+	private const string _defaultConfig =
 		"""
 		# MokaDocs Configuration
 		site:
@@ -30,7 +30,7 @@ internal static class InitCommand
 		  clean: true
 		""";
 
-	private const string DefaultIndexPage =
+	private const string _defaultIndexPage =
 		"""
 		---
 		title: Welcome
@@ -75,8 +75,8 @@ internal static class InitCommand
 			string docsDir = Path.Combine(Directory.GetCurrentDirectory(), "docs");
 			Directory.CreateDirectory(docsDir);
 
-			File.WriteAllText(configPath, DefaultConfig);
-			File.WriteAllText(Path.Combine(docsDir, "index.md"), DefaultIndexPage);
+			File.WriteAllText(configPath, _defaultConfig);
+			File.WriteAllText(Path.Combine(docsDir, "index.md"), _defaultIndexPage);
 
 			AnsiConsole.MarkupLine("[green]Created:[/] mokadocs.yaml");
 			AnsiConsole.MarkupLine("[green]Created:[/] docs/index.md");

@@ -9,7 +9,7 @@ namespace Moka.Docs.Engine.Discovery;
 /// </summary>
 public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDiscoveryService> logger)
 {
-	private static readonly HashSet<string> AssetExtensions = new(StringComparer.OrdinalIgnoreCase)
+	private static readonly HashSet<string> _assetExtensions = new(StringComparer.OrdinalIgnoreCase)
 	{
 		".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
 		".pdf", ".zip", ".mp4", ".webm",
@@ -69,7 +69,7 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 		{
 			var assetFiles = fs.Directory
 				.GetFiles(docsPath, "*.*", SearchOption.AllDirectories)
-				.Where(f => AssetExtensions.Contains(fs.Path.GetExtension(f)))
+				.Where(f => _assetExtensions.Contains(fs.Path.GetExtension(f)))
 				.Select(f => fs.Path.GetRelativePath(docsPath, f))
 				.Order(StringComparer.OrdinalIgnoreCase)
 				.ToList();

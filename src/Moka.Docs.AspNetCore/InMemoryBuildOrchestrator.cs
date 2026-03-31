@@ -21,8 +21,8 @@ public sealed class InMemoryBuildOrchestrator(
 	ReflectionApiModelBuilder apiModelBuilder,
 	ILogger<InMemoryBuildOrchestrator> logger)
 {
-	private const string VirtualRoot = "/mokadocs-virtual";
-	private const string VirtualOutput = "/mokadocs-virtual/_site";
+	private const string _virtualRoot = "/mokadocs-virtual";
+	private const string _virtualOutput = "/mokadocs-virtual/_site";
 
 	/// <summary>
 	///     Builds the entire documentation site in memory from the given options.
@@ -35,8 +35,8 @@ public sealed class InMemoryBuildOrchestrator(
 
 		// Create virtual filesystem
 		var fs = new MockFileSystem();
-		fs.Directory.CreateDirectory(VirtualRoot);
-		fs.Directory.CreateDirectory(VirtualOutput);
+		fs.Directory.CreateDirectory(_virtualRoot);
+		fs.Directory.CreateDirectory(_virtualOutput);
 
 		// Copy real markdown docs into the virtual filesystem if DocsPath is specified
 		if (options.DocsPath is not null)
@@ -45,13 +45,13 @@ public sealed class InMemoryBuildOrchestrator(
 				? options.DocsPath
 				: Path.Combine(Directory.GetCurrentDirectory(), options.DocsPath);
 			logger.LogInformation("Copying docs from {RealPath} to virtual FS at {VirtualPath}",
-				resolvedDocsPath, $"{VirtualRoot}/{config.Content.Docs}");
-			CopyDocsToVirtualFs(fs, resolvedDocsPath, VirtualRoot, config.Content.Docs);
+				resolvedDocsPath, $"{_virtualRoot}/{config.Content.Docs}");
+			CopyDocsToVirtualFs(fs, resolvedDocsPath, _virtualRoot, config.Content.Docs);
 		}
 		else
 		{
 			// Create an empty docs dir so DiscoveryPhase doesn't fail
-			string docsDir = fs.Path.Combine(VirtualRoot, config.Content.Docs);
+			string docsDir = fs.Path.Combine(_virtualRoot, config.Content.Docs);
 			fs.Directory.CreateDirectory(docsDir);
 		}
 
@@ -65,8 +65,8 @@ public sealed class InMemoryBuildOrchestrator(
 		{
 			Config = config,
 			FileSystem = fs,
-			RootDirectory = VirtualRoot,
-			OutputDirectory = VirtualOutput
+			RootDirectory = _virtualRoot,
+			OutputDirectory = _virtualOutput
 		};
 
 		// Pre-populate the API model so ReflectionApiPagePhase generates pages
@@ -89,7 +89,7 @@ public sealed class InMemoryBuildOrchestrator(
 		await pipeline.ExecuteAsync(context, ct);
 
 		// Harvest all generated files from the virtual filesystem
-		InMemorySite site = HarvestSite(fs, VirtualOutput, options.BasePath);
+		InMemorySite site = HarvestSite(fs, _virtualOutput, options.BasePath);
 
 		logger.LogInformation("In-memory build complete: {FileCount} files, {PageCount} pages",
 			site.Files.Count, context.Pages.Count);

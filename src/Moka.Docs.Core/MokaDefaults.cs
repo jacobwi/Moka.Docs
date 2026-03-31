@@ -111,7 +111,7 @@ public static class MokaDefaults
 	public static bool EnableAnalytics { get; set; } = false;
 
 	/// <summary>Enable AI-powered semantic search.</summary>
-	public static bool EnableAISearch { get; set; } = false;
+	public static bool EnableAiSearch { get; set; } = false;
 
 	/// <summary>Enable PDF export.</summary>
 	public static bool EnablePdfExport { get; set; } = false;
@@ -126,7 +126,7 @@ public static class MokaDefaults
 
 	#region Environment Variable Resolution
 
-	private const string EnvPrefix = "MOKADOCS_";
+	private const string _envPrefix = "MOKADOCS_";
 
 	/// <summary>
 	///     Resolves a default value with environment variable override.
@@ -139,7 +139,7 @@ public static class MokaDefaults
 	/// <returns>The resolved value.</returns>
 	public static T Resolve<T>(string envVarName, T defaultValue)
 	{
-		string? envValue = Environment.GetEnvironmentVariable(EnvPrefix + envVarName);
+		string? envValue = Environment.GetEnvironmentVariable(_envPrefix + envVarName);
 		if (string.IsNullOrEmpty(envValue))
 		{
 			return defaultValue;
@@ -174,7 +174,7 @@ public static class MokaDefaults
 	/// <returns>The resolved boolean value.</returns>
 	public static bool ResolveBool(string envVarName, bool? yamlValue, bool defaultValue)
 	{
-		string? envValue = Environment.GetEnvironmentVariable(EnvPrefix + envVarName);
+		string? envValue = Environment.GetEnvironmentVariable(_envPrefix + envVarName);
 		if (!string.IsNullOrEmpty(envValue))
 		{
 			return ParseBool(envValue, defaultValue);
@@ -192,7 +192,7 @@ public static class MokaDefaults
 	/// <returns>The resolved string value.</returns>
 	public static string ResolveString(string envVarName, string? yamlValue, string defaultValue)
 	{
-		string? envValue = Environment.GetEnvironmentVariable(EnvPrefix + envVarName);
+		string? envValue = Environment.GetEnvironmentVariable(_envPrefix + envVarName);
 		if (!string.IsNullOrEmpty(envValue))
 		{
 			return envValue;
@@ -210,7 +210,7 @@ public static class MokaDefaults
 	/// <returns>The resolved int value.</returns>
 	public static int ResolveInt(string envVarName, int? yamlValue, int defaultValue)
 	{
-		string? envValue = Environment.GetEnvironmentVariable(EnvPrefix + envVarName);
+		string? envValue = Environment.GetEnvironmentVariable(_envPrefix + envVarName);
 		if (!string.IsNullOrEmpty(envValue) && int.TryParse(envValue, out int parsed))
 		{
 			return parsed;

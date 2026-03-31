@@ -199,7 +199,8 @@ public sealed class SiteConfigReader
 					{
 						Icon = s.Icon ?? "",
 						Url = s.Url ?? ""
-					}).ToList() ?? []
+					}).ToList() ?? [],
+					DefaultColorTheme = o.DefaultColorTheme ?? "ocean"
 				}
 				: new ThemeOptions()
 		};
@@ -297,7 +298,7 @@ public sealed class SiteConfigReader
 				? new CloudFeatures
 				{
 					AiSummaries = MokaDefaults.ResolveBool(
-						"ENABLE_AI_SEARCH", f.AiSummaries, MokaDefaults.EnableAISearch),
+						"ENABLE_AI_SEARCH", f.AiSummaries, MokaDefaults.EnableAiSearch),
 					PdfExport = MokaDefaults.ResolveBool(
 						"ENABLE_PDF_EXPORT", f.PdfExport, MokaDefaults.EnablePdfExport),
 					Analytics = MokaDefaults.ResolveBool(
@@ -413,6 +414,9 @@ public sealed class SiteConfigReader
 							Icon = s.Icon,
 							Url = s.Url
 						}).ToList()
+						: null,
+					DefaultColorTheme = config.Theme.Options.DefaultColorTheme != "ocean"
+						? config.Theme.Options.DefaultColorTheme
 						: null
 				}
 			},

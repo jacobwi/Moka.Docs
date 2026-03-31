@@ -169,7 +169,8 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "show_line_numbers", ctx.Config.Theme.Options.ShowLineNumbers },
 			{ "toc_depth", ctx.Config.Theme.Options.TocDepth },
 			{ "show_version_selector", ctx.Config.Theme.Options.ShowVersionSelector },
-			{ "social_links", BuildSocialLinks(ctx.Config.Theme.Options.SocialLinks) }
+			{ "social_links", BuildSocialLinks(ctx.Config.Theme.Options.SocialLinks) },
+			{ "default_color_theme", ctx.Config.Theme.Options.DefaultColorTheme }
 		}, false);
 
 		#endregion

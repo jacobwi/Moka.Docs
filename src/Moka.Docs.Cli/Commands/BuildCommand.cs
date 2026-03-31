@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.FeatureManagement;
+using Moka.Blazor.Repl.Abstractions.Interfaces;
+using Moka.Blazor.Repl.Compiler;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Diagnostics;
@@ -19,6 +21,7 @@ using Moka.Docs.Plugins.BlazorPreview;
 using Moka.Docs.Plugins.Changelog;
 using Moka.Docs.Plugins.OpenApi;
 using Moka.Docs.Plugins.Repl;
+using Moka.Docs.Serve;
 using Moka.Docs.Versioning;
 using Spectre.Console;
 
@@ -66,10 +69,14 @@ internal static class BuildCommand
 			var sw = Stopwatch.StartNew();
 
 			string version = Assembly.GetExecutingAssembly()
-				.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-				?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+				                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+			                 ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 			int plusIdx = version.IndexOf('+');
-			if (plusIdx >= 0) version = version[..plusIdx];
+			if (plusIdx >= 0)
+			{
+				version = version[..plusIdx];
+			}
+
 			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Building documentation site...");
 			AnsiConsole.WriteLine();
 
@@ -256,6 +263,11 @@ internal static class BuildCommand
 		services.AddSingleton<IMokaPlugin, ReplPlugin>();
 		services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
 		services.AddSingleton<IMokaPlugin, ChangelogPlugin>();
+
+		// Blazor preview: register compiler + preview service for build-time pre-rendering
+		services.AddSingleton<ICompilationService>(
+			new RoslynCompilationService(new HttpClient()));
+		services.AddSingleton<BlazorPreviewService>();
 
 		return services.BuildServiceProvider();
 	}

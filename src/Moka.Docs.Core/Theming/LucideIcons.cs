@@ -6,7 +6,7 @@ namespace Moka.Docs.Core.Theming;
 /// </summary>
 public static class LucideIcons
 {
-	private static readonly Dictionary<string, string> Icons = new(StringComparer.OrdinalIgnoreCase)
+	private static readonly Dictionary<string, string> _icons = new(StringComparer.OrdinalIgnoreCase)
 	{
 		// Navigation & UI
 		["home"] = Svg(
@@ -152,12 +152,12 @@ public static class LucideIcons
 	/// <summary>
 	///     Gets all available icon names.
 	/// </summary>
-	public static IEnumerable<string> AllNames => Icons.Keys;
+	public static IEnumerable<string> AllNames => _icons.Keys;
 
 	/// <summary>
 	///     Gets the SVG markup for a named icon, or <c>null</c> if not found.
 	/// </summary>
-	public static string? Get(string name) => Icons.GetValueOrDefault(name.ToLowerInvariant());
+	public static string? Get(string name) => _icons.GetValueOrDefault(name.ToLowerInvariant());
 
 	private static string Svg(string paths)
 	{

@@ -184,6 +184,13 @@ public sealed record ThemeOptions
 
 	/// <summary>Social links displayed in the site header.</summary>
 	public List<SocialLink> SocialLinks { get; init; } = [];
+
+	/// <summary>
+	///     Default color theme applied on first visit (before localStorage is set).
+	///     Supported values: <c>ocean</c>, <c>emerald</c>, <c>violet</c>, <c>amber</c>,
+	///     <c>rose</c>, <c>moka-red</c>. Defaults to <c>ocean</c>.
+	/// </summary>
+	public string DefaultColorTheme { get; init; } = "ocean";
 }
 
 /// <summary>
@@ -321,7 +328,7 @@ public sealed record CloudConfig
 public sealed record CloudFeatures
 {
 	/// <summary>AI-generated summaries for API types.</summary>
-	public bool AiSummaries { get; init; } = MokaDefaults.EnableAISearch;
+	public bool AiSummaries { get; init; } = MokaDefaults.EnableAiSearch;
 
 	/// <summary>Server-side PDF generation.</summary>
 	public bool PdfExport { get; init; } = MokaDefaults.EnablePdfExport;

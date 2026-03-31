@@ -10,8 +10,8 @@ namespace SampleApi.Services;
 /// </summary>
 public sealed class WeatherService
 {
-	private static readonly string[] Locations = ["San Francisco, CA", "New York, NY", "London, UK"];
-	private static readonly WeatherCondition[] Conditions = Enum.GetValues<WeatherCondition>();
+	private static readonly string[] _locations = ["San Francisco, CA", "New York, NY", "London, UK"];
+	private static readonly WeatherCondition[] _conditions = Enum.GetValues<WeatherCondition>();
 
 	/// <summary>
 	///     Gets the current weather conditions for the default location.
@@ -21,10 +21,10 @@ public sealed class WeatherService
 	{
 		int tempC = Random.Shared.Next(-5, 35);
 		return new CurrentWeather(
-			Locations[Random.Shared.Next(Locations.Length)],
+			_locations[Random.Shared.Next(_locations.Length)],
 			tempC,
 			32 + tempC * 9.0 / 5.0,
-			Conditions[Random.Shared.Next(Conditions.Length)],
+			_conditions[Random.Shared.Next(_conditions.Length)],
 			Random.Shared.Next(20, 95),
 			Math.Round(Random.Shared.NextDouble() * 50, 1),
 			DateTime.UtcNow);
@@ -50,7 +50,7 @@ public sealed class WeatherService
 				DateOnly.FromDateTime(DateTime.Today.AddDays(i)),
 				high,
 				high - Random.Shared.Next(5, 15),
-				Conditions[Random.Shared.Next(Conditions.Length)],
+				_conditions[Random.Shared.Next(_conditions.Length)],
 				Random.Shared.Next(0, 100));
 		}).ToList();
 	}

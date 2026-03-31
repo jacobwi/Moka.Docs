@@ -55,7 +55,7 @@ public sealed class AdmonitionBlock : ContainerBlock
 /// </summary>
 public sealed class AdmonitionParser : BlockParser
 {
-	private static readonly HashSet<string> ValidTypes = new(StringComparer.OrdinalIgnoreCase)
+	private static readonly HashSet<string> _validTypes = new(StringComparer.OrdinalIgnoreCase)
 	{
 		"note", "tip", "warning", "danger", "info", "caution", "important"
 	};
@@ -116,7 +116,7 @@ public sealed class AdmonitionParser : BlockParser
 			type = remaining;
 		}
 
-		if (!ValidTypes.Contains(type))
+		if (!_validTypes.Contains(type))
 		{
 			return BlockState.None;
 		}
@@ -166,7 +166,7 @@ public sealed class AdmonitionParser : BlockParser
 /// </summary>
 public sealed class AdmonitionRenderer : HtmlObjectRenderer<AdmonitionBlock>
 {
-	private static readonly Dictionary<string, string> Icons = new(StringComparer.OrdinalIgnoreCase)
+	private static readonly Dictionary<string, string> _icons = new(StringComparer.OrdinalIgnoreCase)
 	{
 		["note"] = "📝",
 		["tip"] = "💡",
@@ -182,7 +182,7 @@ public sealed class AdmonitionRenderer : HtmlObjectRenderer<AdmonitionBlock>
 	{
 		string type = block.AdmonitionType;
 		string title = block.Title ?? char.ToUpper(type[0]) + type[1..];
-		string icon = Icons.GetValueOrDefault(type, "📝");
+		string icon = _icons.GetValueOrDefault(type, "📝");
 
 		renderer.EnsureLine();
 		renderer.Write($"<div class=\"admonition admonition-{type}\">");

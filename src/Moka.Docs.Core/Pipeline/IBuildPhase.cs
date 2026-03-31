@@ -72,6 +72,20 @@ public sealed class BuildContext
 
 	/// <summary>Package metadata extracted from .csproj files (name and version for NuGet install widgets).</summary>
 	public PackageMetadata? PackageInfo { get; set; }
+
+	/// <summary>
+	///     Extra files to write to the output directory after the clean step.
+	///     Keyed by output-relative path (e.g. "preview-wasm/assemblies/abc.dll").
+	///     Populated by plugins during ExecuteAsync; written by OutputPhase.
+	/// </summary>
+	public Dictionary<string, byte[]> DeferredOutputFiles { get; } = new();
+
+	/// <summary>
+	///     Extra directories to copy to the output directory after the clean step.
+	///     Each entry is (absoluteSourceDir, outputRelativeDestPath).
+	///     Populated by plugins during ExecuteAsync; copied by OutputPhase.
+	/// </summary>
+	public List<(string SourceDir, string DestRelPath)> DeferredOutputDirectories { get; } = [];
 }
 
 /// <summary>

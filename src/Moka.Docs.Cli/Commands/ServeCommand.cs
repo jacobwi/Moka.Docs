@@ -2,8 +2,10 @@ using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Reflection;
+using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Moka.Blazor.Repl.Compiler;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Engine;
@@ -51,11 +53,15 @@ internal static class ServeCommand
 			bool open = parseResult.GetValue(openOption) && !parseResult.GetValue(noOpenOption);
 
 			string version = Assembly.GetExecutingAssembly()
-				.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-				?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+				                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+			                 ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 			// Strip build metadata (e.g. "+sha.abc123") if present
 			int plusIdx = version.IndexOf('+');
-			if (plusIdx >= 0) version = version[..plusIdx];
+			if (plusIdx >= 0)
+			{
+				version = version[..plusIdx];
+			}
+
 			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Dev server starting...");
 			AnsiConsole.WriteLine();
 
@@ -170,7 +176,76 @@ internal static class ServeCommand
 			}
 
 			ILogger<BlazorPreviewService> blazorLogger = loggerFactory.CreateLogger<BlazorPreviewService>();
-			var blazorPreviewService = new BlazorPreviewService(blazorLogger);
+			var compilationService = new RoslynCompilationService(new HttpClient());
+
+			// Load assemblies and extra usings configured in the blazor-preview plugin options
+			PluginDeclaration? blazorPlugin = config.Plugins.FirstOrDefault(p =>
+				string.Equals(p.Name, "mokadocs-blazor-preview", StringComparison.OrdinalIgnoreCase));
+
+			var blazorExtraUsings = new List<string>();
+			var blazorRuntimeDlls = new List<string>();
+			if (blazorPlugin is not null)
+			{
+				// references: list of directories or DLL paths to add as Roslyn references
+				if (blazorPlugin.Options.TryGetValue("references", out object? refsObj)
+				    && refsObj is IEnumerable<object> refList)
+				{
+					foreach (string refEntry in refList.Select(o => o.ToString()!)
+						         .Where(s => !string.IsNullOrWhiteSpace(s)))
+					{
+						string resolvedRef = Path.GetFullPath(Path.Combine(rootDir, refEntry));
+
+						// If it's a directory, load all *.dll files from it
+						if (Directory.Exists(resolvedRef))
+						{
+							foreach (string dll in Directory.GetFiles(resolvedRef, "*.dll"))
+							{
+								try
+								{
+									compilationService.AddReference(MetadataReference.CreateFromFile(dll));
+									blazorRuntimeDlls.Add(dll);
+								}
+								catch (Exception ex)
+								{
+									AnsiConsole.MarkupLine(
+										$"[yellow]Blazor preview:[/] Could not load reference {Markup.Escape(dll)}: {Markup.Escape(ex.Message)}");
+								}
+							}
+
+							AnsiConsole.MarkupLine(
+								$"[blue]Blazor preview:[/] Loaded references from [bold]{Markup.Escape(resolvedRef)}[/]");
+						}
+						else if (File.Exists(resolvedRef))
+						{
+							try
+							{
+								compilationService.AddReference(MetadataReference.CreateFromFile(resolvedRef));
+								blazorRuntimeDlls.Add(resolvedRef);
+								AnsiConsole.MarkupLine(
+									$"[blue]Blazor preview:[/] Loaded reference [bold]{Markup.Escape(Path.GetFileName(resolvedRef))}[/]");
+							}
+							catch (Exception ex)
+							{
+								AnsiConsole.MarkupLine(
+									$"[yellow]Blazor preview:[/] Could not load reference {Markup.Escape(resolvedRef)}: {Markup.Escape(ex.Message)}");
+							}
+						}
+					}
+				}
+
+				// usings: list of extra @using directives to inject into each preview
+				if (blazorPlugin.Options.TryGetValue("usings", out object? usingsObj)
+				    && usingsObj is IEnumerable<object> usingsList)
+				{
+					blazorExtraUsings.AddRange(
+						usingsList.Select(o => o.ToString()!).Where(s => !string.IsNullOrWhiteSpace(s)));
+				}
+			}
+
+			var blazorPreviewService = new BlazorPreviewService(
+				compilationService, loggerFactory, blazorLogger,
+				blazorExtraUsings.Count > 0 ? blazorExtraUsings : null,
+				blazorRuntimeDlls.Count > 0 ? blazorRuntimeDlls : null);
 
 			using var server = new DevServer(serverLogger, outputDir, port, replService, blazorPreviewService);
 			await server.StartAsync();

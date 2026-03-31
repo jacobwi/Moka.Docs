@@ -10,7 +10,7 @@ namespace Moka.Docs.Parsing.FrontMatter;
 /// </summary>
 public sealed class FrontMatterExtractor
 {
-	private const string Delimiter = "---";
+	private const string _delimiter = "---";
 
 	/// <summary>
 	///     Extracts front matter from a Markdown string.
@@ -27,7 +27,7 @@ public sealed class FrontMatterExtractor
 		ReadOnlySpan<char> span = markdown.AsSpan().TrimStart();
 
 		// Must start with ---
-		if (!span.StartsWith(Delimiter))
+		if (!span.StartsWith(_delimiter))
 		{
 			return new FrontMatterResult(DefaultFrontMatter("Untitled"), markdown);
 		}
@@ -90,7 +90,7 @@ public sealed class FrontMatterExtractor
 			// Check if next line starts with ---
 			ReadOnlySpan<char> remaining = content[index..];
 			ReadOnlySpan<char> trimmed = remaining.TrimStart([' ', '\t']);
-			if (trimmed.StartsWith(Delimiter))
+			if (trimmed.StartsWith(_delimiter))
 			{
 				// Verify it's just --- (possibly with trailing whitespace)
 				int lineEnd = trimmed.IndexOfAny('\r', '\n');

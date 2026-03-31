@@ -17,7 +17,7 @@ public static class MokaFeatureFlags
 	public const string PrivateRepo = "PrivateRepo";
 	public const string TeamCollaboration = "TeamCollaboration";
 	public const string CustomBranding = "CustomBranding";
-	public const string SSOAuth = "SSOAuth";
+	public const string SsoAuth = "SSOAuth";
 	public const string AuditLog = "AuditLog";
 	public const string ApiAccess = "ApiAccess";
 

@@ -19,14 +19,14 @@ public static class MokaFeatureConfiguration
 			// Premium/Cloud — all OFF by default
 			[MokaFeatureFlags.Cloud] = MokaDefaults.EnableCloudFeatures,
 			[MokaFeatureFlags.Analytics] = MokaDefaults.EnableAnalytics,
-			[MokaFeatureFlags.AiSearch] = MokaDefaults.EnableAISearch,
+			[MokaFeatureFlags.AiSearch] = MokaDefaults.EnableAiSearch,
 			[MokaFeatureFlags.PdfExport] = MokaDefaults.EnablePdfExport,
 			[MokaFeatureFlags.CustomDomain] = MokaDefaults.EnableCustomDomain,
 			[MokaFeatureFlags.WhiteLabel] = MokaDefaults.EnableWhiteLabel,
 			[MokaFeatureFlags.PrivateRepo] = false,
 			[MokaFeatureFlags.TeamCollaboration] = false,
 			[MokaFeatureFlags.CustomBranding] = false,
-			[MokaFeatureFlags.SSOAuth] = false,
+			[MokaFeatureFlags.SsoAuth] = false,
 			[MokaFeatureFlags.AuditLog] = false,
 			[MokaFeatureFlags.ApiAccess] = false,
 

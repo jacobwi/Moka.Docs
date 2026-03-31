@@ -81,6 +81,7 @@ internal sealed class ThemeOptionsDto
 	public int? TocDepth { get; set; }
 	public bool? ShowVersionSelector { get; set; }
 	public List<SocialLinkDto>? SocialLinks { get; set; }
+	public string? DefaultColorTheme { get; set; }
 }
 
 /// <summary>DTO for a social link.</summary>

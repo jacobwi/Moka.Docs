@@ -14,7 +14,7 @@ public sealed class ChangelogPlugin : IMokaPlugin
 {
 	#region Inline CSS
 
-	private const string InlineCss = """
+	private const string _inlineCss = """
 	                                 <style>
 	                                 /* ── Changelog Timeline ─────────────────────────────────────────── */
 	                                 :root {
@@ -429,7 +429,7 @@ public sealed class ChangelogPlugin : IMokaPlugin
 
 	#region Inline JS
 
-	private const string InlineJs = """
+	private const string _inlineJs = """
 	                                <script>
 	                                (function() {
 	                                    var chevronSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -623,10 +623,10 @@ public sealed class ChangelogPlugin : IMokaPlugin
 
 	private static string InjectChangelogAssets(string html)
 	{
-		var sb = new StringBuilder(html.Length + InlineCss.Length + InlineJs.Length + 64);
-		sb.Append(InlineCss);
+		var sb = new StringBuilder(html.Length + _inlineCss.Length + _inlineJs.Length + 64);
+		sb.Append(_inlineCss);
 		sb.Append(html);
-		sb.Append(InlineJs);
+		sb.Append(_inlineJs);
 		return sb.ToString();
 	}
 }

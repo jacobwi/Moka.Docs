@@ -9,13 +9,13 @@ namespace Moka.Docs.Parsing.Tests.Markdown;
 
 public sealed class TocGeneratorTests
 {
-	private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+	private static readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder()
 		.UseAutoIdentifiers(AutoIdentifierOptions.GitHub)
 		.Build();
 
 	private readonly TocGenerator _generator = new();
 
-	private MarkdownDocument ParseDoc(string md) => Markdig.Markdown.Parse(md, Pipeline);
+	private MarkdownDocument ParseDoc(string md) => Markdig.Markdown.Parse(md, _pipeline);
 
 	[Fact]
 	public void Generate_FlatHeadings_ReturnsFlatList()

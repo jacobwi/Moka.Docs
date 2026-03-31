@@ -174,23 +174,23 @@ internal sealed class ChangelogCategory
 /// </summary>
 public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 {
-	private static readonly Regex VersionHeaderRegex = new(
+	private static readonly Regex _versionHeaderRegex = new(
 		@"^##\s+v?(\S+?)(?:\s*(?:—|-)\s*(.+))?$",
 		RegexOptions.Compiled);
 
-	private static readonly Regex TypeLineRegex = new(
+	private static readonly Regex _typeLineRegex = new(
 		@"^type:\s*(\w+)",
 		RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-	private static readonly Regex CategoryHeaderRegex = new(
+	private static readonly Regex _categoryHeaderRegex = new(
 		@"^###\s+(.+)$",
 		RegexOptions.Compiled);
 
-	private static readonly Regex ListItemRegex = new(
+	private static readonly Regex _listItemRegex = new(
 		@"^[-*]\s+(.+)$",
 		RegexOptions.Compiled);
 
-	private static readonly Dictionary<string, (string CssClass, string Icon, string Label)> CategoryInfo =
+	private static readonly Dictionary<string, (string CssClass, string Icon, string Label)> _categoryInfo =
 		new(StringComparer.OrdinalIgnoreCase)
 		{
 			["Added"] = ("changelog-added", "\u271a", "Added"),
@@ -231,7 +231,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 			string line = rawLine.TrimEnd();
 
 			// Check for version header: ## v2.1.0 - 2026-03-15
-			Match versionMatch = VersionHeaderRegex.Match(line);
+			Match versionMatch = _versionHeaderRegex.Match(line);
 			if (versionMatch.Success)
 			{
 				current = new ChangelogEntry
@@ -250,7 +250,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 			}
 
 			// Check for type line: type: major
-			Match typeMatch = TypeLineRegex.Match(line);
+			Match typeMatch = _typeLineRegex.Match(line);
 			if (typeMatch.Success)
 			{
 				current.Type = typeMatch.Groups[1].Value.ToLowerInvariant();
@@ -258,7 +258,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 			}
 
 			// Check for category header: ### Added
-			Match categoryMatch = CategoryHeaderRegex.Match(line);
+			Match categoryMatch = _categoryHeaderRegex.Match(line);
 			if (categoryMatch.Success)
 			{
 				string categoryName = categoryMatch.Groups[1].Value.Trim();
@@ -268,7 +268,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 			}
 
 			// Check for list item
-			Match itemMatch = ListItemRegex.Match(line);
+			Match itemMatch = _listItemRegex.Match(line);
 			if (itemMatch.Success && currentCategory != null)
 			{
 				currentCategory.Items.Add(itemMatch.Groups[1].Value);
@@ -327,7 +327,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 
 	private static void WriteCategory(HtmlRenderer renderer, ChangelogCategory category)
 	{
-		(string CssClass, string Icon, string Label) info = CategoryInfo.GetValueOrDefault(category.Name);
+		(string CssClass, string Icon, string Label) info = _categoryInfo.GetValueOrDefault(category.Name);
 		string cssClass = info.CssClass ?? "changelog-other";
 		string icon = info.Icon ?? "\u2022";
 		string label = info.Label ?? category.Name;

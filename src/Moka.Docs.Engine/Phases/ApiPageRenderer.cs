@@ -427,7 +427,7 @@ public static class ApiPageRenderer
 	/// </summary>
 	private static string? BuildTypeDependencyGraph(ApiType type, IReadOnlyList<ApiType> allTypes)
 	{
-		const int MaxNodes = 20;
+		const int maxNodes = 20;
 
 		// Collect all nodes and edges for the graph
 		var nodes = new HashSet<string> { type.Name };
@@ -444,7 +444,7 @@ public static class ApiPageRenderer
 		// Implemented interfaces
 		foreach (string iface in type.ImplementedInterfaces)
 		{
-			if (nodes.Count >= MaxNodes)
+			if (nodes.Count >= maxNodes)
 			{
 				break;
 			}
@@ -457,7 +457,7 @@ public static class ApiPageRenderer
 		// Derived types — types that list this type as their base
 		foreach (ApiType other in allTypes)
 		{
-			if (nodes.Count >= MaxNodes)
+			if (nodes.Count >= maxNodes)
 			{
 				break;
 			}
@@ -474,7 +474,7 @@ public static class ApiPageRenderer
 		{
 			foreach (ApiType other in allTypes)
 			{
-				if (nodes.Count >= MaxNodes)
+				if (nodes.Count >= maxNodes)
 				{
 					break;
 				}

@@ -17,7 +17,7 @@ public sealed class ReflectionApiModelBuilder(
 	InheritDocResolver inheritDocResolver,
 	ILogger<ReflectionApiModelBuilder> logger)
 {
-	private static readonly Dictionary<string, string> ClrToCSharpTypeNames = new(StringComparer.Ordinal)
+	private static readonly Dictionary<string, string> _clrToCSharpTypeNames = new(StringComparer.Ordinal)
 	{
 		["System.Boolean"] = "bool",
 		["System.Byte"] = "byte",
@@ -948,7 +948,7 @@ public sealed class ReflectionApiModelBuilder(
 			}
 
 			// Use C# alias if available
-			if (ClrToCSharpTypeNames.TryGetValue(fullName, out string? alias))
+			if (_clrToCSharpTypeNames.TryGetValue(fullName, out string? alias))
 			{
 				return alias;
 			}
@@ -978,7 +978,7 @@ public sealed class ReflectionApiModelBuilder(
 
 		// Check CLR-to-C# keyword map
 		string typeFullName = type.FullName ?? type.Name;
-		if (ClrToCSharpTypeNames.TryGetValue(typeFullName, out string? csharpName))
+		if (_clrToCSharpTypeNames.TryGetValue(typeFullName, out string? csharpName))
 		{
 			return csharpName;
 		}

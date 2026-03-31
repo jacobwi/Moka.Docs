@@ -16,7 +16,7 @@ namespace Moka.Docs.Engine.Phases;
 /// </summary>
 public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 {
-	private static readonly JsonSerializerOptions SearchJsonOptions = new()
+	private static readonly JsonSerializerOptions _searchJsonOptions = new()
 	{
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -78,8 +78,13 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		// Copy static assets
 		int assetsCopied = CopyAssets(context);
 
-		logger.LogInformation("Wrote {Pages} pages, {Redirects} section redirects, and {Assets} assets to {Output}",
-			writtenCount, redirectCount, assetsCopied, outputDir);
+		// Write deferred files registered by plugins (run after clean so they survive)
+		int deferredFiles = WriteDeferredFiles(context);
+		int deferredDirs = CopyDeferredDirectories(context);
+
+		logger.LogInformation(
+			"Wrote {Pages} pages, {Redirects} section redirects, {Assets} assets, {DeferredFiles} deferred files, {DeferredDirs} deferred directories to {Output}",
+			writtenCount, redirectCount, assetsCopied, deferredFiles, deferredDirs, outputDir);
 
 		return Task.CompletedTask;
 	}
@@ -111,6 +116,64 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		return count;
 	}
 
+	private int WriteDeferredFiles(BuildContext context)
+	{
+		if (context.DeferredOutputFiles.Count == 0)
+		{
+			return 0;
+		}
+
+		IFileSystem fs = context.FileSystem;
+		int count = 0;
+
+		foreach (KeyValuePair<string, byte[]> entry in context.DeferredOutputFiles)
+		{
+			string destFile = fs.Path.Combine(context.OutputDirectory, entry.Key);
+			fs.Directory.CreateDirectory(fs.Path.GetDirectoryName(destFile)!);
+			fs.File.WriteAllBytes(destFile, entry.Value);
+			count++;
+		}
+
+		logger.LogInformation("Wrote {Count} deferred output file(s)", count);
+		return count;
+	}
+
+	private int CopyDeferredDirectories(BuildContext context)
+	{
+		if (context.DeferredOutputDirectories.Count == 0)
+		{
+			return 0;
+		}
+
+		IFileSystem fs = context.FileSystem;
+		int totalFiles = 0;
+
+		foreach ((string sourceDir, string destRelPath) in context.DeferredOutputDirectories)
+		{
+			if (!Directory.Exists(sourceDir))
+			{
+				logger.LogWarning("Deferred output directory not found, skipping: {SourceDir}", sourceDir);
+				continue;
+			}
+
+			string destDir = fs.Path.Combine(context.OutputDirectory, destRelPath);
+			fs.Directory.CreateDirectory(destDir);
+
+			foreach (string sourceFile in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+			{
+				string relative = Path.GetRelativePath(sourceDir, sourceFile);
+				string destFile = fs.Path.Combine(destDir, relative);
+				fs.Directory.CreateDirectory(fs.Path.GetDirectoryName(destFile)!);
+				fs.File.Copy(sourceFile, destFile, true);
+				totalFiles++;
+			}
+		}
+
+		logger.LogInformation("Copied {Count} deferred output directory(s) ({Files} files total)",
+			context.DeferredOutputDirectories.Count, totalFiles);
+		return context.DeferredOutputDirectories.Count;
+	}
+
 	private void WriteSearchIndex(BuildContext context)
 	{
 		SearchIndex? searchIndex = context.SearchIndex;
@@ -134,7 +197,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 			g = e.Category
 		});
 
-		string json = JsonSerializer.Serialize(entries, SearchJsonOptions);
+		string json = JsonSerializer.Serialize(entries, _searchJsonOptions);
 		fs.File.WriteAllText(outputPath, json);
 
 		logger.LogInformation("Wrote search index ({Count} entries, {Size} bytes)",

@@ -12,7 +12,7 @@ internal static class NewCommand
 {
 	// ──────────────────────── component markdown templates ───────────────────────
 
-	private static readonly Dictionary<string, string> ComponentTemplates = new()
+	private static readonly Dictionary<string, string> _componentTemplates = new()
 	{
 		["card"] = """
 		           ---
@@ -342,11 +342,11 @@ internal static class NewCommand
 
 			AnsiConsole.MarkupLine("[bold green]mokadocs new component[/] — Scaffolding component example...");
 
-			if (!ComponentTemplates.TryGetValue(name, out string? template))
+			if (!_componentTemplates.TryGetValue(name, out string? template))
 			{
 				AnsiConsole.MarkupLine(
 					$"[red]Unknown component type:[/] {name}. " +
-					$"Available: {string.Join(", ", ComponentTemplates.Keys.Order())}");
+					$"Available: {string.Join(", ", _componentTemplates.Keys.Order())}");
 				return 1;
 			}
 

@@ -14,7 +14,7 @@ public sealed class ReplPlugin : IMokaPlugin
 {
 	#region Inline CSS
 
-	private const string InlineCss = """
+	private const string _inlineCss = """
 	                                 <style>
 	                                 .repl-container {
 	                                     position: relative;
@@ -96,7 +96,7 @@ public sealed class ReplPlugin : IMokaPlugin
 
 	#region Inline JS
 
-	private const string InlineJs = """
+	private const string _inlineJs = """
 	                                <script>
 	                                (function() {
 	                                    const playIcon = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
@@ -234,10 +234,10 @@ public sealed class ReplPlugin : IMokaPlugin
 	/// </summary>
 	private static string InjectReplAssets(string html)
 	{
-		var sb = new StringBuilder(html.Length + InlineCss.Length + InlineJs.Length + 64);
-		sb.Append(InlineCss);
+		var sb = new StringBuilder(html.Length + _inlineCss.Length + _inlineJs.Length + 64);
+		sb.Append(_inlineCss);
 		sb.Append(html);
-		sb.Append(InlineJs);
+		sb.Append(_inlineJs);
 		return sb.ToString();
 	}
 }

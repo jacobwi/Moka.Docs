@@ -6,11 +6,11 @@ namespace Moka.Docs.Parsing.Tests.Markdown;
 
 public sealed class ComponentExtensionTests
 {
-	private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+	private static readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder()
 		.Use<ComponentExtension>()
 		.Build();
 
-	private static string Render(string md) => Markdig.Markdown.ToHtml(md, Pipeline);
+	private static string Render(string md) => Markdig.Markdown.ToHtml(md, _pipeline);
 
 	#region Card Component
 
