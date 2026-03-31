@@ -15,7 +15,7 @@ namespace Moka.Docs.Serve;
 public sealed class DevServer : IDisposable
 {
 	/// <summary>The JavaScript snippet injected into HTML pages for hot-reload.</summary>
-	private const string HotReloadScript = """
+	private const string _hotReloadScript = """
 	                                       <script>
 	                                       (function() {
 	                                           let ws;
@@ -409,12 +409,12 @@ public sealed class DevServer : IDisposable
 			int bodyCloseIndex = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
 			if (bodyCloseIndex >= 0)
 			{
-				html = string.Concat(html.AsSpan(0, bodyCloseIndex), HotReloadScript, html.AsSpan(bodyCloseIndex));
+				html = string.Concat(html.AsSpan(0, bodyCloseIndex), _hotReloadScript, html.AsSpan(bodyCloseIndex));
 			}
 			else
 				// No </body> tag — append script at the end
 			{
-				html += HotReloadScript;
+				html += _hotReloadScript;
 			}
 
 			byte[] bytes = Encoding.UTF8.GetBytes(html);

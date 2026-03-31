@@ -10,7 +10,7 @@ public static class EmbeddedThemeProvider
 {
 	#region Embedded CSS
 
-	private const string EmbeddedCss = """
+	private const string _embeddedCss = """
 	                                   /* MokaDocs Default Theme — "Moka" */
 	                                   /* ================================ */
 
@@ -90,6 +90,13 @@ public static class EmbeddedThemeProvider
 	                                       --color-primary-dark: #e11d48 !important;
 	                                       --gradient-secondary: #ec4899;
 	                                       --gradient-tertiary: #f97316;
+	                                   }
+	                                   html[data-color-theme="moka-red"] {
+	                                       --color-primary: #d32f2f !important;
+	                                       --color-primary-light: #ff6659 !important;
+	                                       --color-primary-dark: #9a0007 !important;
+	                                       --gradient-secondary: #c62828;
+	                                       --gradient-tertiary: #e53935;
 	                                   }
 
 	                                   /* Reset */
@@ -547,7 +554,7 @@ public static class EmbeddedThemeProvider
 	                                       padding: 0.125rem 0.375rem;
 	                                       background: var(--color-bg-code);
 	                                       border-radius: var(--radius-sm);
-	                                       color: var(--color-primary-dark);
+	                                       color: var(--color-primary);
 	                                   }
 
 	                                   .page-content pre {
@@ -2542,7 +2549,7 @@ public static class EmbeddedThemeProvider
 
 	#region Embedded JS
 
-	private const string EmbeddedJs = """
+	private const string _embeddedJs = """
 	                                  /* MokaDocs Default Theme JS */
 	                                  (function() {
 	                                      'use strict';
@@ -2586,7 +2593,7 @@ public static class EmbeddedThemeProvider
 
 	                                      // Color theme selector
 	                                      (function() {
-	                                          var colorTheme = localStorage.getItem('mokadocs-color-theme') || 'ocean';
+	                                          var colorTheme = localStorage.getItem('mokadocs-color-theme') || html.getAttribute('data-color-theme') || 'ocean';
 	                                          html.setAttribute('data-color-theme', colorTheme);
 
 	                                          var trigger = document.querySelector('.color-theme-trigger');
@@ -3295,17 +3302,17 @@ public static class EmbeddedThemeProvider
 			Config = null!, // Set by render phase
 			Templates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 			{
-				["default"] = DefaultLayout,
-				["landing"] = LandingLayout,
-				["api-type"] = ApiTypeLayout
+				["default"] = _defaultLayout,
+				["landing"] = _landingLayout,
+				["api-type"] = _apiTypeLayout
 			},
 			Partials = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 			{
-				["head"] = HeadPartial,
-				["nav-sidebar"] = NavSidebarPartial,
-				["toc"] = TocPartial,
-				["breadcrumbs"] = BreadcrumbsPartial,
-				["footer"] = FooterPartial
+				["head"] = _headPartial,
+				["nav-sidebar"] = _navSidebarPartial,
+				["toc"] = _tocPartial,
+				["breadcrumbs"] = _breadcrumbsPartial,
+				["footer"] = _footerPartial
 			},
 			CssFiles = ["/_theme/css/main.css"],
 			JsFiles = ["/_theme/js/main.js"]
@@ -3315,20 +3322,20 @@ public static class EmbeddedThemeProvider
 	/// <summary>
 	///     Returns the embedded CSS content.
 	/// </summary>
-	public static string GetCss() => EmbeddedCss;
+	public static string GetCss() => _embeddedCss;
 
 	/// <summary>
 	///     Returns the embedded JS content.
 	/// </summary>
-	public static string GetJs() => EmbeddedJs;
+	public static string GetJs() => _embeddedJs;
 
 	#region Layout Templates
 
-	private const string DefaultLayout = """
+	private const string _defaultLayout = """
 	                                     <!DOCTYPE html>
 	                                     <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}>
 	                                     <head>
-	                                         <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'ocean';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
+	                                         <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.default_color_theme ?? "ocean" }}';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                         <meta charset="utf-8" />
 	                                         <meta name="viewport" content="width=device-width, initial-scale=1" />
 	                                         <title>{{ page.title }} — {{ site.title }}</title>
@@ -3393,6 +3400,7 @@ public static class EmbeddedThemeProvider
 	                                                             <button class="color-swatch" data-color-theme="violet" aria-label="Violet theme" style="background:#8b5cf6"></button>
 	                                                             <button class="color-swatch" data-color-theme="amber" aria-label="Amber theme" style="background:#f59e0b"></button>
 	                                                             <button class="color-swatch" data-color-theme="rose" aria-label="Rose theme" style="background:#f43f5e"></button>
+	                                                             <button class="color-swatch" data-color-theme="moka-red" aria-label="Moka Red theme" style="background:#d32f2f"></button>
 	                                                         </div>
 	                                                     </div>
 	                                                     {{ end }}
@@ -3723,11 +3731,11 @@ public static class EmbeddedThemeProvider
 	                                     </html>
 	                                     """;
 
-	private const string LandingLayout = """
+	private const string _landingLayout = """
 	                                     <!DOCTYPE html>
 	                                     <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}>
 	                                     <head>
-	                                         <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'ocean';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
+	                                         <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.default_color_theme ?? "ocean" }}';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                         <meta charset="utf-8" />
 	                                         <meta name="viewport" content="width=device-width, initial-scale=1" />
 	                                         <title>{{ site.title }}{{ if page.description != "" }} — {{ page.description }}{{ end }}</title>
@@ -3763,6 +3771,7 @@ public static class EmbeddedThemeProvider
 	                                                             <button class="color-swatch" data-color-theme="violet" aria-label="Violet theme" style="background:#8b5cf6"></button>
 	                                                             <button class="color-swatch" data-color-theme="amber" aria-label="Amber theme" style="background:#f59e0b"></button>
 	                                                             <button class="color-swatch" data-color-theme="rose" aria-label="Rose theme" style="background:#f43f5e"></button>
+	                                                             <button class="color-swatch" data-color-theme="moka-red" aria-label="Moka Red theme" style="background:#d32f2f"></button>
 	                                                         </div>
 	                                                     </div>
 	                                                     {{ end }}
@@ -3906,13 +3915,13 @@ public static class EmbeddedThemeProvider
 	                                     </html>
 	                                     """;
 
-	private const string ApiTypeLayout = DefaultLayout; // Reuses default for now
+	private const string _apiTypeLayout = _defaultLayout; // Reuses default for now
 
-	private const string HeadPartial = "";
-	private const string NavSidebarPartial = "";
-	private const string TocPartial = "";
-	private const string BreadcrumbsPartial = "";
-	private const string FooterPartial = "";
+	private const string _headPartial = "";
+	private const string _navSidebarPartial = "";
+	private const string _tocPartial = "";
+	private const string _breadcrumbsPartial = "";
+	private const string _footerPartial = "";
 
 	#endregion
 }

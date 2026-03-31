@@ -8,9 +8,13 @@
   <ItemGroup>
     <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
     <ProjectReference Include="..\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
+    <ProjectReference Include="..\Moka.Docs.Serve\Moka.Docs.Serve.csproj" />
+    <ProjectReference Include="..\..\..\Moka.BlazorRepl\src\Moka.Blazor.Repl.Compiler\Moka.Blazor.Repl.Compiler.csproj" />
+    <ProjectReference Include="..\..\..\Moka.BlazorRepl\src\Moka.Blazor.Repl.Abstractions\Moka.Blazor.Repl.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.OpenApi.Readers" />

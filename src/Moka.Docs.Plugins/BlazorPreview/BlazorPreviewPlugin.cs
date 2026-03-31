@@ -1,33 +1,121 @@
+using System.Net;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Text;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.Web.HtmlRendering;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
+using Moka.Blazor.Repl.Abstractions.Models;
+using Moka.Blazor.Repl.Compiler;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 
 namespace Moka.Docs.Plugins.BlazorPreview;
 
 /// <summary>
-///     MokaDocs plugin that adds Blazor component preview functionality to documentation pages.
-///     Code blocks written as <c>```blazor-preview</c> are enhanced with a tabbed Source/Preview UI.
-///     In <c>mokadocs serve</c> mode, the component markup is rendered server-side via the
-///     Blazor preview endpoint. In static builds, a message directs users to use the dev server.
+///     MokaDocs plugin that compiles <c>```blazor-preview</c> code blocks using Roslyn at build time,
+///     renders them to HTML via Blazor's <see cref="HtmlRenderer" /> (static SSR), and injects the
+///     result inline — no iframe, no WASM runtime required.
 /// </summary>
 public sealed class BlazorPreviewPlugin : IMokaPlugin
 {
 	#region Inline CSS
 
-	private const string InlineCss = """
+	/// <summary>
+	///     Structural CSS for the preview container/tabs plus Moka.Red design token overrides
+	///     for both light and dark modes. Applied to every page that has preview blocks.
+	/// </summary>
+	private const string _inlineCss = """
 	                                 <style>
+	                                 /* ── Moka.Red design tokens (light) ─────────────────────────── */
+	                                 .blazor-preview-render {
+	                                     --moka-color-primary:         #d32f2f;
+	                                     --moka-color-primary-light:   #ff6659;
+	                                     --moka-color-primary-dark:    #9a0007;
+	                                     --moka-color-on-primary:      #ffffff;
+	                                     --moka-color-secondary:       #455a64;
+	                                     --moka-color-secondary-light: #718792;
+	                                     --moka-color-secondary-dark:  #1c313a;
+	                                     --moka-color-on-secondary:    #ffffff;
+	                                     --moka-color-surface:         #ffffff;
+	                                     --moka-color-surface-variant: #f5f5f5;
+	                                     --moka-color-on-surface:      #1c1b1f;
+	                                     --moka-color-background:      #fafafa;
+	                                     --moka-color-on-background:   #1c1b1f;
+	                                     --moka-color-error:           #b00020;
+	                                     --moka-color-on-error:        #ffffff;
+	                                     --moka-color-warning:         #f57c00;
+	                                     --moka-color-on-warning:      #ffffff;
+	                                     --moka-color-success:         #2e7d32;
+	                                     --moka-color-on-success:      #ffffff;
+	                                     --moka-color-info:            #0288d1;
+	                                     --moka-color-on-info:         #ffffff;
+	                                     --moka-color-outline:         #c4c4c4;
+	                                     --moka-color-outline-variant: #e0e0e0;
+	                                     --moka-font-family:           -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	                                     --moka-font-family-mono:      'Cascadia Code', 'Fira Code', Consolas, monospace;
+	                                     --moka-font-size-base:        0.8125rem;
+	                                     --moka-font-size-sm:          0.75rem;
+	                                     --moka-font-size-md:          0.875rem;
+	                                     --moka-font-size-lg:          1rem;
+	                                     --moka-spacing-xs:            0.25rem;
+	                                     --moka-spacing-sm:            0.375rem;
+	                                     --moka-spacing-md:            0.5rem;
+	                                     --moka-spacing-lg:            0.75rem;
+	                                     --moka-spacing-xl:            1rem;
+	                                     --moka-radius-sm:             0.125rem;
+	                                     --moka-radius-md:             0.25rem;
+	                                     --moka-radius-lg:             0.375rem;
+	                                     --moka-radius-xl:             0.5rem;
+	                                     --moka-radius-full:           9999px;
+	                                     --moka-transition-fast:       100ms ease;
+	                                     --moka-transition-normal:     200ms ease;
+	                                 }
+	                                 /* ── Moka.Red design tokens (dark) ──────────────────────────── */
+	                                 [data-theme="dark"] .blazor-preview-render {
+	                                     --moka-color-primary:         #ef5350;
+	                                     --moka-color-primary-light:   #ff867c;
+	                                     --moka-color-primary-dark:    #b61827;
+	                                     --moka-color-on-primary:      #ffffff;
+	                                     --moka-color-secondary:       #78909c;
+	                                     --moka-color-secondary-light: #a7c0cd;
+	                                     --moka-color-secondary-dark:  #4b636e;
+	                                     --moka-color-on-secondary:    #000000;
+	                                     --moka-color-surface:         #1e1e1e;
+	                                     --moka-color-surface-variant: #2d2d2d;
+	                                     --moka-color-on-surface:      #e0e0e0;
+	                                     --moka-color-background:      #121212;
+	                                     --moka-color-on-background:   #e0e0e0;
+	                                     --moka-color-error:           #cf6679;
+	                                     --moka-color-on-error:        #000000;
+	                                     --moka-color-warning:         #ffb74d;
+	                                     --moka-color-on-warning:      #000000;
+	                                     --moka-color-success:         #388e3c;
+	                                     --moka-color-on-success:      #ffffff;
+	                                     --moka-color-info:            #29b6f6;
+	                                     --moka-color-on-info:         #000000;
+	                                     --moka-color-outline:         #444444;
+	                                     --moka-color-outline-variant: #333333;
+	                                 }
+	                                 /* ── Preview container & tabs ────────────────────────────────── */
 	                                 .blazor-preview-container {
 	                                     position: relative;
-	                                     border: 1px solid var(--border-color, #e2e8f0);
+	                                     border: 1px solid var(--color-border, #e2e8f0);
 	                                     border-radius: 8px;
 	                                     margin: 1.5em 0;
 	                                     overflow: hidden;
-	                                     background: var(--card-bg, #ffffff);
+	                                     background: var(--color-bg, #ffffff);
 	                                 }
 	                                 .blazor-preview-tabs {
 	                                     display: flex;
-	                                     border-bottom: 1px solid var(--border-color, #e2e8f0);
-	                                     background: var(--code-toolbar-bg, #181825);
+	                                     align-items: center;
+	                                     border-bottom: 1px solid var(--color-border, #e2e8f0);
+	                                     background: var(--color-bg-code, #181825);
 	                                     padding: 0;
 	                                     margin: 0;
 	                                 }
@@ -43,19 +131,13 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                     transition: color 0.15s, border-color 0.15s;
 	                                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	                                 }
-	                                 .blazor-preview-tab:hover {
-	                                     color: #cbd5e1;
-	                                 }
+	                                 .blazor-preview-tab:hover { color: #cbd5e1; }
 	                                 .blazor-preview-tab.active {
 	                                     color: #60a5fa;
 	                                     border-bottom-color: #60a5fa;
 	                                 }
-	                                 .blazor-preview-source {
-	                                     display: none;
-	                                 }
-	                                 .blazor-preview-source.active {
-	                                     display: block;
-	                                 }
+	                                 .blazor-preview-source { display: none; }
+	                                 .blazor-preview-source.active { display: block; }
 	                                 .blazor-preview-source pre {
 	                                     margin: 0;
 	                                     border: none;
@@ -66,98 +148,21 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                 }
 	                                 .blazor-preview-render {
 	                                     display: none;
-	                                     padding: 1.5em;
-	                                     background: #ffffff;
-	                                     color: #1e293b;
-	                                     min-height: 60px;
+	                                     padding: 1.25rem 1.5rem;
+	                                     background: var(--color-bg, #ffffff);
+	                                     min-height: 48px;
 	                                 }
-	                                 .blazor-preview-render.active {
-	                                     display: block;
+	                                 [data-theme="dark"] .blazor-preview-render {
+	                                     background: var(--color-bg, #0f172a);
 	                                 }
-	                                 .blazor-preview-render-content {
-	                                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-	                                     line-height: 1.6;
-	                                 }
-	                                 .blazor-preview-render-content h1,
-	                                 .blazor-preview-render-content h2,
-	                                 .blazor-preview-render-content h3,
-	                                 .blazor-preview-render-content h4 {
-	                                     margin-top: 0;
-	                                     color: #1e293b;
-	                                 }
-	                                 .blazor-preview-render-content button {
-	                                     padding: 0.4em 1em;
-	                                     border: 1px solid #d1d5db;
-	                                     border-radius: 6px;
-	                                     background: #f9fafb;
-	                                     color: #374151;
-	                                     font-size: 0.9rem;
-	                                     cursor: pointer;
-	                                     transition: background 0.15s;
-	                                 }
-	                                 .blazor-preview-render-content button:hover {
-	                                     background: #f3f4f6;
-	                                 }
-	                                 .blazor-preview-render-content input {
-	                                     padding: 0.4em 0.75em;
-	                                     border: 1px solid #d1d5db;
-	                                     border-radius: 6px;
-	                                     font-size: 0.9rem;
-	                                 }
-	                                 .blazor-preview-loading {
-	                                     display: flex;
-	                                     align-items: center;
-	                                     gap: 0.5em;
-	                                     color: #94a3b8;
-	                                     font-size: 0.85rem;
-	                                     font-family: monospace;
-	                                 }
+	                                 .blazor-preview-render.active { display: block; }
 	                                 .blazor-preview-error {
 	                                     color: #ef4444;
 	                                     font-size: 0.85rem;
 	                                     font-family: monospace;
-	                                     padding: 0.5em;
+	                                     padding: 1em;
 	                                     background: #fef2f2;
-	                                     border-radius: 4px;
-	                                 }
-	                                 .blazor-preview-unavailable {
-	                                     color: #f59e0b;
-	                                     font-size: 0.85rem;
-	                                     font-family: monospace;
-	                                 }
-	                                 .blazor-preview-toolbar {
-	                                     display: flex;
-	                                     align-items: center;
-	                                     gap: 0.5em;
-	                                     padding: 0.4em 0.75em;
-	                                     background: #f8fafc;
-	                                     border-top: 1px solid var(--border-color, #e2e8f0);
-	                                 }
-	                                 .blazor-preview-refresh-btn {
-	                                     display: inline-flex;
-	                                     align-items: center;
-	                                     gap: 0.35em;
-	                                     padding: 0.3em 0.75em;
-	                                     font-size: 0.75rem;
-	                                     font-weight: 600;
-	                                     color: #475569;
-	                                     background: #e2e8f0;
-	                                     border: none;
-	                                     border-radius: 4px;
-	                                     cursor: pointer;
-	                                     transition: background 0.15s;
-	                                 }
-	                                 .blazor-preview-refresh-btn:hover {
-	                                     background: #cbd5e1;
-	                                 }
-	                                 .blazor-preview-refresh-btn:disabled {
-	                                     opacity: 0.5;
-	                                     cursor: not-allowed;
-	                                 }
-	                                 .blazor-preview-refresh-btn svg {
-	                                     width: 12px;
-	                                     height: 12px;
-	                                     fill: currentColor;
+	                                     white-space: pre-wrap;
 	                                 }
 	                                 .blazor-preview-badge {
 	                                     display: inline-block;
@@ -170,6 +175,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                     padding: 0.15em 0.5em;
 	                                     border-radius: 3px;
 	                                     margin-left: auto;
+	                                     margin-right: 0.75em;
 	                                 }
 	                                 </style>
 	                                 """;
@@ -178,18 +184,15 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	#region Inline JS
 
-	private const string InlineJs = """
+	private const string _inlineJs = """
 	                                <script>
 	                                (function() {
-	                                    var refreshIcon = '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>';
-
 	                                    document.querySelectorAll('.blazor-preview-container[data-blazor-preview="true"]').forEach(function(container) {
 	                                        var sourceDiv = container.querySelector('.blazor-preview-source');
 	                                        var renderDiv = container.querySelector('.blazor-preview-render');
-	                                        var codeEl = container.querySelector('code');
-	                                        if (!sourceDiv || !renderDiv || !codeEl) return;
+	                                        if (!sourceDiv || !renderDiv) return;
 
-	                                        // Create tab bar
+	                                        // Build tab bar
 	                                        var tabBar = document.createElement('div');
 	                                        tabBar.className = 'blazor-preview-tabs';
 
@@ -210,94 +213,42 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                        tabBar.appendChild(previewTab);
 	                                        tabBar.appendChild(sourceTab);
 	                                        tabBar.appendChild(badge);
-
-	                                        // Insert tab bar at the top of the container
 	                                        container.insertBefore(tabBar, container.firstChild);
 
-	                                        // Create content wrapper inside render div
-	                                        var contentWrapper = document.createElement('div');
-	                                        contentWrapper.className = 'blazor-preview-render-content';
-	                                        renderDiv.appendChild(contentWrapper);
-
-	                                        // Create toolbar with refresh button
-	                                        var toolbar = document.createElement('div');
-	                                        toolbar.className = 'blazor-preview-toolbar';
-
-	                                        var refreshBtn = document.createElement('button');
-	                                        refreshBtn.className = 'blazor-preview-refresh-btn';
-	                                        refreshBtn.innerHTML = refreshIcon + ' Refresh';
-	                                        refreshBtn.type = 'button';
-
-	                                        toolbar.appendChild(refreshBtn);
-	                                        renderDiv.after(toolbar);
-
-	                                        // Show preview tab by default
 	                                        renderDiv.classList.add('active');
-	                                        sourceDiv.classList.remove('active');
 
-	                                        // Tab switching
 	                                        previewTab.addEventListener('click', function() {
 	                                            previewTab.classList.add('active');
 	                                            sourceTab.classList.remove('active');
 	                                            renderDiv.classList.add('active');
 	                                            sourceDiv.classList.remove('active');
-	                                            toolbar.style.display = '';
 	                                        });
-
 	                                        sourceTab.addEventListener('click', function() {
 	                                            sourceTab.classList.add('active');
 	                                            previewTab.classList.remove('active');
 	                                            sourceDiv.classList.add('active');
 	                                            renderDiv.classList.remove('active');
-	                                            toolbar.style.display = 'none';
 	                                        });
-
-	                                        // Fetch preview function
-	                                        function fetchPreview() {
-	                                            var source = codeEl.textContent;
-	                                            refreshBtn.disabled = true;
-	                                            contentWrapper.innerHTML = '<div class="blazor-preview-loading"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></circle></svg> Rendering preview\u2026</div>';
-
-	                                            fetch('/api/blazor/preview', {
-	                                                method: 'POST',
-	                                                headers: { 'Content-Type': 'application/json' },
-	                                                body: JSON.stringify({ source: source })
-	                                            })
-	                                            .then(function(res) { return res.json(); })
-	                                            .then(function(data) {
-	                                                if (data.error) {
-	                                                    contentWrapper.innerHTML = '<div class="blazor-preview-error">' + escapeHtml(data.error) + '</div>';
-	                                                } else if (data.html) {
-	                                                    contentWrapper.innerHTML = data.html;
-	                                                } else {
-	                                                    contentWrapper.innerHTML = '<div class="blazor-preview-loading">(empty preview)</div>';
-	                                                }
-	                                            })
-	                                            .catch(function(err) {
-	                                                contentWrapper.innerHTML = '<div class="blazor-preview-unavailable">Preview server unavailable. Run "mokadocs serve" to enable Blazor component previews.</div>';
-	                                            })
-	                                            .finally(function() {
-	                                                refreshBtn.disabled = false;
-	                                            });
-	                                        }
-
-	                                        // Refresh button
-	                                        refreshBtn.addEventListener('click', fetchPreview);
-
-	                                        // Auto-fetch preview on load
-	                                        fetchPreview();
 	                                    });
-
-	                                    function escapeHtml(str) {
-	                                        var div = document.createElement('div');
-	                                        div.appendChild(document.createTextNode(str));
-	                                        return div.innerHTML;
-	                                    }
 	                                })();
 	                                </script>
 	                                """;
 
 	#endregion
+
+	private readonly List<string> _extraUsings = [];
+	private readonly List<string> _knownDllPaths = [];
+
+	// ── Instance state ────────────────────────────────────────────────────────
+
+	private RoslynCompilationService? _compilationService;
+
+	/// <summary>Concatenated CSS bundle (scoped CSS from all referenced Moka.Red packages).</summary>
+	private byte[]? _previewCssBundle;
+
+	private bool _servicesInitialized;
+
+	// ── IMokaPlugin ───────────────────────────────────────────────────────────
 
 	/// <inheritdoc />
 	public string Id => "mokadocs-blazor-preview";
@@ -306,58 +257,595 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	public string Name => "Blazor Component Preview";
 
 	/// <inheritdoc />
-	public string Version => "1.0.0";
+	public string Version => "2.0.0";
 
 	/// <inheritdoc />
 	public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
 	{
-		context.LogInfo("Blazor preview plugin initialized — component preview blocks enabled");
+		context.LogInfo("Blazor preview plugin initialized — static SSR component preview enabled");
 		return Task.CompletedTask;
 	}
 
 	/// <inheritdoc />
-	public Task ExecuteAsync(IPluginContext context, BuildContext buildContext, CancellationToken ct = default)
+	public async Task ExecuteAsync(IPluginContext context, BuildContext buildContext, CancellationToken ct = default)
 	{
+		// Lazy-init: compilation service + CSS bundle (expensive — do once per process lifetime)
+		if (!_servicesInitialized)
+		{
+			_compilationService = CreateCompilationService(context, buildContext.RootDirectory);
+			_previewCssBundle = BuildCssBundle(context, buildContext.RootDirectory);
+			_servicesInitialized = true;
+		}
+
+		// Register CSS bundle for deferred write (runs after OutputPhase clean step)
+		if (_previewCssBundle is { Length: > 0 })
+		{
+			buildContext.DeferredOutputFiles["_preview-css/moka-preview.css"] = _previewCssBundle;
+		}
+
 		int pagesWithPreview = 0;
+
+		if (_compilationService is null)
+		{
+			return;
+		}
+
+		ILoggerFactory loggerFactory = context.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
+
+		// Create a single HtmlRenderer for all pages in this build pass
+		await using HtmlRenderer htmlRenderer = CreateHtmlRenderer(loggerFactory, _knownDllPaths);
 
 		foreach (DocPage page in buildContext.Pages)
 		{
 			string html = page.Content.Html;
-			if (string.IsNullOrEmpty(html))
+			if (string.IsNullOrEmpty(html) ||
+			    !html.Contains("data-blazor-preview=\"true\"", StringComparison.Ordinal))
 			{
 				continue;
 			}
 
-			if (!html.Contains("data-blazor-preview=\"true\"", StringComparison.Ordinal))
-			{
-				continue;
-			}
+			html = await CompileAndRenderBlocksAsync(html, _compilationService, _extraUsings, _knownDllPaths,
+				htmlRenderer, context, ct);
 
-			// Inject CSS and JS into pages that have Blazor preview blocks
-			page.Content = page.Content with
-			{
-				Html = InjectBlazorPreviewAssets(html)
-			};
+			page.Content = page.Content with { Html = InjectPreviewAssets(html, _previewCssBundle is { Length: > 0 }) };
 			pagesWithPreview++;
 		}
 
 		if (pagesWithPreview > 0)
 		{
-			context.LogInfo($"Blazor preview plugin: Enhanced {pagesWithPreview} page(s) with component previews");
+			context.LogInfo(
+				$"Blazor preview plugin: Rendered {pagesWithPreview} page(s) with static SSR component previews");
+		}
+	}
+
+	// ── Compilation service setup ──────────────────────────────────────────────
+
+	private RoslynCompilationService CreateCompilationService(IPluginContext context, string rootDir)
+	{
+		var svc = new RoslynCompilationService(new HttpClient());
+
+		if (context.Options.TryGetValue("references", out object? refsObj)
+		    && refsObj is IEnumerable<object> refList)
+		{
+			foreach (string refEntry in refList.Select(o => o.ToString()!).Where(s => !string.IsNullOrWhiteSpace(s)))
+			{
+				string resolved = Path.GetFullPath(Path.Combine(rootDir, refEntry));
+
+				if (Directory.Exists(resolved))
+				{
+					foreach (string dll in Directory.GetFiles(resolved, "*.dll"))
+					{
+						try
+						{
+							svc.AddReference(MetadataReference.CreateFromFile(dll));
+							_knownDllPaths.Add(dll);
+						}
+						catch
+						{
+							// Skip unloadable DLLs silently
+						}
+					}
+				}
+				else if (File.Exists(resolved))
+				{
+					try
+					{
+						svc.AddReference(MetadataReference.CreateFromFile(resolved));
+						_knownDllPaths.Add(resolved);
+					}
+					catch
+					{
+						// Skip unloadable DLLs silently
+					}
+				}
+			}
 		}
 
-		return Task.CompletedTask;
+		if (context.Options.TryGetValue("usings", out object? usingsObj)
+		    && usingsObj is IEnumerable<object> usingsList)
+		{
+			_extraUsings.AddRange(usingsList.Select(o => o.ToString()!).Where(s => !string.IsNullOrWhiteSpace(s)));
+		}
+
+		return svc;
+	}
+
+	// ── CSS bundle ────────────────────────────────────────────────────────────
+
+	/// <summary>
+	///     Reads all CSS files listed under the <c>stylesheets</c> plugin option and
+	///     concatenates them into a single bundle that will be served at
+	///     <c>/_preview-css/moka-preview.css</c>.
+	/// </summary>
+	private static byte[] BuildCssBundle(IPluginContext context, string rootDir)
+	{
+		if (!context.Options.TryGetValue("stylesheets", out object? sheetsObj)
+		    || sheetsObj is not IEnumerable<object> sheetList)
+		{
+			return [];
+		}
+
+		var bundle = new StringBuilder();
+
+		foreach (string sheet in sheetList.Select(o => o.ToString()!).Where(s => !string.IsNullOrWhiteSpace(s)))
+		{
+			string sourcePath = Path.GetFullPath(Path.Combine(rootDir, sheet));
+			if (!File.Exists(sourcePath))
+			{
+				continue;
+			}
+
+			bundle.AppendLine($"/* {Path.GetFileName(sourcePath)} */");
+			bundle.AppendLine(File.ReadAllText(sourcePath));
+		}
+
+		return bundle.Length == 0 ? [] : Encoding.UTF8.GetBytes(bundle.ToString());
+	}
+
+	// ── HtmlRenderer ──────────────────────────────────────────────────────────
+
+	private static HtmlRenderer CreateHtmlRenderer(ILoggerFactory loggerFactory, IEnumerable<string> knownDllPaths)
+	{
+		// Pre-load all project DLLs into the default load context so that:
+		//   (a) TryRegisterStub can find injectable service types by name, and
+		//   (b) PreviewAssemblyLoadContext.Load will reuse the same Type instances
+		//       (it tries Default.LoadFromAssemblyName first), keeping ServiceProvider
+		//       type identity consistent with the compiled component's injected types.
+		foreach (string dll in knownDllPaths)
+		{
+			try
+			{
+				_ = Assembly.LoadFrom(dll);
+			}
+			catch
+			{
+				/* ignore if already loaded or unavailable */
+			}
+		}
+
+		var services = new ServiceCollection();
+		services.AddSingleton(loggerFactory);
+		services.AddSingleton(loggerFactory);
+		services.AddSingleton<IJSRuntime>(NullJsRuntime.Instance);
+		services.AddSingleton<NavigationManager>(NullNavigationManager.Instance);
+
+		// Register stub implementations for common injectable Moka.Red services so that
+		// components using @inject won't fail at render time in static SSR context.
+		TryRegisterStub(services, "Moka.Red.Feedback.Toast.IMokaToastService",
+			"Moka.Red.Feedback.Toast.MokaToastService");
+
+		ServiceProvider sp = services.BuildServiceProvider();
+		return new HtmlRenderer(sp, loggerFactory);
 	}
 
 	/// <summary>
-	///     Wraps the page HTML with inline Blazor preview CSS at the top and JS at the bottom.
+	///     For each blazor-preview render placeholder in the HTML, compiles the snippet
+	///     with Roslyn, loads the resulting assembly, renders the component to HTML using
+	///     <see cref="HtmlRenderer" />, and replaces the placeholder with the rendered output.
 	/// </summary>
-	private static string InjectBlazorPreviewAssets(string html)
+	private static async Task<string> CompileAndRenderBlocksAsync(
+		string html,
+		RoslynCompilationService compilationService,
+		List<string> extraUsings,
+		List<string> knownDllPaths,
+		HtmlRenderer htmlRenderer,
+		IPluginContext context,
+		CancellationToken ct)
 	{
-		var sb = new StringBuilder(html.Length + InlineCss.Length + InlineJs.Length + 64);
-		sb.Append(InlineCss);
-		sb.Append(html);
-		sb.Append(InlineJs);
+		const string sourceStart = "<div class=\"blazor-preview-source\">";
+		const string renderMarker = "<div class=\"blazor-preview-render\"></div>";
+
+		int searchPos = 0;
+		var sb = new StringBuilder(html.Length);
+
+		// Accumulates @code blocks from previously-rendered snippets on this page so that
+		// later snippets can reference variables/types defined in earlier ones.
+		var accumulatedCodeBlocks = new List<string>();
+
+		while (true)
+		{
+			int renderIdx = html.IndexOf(renderMarker, searchPos, StringComparison.Ordinal);
+			if (renderIdx < 0)
+			{
+				sb.Append(html, searchPos, html.Length - searchPos);
+				break;
+			}
+
+			// Find the source code block preceding this render marker
+			int sourceIdx = html.LastIndexOf(sourceStart, renderIdx, StringComparison.Ordinal);
+			string? source = null;
+			if (sourceIdx >= 0)
+			{
+				int codeStart = html.IndexOf("<code", sourceIdx, StringComparison.Ordinal);
+				if (codeStart >= 0)
+				{
+					codeStart = html.IndexOf('>', codeStart) + 1;
+					int codeEnd = html.IndexOf("</code>", codeStart, StringComparison.Ordinal);
+					if (codeEnd > codeStart)
+					{
+						source = WebUtility.HtmlDecode(html[codeStart..codeEnd]);
+					}
+				}
+			}
+
+			sb.Append(html, searchPos, renderIdx - searchPos);
+
+			if (source is not null)
+			{
+				// Track how many @code blocks were accumulated from PREVIOUS snippets
+				// before we potentially add the current snippet's own blocks.
+				int prevAccumCount = accumulatedCodeBlocks.Count;
+
+				// Record this snippet's own @code blocks so they're available for
+				// later snippets on the same page.
+				string extracted = ExtractCodeBlocks(source);
+				if (!string.IsNullOrWhiteSpace(extracted))
+				{
+					accumulatedCodeBlocks.Add(extracted);
+				}
+
+				try
+				{
+					// ── Pass 1: compile the snippet as-is (self-contained) ──────────────
+					var project = new ReplProject { Name = "DocsPreview" };
+					project.Files.Add(ProjectFile.CreateRazor("Preview.razor", source));
+					foreach (string u in extraUsings)
+					{
+						project.GlobalUsings.Add(u);
+					}
+
+					CompilationResult result = await compilationService.CompileAsync(project, ct);
+
+					// ── Pass 2: if pass 1 has only "name not found" errors and there is
+					//    accumulated context from prior snippets, retry with that context
+					//    prepended.  This resolves cross-snippet state dependencies
+					//    (e.g. _people defined in snippet 1, used in snippet 2) without
+					//    introducing CS0102 duplicate-definition errors for self-contained
+					//    snippets that redeclare common names like _open or _selected. ──
+					if (!result.Success
+					    && prevAccumCount > 0 // there are @code blocks from previous snippets
+					    && result.Errors.All(e => e.Id is "CS0103" or "CS0246" or "CS0012"))
+					{
+						// Prepend @code from all PREVIOUS snippets only (not the current
+						// snippet's own @code, which is already part of 'source').
+						string preamble = string.Join("\n",
+							accumulatedCodeBlocks.Take(prevAccumCount));
+						string fullSource = preamble + "\n" + source;
+
+						var retryProject = new ReplProject { Name = "DocsPreview" };
+						retryProject.Files.Add(ProjectFile.CreateRazor("Preview.razor", fullSource));
+						foreach (string u in extraUsings)
+						{
+							retryProject.GlobalUsings.Add(u);
+						}
+
+						CompilationResult retryResult = await compilationService.CompileAsync(retryProject, ct);
+						if (retryResult.Success ||
+						    retryResult.Errors.Count() < result.Errors.Count())
+						{
+							result = retryResult;
+						}
+					}
+
+					if (result.Success && result.AssemblyBytes is not null)
+					{
+						string renderedHtml = await RenderComponentAsync(
+							result.AssemblyBytes, result.EntryPointTypeName, knownDllPaths, htmlRenderer, context);
+						sb.Append($"<div class=\"blazor-preview-render\">{renderedHtml}</div>");
+					}
+					else
+					{
+						string errors = string.Join("\n", result.Errors.Select(e =>
+							$"[{e.Id}] {(e.FilePath != null ? $"{e.FilePath}({e.Line},{e.Column}): " : "")}{e.Message}"));
+						sb.Append(
+							$"<div class=\"blazor-preview-render\"><div class=\"blazor-preview-error\">{WebUtility.HtmlEncode(errors)}</div></div>");
+						context.LogWarning($"Blazor preview compile errors:\n{errors}");
+					}
+				}
+				catch (Exception ex)
+				{
+					context.LogWarning($"Blazor preview compile failed: {ex.Message}");
+					sb.Append(
+						$"<div class=\"blazor-preview-render\"><div class=\"blazor-preview-error\">{WebUtility.HtmlEncode(ex.Message)}</div></div>");
+				}
+			}
+			else
+			{
+				sb.Append(renderMarker);
+			}
+
+			searchPos = renderIdx + renderMarker.Length;
+		}
+
 		return sb.ToString();
+	}
+
+	/// <summary>
+	///     Extracts all <c>@code { ... }</c> blocks from a Razor snippet so they can be
+	///     prepended to subsequent snippets on the same page as shared state.
+	/// </summary>
+	private static string ExtractCodeBlocks(string razorSource)
+	{
+		var sb = new StringBuilder();
+		int i = 0;
+		while (i < razorSource.Length)
+		{
+			int codeIdx = razorSource.IndexOf("@code", i, StringComparison.Ordinal);
+			if (codeIdx < 0)
+			{
+				break;
+			}
+
+			// Skip past "@code" and optional whitespace to find the opening brace
+			int braceStart = codeIdx + 5;
+			while (braceStart < razorSource.Length && char.IsWhiteSpace(razorSource[braceStart]))
+			{
+				braceStart++;
+			}
+
+			if (braceStart >= razorSource.Length || razorSource[braceStart] != '{')
+			{
+				i = codeIdx + 5;
+				continue;
+			}
+
+			// Count braces to find the matching closing brace
+			int depth = 1;
+			int j = braceStart + 1;
+			while (j < razorSource.Length && depth > 0)
+			{
+				if (razorSource[j] == '{')
+				{
+					depth++;
+				}
+				else if (razorSource[j] == '}')
+				{
+					depth--;
+				}
+
+				j++;
+			}
+
+			// j is now one past the closing '}'
+			sb.AppendLine(razorSource[codeIdx..j]);
+			i = j;
+		}
+
+		return sb.ToString();
+	}
+
+	private static async Task<string> RenderComponentAsync(
+		byte[] assemblyBytes,
+		string? entryPointTypeName,
+		List<string> knownDllPaths,
+		HtmlRenderer htmlRenderer,
+		IPluginContext context)
+	{
+		// Build a lookup of assembly-name → physical DLL path so the load context
+		// can resolve Moka.Red.* and other project DLLs that aren't in the process yet.
+		var dllLookup = knownDllPaths
+			.GroupBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+		// Collectible context so it can be unloaded after each render (avoids assembly leak)
+		var loadCtx = new PreviewAssemblyLoadContext(dllLookup);
+		try
+		{
+			Assembly assembly = loadCtx.LoadFromStream(new MemoryStream(assemblyBytes));
+
+			Type? componentType = null;
+			if (entryPointTypeName is not null)
+			{
+				componentType = assembly.GetType(entryPointTypeName);
+			}
+
+			componentType ??= assembly.GetTypes()
+				.FirstOrDefault(t =>
+				{
+					// Compare against IComponent resolved in the default context to avoid cross-context issues
+					try
+					{
+						return typeof(IComponent).IsAssignableFrom(t) && !t.IsAbstract;
+					}
+					catch
+					{
+						return false;
+					}
+				});
+
+			if (componentType is null)
+			{
+				context.LogWarning("Blazor preview: could not find a renderable component in compiled assembly");
+				return "<div class=\"blazor-preview-error\">No renderable component found in assembly.</div>";
+			}
+
+			try
+			{
+				return await htmlRenderer.Dispatcher.InvokeAsync(async () =>
+				{
+					HtmlRootComponent output = await htmlRenderer.RenderComponentAsync(componentType);
+					return output.ToHtmlString();
+				});
+			}
+			catch (Exception ex)
+			{
+				context.LogWarning($"Blazor preview HtmlRenderer error: {ex.Message}");
+				return $"<div class=\"blazor-preview-error\">{WebUtility.HtmlEncode(ex.Message)}</div>";
+			}
+		}
+		finally
+		{
+			loadCtx.Unload();
+		}
+	}
+
+	// ── Asset injection ───────────────────────────────────────────────────────
+
+	private static string InjectPreviewAssets(string html, bool hasCssBundle)
+	{
+		var sb = new StringBuilder(html.Length + _inlineCss.Length + _inlineJs.Length + 80);
+
+		if (hasCssBundle)
+		{
+			sb.Append("<link rel=\"stylesheet\" href=\"/_preview-css/moka-preview.css\">");
+		}
+
+		sb.Append(_inlineCss);
+		sb.Append(html);
+		sb.Append(_inlineJs);
+		return sb.ToString();
+	}
+
+	// ── Service stub registration ─────────────────────────────────────────────
+
+	/// <summary>
+	///     Attempts to register a service interface with its implementation by type name.
+	///     Uses reflection so the plugin doesn't need a compile-time reference to the DLL.
+	/// </summary>
+	private static void TryRegisterStub(IServiceCollection services, string serviceTypeName,
+		string implementationTypeName)
+	{
+		try
+		{
+			Type? serviceType = Type.GetType(serviceTypeName) ??
+			                    AppDomain.CurrentDomain.GetAssemblies()
+				                    .Select(a =>
+				                    {
+					                    try
+					                    {
+						                    return a.GetType(serviceTypeName);
+					                    }
+					                    catch
+					                    {
+						                    return null;
+					                    }
+				                    })
+				                    .FirstOrDefault(t => t is not null);
+
+			Type? implType = serviceType is null
+				? null
+				: Type.GetType(implementationTypeName) ??
+				  AppDomain.CurrentDomain.GetAssemblies()
+					  .Select(a =>
+					  {
+						  try
+						  {
+							  return a.GetType(implementationTypeName);
+						  }
+						  catch
+						  {
+							  return null;
+						  }
+					  })
+					  .FirstOrDefault(t => t is not null);
+
+			if (serviceType is not null && implType is not null)
+			{
+				services.AddSingleton(serviceType, implType);
+			}
+		}
+		catch
+		{
+			// DLL not loaded yet or types unavailable — skip silently
+		}
+	}
+
+	// ── Null JS runtime ───────────────────────────────────────────────────────
+
+	/// <summary>
+	///     No-op <see cref="IJSRuntime" /> used during static SSR rendering so that components
+	///     that inject <c>IJSRuntime</c> can be instantiated without a browser context.
+	///     JS calls during <c>OnAfterRenderAsync</c> are never reached by <see cref="HtmlRenderer" />.
+	/// </summary>
+	private sealed class NullJsRuntime : IJSRuntime
+	{
+		public static readonly NullJsRuntime Instance = new();
+
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+			=> ValueTask.FromResult(default(TValue)!);
+
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken,
+			object?[]? args)
+			=> ValueTask.FromResult(default(TValue)!);
+	}
+
+	// ── Null navigation manager ───────────────────────────────────────────────
+
+	/// <summary>
+	///     No-op <see cref="NavigationManager" /> for static SSR so components that inject
+	///     it (e.g., for NavigateTo calls wired to buttons) can be instantiated.
+	/// </summary>
+	private sealed class NullNavigationManager : NavigationManager
+	{
+		public static readonly NullNavigationManager Instance = new();
+
+		private NullNavigationManager()
+		{
+			Initialize("https://localhost/", "https://localhost/");
+		}
+
+		protected override void NavigateToCore(string uri, NavigationOptions options)
+		{
+		}
+	}
+
+	// ── Assembly load context ─────────────────────────────────────────────────
+
+	/// <summary>
+	///     Collectible <see cref="AssemblyLoadContext" /> that resolves Moka.Red (and other project)
+	///     DLLs by name so that a compiled preview assembly can load its dependencies without
+	///     polluting the host process's default load context.
+	/// </summary>
+	private sealed class PreviewAssemblyLoadContext(
+		Dictionary<string, string> dllLookup)
+		: AssemblyLoadContext("BlazorPreviewCtx", true)
+	{
+		protected override Assembly? Load(AssemblyName assemblyName)
+		{
+			// Try to resolve from the host process first (framework + already-loaded assemblies).
+			// This keeps IComponent, ILoggerFactory, etc. from the same context as the host,
+			// which avoids type-identity mismatches when HtmlRenderer casts the component.
+			try
+			{
+				Assembly? fromDefault = Default.LoadFromAssemblyName(assemblyName);
+				if (fromDefault != null)
+				{
+					return fromDefault;
+				}
+			}
+			catch
+			{
+				// Not in default context — fall through to our DLL lookup.
+			}
+
+			if (assemblyName.Name is not null
+			    && dllLookup.TryGetValue(assemblyName.Name, out string? dllPath)
+			    && File.Exists(dllPath))
+			{
+				return LoadFromAssemblyPath(dllPath);
+			}
+
+			return null;
+		}
 	}
 }

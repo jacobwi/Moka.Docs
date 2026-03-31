@@ -5,196 +5,216 @@ order: 3
 
 # Blazor Component Preview Plugin
 
-The Blazor Preview plugin renders Razor component source code as live HTML previews directly in your documentation. Readers can see what a component looks like alongside its source code, without needing to run a Blazor application.
+The Blazor Preview plugin renders `blazor-preview` code blocks into **real static HTML** at build time using Roslyn compilation and Blazor's built-in `HtmlRenderer`. Readers see the exact same output the component would produce on first render — no JavaScript, no WASM, no iframes.
 
 **Plugin ID:** `mokadocs-blazor-preview`
 
 ## What It Does
 
-The plugin transforms code blocks marked with the `blazor-preview` language identifier into a tabbed interface with two views:
+Each ` ```blazor-preview ` code block is compiled and rendered at build time. The result is injected directly into the page HTML as a tabbed card:
 
-- **Preview tab** -- A rendered HTML representation of the component, showing the initial visual output.
-- **Source tab** -- The original Razor/Blazor source code with syntax highlighting.
+- **Preview tab** — Real server-side-rendered HTML from the component's `OnInitialized` state.
+- **Source tab** — The original Razor source with syntax highlighting.
 
-The preview tab is shown by default, giving readers an immediate visual understanding of the component. A **BLAZOR** badge and **Refresh** button are included in the tab header.
+Components are rendered with full type resolution, parameter binding, dependency injection stubs, and correct CSS isolation attributes (`b-xxxxxxxx` scoped attributes) — exactly as they would appear in a real Blazor app.
 
 ## Markdown Syntax
 
-Use the `blazor-preview` language identifier on fenced code blocks:
-
 ````markdown
 ```blazor-preview
-<h3>Counter: @currentCount</h3>
-<button @onclick="IncrementCount">Click me</button>
-
-@code {
-    private int currentCount = 0;
-    private void IncrementCount() => currentCount++;
-}
+@code { string _name = "Aria"; }
+<MokaTextField @bind-Value="_name" Label="Full name" Required />
 ```
 ````
-
-This renders as a tabbed preview with the counter heading showing "Counter: 0" and a styled button in the Preview tab, and the full source code in the Source tab.
 
 ## How It Works
 
-The Blazor Preview plugin integrates through both a Markdig extension and the plugin execution pipeline.
+### Architecture overview
 
-### 1. Markdown Extension (BlazorPreviewExtension)
+```
+Markdown: ```blazor-preview  →  BlazorPreviewExtension (Markdig)
+                                  ↓  wraps in <div data-blazor-preview="true">
+                              BlazorPreviewPlugin.ExecuteAsync
+                                  ↓
+                              CompileAndRenderBlocksAsync
+                               ├─ Pass 1: RoslynCompilationService.CompileAsync(source)
+                               │    ↓ on CS0103/CS0246 only
+                               └─ Pass 2: retry with accumulated @code preamble
+                                  ↓ success
+                              RenderComponentAsync
+                               ├─ PreviewAssemblyLoadContext.LoadFromStream(bytes)
+                               ├─ assembly.GetType(entryPointTypeName)
+                               └─ HtmlRenderer.RenderComponentAsync(type)
+                                  ↓
+                              Inject rendered HTML into page
+```
 
-During markdown parsing, the `BlazorPreviewExtension` detects code blocks with the `blazor-preview` language identifier and wraps them in a structured container:
+### Stage 1 — Markdown Extension
+
+`BlazorPreviewExtension` (a Markdig inline parser) detects ` ```blazor-preview ` fenced blocks and wraps each one in:
 
 ```html
 <div class="blazor-preview-container" data-blazor-preview="true">
-    <pre><code class="language-csharp"><!-- original source --></code></pre>
+  <div class="blazor-preview-source"><pre><code>…source…</code></pre></div>
+  <div class="blazor-preview-render"></div>
 </div>
 ```
 
-### 2. Plugin Injection (BlazorPreviewPlugin)
+The tab bar and JavaScript are injected once per page by the plugin after rendering, not by the extension.
 
-During the plugin execution phase, the `BlazorPreviewPlugin` injects the tabbed UI framework into pages containing preview containers. This includes:
+### Stage 2 — Roslyn Compilation
 
-- **Tab bar** with Preview and Source tabs
-- **BLAZOR badge** indicating the component type
-- **Refresh button** to re-fetch the preview
-- **CSS** for the preview frame, tabs, and badges
-- **JavaScript** that auto-fetches the preview on page load
+For each `blazor-preview-render` placeholder, the plugin:
 
-### 3. Preview Request
+1. Extracts and HTML-decodes the Razor source from the adjacent `blazor-preview-source` div.
+2. Creates a `ReplProject` with a single file `Preview.razor`.
+3. Adds all `usings` from `mokadocs.yaml` as global usings.
+4. Calls `RoslynCompilationService.CompileAsync(project)` which:
+   - Compiles the Razor file with the Razor compiler (`.razor` → C#)
+   - Compiles the generated C# with Roslyn
+   - Returns `CompilationResult` with either `AssemblyBytes + EntryPointTypeName` or a list of errors
 
-The injected JavaScript extracts the source code from each preview container and sends a `POST` request to `/api/blazor/preview` with the component source. On receiving the rendered HTML response, it injects the output into the Preview tab panel.
+All DLL references configured under `references` are passed as `MetadataReference` entries so the Razor compiler can resolve component types, base classes, and constraints.
 
-### 4. Server-Side Rendering (BlazorPreviewService)
+### Stage 3 — Two-pass compilation
 
-The `BlazorPreviewService` performs a lightweight server-side rendering of the Razor component source. This is not full Blazor Server or WebAssembly rendering. Instead, it performs template-level processing:
+Previews on the same page sometimes share state — a `@code` block in one snippet may define a record or list used by the next snippet:
 
-1. **Extracts `@using` directives** -- Any `@using` statements are collected for namespace resolution context.
+```razor
+@* Snippet 1: defines _people *@
+@code { record Person(string Name); List<Person> _people = [ new("Ada"), new("Grace") ]; }
+<div>@_people.Count people</div>
 
-2. **Separates markup from `@code` block** -- The service splits the component into its HTML template portion and the `@code { }` section.
-
-3. **Parses field initializers** -- Fields declared in the `@code` block are parsed for their initial values. For example, `private int currentCount = 0;` registers `currentCount` with value `0`.
-
-4. **Substitutes `@variable` expressions** -- Occurrences of `@variableName` in the markup are replaced with the field's initial value. So `@currentCount` becomes `0` in the rendered output.
-
-5. **Processes `@if` blocks** -- Conditional blocks are evaluated based on the truthiness of the field value. Non-null, non-zero, non-empty values are truthy.
-
-6. **Processes `@foreach` blocks** -- Foreach loops over simple collections (arrays and lists initialized inline) are expanded, repeating the loop body for each element.
-
-7. **Strips Blazor directives** -- Interactive directives like `@onclick`, `@bind`, `@ref`, `@onchange`, and others are removed from the preview HTML since they require a Blazor runtime to function.
-
-The result is a static HTML snapshot representing the component's initial render state.
-
-## Supported Features
-
-### HTML Markup with Inline Styles
-
-Standard HTML elements and inline styles render as expected:
-
-````markdown
-```blazor-preview
-<div style="padding: 1rem; background: #f0f0f0; border-radius: 8px;">
-    <h4 style="color: #333;">Styled Card</h4>
-    <p>This card has custom styling.</p>
-</div>
+@* Snippet 2: uses _people from snippet 1 *@
+<MokaTable Items="_people" ...>
 ```
-````
 
-### Field Initializers
+The plugin handles this with a **two-pass strategy**:
 
-Variables declared in the `@code` block with initial values are substituted into the template:
+- **Pass 1** — compile the snippet as a self-contained file. If it succeeds, use the result.
+- **Pass 2** — if pass 1 fails with only name-not-found errors (`CS0103`, `CS0246`, `CS0012`) _and_ previous snippets have already rendered successfully, prepend the accumulated `@code` blocks from those earlier snippets and retry.
 
-````markdown
-```blazor-preview
-<p>Welcome, @userName!</p>
-<p>You have @messageCount new messages.</p>
+Pass 2 is only triggered for name-not-found errors because other error types (type mismatches, wrong signatures) indicate an incorrect snippet, not a missing dependency.
 
-@code {
-    private string userName = "Alice";
-    private int messageCount = 5;
-}
+### Stage 4 — Assembly Loading
+
+The compiled assembly bytes are loaded into a **collectible `PreviewAssemblyLoadContext`** — an isolated context that can be unloaded after each render to avoid memory accumulation:
+
 ```
-````
-
-The preview renders "Welcome, Alice!" and "You have 5 new messages."
-
-### @foreach Loops
-
-Simple foreach loops over inline collections are expanded:
-
-````markdown
-```blazor-preview
-<ul>
-    @foreach (var item in items)
-    {
-        <li>@item</li>
-    }
-</ul>
-
-@code {
-    private List<string> items = new() { "Apples", "Bananas", "Cherries" };
-}
+PreviewAssemblyLoadContext.Load(assemblyName)
+  → try Default.LoadFromAssemblyName(assemblyName)   // framework + pre-loaded DLLs
+  → fall back to dllLookup[assemblyName]              // project DLLs from references
 ```
-````
 
-The preview renders an unordered list with three items.
+Resolving from the **default context first** is critical. It keeps `IComponent`, `ILoggerFactory`, and all Moka.Red types at the same identity as the `HtmlRenderer`'s service provider. If project DLLs were loaded independently into the isolated context, type comparisons would fail (`MokaTextField from context A ≠ MokaTextField from context B`).
 
-### @if Conditionals
+To ensure project DLLs are in the default context before the isolated context tries to find them, the plugin pre-loads all paths from `references` via `Assembly.LoadFrom()` before rendering begins.
 
-Conditional rendering based on field truthiness:
+### Stage 5 — HtmlRenderer SSR
 
-````markdown
-```blazor-preview
-@if (showMessage)
+A single `HtmlRenderer` is created once per build pass and reused for all pages. Its `ServiceProvider` is configured with:
+
+| Service | Implementation |
+|---------|---------------|
+| `ILoggerFactory` | From the MokaDocs host |
+| `IJSRuntime` | `NullJsRuntime` — no-op, returns `default(T)` |
+| `NavigationManager` | `NullNavigationManager` — pre-initialised to `https://localhost/` |
+| `IMokaToastService` | Stub registered via reflection if DLL is loaded |
+
+The render call:
+
+```csharp
+await htmlRenderer.Dispatcher.InvokeAsync(async () =>
 {
-    <div class="alert">This message is visible!</div>
-}
-
-@code {
-    private bool showMessage = true;
-}
+    var output = await htmlRenderer.RenderComponentAsync(componentType);
+    return output.ToHtmlString();
+});
 ```
-````
 
-Since `showMessage` is `true`, the alert div is included in the preview.
-
-### Blazor Directives in Source
-
-Directives like `@onclick`, `@bind`, and `@ref` are preserved in the Source tab for documentation purposes but are stripped from the Preview tab output since they require a Blazor runtime:
-
-````markdown
-```blazor-preview
-<input @bind="searchText" placeholder="Search..." />
-<button @onclick="Search">Go</button>
-<p>Searching for: @searchText</p>
-
-@code {
-    private string searchText = "";
-    private void Search() { /* ... */ }
-}
-```
-````
-
-The Preview tab shows the input, button, and paragraph without the `@bind` and `@onclick` attributes. The Source tab shows the complete Razor source.
+This executes the component's synchronous lifecycle (`SetParametersAsync`, `OnInitialized`, `BuildRenderTree`) and serialises the render tree to HTML. `OnAfterRenderAsync` and any JS interop are never invoked by `HtmlRenderer`.
 
 ## Configuration
 
-The Blazor Preview plugin requires no options for basic usage:
+### Full example
 
 ```yaml
 plugins:
   - name: mokadocs-blazor-preview
+    options:
+      references:
+        - ../src/MyLibrary/bin/Debug/net9.0
+      stylesheets:
+        - ../src/MyLibrary/obj/Debug/net9.0/scopedcss/projectbundle/MyLibrary.bundle.scp.css
+        - ../src/MyLibrary/wwwroot/tokens.css
+      usings:
+        - MyLibrary.Components
+        - MyLibrary.Components.Forms
+        - System.ComponentModel.DataAnnotations
 ```
+
+### `references`
+
+Paths to directories or individual DLL files containing the components you want to preview. Both absolute and relative (to `mokadocs.yaml`) paths are accepted. Directories are scanned recursively for `*.dll` files.
+
+Every DLL in a directory is:
+1. Added as a `MetadataReference` so the Roslyn compiler can resolve types.
+2. Registered in `_knownDllPaths` so `PreviewAssemblyLoadContext` can locate them at runtime.
+3. Pre-loaded via `Assembly.LoadFrom()` so stub service registration works.
+
+Tip: point at your project's `bin/Debug/net9.0` directory so all transitive DLLs are picked up automatically.
+
+### `stylesheets`
+
+CSS files concatenated into a single bundle served at `/_preview-css/moka-preview.css`. List them in the order they should cascade:
+
+1. CSS reset / base tokens
+2. Component-level scoped CSS bundles (`*.bundle.scp.css` from the build output)
+3. Any supplemental CSS (icon fonts, extra utilities)
+
+The scoped CSS bundles contain the `b-xxxxxxxx` attribute selectors generated by Blazor's CSS isolation. Without them, previews render without component styles.
+
+### `usings`
+
+Namespace strings added as C# global usings to every compiled preview. These correspond to the `@using` statements you would put in `_Imports.razor`.
+
+You need one entry per namespace containing components you reference in previews. For example, if `<MokaButton>` is in `MyLibrary.Primitives.Button`, add `MyLibrary.Primitives.Button`.
+
+Common system namespaces (`System`, `System.Collections.Generic`, `System.Threading.Tasks`, `Microsoft.AspNetCore.Components`) are added by .NET's implicit global usings and do not need to be listed.
+
+## CSS and theming
+
+The plugin injects a `<style>` block once per page with:
+
+1. **Design tokens** — CSS custom properties (`--moka-color-*`, `--moka-font-*`, etc.) scoped to `.blazor-preview-render`, covering both light and dark modes.
+2. **Preview container chrome** — tab bar, source/render pane layout, error styling.
+
+If you need the previews to inherit the page's theme, structure your design tokens so that `[data-theme="dark"] .blazor-preview-render` overrides light-mode values. The plugin follows this convention for Moka.Red:
+
+```css
+.blazor-preview-render {
+    --moka-color-primary: #d32f2f;
+    /* … other light tokens … */
+}
+[data-theme="dark"] .blazor-preview-render {
+    --moka-color-primary: #ef5350;
+    /* … dark overrides … */
+}
+```
+
+## Generic components and type inference
+
+Razor's type-inference code generator emits a constraint helper method for generic components (those with `@typeparam TValue where TValue : ...`). If the constraint references a type that is not in scope, compilation fails.
+
+To avoid this, either:
+
+- **Specify the type parameter explicitly** — `<MokaNumericField TValue="int" @bind-Value="_qty" />` — which bypasses the type inference path entirely.
+- **Add the constraint's namespace** to `usings` — but only if doing so does not conflict with other generated code.
 
 ## Limitations
 
-The Blazor Preview plugin performs template-level rendering, not full Blazor component rendering. This means several capabilities are not supported:
-
-- **No runtime interactivity** -- Buttons, inputs, and other interactive elements are rendered visually but do not respond to clicks or input. Event handlers (`@onclick`, `@onchange`, etc.) are stripped from the preview.
-- **No dependency injection** -- Services injected with `@inject` are not available. Components that depend on injected services will not render those values.
-- **No complex expressions** -- Only simple `@variable` substitution is supported. Complex C# expressions like `@(count + 1)`, method calls like `@GetTitle()`, or ternary operators are not evaluated.
-- **No component composition** -- Child components (e.g., `<MyChildComponent />`) are not rendered. Only native HTML elements are processed.
-- **No lifecycle methods** -- `OnInitialized`, `OnParametersSet`, and other lifecycle methods are not executed. Only field initializers provide values.
-- **No two-way binding** -- `@bind` directives are stripped. Bound values show their initial state only.
-- **No CSS isolation** -- Component-scoped CSS (`::deep`, CSS isolation files) is not applied to previews.
-
-For scenarios requiring full interactivity, consider linking to a running Blazor sample application or using the REPL plugin to demonstrate code execution.
+- **No runtime interactivity** — `@onclick`, `@bind`, and other event handlers are compiled and stripped by `HtmlRenderer`. Buttons and inputs are rendered visually but do not respond to user interaction.
+- **No JS interop** — Calls to `IJSRuntime` return `default(T)`. Components that require JS for initial rendering (canvas-based, signature pads, rich editors) will render their host element but not their JS-initialised content.
+- **No `OnAfterRenderAsync`** — `HtmlRenderer` does not invoke `OnAfterRenderAsync`. Only `SetParametersAsync`, `OnInitialized[Async]`, `OnParametersSet[Async]`, and `BuildRenderTree` are executed.
+- **No injected services beyond stubs** — Services other than those explicitly registered in the `HtmlRenderer`'s `ServiceProvider` are unavailable. Components that `@inject` an unregistered service will throw at render time and fall back to an error display.
+- **Synchronous initial render only** — If a component awaits a network call inside `OnInitializedAsync`, the preview will show the loading/empty state, not the loaded state.
+- **CSS isolation requires bundle** — Scoped styles only apply when the `*.bundle.scp.css` from your build output is included in `stylesheets`.

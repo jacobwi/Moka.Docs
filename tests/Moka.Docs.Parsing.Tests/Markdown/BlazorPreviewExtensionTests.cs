@@ -6,11 +6,11 @@ namespace Moka.Docs.Parsing.Tests.Markdown;
 
 public sealed class BlazorPreviewExtensionTests
 {
-	private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+	private static readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder()
 		.Use<BlazorPreviewExtension>()
 		.Build();
 
-	private static string Render(string md) => Markdig.Markdown.ToHtml(md, Pipeline);
+	private static string Render(string md) => Markdig.Markdown.ToHtml(md, _pipeline);
 
 	[Fact]
 	public void BlazorPreviewBlock_ProducesPreviewContainer()

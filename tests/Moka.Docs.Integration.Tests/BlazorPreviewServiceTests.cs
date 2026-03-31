@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moka.Blazor.Repl.Compiler;
 using Moka.Docs.Serve;
 
 namespace Moka.Docs.Integration.Tests;
@@ -7,6 +8,8 @@ namespace Moka.Docs.Integration.Tests;
 public sealed class BlazorPreviewServiceTests
 {
 	private readonly BlazorPreviewService _service = new(
+		new RoslynCompilationService(new HttpClient()),
+		NullLoggerFactory.Instance,
 		NullLogger<BlazorPreviewService>.Instance);
 
 	#region Basic Rendering
@@ -114,7 +117,7 @@ public sealed class BlazorPreviewServiceTests
 	}
 
 	[Fact]
-	public async Task RenderAsync_UnknownVariable_LeftAsIs()
+	public async Task RenderAsync_UnknownVariable_ReturnsCompileError()
 	{
 		const string source = """
 		                      <p>@unknownVar</p>
@@ -126,8 +129,7 @@ public sealed class BlazorPreviewServiceTests
 
 		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-		result.Error.Should().BeNull();
-		result.Html.Should().Contain("@unknownVar");
+		result.Error.Should().NotBeNull("undefined variables cause compile errors");
 	}
 
 	#endregion
@@ -227,7 +229,7 @@ public sealed class BlazorPreviewServiceTests
 	}
 
 	[Fact]
-	public async Task RenderAsync_IfBlock_ZeroIsFalsy()
+	public async Task RenderAsync_IfBlock_IntInCondition_ReturnsCompileError()
 	{
 		const string source = """
 		                      @if (count) {<p>Has items</p>}
@@ -239,12 +241,12 @@ public sealed class BlazorPreviewServiceTests
 
 		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-		result.Error.Should().BeNull();
-		result.Html.Should().NotContain("Has items");
+		// Real Blazor requires bool in @if, not int
+		result.Error.Should().NotBeNull();
 	}
 
 	[Fact]
-	public async Task RenderAsync_IfBlock_UnknownVariable_HidesContent()
+	public async Task RenderAsync_IfBlock_UnknownVariable_ReturnsCompileError()
 	{
 		const string source = """
 		                      @if (unknown) {<p>Should be hidden</p>}
@@ -255,8 +257,7 @@ public sealed class BlazorPreviewServiceTests
 
 		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-		result.Error.Should().BeNull();
-		result.Html.Should().NotContain("Should be hidden");
+		result.Error.Should().NotBeNull("undefined variables cause compile errors");
 	}
 
 	#endregion
@@ -286,7 +287,7 @@ public sealed class BlazorPreviewServiceTests
 	}
 
 	[Fact]
-	public async Task RenderAsync_ForeachBlock_UnknownCollection_ProducesNothing()
+	public async Task RenderAsync_ForeachBlock_UnknownCollection_ReturnsCompileError()
 	{
 		const string source = """
 		                      @foreach (var item in unknownList) {<li>@item</li>}
@@ -297,8 +298,7 @@ public sealed class BlazorPreviewServiceTests
 
 		BlazorPreviewResult result = await _service.RenderAsync(source, TestContext.Current.CancellationToken);
 
-		result.Error.Should().BeNull();
-		result.Html.Should().NotContain("<li>");
+		result.Error.Should().NotBeNull("undefined variables cause compile errors");
 	}
 
 	#endregion
