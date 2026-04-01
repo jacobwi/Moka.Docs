@@ -27,81 +27,11 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	#region Inline CSS
 
 	/// <summary>
-	///     Structural CSS for the preview container/tabs plus Moka.Red design token overrides
-	///     for both light and dark modes. Applied to every page that has preview blocks.
+	///     Structural CSS for the preview container, tabs, and error display.
+	///     Moka.Red design tokens are provided by moka.css via the stylesheets bundle.
 	/// </summary>
 	private const string _inlineCss = """
 	                                 <style>
-	                                 /* ── Moka.Red design tokens (light) ─────────────────────────── */
-	                                 .blazor-preview-render {
-	                                     --moka-color-primary:         #d32f2f;
-	                                     --moka-color-primary-light:   #ff6659;
-	                                     --moka-color-primary-dark:    #9a0007;
-	                                     --moka-color-on-primary:      #ffffff;
-	                                     --moka-color-secondary:       #455a64;
-	                                     --moka-color-secondary-light: #718792;
-	                                     --moka-color-secondary-dark:  #1c313a;
-	                                     --moka-color-on-secondary:    #ffffff;
-	                                     --moka-color-surface:         #ffffff;
-	                                     --moka-color-surface-variant: #f5f5f5;
-	                                     --moka-color-on-surface:      #1c1b1f;
-	                                     --moka-color-background:      #fafafa;
-	                                     --moka-color-on-background:   #1c1b1f;
-	                                     --moka-color-error:           #b00020;
-	                                     --moka-color-on-error:        #ffffff;
-	                                     --moka-color-warning:         #f57c00;
-	                                     --moka-color-on-warning:      #ffffff;
-	                                     --moka-color-success:         #2e7d32;
-	                                     --moka-color-on-success:      #ffffff;
-	                                     --moka-color-info:            #0288d1;
-	                                     --moka-color-on-info:         #ffffff;
-	                                     --moka-color-outline:         #c4c4c4;
-	                                     --moka-color-outline-variant: #e0e0e0;
-	                                     --moka-font-family:           -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-	                                     --moka-font-family-mono:      'Cascadia Code', 'Fira Code', Consolas, monospace;
-	                                     --moka-font-size-base:        0.8125rem;
-	                                     --moka-font-size-sm:          0.75rem;
-	                                     --moka-font-size-md:          0.875rem;
-	                                     --moka-font-size-lg:          1rem;
-	                                     --moka-spacing-xs:            0.25rem;
-	                                     --moka-spacing-sm:            0.375rem;
-	                                     --moka-spacing-md:            0.5rem;
-	                                     --moka-spacing-lg:            0.75rem;
-	                                     --moka-spacing-xl:            1rem;
-	                                     --moka-radius-sm:             0.125rem;
-	                                     --moka-radius-md:             0.25rem;
-	                                     --moka-radius-lg:             0.375rem;
-	                                     --moka-radius-xl:             0.5rem;
-	                                     --moka-radius-full:           9999px;
-	                                     --moka-transition-fast:       100ms ease;
-	                                     --moka-transition-normal:     200ms ease;
-	                                 }
-	                                 /* ── Moka.Red design tokens (dark) ──────────────────────────── */
-	                                 [data-theme="dark"] .blazor-preview-render {
-	                                     --moka-color-primary:         #ef5350;
-	                                     --moka-color-primary-light:   #ff867c;
-	                                     --moka-color-primary-dark:    #b61827;
-	                                     --moka-color-on-primary:      #ffffff;
-	                                     --moka-color-secondary:       #78909c;
-	                                     --moka-color-secondary-light: #a7c0cd;
-	                                     --moka-color-secondary-dark:  #4b636e;
-	                                     --moka-color-on-secondary:    #000000;
-	                                     --moka-color-surface:         #1e1e1e;
-	                                     --moka-color-surface-variant: #2d2d2d;
-	                                     --moka-color-on-surface:      #e0e0e0;
-	                                     --moka-color-background:      #121212;
-	                                     --moka-color-on-background:   #e0e0e0;
-	                                     --moka-color-error:           #cf6679;
-	                                     --moka-color-on-error:        #000000;
-	                                     --moka-color-warning:         #ffb74d;
-	                                     --moka-color-on-warning:      #000000;
-	                                     --moka-color-success:         #388e3c;
-	                                     --moka-color-on-success:      #ffffff;
-	                                     --moka-color-info:            #29b6f6;
-	                                     --moka-color-on-info:         #000000;
-	                                     --moka-color-outline:         #444444;
-	                                     --moka-color-outline-variant: #333333;
-	                                 }
 	                                 /* ── Preview container & tabs ────────────────────────────────── */
 	                                 .blazor-preview-container {
 	                                     position: relative;
@@ -192,7 +122,6 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                        var renderDiv = container.querySelector('.blazor-preview-render');
 	                                        if (!sourceDiv || !renderDiv) return;
 
-	                                        // Build tab bar
 	                                        var tabBar = document.createElement('div');
 	                                        tabBar.className = 'blazor-preview-tabs';
 
