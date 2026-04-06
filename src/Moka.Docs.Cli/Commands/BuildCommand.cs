@@ -80,8 +80,10 @@ internal static class BuildCommand
 			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Building documentation site...");
 			AnsiConsole.WriteLine();
 
-			string rootDir = Directory.GetCurrentDirectory();
-			string resolvedConfigPath = configPath ?? Path.Combine(rootDir, "mokadocs.yaml");
+			string resolvedConfigPath = configPath != null
+				? Path.GetFullPath(configPath)
+				: Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
+			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
 
 			// Load config
 			SiteConfig config;

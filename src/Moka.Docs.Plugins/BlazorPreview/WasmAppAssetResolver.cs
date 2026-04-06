@@ -86,21 +86,32 @@ public sealed class WasmAppAssetResolver
 			return null;
 		}
 
-		// The published WASM app content is expected under:
-		//   content/wasm-app/ (if packed as content files)
-		//   or tools/wasm-app/
-		string[] searchPaths =
+		// Prefer the highest available TFM (net10.0 > net9.0) for forward compat.
+		// Search: content/wasm-app/net10.0/ → content/wasm-app/net9.0/ → content/wasm-app/ (legacy)
+		string[] tfms = ["net10.0", "net9.0"];
+		string[] basePaths =
 		[
 			Path.Combine(latestVersion, "content", "wasm-app"),
 			Path.Combine(latestVersion, "contentFiles", "any", "any", "wasm-app"),
 			Path.Combine(latestVersion, "tools", "wasm-app")
 		];
 
-		foreach (string searchPath in searchPaths)
+		foreach (string basePath in basePaths)
 		{
-			if (Directory.Exists(searchPath) && HasWasmApp(searchPath))
+			// Try TFM-specific subdirectories first
+			foreach (string tfm in tfms)
 			{
-				return searchPath;
+				string tfmPath = Path.Combine(basePath, tfm);
+				if (Directory.Exists(tfmPath) && HasWasmApp(tfmPath))
+				{
+					return tfmPath;
+				}
+			}
+
+			// Fall back to flat layout (no TFM subdirectory)
+			if (Directory.Exists(basePath) && HasWasmApp(basePath))
+			{
+				return basePath;
 			}
 		}
 
