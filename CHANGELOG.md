@@ -5,6 +5,12 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-04-06
+
+### 🐛 Fixed
+- Use NuGet package for `Moka.Blazor.Repl.Compiler` instead of local ProjectReference
+- Fix GitHub Packages auth for NuGet publish workflow
+
 ## [1.1.0] - 2026-04-06
 
 ### ✨ New
@@ -88,6 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **384 tests** across 5 test projects (net9.0 + net10.0)
 - **9 CLI commands**: `init`, `build`, `serve`, `clean`, `info`, `validate`, `doctor`, `stats`, `new`
 
+[1.1.1]: https://github.com/jacobwi/Moka.Docs/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/jacobwi/Moka.Docs/compare/v1.0.7...v1.1.0
 [1.0.7]: https://github.com/jacobwi/Moka.Docs/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/jacobwi/Moka.Docs/compare/v1.0.5...v1.0.6
