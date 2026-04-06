@@ -5,7 +5,7 @@
 	<ItemGroup>
 		<!-- CLI & Console -->
 		<PackageVersion Include="Moka.Blazor.Repl.Compiler" Version="1.0.0" />
-		<PackageVersion Include="Moka.Blazor.Repl.Wasm" Version="1.2.2" />
+		<PackageVersion Include="Moka.Blazor.Repl.Wasm" Version="1.2.4" />
 		<PackageVersion Include="System.CommandLine" Version="2.0.5" />
 		<PackageVersion Include="Spectre.Console" Version="0.55.0" />
 		<!-- Markdown -->
