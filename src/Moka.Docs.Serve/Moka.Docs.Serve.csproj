@@ -12,8 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
     <ProjectReference Include="..\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
-    <ProjectReference Include="..\..\..\Moka.BlazorRepl\src\Moka.Blazor.Repl.Compiler\Moka.Blazor.Repl.Compiler.csproj" />
-    <ProjectReference Include="..\..\..\Moka.BlazorRepl\src\Moka.Blazor.Repl.Abstractions\Moka.Blazor.Repl.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,6 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Include="Moka.Blazor.Repl.Compiler" />
   </ItemGroup>
 
 </Project>
