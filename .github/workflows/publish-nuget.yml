@@ -3,8 +3,6 @@ name: Publish to NuGet & GitHub Packages
 on:
   push:
     tags: ['v*']
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -12,86 +10,49 @@ on:
         required: true
 
 env:
-  DOTNET_VERSION: '9.0.x'
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   publish:
     name: Pack & Publish
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-
     steps:
       - uses: actions/checkout@v5
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-version: 9.0.x
 
-      - name: Determine version
+      - name: Extract version from tag
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-            VERSION="${VERSION#v}"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            VERSION="${{ github.event.inputs.version }}"
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Publishing version: $VERSION"
 
       - name: Restore
         run: dotnet restore MokaDocs.sln
 
       - name: Build
-        run: dotnet build MokaDocs.sln --no-restore --configuration Release -p:Version=${{ steps.version.outputs.version }}
+        run: dotnet build MokaDocs.sln --no-restore -c Release
 
       - name: Test
-        run: dotnet test MokaDocs.sln --no-build --configuration Release
+        run: dotnet test MokaDocs.sln --no-build -c Release
 
-      - name: Pack NuGet packages
-        run: |
-          PROJECTS=(
-            "src/Moka.Docs.Core/Moka.Docs.Core.csproj"
-            "src/Moka.Docs.Parsing/Moka.Docs.Parsing.csproj"
-            "src/Moka.Docs.Rendering/Moka.Docs.Rendering.csproj"
-            "src/Moka.Docs.CSharp/Moka.Docs.CSharp.csproj"
-            "src/Moka.Docs.Engine/Moka.Docs.Engine.csproj"
-            "src/Moka.Docs.Themes/Moka.Docs.Themes.csproj"
-            "src/Moka.Docs.Plugins/Moka.Docs.Plugins.csproj"
-            "src/Moka.Docs.Search/Moka.Docs.Search.csproj"
-            "src/Moka.Docs.Serve/Moka.Docs.Serve.csproj"
-            "src/Moka.Docs.Versioning/Moka.Docs.Versioning.csproj"
-            "src/Moka.Docs.Cli/Moka.Docs.Cli.csproj"
-            "src/Moka.Docs.AspNetCore/Moka.Docs.AspNetCore.csproj"
-          )
-          for proj in "${PROJECTS[@]}"; do
-            dotnet pack "$proj" --no-build --configuration Release \
-              -p:PackageVersion=${{ steps.version.outputs.version }} \
-              --output ./nupkgs
-          done
+      - name: Pack
+        run: dotnet pack MokaDocs.sln --no-build -c Release -p:PackageVersion=${{ steps.version.outputs.version }} -o ./nupkgs
 
-      - name: Upload NuGet artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: nuget-packages
-          path: nupkgs/*.nupkg
+      - name: Push to NuGet.org
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
-      - name: Publish to NuGet.org
-        run: |
-          dotnet nuget push "./nupkgs/*.nupkg" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-
-      - name: Publish to GitHub Packages
+      - name: Push to GitHub Packages
         run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
