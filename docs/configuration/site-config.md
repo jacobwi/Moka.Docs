@@ -393,6 +393,19 @@ theme:
     showAnimations: true
 ```
 
+#### `options.showBuiltWith`
+
+- **Type:** `boolean`
+- **Default:** `true`
+
+Show the "Built with MokaDocs v{version}" branding in the site footer. The version is automatically read from the installed MokaDocs package. Set to `false` to hide the branding entirely.
+
+```yaml
+theme:
+  options:
+    showBuiltWith: true
+```
+
 #### `options.socialLinks`
 
 - **Type:** `list` of social link objects

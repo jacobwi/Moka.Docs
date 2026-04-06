@@ -169,11 +169,16 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "show_line_numbers", ctx.Config.Theme.Options.ShowLineNumbers },
 			{ "toc_depth", ctx.Config.Theme.Options.TocDepth },
 			{ "show_version_selector", ctx.Config.Theme.Options.ShowVersionSelector },
+			{ "show_built_with", ctx.Config.Theme.Options.ShowBuiltWith },
 			{ "social_links", BuildSocialLinks(ctx.Config.Theme.Options.SocialLinks) },
 			{ "default_color_theme", ctx.Config.Theme.Options.DefaultColorTheme }
 		}, false);
 
 		#endregion
+
+		// MokaDocs version for footer branding
+		var asmVersion = typeof(ScribanTemplateEngine).Assembly.GetName().Version;
+		so.SetValue("mokadocs_version", asmVersion is not null ? $"{asmVersion.Major}.{asmVersion.Minor}.{asmVersion.Build}" : "1.0.0", false);
 
 		// Edit link
 		if (ctx.Config.Site.EditLink is { } el && ctx.Config.Theme.Options.ShowEditLink)

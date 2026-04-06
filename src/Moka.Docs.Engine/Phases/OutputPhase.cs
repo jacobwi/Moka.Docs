@@ -243,7 +243,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		                   </main>
 		                   <footer class="site-footer">
 		                       <div class="footer-inner">
-		                           <span class="built-with">Built with <a href="https://mokadocs.dev">MokaDocs</a></span>
+		                           <span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a></span>
 		                       </div>
 		                   </footer>
 		                   <script src="{bp}/_theme/js/main.js"></script>

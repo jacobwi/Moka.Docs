@@ -182,6 +182,9 @@ public sealed record ThemeOptions
 	/// <summary>Show the version selector dropdown.</summary>
 	public bool ShowVersionSelector { get; init; } = MokaDefaults.ShowVersionSelector;
 
+	/// <summary>Show "Built with MokaDocs" branding and version in the footer. Default is true.</summary>
+	public bool ShowBuiltWith { get; init; } = MokaDefaults.ShowBuiltWith;
+
 	/// <summary>Social links displayed in the site header.</summary>
 	public List<SocialLink> SocialLinks { get; init; } = [];
 

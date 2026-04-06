@@ -3664,7 +3664,7 @@ public static class EmbeddedThemeProvider
 	                                             <div class="footer-inner">
 	                                                 {{ if site.copyright }}<span>{{ site.copyright }}</span>{{ end }}
 	                                                 {{ if theme.social_links.size > 0 }}<div class="footer-social">{{ for link in theme.social_links }}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" aria-label="{{ link.icon }}">{{ link.icon_svg }}</a>{{ end }}</div>{{ end }}
-	                                                 <span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a></span>
+	                                                 {{ if theme.show_built_with != false }}<span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a> v{{ mokadocs_version }}</span>{{ end }}
 	                                             </div>
 	                                         </footer>
 
@@ -3893,7 +3893,7 @@ public static class EmbeddedThemeProvider
 
 	                                         <!-- Footer -->
 	                                         <footer class="landing-footer">
-	                                             <p>Built with <span class="landing-footer-heart">&#x2764;</span> using <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a></p>
+	                                             {{ if theme.show_built_with != false }}<p>Built with <span class="landing-footer-heart">&#x2764;</span> using <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a> v{{ mokadocs_version }}</p>{{ end }}
 	                                             {{ if site.copyright }}<p style="margin-top:0.5rem;">{{ site.copyright }}</p>{{ end }}
 	                                         </footer>
 

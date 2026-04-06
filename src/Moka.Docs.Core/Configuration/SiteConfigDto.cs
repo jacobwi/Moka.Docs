@@ -80,6 +80,7 @@ internal sealed class ThemeOptionsDto
 	public bool? ShowLineNumbers { get; set; }
 	public int? TocDepth { get; set; }
 	public bool? ShowVersionSelector { get; set; }
+	public bool? ShowBuiltWith { get; set; }
 	public List<SocialLinkDto>? SocialLinks { get; set; }
 	public string? DefaultColorTheme { get; set; }
 }

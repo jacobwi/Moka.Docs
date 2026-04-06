@@ -25,6 +25,9 @@ public static class MokaDefaults
 	/// <summary>Show the version selector dropdown.</summary>
 	public static bool ShowVersionSelector { get; set; } = true;
 
+	/// <summary>Show "Built with MokaDocs" branding and version in the footer.</summary>
+	public static bool ShowBuiltWith { get; set; } = true;
+
 	/// <summary>Show the dark/light mode toggle.</summary>
 	public static bool ShowDarkModeToggle { get; set; } = true;
 

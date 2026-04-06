@@ -195,6 +195,8 @@ public sealed class SiteConfigReader
 					TocDepth = Math.Clamp(o.TocDepth ?? MokaDefaults.TocDepth, 2, 6),
 					ShowVersionSelector = MokaDefaults.ResolveBool(
 						"SHOW_VERSION_SELECTOR", o.ShowVersionSelector, MokaDefaults.ShowVersionSelector),
+					ShowBuiltWith = MokaDefaults.ResolveBool(
+						"SHOW_BUILT_WITH", o.ShowBuiltWith, MokaDefaults.ShowBuiltWith),
 					SocialLinks = o.SocialLinks?.Select(s => new SocialLink
 					{
 						Icon = s.Icon ?? "",
@@ -408,6 +410,7 @@ public sealed class SiteConfigReader
 					ShowLineNumbers = config.Theme.Options.ShowLineNumbers ? null : false,
 					TocDepth = config.Theme.Options.TocDepth != 3 ? config.Theme.Options.TocDepth : null,
 					ShowVersionSelector = config.Theme.Options.ShowVersionSelector ? null : false,
+					ShowBuiltWith = config.Theme.Options.ShowBuiltWith ? null : false,
 					SocialLinks = config.Theme.Options.SocialLinks.Count > 0
 						? config.Theme.Options.SocialLinks.Select(s => new SocialLinkDto
 						{
