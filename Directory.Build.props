@@ -22,7 +22,7 @@
 		<PackageTags>documentation;dotnet;docs;api;static-site-generator;xml-docs;csharp</PackageTags>
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReadmeFile>README.nuget.md</PackageReadmeFile>
-		<Version>1.2.2</Version>
+		<Version>1.2.3</Version>
 	</PropertyGroup>
 
 	<!-- Include README.md and icon in NuGet packages (skip test projects) -->
