@@ -5,6 +5,21 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-06
+
+### ✨ New
+- **WASM Blazor preview mode** — interactive component previews on static sites (GitHub Pages, etc.)
+  - Components compiled to DLLs at build time, loaded in-browser via Blazor WebAssembly iframe
+  - SSR fallback in `<noscript>` for users without JavaScript
+  - Configurable via `mode: wasm` (default) or `mode: ssr` in plugin options
+- `Moka.Blazor.Repl.Wasm` auto-downloaded as dependency — no manual install needed
+- `WasmAppAssetResolver` auto-discovers WASM app from NuGet cache
+- Updated Blazor preview docs with WASM mode documentation
+
+### 🔄 Changed
+- Default Blazor preview mode changed from SSR to WASM
+- Plugin falls back to SSR with warning if WASM app not found
+
 ## [1.1.2] - 2026-04-06
 
 ### ✨ New
@@ -103,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **384 tests** across 5 test projects (net9.0 + net10.0)
 - **9 CLI commands**: `init`, `build`, `serve`, `clean`, `info`, `validate`, `doctor`, `stats`, `new`
 
+[1.2.0]: https://github.com/jacobwi/Moka.Docs/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/jacobwi/Moka.Docs/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/jacobwi/Moka.Docs/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/jacobwi/Moka.Docs/compare/v1.0.7...v1.1.0

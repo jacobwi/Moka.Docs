@@ -16,22 +16,22 @@ public sealed class DevServer : IDisposable
 {
 	/// <summary>The JavaScript snippet injected into HTML pages for hot-reload.</summary>
 	private const string _hotReloadScript = """
-	                                       <script>
-	                                       (function() {
-	                                           let ws;
-	                                           function connect() {
-	                                               ws = new WebSocket('ws://' + location.host + '/__mokadocs-ws');
-	                                               ws.onmessage = function(e) {
-	                                                   if (e.data === 'reload') location.reload();
-	                                               };
-	                                               ws.onclose = function() {
-	                                                   setTimeout(connect, 1000);
-	                                               };
-	                                           }
-	                                           connect();
-	                                       })();
-	                                       </script>
-	                                       """;
+	                                        <script>
+	                                        (function() {
+	                                            let ws;
+	                                            function connect() {
+	                                                ws = new WebSocket('ws://' + location.host + '/__mokadocs-ws');
+	                                                ws.onmessage = function(e) {
+	                                                    if (e.data === 'reload') location.reload();
+	                                                };
+	                                                ws.onclose = function() {
+	                                                    setTimeout(connect, 1000);
+	                                                };
+	                                            }
+	                                            connect();
+	                                        })();
+	                                        </script>
+	                                        """;
 
 	private static readonly JsonSerializerOptions _jsonOptions = new()
 	{

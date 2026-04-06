@@ -5,16 +5,57 @@ order: 3
 
 # Blazor Component Preview Plugin
 
-The Blazor Preview plugin renders `blazor-preview` code blocks into **real static HTML** at build time using Roslyn compilation and Blazor's built-in `HtmlRenderer`. Readers see the exact same output the component would produce on first render — no JavaScript, no WASM, no iframes.
+The Blazor Preview plugin renders `blazor-preview` code blocks as live component previews in your documentation. It supports two rendering modes:
+
+- **WASM mode** (default) — Compiles components to DLLs at build time, then loads them interactively in the browser via Blazor WebAssembly. Fully interactive on static hosting (GitHub Pages, etc.).
+- **SSR mode** — Renders components to static HTML at build time using Blazor's `HtmlRenderer`. No JavaScript required, but non-interactive.
 
 **Plugin ID:** `mokadocs-blazor-preview`
 
 ## What It Does
 
-Each ` ```blazor-preview ` code block is compiled and rendered at build time. The result is injected directly into the page HTML as a tabbed card:
+Each ` ```blazor-preview ` code block is compiled at build time with Roslyn. The result is displayed as a tabbed card:
 
-- **Preview tab** — Real server-side-rendered HTML from the component's `OnInitialized` state.
+- **Preview tab** — In WASM mode: an interactive iframe running the component. In SSR mode: static HTML from the component's initial render.
 - **Source tab** — The original Razor source with syntax highlighting.
+
+## Rendering Modes
+
+### WASM Mode (default)
+
+Components are compiled to DLL assemblies and loaded in the browser via the `Moka.Blazor.Repl.Wasm` runtime. This enables **interactive previews on static sites** — buttons respond to clicks, inputs accept text, and state updates work.
+
+**Requirements:** Install the WASM runtime package so MokaDocs can locate it:
+
+```bash
+dotnet add package Moka.Blazor.Repl.Wasm
+```
+
+The plugin automatically finds the WASM app in your NuGet cache. No additional configuration needed.
+
+**Output structure:**
+
+```
+_site/
+  _preview-wasm/           # WASM runtime (copied from NuGet package)
+    index.html
+    _framework/
+  _preview-assemblies/     # Compiled preview DLLs
+    a1b2c3d4e5f6.dll
+```
+
+Each preview gets a `<noscript>` fallback with SSR-rendered HTML for users without JavaScript.
+
+### SSR Mode
+
+Components are rendered to static HTML at build time — no JavaScript, no WASM, no iframes. Readers see the exact output the component would produce on first render.
+
+```yaml
+plugins:
+  - name: mokadocs-blazor-preview
+    options:
+      mode: ssr
+```
 
 Components are rendered with full type resolution, parameter binding, dependency injection stubs, and correct CSS isolation attributes (`b-xxxxxxxx` scoped attributes) — exactly as they would appear in a real Blazor app.
 
@@ -141,6 +182,8 @@ This executes the component's synchronous lifecycle (`SetParametersAsync`, `OnIn
 plugins:
   - name: mokadocs-blazor-preview
     options:
+      mode: wasm                # "wasm" (default) or "ssr"
+      wasmAppPath: ./my-wasm    # optional: override WASM app location
       references:
         - ../src/MyLibrary/bin/Debug/net9.0
       stylesheets:
@@ -151,6 +194,14 @@ plugins:
         - MyLibrary.Components.Forms
         - System.ComponentModel.DataAnnotations
 ```
+
+### `mode`
+
+Rendering mode for previews. `wasm` (default) generates interactive iframes using Blazor WebAssembly. `ssr` generates static HTML at build time. If `wasm` is selected but the WASM runtime package is not installed, the plugin falls back to `ssr` with a warning.
+
+### `wasmAppPath`
+
+Optional path to a published Blazor WebAssembly app directory (must contain `index.html` and `_framework/`). By default, the plugin searches the NuGet global packages folder (`~/.nuget/packages/moka.blazor.repl.wasm/`) for the `Moka.Blazor.Repl.Wasm` package. Use this option to override with a custom path.
 
 ### `references`
 
@@ -212,9 +263,20 @@ To avoid this, either:
 
 ## Limitations
 
+### WASM mode
+
+- **Requires `Moka.Blazor.Repl.Wasm` NuGet package** — The WASM runtime must be installed locally for the plugin to locate the preview app files.
+- **Output size** — The `_preview-wasm/_framework/` directory adds ~12MB (compressed) to the build output. This is shared across all preview blocks.
+- **Same-origin only** — The iframe must be served from the same origin as the docs site. This works on GitHub Pages and most static hosts.
+
+### SSR mode
+
 - **No runtime interactivity** — `@onclick`, `@bind`, and other event handlers are compiled and stripped by `HtmlRenderer`. Buttons and inputs are rendered visually but do not respond to user interaction.
 - **No JS interop** — Calls to `IJSRuntime` return `default(T)`. Components that require JS for initial rendering (canvas-based, signature pads, rich editors) will render their host element but not their JS-initialised content.
 - **No `OnAfterRenderAsync`** — `HtmlRenderer` does not invoke `OnAfterRenderAsync`. Only `SetParametersAsync`, `OnInitialized[Async]`, `OnParametersSet[Async]`, and `BuildRenderTree` are executed.
 - **No injected services beyond stubs** — Services other than those explicitly registered in the `HtmlRenderer`'s `ServiceProvider` are unavailable. Components that `@inject` an unregistered service will throw at render time and fall back to an error display.
 - **Synchronous initial render only** — If a component awaits a network call inside `OnInitializedAsync`, the preview will show the loading/empty state, not the loaded state.
+
+### Both modes
+
 - **CSS isolation requires bundle** — Scoped styles only apply when the `*.bundle.scp.css` from your build output is included in `stylesheets`.

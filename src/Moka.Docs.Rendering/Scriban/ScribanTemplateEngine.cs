@@ -177,8 +177,9 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		#endregion
 
 		// MokaDocs version for footer branding
-		var asmVersion = typeof(ScribanTemplateEngine).Assembly.GetName().Version;
-		so.SetValue("mokadocs_version", asmVersion is not null ? $"{asmVersion.Major}.{asmVersion.Minor}.{asmVersion.Build}" : "1.0.0", false);
+		Version? asmVersion = typeof(ScribanTemplateEngine).Assembly.GetName().Version;
+		so.SetValue("mokadocs_version",
+			asmVersion is not null ? $"{asmVersion.Major}.{asmVersion.Minor}.{asmVersion.Build}" : "1.0.0", false);
 
 		// Edit link
 		if (ctx.Config.Site.EditLink is { } el && ctx.Config.Theme.Options.ShowEditLink)

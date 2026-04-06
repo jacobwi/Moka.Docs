@@ -10,6 +10,7 @@
     <ProjectReference Include="..\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
     <ProjectReference Include="..\Moka.Docs.Serve\Moka.Docs.Serve.csproj" />
     <PackageReference Include="Moka.Blazor.Repl.Compiler" />
+    <PackageReference Include="Moka.Blazor.Repl.Wasm" ExcludeAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
