@@ -5,6 +5,46 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-08
+
+### ⚠️ Breaking
+- **`mokadocs-blazor-preview` plugin** rewritten. The yaml schema for the plugin's
+  options changed:
+  - **Removed** `mode` (was `wasm` | `ssr`) — the plugin now always emits one Blazor
+    WebAssembly iframe per preview block, with an SSR snapshot in `<noscript>` for
+    crawlers and JS-disabled visitors.
+  - **Removed** `wasmAppPath` and the implicit NuGet-cache discovery via
+    `WasmAppAssetResolver`. The plugin no longer scans `~/.nuget/packages`.
+  - **Removed** `stylesheets` — the consumer's preview-host project now ships its own
+    CSS in its `index.html` and via Blazor's static web asset bundle.
+  - **Added** required `previewHost` — path (relative to docs root) to the consumer's
+    Blazor WebAssembly preview-host project. Conventional layout:
+    `{previewHost}/bin/Release/{tfm}/` (Roslyn references) and
+    `{previewHost}/publish-output/{tfm}/wwwroot/` or `publish-output/wwwroot/`
+    (the static WASM runtime, copied verbatim to `_site/_preview-wasm/`).
+  - `references` and `usings` are kept and now act as additive overrides on top of
+    the preview-host bin. Same-named assemblies in `references` win, so a local
+    source build can override a NuGet copy in the host bin.
+
+### ✨ New
+- Mokadocs is now **library-agnostic**: zero hardcoded references to Moka.Red. The
+  previously hardcoded `Moka.Red.Feedback.Toast.IMokaToastService` SSR stub was removed.
+- Framework-assembly filtering uses `Assembly.Load()` against the host runtime to
+  detect which DLLs the .NET shared framework supplies — works on both .NET 9 and
+  .NET 10 hosts with no hardcoded prefix lists.
+- Iframes are emitted with `loading="lazy"` so off-screen previews don't boot a
+  Blazor runtime until scrolled into view.
+
+### 🔄 Changed
+- `BlazorPreviewPlugin.Version` bumped to `3.0.0` (in-process plugin version, separate
+  from the mokadocs CLI version).
+- Iframe `<noscript>` SSR fallback HTML is rendered using the same Roslyn-compiled
+  assembly bytes that ship to the browser, so crawlers see the same DOM as JS users.
+
+### Removed
+- `BlazorPreviewMode` enum.
+- `WasmAppAssetResolver` (NuGet-cache scanning).
+
 ## [1.2.0] - 2026-04-06
 
 ### ✨ New
