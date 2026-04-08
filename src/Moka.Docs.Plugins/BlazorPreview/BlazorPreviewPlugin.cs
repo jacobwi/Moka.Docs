@@ -118,7 +118,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                      border-bottom: 2px solid transparent;
 	                                      cursor: pointer;
 	                                      transition: color 0.15s ease-out, border-color 0.15s ease-out, background 0.15s ease-out;
-	                                      font-family: inherit;
+	                                      font-family: var(--font-body, inherit);
 	                                      letter-spacing: 0.01em;
 	                                  }
 	                                  .blazor-preview-tab:hover {
@@ -134,7 +134,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                  .blazor-preview-source.active { display: block; }
 	                                  .blazor-preview-source pre { margin: 0; border: none; border-radius: 0; }
 	                                  .blazor-preview-source code {
-	                                      font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+	                                      font-family: var(--font-mono, 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace);
 	                                  }
 	                                  .blazor-preview-render {
 	                                      display: none;
@@ -150,7 +150,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                  .blazor-preview-error {
 	                                      color: var(--color-primary, #ef4444);
 	                                      font-size: 0.85rem;
-	                                      font-family: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+	                                      font-family: var(--font-mono, 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace);
 	                                      padding: 1em;
 	                                      background: var(--color-bg-secondary, #fef2f2);
 	                                      border: 1px solid var(--color-border, #fecaca);

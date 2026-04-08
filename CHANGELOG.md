@@ -5,6 +5,24 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-04-08
+
+### 🎨 Changed — preview box fonts inherit from mokadocs theme
+
+Follow-up to v1.3.6 theme token inheritance. The Blazor preview box's
+Preview / Source tabs and source code block were still rendering with
+hardcoded font stacks (`'JetBrains Mono', 'Cascadia Code', ...`) even
+though the mokadocs theme exposes `--font-body` and `--font-mono`. Now:
+
+- `.blazor-preview-tab` uses `var(--font-body, inherit)` so tab text
+  matches the surrounding docs body font
+- `.blazor-preview-source code` uses `var(--font-mono, ...)` so the
+  source code tab matches the rest of the docs' `<code>` styling
+- `.blazor-preview-error` uses `var(--font-mono, ...)` likewise
+
+Fallback font stacks remain for standalone consumers without a mokadocs
+theme.
+
 ## [1.3.6] - 2026-04-08
 
 ### 🎨 Changed — themed Blazor preview box
