@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -317,21 +318,52 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	private bool InitializeFromOptions(IPluginContext context, BuildContext buildContext)
 	{
-		// ── previewHost option ────────────────────────────────────────────────
-		if (!context.Options.TryGetValue("previewHost", out object? hostObj)
-		    || hostObj is not string hostPathRaw
-		    || string.IsNullOrWhiteSpace(hostPathRaw))
+		// ── previewHost option (optional, auto-discovered when omitted) ─────
+		string? hostPathRaw = null;
+		if (context.Options.TryGetValue("previewHost", out object? hostObj)
+		    && hostObj is string hostStr
+		    && !string.IsNullOrWhiteSpace(hostStr))
 		{
-			context.LogError(
-				"mokadocs-blazor-preview: the 'previewHost' option is required. " +
-				"Set it to the path of your Blazor WebAssembly preview-host project directory.");
-			return false;
+			hostPathRaw = hostStr;
 		}
 
-		string previewHostDir = Path.GetFullPath(Path.Combine(buildContext.RootDirectory, hostPathRaw));
-		if (!Directory.Exists(previewHostDir))
+		// ── library option (used by the auto-scaffolded preview-host) ───────
+		string? library = null;
+		if (context.Options.TryGetValue("library", out object? libObj)
+		    && libObj is string libStr
+		    && !string.IsNullOrWhiteSpace(libStr))
 		{
-			context.LogError($"mokadocs-blazor-preview: previewHost directory does not exist: {previewHostDir}");
+			library = libStr;
+		}
+
+		// Resolve the preview-host directory: explicit option wins, otherwise scan
+		// conventional locations (./preview-host/, ./docs-preview-host/, or any subdir
+		// containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
+		string previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, buildContext.RootDirectory);
+
+		// Auto-scaffold a fresh preview-host project from a generic template if the
+		// resolved directory doesn't yet contain a Blazor WASM csproj. The user owns the
+		// scaffolded files thereafter — mokadocs never overwrites them.
+		if (!HasBlazorWasmCsproj(previewHostDir))
+		{
+			if (string.IsNullOrWhiteSpace(library))
+			{
+				context.LogError(
+					$"mokadocs-blazor-preview: no Blazor WebAssembly preview-host project found at " +
+					$"'{previewHostDir}', and the 'library' option is not set. Add " +
+					$"`library: <PackageId>@<Version>` (or just `library: <PackageId>`) to your " +
+					"mokadocs.yaml so the plugin can scaffold a preview-host project for you. " +
+					"Alternatively, set `previewHost: <path>` to point at an existing project.");
+				return false;
+			}
+
+			ScaffoldPreviewHost(previewHostDir, library, context);
+		}
+
+		// Run `dotnet publish` on the preview-host (incremental — skipped when nothing
+		// upstream of the published wwwroot has changed since the last build).
+		if (!EnsurePreviewHostPublished(previewHostDir, context))
+		{
 			return false;
 		}
 
@@ -459,6 +491,411 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		return true;
 	}
+
+	// ── Preview-host auto-discovery / scaffolding / publishing ────────────────
+
+	/// <summary>
+	///     Pinned version of <c>Moka.Blazor.Repl.Host</c> that the scaffold template references.
+	///     Update this whenever a new compatible host RCL is published to NuGet.
+	/// </summary>
+	private const string _hostPackageVersion = "1.3.0";
+
+	/// <summary>
+	///     Resolves the preview-host project directory from yaml options or convention.
+	///     <para>
+	///         Resolution order:
+	///         <list type="number">
+	///             <item><description>Explicit <c>previewHost:</c> yaml option (relative to docs root)</description></item>
+	///             <item><description><c>./preview-host/</c></description></item>
+	///             <item><description><c>./docs-preview-host/</c></description></item>
+	///             <item><description>Any subdirectory under the docs root that already contains a
+	///                 <c>Microsoft.NET.Sdk.BlazorWebAssembly</c> csproj</description></item>
+	///         </list>
+	///     </para>
+	///     <para>
+	///         If nothing is found, returns <c>./preview-host/</c> as the default scaffold target —
+	///         the caller is expected to scaffold a fresh project there.
+	///     </para>
+	/// </summary>
+	private static string ResolvePreviewHostDirectory(string? explicitPath, string rootDir)
+	{
+		if (!string.IsNullOrWhiteSpace(explicitPath))
+		{
+			return Path.GetFullPath(Path.Combine(rootDir, explicitPath));
+		}
+
+		string[] conventional = ["preview-host", "docs-preview-host"];
+		foreach (string name in conventional)
+		{
+			string candidate = Path.Combine(rootDir, name);
+			if (HasBlazorWasmCsproj(candidate))
+			{
+				return Path.GetFullPath(candidate);
+			}
+		}
+
+		// Last-resort scan: any direct subdirectory holding a Blazor WASM csproj.
+		if (Directory.Exists(rootDir))
+		{
+			foreach (string sub in Directory.GetDirectories(rootDir))
+			{
+				if (HasBlazorWasmCsproj(sub))
+				{
+					return Path.GetFullPath(sub);
+				}
+			}
+		}
+
+		// Default scaffold target if nothing found.
+		return Path.GetFullPath(Path.Combine(rootDir, conventional[0]));
+	}
+
+	/// <summary>
+	///     <c>true</c> when <paramref name="dir" /> exists and contains at least one
+	///     <c>*.csproj</c> using the <c>Microsoft.NET.Sdk.BlazorWebAssembly</c> SDK.
+	/// </summary>
+	private static bool HasBlazorWasmCsproj(string dir)
+	{
+		if (!Directory.Exists(dir))
+		{
+			return false;
+		}
+
+		foreach (string csproj in Directory.GetFiles(dir, "*.csproj", SearchOption.TopDirectoryOnly))
+		{
+			try
+			{
+				string content = File.ReadAllText(csproj);
+				if (content.Contains("Microsoft.NET.Sdk.BlazorWebAssembly", StringComparison.OrdinalIgnoreCase))
+				{
+					return true;
+				}
+			}
+			catch
+			{
+				// Skip unreadable files
+			}
+		}
+
+		return false;
+	}
+
+	/// <summary>
+	///     Writes a fresh, library-agnostic Blazor WebAssembly preview-host project (csproj +
+	///     Program.cs + wwwroot/index.html) into <paramref name="dir" />, substituting the
+	///     consumer's library package id and version into the csproj's <c>PackageReference</c>
+	///     and into the index.html theme/customization markers. Files are written ONLY when they
+	///     do not already exist — mokadocs never overwrites user edits.
+	/// </summary>
+	private static void ScaffoldPreviewHost(string dir, string librarySpec, IPluginContext context)
+	{
+		(string libId, string libVersion) = ParseLibrarySpec(librarySpec);
+
+		Directory.CreateDirectory(dir);
+		Directory.CreateDirectory(Path.Combine(dir, "wwwroot"));
+
+		string csprojPath = Path.Combine(dir, "DocsPreviewHost.csproj");
+		string programPath = Path.Combine(dir, "Program.cs");
+		string indexPath = Path.Combine(dir, "wwwroot", "index.html");
+
+		// Empty Directory.Build.props/.targets and Directory.Packages.props in the
+		// preview-host directory shadow any parent repo's central files. MSBuild walks
+		// UP the directory tree and stops at the first match — so by dropping empty
+		// markers here, the preview-host becomes hermetic and inherits nothing from
+		// the consumer's parent build configuration (multi-target overrides, central
+		// package management, FrameworkReference stripping, etc.).
+		string buildPropsPath = Path.Combine(dir, "Directory.Build.props");
+		string buildTargetsPath = Path.Combine(dir, "Directory.Build.targets");
+		string packagesPropsPath = Path.Combine(dir, "Directory.Packages.props");
+
+		string csproj = _scaffoldCsprojTemplate
+			.Replace("{LIBRARY_ID}", libId, StringComparison.Ordinal)
+			.Replace("{LIBRARY_VERSION}", libVersion, StringComparison.Ordinal)
+			.Replace("{HOST_VERSION}", _hostPackageVersion, StringComparison.Ordinal);
+
+		string program = _scaffoldProgramTemplate;
+		string indexHtml = _scaffoldIndexHtmlTemplate
+			.Replace("{LIBRARY_ID}", libId, StringComparison.Ordinal);
+
+		bool any = false;
+		if (!File.Exists(csprojPath))
+		{
+			File.WriteAllText(csprojPath, csproj);
+			any = true;
+		}
+
+		if (!File.Exists(programPath))
+		{
+			File.WriteAllText(programPath, program);
+			any = true;
+		}
+
+		if (!File.Exists(indexPath))
+		{
+			File.WriteAllText(indexPath, indexHtml);
+			any = true;
+		}
+
+		const string emptyProject = "<Project>\n</Project>\n";
+		if (!File.Exists(buildPropsPath))
+		{
+			File.WriteAllText(buildPropsPath, emptyProject);
+			any = true;
+		}
+
+		if (!File.Exists(buildTargetsPath))
+		{
+			File.WriteAllText(buildTargetsPath, emptyProject);
+			any = true;
+		}
+
+		if (!File.Exists(packagesPropsPath))
+		{
+			File.WriteAllText(packagesPropsPath, emptyProject);
+			any = true;
+		}
+
+		if (any)
+		{
+			context.LogInfo(
+				$"mokadocs-blazor-preview: scaffolded preview-host at '{dir}' " +
+				$"(library: {libId}@{libVersion}, host: Moka.Blazor.Repl.Host@{_hostPackageVersion}). " +
+				"Edit Program.cs / wwwroot/index.html to add your services and CSS — mokadocs will not overwrite them.");
+		}
+	}
+
+	/// <summary>
+	///     Parses a <c>library:</c> yaml value into <c>(packageId, version)</c>.
+	///     <list type="bullet">
+	///         <item><description><c>Foo.Bar@1.2.3</c> → <c>("Foo.Bar", "1.2.3")</c></description></item>
+	///         <item><description><c>Foo.Bar</c>      → <c>("Foo.Bar", "*")</c> (latest)</description></item>
+	///     </list>
+	/// </summary>
+	private static (string id, string version) ParseLibrarySpec(string spec)
+	{
+		int at = spec.IndexOf('@', StringComparison.Ordinal);
+		if (at < 0)
+		{
+			return (spec.Trim(), "*");
+		}
+
+		return (spec[..at].Trim(), spec[(at + 1)..].Trim());
+	}
+
+	/// <summary>
+	///     Runs <c>dotnet publish -c Release -f net10.0 -o publish-output/net10.0</c> on the
+	///     preview-host project if its publish output is missing or stale relative to its inputs.
+	///     Returns <c>false</c> on hard failure (logged via <paramref name="context" />).
+	/// </summary>
+	private static bool EnsurePreviewHostPublished(string previewHostDir, IPluginContext context)
+	{
+		string? csproj = Directory.GetFiles(previewHostDir, "*.csproj", SearchOption.TopDirectoryOnly)
+			.FirstOrDefault();
+		if (csproj is null)
+		{
+			context.LogError($"mokadocs-blazor-preview: no .csproj found in '{previewHostDir}'.");
+			return false;
+		}
+
+		string publishOut = Path.Combine(previewHostDir, "publish-output", "net10.0");
+		string publishMarker = Path.Combine(publishOut, "wwwroot", "_framework", "blazor.webassembly.js");
+
+		bool needsPublish = !File.Exists(publishMarker);
+		if (!needsPublish)
+		{
+			DateTime publishedAt = File.GetLastWriteTimeUtc(publishMarker);
+			DateTime newestInput = GetNewestInputMtime(previewHostDir);
+			if (newestInput > publishedAt)
+			{
+				needsPublish = true;
+			}
+		}
+
+		if (!needsPublish)
+		{
+			return true;
+		}
+
+		context.LogInfo(
+			$"mokadocs-blazor-preview: publishing preview-host '{Path.GetFileName(csproj)}' " +
+			$"(this happens once per change to the project; subsequent builds are skipped)...");
+
+		var psi = new ProcessStartInfo("dotnet",
+			$"publish \"{csproj}\" -c Release -f net10.0 -o \"{publishOut}\"")
+		{
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			UseShellExecute = false,
+			CreateNoWindow = true,
+			WorkingDirectory = previewHostDir
+		};
+
+		try
+		{
+			using var proc = Process.Start(psi);
+			if (proc is null)
+			{
+				context.LogError("mokadocs-blazor-preview: failed to start `dotnet publish`.");
+				return false;
+			}
+
+			string stdout = proc.StandardOutput.ReadToEnd();
+			string stderr = proc.StandardError.ReadToEnd();
+			proc.WaitForExit();
+
+			if (proc.ExitCode != 0)
+			{
+				context.LogError(
+					$"mokadocs-blazor-preview: `dotnet publish` exited with code {proc.ExitCode}.\n" +
+					(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr));
+				return false;
+			}
+
+			if (!File.Exists(publishMarker))
+			{
+				context.LogError(
+					$"mokadocs-blazor-preview: publish completed but '{publishMarker}' is missing. " +
+					"Check your preview-host project for build errors.");
+				return false;
+			}
+		}
+		catch (Exception ex)
+		{
+			context.LogError($"mokadocs-blazor-preview: `dotnet publish` failed: {ex.Message}");
+			return false;
+		}
+
+		return true;
+	}
+
+	/// <summary>
+	///     Newest <c>UtcLastWriteTime</c> of any source file under <paramref name="dir" />,
+	///     ignoring <c>bin/</c>, <c>obj/</c>, and <c>publish-output/</c>. Used as the input
+	///     timestamp against which the publish-output marker is compared for incremental skip.
+	/// </summary>
+	private static DateTime GetNewestInputMtime(string dir)
+	{
+		DateTime newest = DateTime.MinValue;
+		foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+		{
+			string rel = Path.GetRelativePath(dir, file).Replace('\\', '/');
+			if (rel.StartsWith("bin/", StringComparison.OrdinalIgnoreCase)
+			    || rel.StartsWith("obj/", StringComparison.OrdinalIgnoreCase)
+			    || rel.StartsWith("publish-output/", StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+
+			DateTime t = File.GetLastWriteTimeUtc(file);
+			if (t > newest)
+			{
+				newest = t;
+			}
+		}
+
+		return newest;
+	}
+
+	#region Scaffold templates
+
+	private const string _scaffoldCsprojTemplate = """
+	                                                <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+	                                                  <PropertyGroup>
+	                                                    <TargetFramework>net10.0</TargetFramework>
+	                                                    <Nullable>enable</Nullable>
+	                                                    <ImplicitUsings>enable</ImplicitUsings>
+	                                                    <IsPackable>false</IsPackable>
+	                                                    <NoWarn>$(NoWarn);CA1515</NoWarn>
+	                                                    <!-- IL trimming is auto-disabled by Moka.Blazor.Repl.Host's build/.props
+	                                                         (the host loads arbitrary preview DLLs at runtime). -->
+	                                                  </PropertyGroup>
+
+	                                                  <ItemGroup>
+	                                                    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
+	                                                    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
+	                                                  </ItemGroup>
+
+	                                                  <ItemGroup>
+	                                                    <!-- The iframe-hosted App.razor + wasmPreview.js bridge. -->
+	                                                    <PackageReference Include="Moka.Blazor.Repl.Host" Version="{HOST_VERSION}" />
+
+	                                                    <!-- Your component library. The mokadocs plugin reads this project's
+	                                                         bin/Release/net10.0/ for Roslyn references when compiling docs
+	                                                         preview snippets, so any types you can `@using` from your library
+	                                                         here are available inside docs preview blocks. -->
+	                                                    <PackageReference Include="{LIBRARY_ID}" Version="{LIBRARY_VERSION}" />
+	                                                  </ItemGroup>
+
+	                                                </Project>
+
+	                                                """;
+
+	private const string _scaffoldProgramTemplate = """
+	                                                  using Microsoft.AspNetCore.Components.Web;
+	                                                  using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+	                                                  using Moka.Blazor.Repl.Host;
+
+	                                                  var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+	                                                  // Static-root mount of the shared App component from Moka.Blazor.Repl.Host.
+	                                                  // App owns the [JSInvokable] LoadAssembly method that wasmPreview.js calls
+	                                                  // to dynamically render compiled docs preview snippets.
+	                                                  builder.RootComponents.Add<App>("#app");
+	                                                  builder.RootComponents.Add<HeadOutlet>("head::after");
+
+	                                                  builder.Services.AddScoped(_ => new HttpClient
+	                                                  {
+	                                                      BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+	                                                  });
+
+	                                                  // ── Customize: register your library's services here ─────────────
+	                                                  // Anything you add can be @inject-ed by docs preview snippets.
+	                                                  // Examples:
+	                                                  //   builder.Services.AddYourThing();
+	                                                  //   builder.Services.AddSingleton<IMyService, MyService>();
+	                                                  // ──────────────────────────────────────────────────────────────────
+
+	                                                  await builder.Build().RunAsync();
+
+	                                                  """;
+
+	private const string _scaffoldIndexHtmlTemplate = """
+	                                                   <!DOCTYPE html>
+	                                                   <html lang="en">
+	                                                   <head>
+	                                                     <meta charset="utf-8" />
+	                                                     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	                                                     <base href="./" />
+	                                                     <title>Docs preview host</title>
+
+	                                                     <!-- ── Customize: link your library's CSS here ──────────────────
+	                                                          Static web assets from referenced libraries live under
+	                                                          _content/<PackageId>/. The Blazor WASM SDK auto-bundles every
+	                                                          referenced library's scoped CSS into the .styles.css below.
+
+	                                                          Example:
+	                                                            <link rel="stylesheet" href="_content/{LIBRARY_ID}/your.css" />
+	                                                          ────────────────────────────────────────────────────────────── -->
+
+	                                                     <link rel="stylesheet" href="DocsPreviewHost.styles.css" />
+	                                                   </head>
+	                                                   <body>
+	                                                     <div id="app"><div style="padding:1rem;color:#888;font-family:sans-serif;font-size:13px">Loading…</div></div>
+	                                                     <div id="blazor-error-ui" style="display:none">
+	                                                       A rendering error occurred. <a href="">Reload</a>
+	                                                     </div>
+
+	                                                     <!-- The wasmPreview bridge ships as a static web asset from
+	                                                          Moka.Blazor.Repl.Host. Must load BEFORE blazor.webassembly.js. -->
+	                                                     <script src="_content/Moka.Blazor.Repl.Host/wasmPreview.js"></script>
+	                                                     <script src="_framework/blazor.webassembly.js"></script>
+	                                                   </body>
+	                                                   </html>
+
+	                                                   """;
+
+	#endregion
 
 	/// <summary>
 	///     Returns <c>true</c> if an assembly with the given simple-name is already resolvable

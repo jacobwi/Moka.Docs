@@ -5,6 +5,44 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-04-08
+
+### ✨ New
+- **`mokadocs-blazor-preview` plugin** now auto-discovers, auto-scaffolds, and
+  auto-publishes the consumer's docs preview-host project. Yaml shrinks from
+  ~120 lines of plugin config to a single `library: <PackageId>@<Version>` line.
+- **Auto-discovery**: when `previewHost:` is omitted, the plugin scans
+  `./preview-host/`, `./docs-preview-host/`, then any direct subdirectory of
+  the docs root containing a `Microsoft.NET.Sdk.BlazorWebAssembly` csproj.
+- **Auto-scaffold**: if no preview-host is found at the resolved location, the
+  plugin writes a fresh, library-agnostic project from a generic template
+  (csproj + Program.cs + wwwroot/index.html + empty Directory.Build.props /
+  Directory.Build.targets / Directory.Packages.props shadow files so the
+  scaffolded project doesn't inherit anything from the consumer repo's parent
+  build configuration). The csproj substitutes `{LIBRARY_ID}` and
+  `{LIBRARY_VERSION}` from the new `library:` yaml option, plus a pinned
+  `Moka.Blazor.Repl.Host` `PackageReference` for the runtime.
+- **Auto-publish**: the plugin shells out to `dotnet publish -c Release -f
+  net10.0 -o publish-output/net10.0` on the preview-host. Incremental — skipped
+  when the publish-output marker (`_framework/blazor.webassembly.js`) is newer
+  than every input file under the preview-host directory (excluding `bin/`,
+  `obj/`, `publish-output/`).
+- **Owner contract**: scaffolded files are written ONLY when missing. mokadocs
+  never overwrites user edits. The user owns the files thereafter and can
+  freely customize Program.cs (services, theme), wwwroot/index.html (CSS, fonts),
+  and the csproj (extra PackageReferences).
+
+### 🔄 Changed
+- New yaml option `library: <PackageId>@<Version>` (or just `<PackageId>` →
+  resolves to `*` latest). Used by the auto-scaffold template's csproj
+  PackageReference. Required when no preview-host exists yet.
+- `previewHost:` yaml option is now **optional**. When omitted, auto-discovery
+  resolves it to a conventional location.
+- `references:` and `usings:` yaml options remain supported but are usually
+  unnecessary now — the auto-scaffolded preview-host's bin already contains the
+  consumer's library DLLs (resolved from nuget.org via the PackageReference),
+  which the plugin reads for Roslyn references automatically.
+
 ## [1.3.0] - 2026-04-08
 
 ### ⚠️ Breaking
