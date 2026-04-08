@@ -127,8 +127,16 @@ public sealed class SiteConfigReaderTests
 		config.Site.Title.Should().Be("MokaDocs");
 		config.Site.Description.Should().Be("Best docs ever");
 		config.Site.Url.Should().Be("https://docs.moka.dev");
-		config.Site.Logo.Should().Be("./assets/logo.svg");
-		config.Site.Favicon.Should().Be("./assets/favicon.ico");
+		// Brand assets resolve to a SiteAssetReference. Parse() with no yamlDir falls
+		// back to RawValue preservation with a cleaned PublishUrl and null SourcePath.
+		config.Site.Logo.Should().NotBeNull();
+		config.Site.Logo!.RawValue.Should().Be("./assets/logo.svg");
+		config.Site.Logo.PublishUrl.Should().Be("/assets/logo.svg");
+		config.Site.Logo.IsAbsoluteUrl.Should().BeFalse();
+		config.Site.Favicon.Should().NotBeNull();
+		config.Site.Favicon!.RawValue.Should().Be("./assets/favicon.ico");
+		config.Site.Favicon.PublishUrl.Should().Be("/assets/favicon.ico");
+		config.Site.Favicon.IsAbsoluteUrl.Should().BeFalse();
 		config.Site.Copyright.Should().Be("© 2026 Moka");
 		config.Site.EditLink.Should().NotBeNull();
 		config.Site.EditLink!.Repo.Should().Be("https://github.com/moka/mokadocs");
@@ -280,5 +288,194 @@ public sealed class SiteConfigReaderTests
 		reparsed.Content.Docs.Should().Be("./my-docs");
 		reparsed.Theme.Options.PrimaryColor.Should().Be("#123456");
 		reparsed.Build.Output.Should().Be("./output");
+	}
+
+	// ── SiteAssetReference parsing ────────────────────────────────────────────
+	//
+	// These tests exercise the logo/favicon path-resolution rules added in v1.3.8
+	// without touching the filesystem — they use Parse(yaml, yamlDir) directly so
+	// yamlDir can be a synthetic path. The resolver's SourcePath will point at a
+	// non-existent file; that's fine for parse-only tests, and the existing
+	// BrandAssetResolver integration tests cover the filesystem-aware branch.
+
+	[Fact]
+	public void Parse_Logo_BareFilename_ResolvesAgainstYamlDir()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: logo.png
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test-yamldir");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		config.Site.Logo.Should().NotBeNull();
+		config.Site.Logo!.RawValue.Should().Be("logo.png");
+		config.Site.Logo.IsAbsoluteUrl.Should().BeFalse();
+		config.Site.Logo.PublishUrl.Should().Be("/logo.png");
+		config.Site.Logo.SourcePath.Should().EndWith("logo.png");
+		config.Site.Logo.ShouldCopy.Should().BeTrue();
+	}
+
+	[Fact]
+	public void Parse_Logo_NestedRelative_PreservesLayoutInPublishUrl()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: assets/branding/logo.svg
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test-yamldir");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		// Same publish layout as the source, cleanly URL-separated
+		config.Site.Logo!.PublishUrl.Should().Be("/assets/branding/logo.svg");
+	}
+
+	[Fact]
+	public void Parse_Logo_DotSlashPrefix_NormalizedOut()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: ./assets/logo.png
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test-yamldir");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		// Leading ./ is stripped — no ugly "/./assets/logo.png"
+		config.Site.Logo!.PublishUrl.Should().Be("/assets/logo.png");
+	}
+
+	[Fact]
+	public void Parse_Logo_EscapeUpOneLevel_FlattensToMediaDir()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: ../branding/logo.png
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test", "docs");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		// Escaped the yaml dir → flattened to /_media/{filename}
+		config.Site.Logo!.PublishUrl.Should().Be("/_media/logo.png");
+		config.Site.Logo.SourcePath.Should().NotBeNull();
+		config.Site.Logo.SourcePath!.Replace('\\', '/').Should()
+			.EndWith("mokadocs-test/branding/logo.png");
+	}
+
+	[Fact]
+	public void Parse_Logo_EscapeMultipleLevels_StillFlattensToMediaDir()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: ../../brand/icons/logo.png
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test", "project", "docs");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		// Only the filename survives in the publish URL, regardless of how many
+		// levels up the source lives
+		config.Site.Logo!.PublishUrl.Should().Be("/_media/logo.png");
+	}
+
+	[Theory]
+	[InlineData("https://cdn.example.com/logo.png")]
+	[InlineData("http://example.com/logo.png")]
+	[InlineData("//cdn.example.com/logo.png")]
+	[InlineData("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")]
+	public void Parse_Logo_AbsoluteUrl_PassesThroughUnchanged(string url)
+	{
+		string yaml = $"""
+		               site:
+		                 title: Test
+		                 logo: {url}
+		               """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test-yamldir");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		config.Site.Logo!.IsAbsoluteUrl.Should().BeTrue();
+		config.Site.Logo.PublishUrl.Should().Be(url);
+		config.Site.Logo.SourcePath.Should().BeNull();
+		config.Site.Logo.ShouldCopy.Should().BeFalse();
+	}
+
+	[Fact]
+	public void Parse_Logo_LeadingSlash_TreatedAsYamlDirRelative()
+	{
+		// A leading slash (e.g. /assets/logo.png) is interpreted as "relative to the
+		// yaml dir" not "filesystem root" — this is the ergonomic choice for users who
+		// naturally want to reference site-absolute paths. Users who genuinely want a
+		// CDN/host should use a full URL instead.
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: /assets/logo.png
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test-yamldir");
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
+
+		config.Site.Logo!.PublishUrl.Should().Be("/assets/logo.png");
+		config.Site.Logo.IsAbsoluteUrl.Should().BeFalse();
+	}
+
+	[Fact]
+	public void Parse_LogoAndFavicon_CollidingEscapedFilenames_Throws()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                      logo: ../brand/icon.png
+		                      favicon: ../other-folder/icon.png
+		                    """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test", "docs");
+
+		Action act = () => SiteConfigReader.Parse(yaml, yamlDir);
+
+		act.Should().Throw<SiteConfigException>()
+			.WithMessage("*resolve to the same publish URL*");
+	}
+
+	[Fact]
+	public void Parse_Logo_RoundTrip_PreservesRawValue()
+	{
+		const string rawYaml = """
+		                       site:
+		                         title: Round Trip
+		                         logo: ../branding/logo.png
+		                         favicon: assets/favicon.ico
+		                       """;
+		string yamlDir = Path.Combine(Path.GetTempPath(), "mokadocs-test", "docs");
+
+		SiteConfig config = SiteConfigReader.Parse(rawYaml, yamlDir);
+		string roundTripYaml = SiteConfigReader.ToYaml(config);
+		SiteConfig reparsed = SiteConfigReader.Parse(roundTripYaml, yamlDir);
+
+		// Raw value — exactly what the user wrote — is preserved across round-trip
+		reparsed.Site.Logo!.RawValue.Should().Be("../branding/logo.png");
+		reparsed.Site.Favicon!.RawValue.Should().Be("assets/favicon.ico");
+	}
+
+	[Fact]
+	public void Parse_NoLogo_ReturnsNull()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Test
+		                    """;
+
+		SiteConfig config = SiteConfigReader.Parse(yaml, Path.GetTempPath());
+
+		config.Site.Logo.Should().BeNull();
+		config.Site.Favicon.Should().BeNull();
 	}
 }

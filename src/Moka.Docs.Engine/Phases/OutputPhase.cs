@@ -113,6 +113,42 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 			count++;
 		}
 
+		// Brand assets (site.logo, site.favicon) can live OUTSIDE the content.docs tree
+		// — e.g. at the mokadocs.yaml directory level, or above it via `../`. The
+		// BrandAssetResolver has already resolved these to (publish URL → source path)
+		// pairs during the Discovery phase; we just need to copy each one to its
+		// publish location under the output dir.
+		foreach (KeyValuePair<string, string> brand in context.BrandAssetFiles)
+		{
+			string publishUrl = brand.Key;
+			string sourcePath = brand.Value;
+
+			if (!fs.File.Exists(sourcePath))
+			{
+				logger.LogWarning("Brand asset source file disappeared between discovery and output: {Source}",
+					sourcePath);
+				continue;
+			}
+
+			// publishUrl always starts with "/"; strip it to join cleanly with outputDir.
+			string relative = publishUrl.TrimStart('/');
+			string destPath = fs.Path.Combine(outputDir, relative);
+			string destDir = fs.Path.GetDirectoryName(destPath)!;
+
+			// Don't overwrite a file already copied by the main asset glob above (a user
+			// whose logo IS inside content.docs will end up with the same file visible
+			// through both code paths — the first one that wrote it wins, and that's
+			// always the glob since it runs first).
+			if (fs.File.Exists(destPath))
+			{
+				continue;
+			}
+
+			fs.Directory.CreateDirectory(destDir);
+			fs.File.Copy(sourcePath, destPath, true);
+			count++;
+		}
+
 		return count;
 	}
 

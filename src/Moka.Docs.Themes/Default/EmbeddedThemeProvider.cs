@@ -3353,13 +3353,13 @@ public static class EmbeddedThemeProvider
 	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
 	                                          {{ end }}
 	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
-	                                          {{ if site.favicon != "" }}<link rel="icon" href="{{ base_path }}/{{ site.favicon }}" />{{ end }}
+	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
 	                                      </head>
 	                                      <body>
 	                                          <header class="site-header">
 	                                              <div class="header-inner">
 	                                                  <a class="site-logo" href="{{ base_path }}/">
-	                                                      {{ if site.logo != "" }}<img src="{{ base_path }}/{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
 	                                                      <span class="site-name">{{ site.title }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
@@ -3745,13 +3745,13 @@ public static class EmbeddedThemeProvider
 	                                          {{ end }}
 	                                          <style>{{ css_inline }}</style>
 	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
-	                                          {{ if site.favicon != "" }}<link rel="icon" href="{{ base_path }}/{{ site.favicon }}" />{{ end }}
+	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
 	                                      </head>
 	                                      <body class="landing">
 	                                          <header class="site-header">
 	                                              <div class="header-inner">
 	                                                  <a class="site-logo" href="{{ base_path }}/">
-	                                                      {{ if site.logo != "" }}<img src="{{ base_path }}/{{ site.logo }}" alt="{{ site.title }}" class="site-logo-img" />{{ end }}
+	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title }}" class="site-logo-img" />{{ end }}
 	                                                      <span class="site-name">{{ site.title }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
@@ -3816,7 +3816,7 @@ public static class EmbeddedThemeProvider
 	                                          <section class="landing-hero">
 	                                              <div class="hero-grid-pattern"></div>
 	                                              <div class="landing-hero-icon">
-	                                                  {{ if site.logo != "" }}<img src="{{ base_path }}/{{ site.logo }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+	                                                  {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
 	                                              </div>
 	                                              <h1 class="landing-hero-title">{{ site.title }}</h1>
 	                                              <p class="landing-hero-subtitle">{{ page.description }}</p>

@@ -44,11 +44,17 @@ public sealed record SiteMetadata
 	/// <summary>The base URL where the site will be hosted.</summary>
 	public string Url { get; init; } = "";
 
-	/// <summary>Path to the site logo.</summary>
-	public string? Logo { get; init; }
+	/// <summary>
+	///     Resolved reference to the site logo. See <see cref="SiteAssetReference" /> for
+	///     the supported yaml forms (relative to mokadocs.yaml dir, parent-dir escape with
+	///     <c>../</c>, absolute URL pass-through).
+	/// </summary>
+	public SiteAssetReference? Logo { get; init; }
 
-	/// <summary>Path to the favicon.</summary>
-	public string? Favicon { get; init; }
+	/// <summary>
+	///     Resolved reference to the site favicon. Same resolution rules as <see cref="Logo" />.
+	/// </summary>
+	public SiteAssetReference? Favicon { get; init; }
 
 	/// <summary>Copyright notice for the footer.</summary>
 	public string? Copyright { get; init; }

@@ -34,16 +34,25 @@ public sealed class SiteConfigReader
 		}
 
 		string yaml = _fileSystem.File.ReadAllText(configPath);
-		return Parse(yaml);
+		string? yamlDir = _fileSystem.Path.GetDirectoryName(_fileSystem.Path.GetFullPath(configPath));
+		return Parse(yaml, yamlDir);
 	}
 
 	/// <summary>
 	///     Parses a YAML string into a <see cref="SiteConfig" />.
 	/// </summary>
 	/// <param name="yaml">The YAML content.</param>
+	/// <param name="yamlDir">
+	///     Optional absolute directory containing the source mokadocs.yaml file. Used to resolve
+	///     relative brand asset paths (<c>site.logo</c>, <c>site.favicon</c>) against the yaml
+	///     file's location. When null (e.g. when parsing a yaml string that isn't backed by a
+	///     file), brand assets keep their raw value but <see cref="SiteAssetReference.SourcePath" />
+	///     will be null, meaning the build pipeline won't copy them — that's the correct behavior
+	///     for virtual / in-memory configs.
+	/// </param>
 	/// <returns>The parsed <see cref="SiteConfig" />.</returns>
 	/// <exception cref="SiteConfigException">Thrown when the YAML is invalid or missing required fields.</exception>
-	public static SiteConfig Parse(string yaml)
+	public static SiteConfig Parse(string yaml, string? yamlDir = null)
 	{
 		try
 		{
@@ -55,7 +64,7 @@ public sealed class SiteConfigReader
 			SiteConfigDto dto = deserializer.Deserialize<SiteConfigDto>(yaml)
 			                    ?? throw new SiteConfigException("Configuration file is empty.");
 
-			return MapFromDto(dto);
+			return MapFromDto(dto, yamlDir);
 		}
 		catch (SiteConfigException)
 		{
@@ -83,7 +92,7 @@ public sealed class SiteConfigReader
 
 	#region DTO Mapping
 
-	private static SiteConfig MapFromDto(SiteConfigDto dto)
+	private static SiteConfig MapFromDto(SiteConfigDto dto, string? yamlDir = null)
 	{
 		SiteMetadataDto siteDto = dto.Site ??
 		                          throw new SiteConfigException(
@@ -93,6 +102,23 @@ public sealed class SiteConfigReader
 			throw new SiteConfigException("'site.title' is required.");
 		}
 
+		SiteAssetReference? logo = ParseAssetReference(siteDto.Logo, yamlDir);
+		SiteAssetReference? favicon = ParseAssetReference(siteDto.Favicon, yamlDir);
+
+		// Collision check: if both assets flatten to the SAME publish URL (same filename
+		// flattened from different escape paths), the second would silently overwrite the
+		// first. Fail loud so the user can rename the source file or move it.
+		if (logo is { ShouldCopy: true } && favicon is { ShouldCopy: true }
+		                                 && logo.PublishUrl == favicon.PublishUrl
+		                                 && !string.Equals(logo.SourcePath, favicon.SourcePath,
+			                                 StringComparison.OrdinalIgnoreCase))
+		{
+			throw new SiteConfigException(
+				$"'site.logo' ('{siteDto.Logo}') and 'site.favicon' ('{siteDto.Favicon}') resolve to " +
+				$"the same publish URL '{logo.PublishUrl}' from different source files. " +
+				"Rename one of them or move them to distinct filenames so they don't collide in the output directory.");
+		}
+
 		return new SiteConfig
 		{
 			Site = new SiteMetadata
@@ -100,8 +126,8 @@ public sealed class SiteConfigReader
 				Title = siteDto.Title,
 				Description = siteDto.Description ?? "",
 				Url = siteDto.Url ?? "",
-				Logo = siteDto.Logo,
-				Favicon = siteDto.Favicon,
+				Logo = logo,
+				Favicon = favicon,
 				Copyright = siteDto.Copyright,
 				EditLink = siteDto.EditLink is { } el
 					? new EditLinkConfig
@@ -364,8 +390,10 @@ public sealed class SiteConfigReader
 				Title = config.Site.Title,
 				Description = NullIfEmpty(config.Site.Description),
 				Url = NullIfEmpty(config.Site.Url),
-				Logo = config.Site.Logo,
-				Favicon = config.Site.Favicon,
+				// Round-trip: emit the raw yaml value the user originally wrote, so a
+				// Read → ToYaml → Read cycle preserves the exact on-disk form.
+				Logo = config.Site.Logo?.RawValue,
+				Favicon = config.Site.Favicon?.RawValue,
 				Copyright = config.Site.Copyright,
 				EditLink = config.Site.EditLink is { } el
 					? new EditLinkConfigDto { Repo = el.Repo, Branch = el.Branch, Path = el.Path }
@@ -437,6 +465,143 @@ public sealed class SiteConfigReader
 	}
 
 	private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+	/// <summary>
+	///     Resolves a raw yaml brand-asset string (logo or favicon) into a
+	///     <see cref="SiteAssetReference" />. See that type's documentation for full
+	///     resolution rules. Returns <c>null</c> when the input is null or empty so the
+	///     calling code can cleanly skip rendering.
+	/// </summary>
+	/// <param name="raw">Raw yaml value from the user's mokadocs.yaml.</param>
+	/// <param name="yamlDir">
+	///     Absolute directory of the source mokadocs.yaml file. When null (e.g. parsing a
+	///     standalone yaml string not backed by a file), filesystem resolution is skipped
+	///     and <see cref="SiteAssetReference.SourcePath" /> is left null — the build
+	///     pipeline will then log a warning and omit the asset from copy.
+	/// </param>
+	private static SiteAssetReference? ParseAssetReference(string? raw, string? yamlDir)
+	{
+		if (string.IsNullOrWhiteSpace(raw))
+		{
+			return null;
+		}
+
+		string value = raw.Trim();
+
+		// Absolute URL pass-through. Covers http(s), protocol-relative, data URIs, and
+		// anything else that looks like a URL rather than a filesystem path. The template
+		// engine emits these verbatim with no base-path prefix and no asset copy.
+		if (IsAbsoluteUrl(value))
+		{
+			return new SiteAssetReference
+			{
+				RawValue = raw,
+				SourcePath = null,
+				PublishUrl = value,
+				IsAbsoluteUrl = true
+			};
+		}
+
+		// Without a yaml directory we can't resolve the filesystem path. Produce a
+		// "best effort" reference that carries the raw value so the template still emits
+		// something, but with no SourcePath so CopyAssets skips it. The pipeline logs a
+		// diagnostic in that path so misconfigurations are visible.
+		if (string.IsNullOrEmpty(yamlDir))
+		{
+			return new SiteAssetReference
+			{
+				RawValue = raw,
+				SourcePath = null,
+				PublishUrl = "/" + NormalizeRelativeSegments(value.TrimStart('/')),
+				IsAbsoluteUrl = false
+			};
+		}
+
+		// Normalize to forward slashes so publish URLs are consistent across platforms.
+		// Leading slash is interpreted as "relative to yaml dir" not filesystem root,
+		// matching user intent for forms like "/assets/logo.png".
+		string trimmed = value.TrimStart('/');
+		string normalizedYamlDir = Path.GetFullPath(yamlDir);
+		string sourcePath = Path.GetFullPath(Path.Combine(normalizedYamlDir, trimmed));
+
+		// Determine whether the resolved source path escapes the yaml directory via `..`.
+		string sourceRelativeToYamlDir = Path.GetRelativePath(normalizedYamlDir, sourcePath);
+		bool escapesYamlDir = sourceRelativeToYamlDir.StartsWith("..", StringComparison.Ordinal)
+		                      || Path.IsPathRooted(sourceRelativeToYamlDir);
+
+		string publishUrl;
+		if (escapesYamlDir)
+		{
+			// Flatten out-of-tree assets to /_media/{filename}. The `_media` prefix starts
+			// with an underscore to match the rest of mokadocs' framework-prefix convention;
+			// a .nojekyll marker in _site/ (emitted by the blazor-preview plugin, or by any
+			// future general emitter) is required to keep these from being stripped by
+			// GitHub Pages' Jekyll processor.
+			publishUrl = "/_media/" + Path.GetFileName(sourcePath);
+		}
+		else
+		{
+			publishUrl = "/" + sourceRelativeToYamlDir.Replace(Path.DirectorySeparatorChar, '/');
+		}
+
+		return new SiteAssetReference
+		{
+			RawValue = raw,
+			SourcePath = sourcePath,
+			PublishUrl = publishUrl,
+			IsAbsoluteUrl = false
+		};
+	}
+
+	/// <summary>
+	///     Strips leading <c>./</c> segments and collapses <c>/./</c> mid-path so the
+	///     no-yamlDir fallback produces clean publish URLs like <c>/assets/logo.svg</c>
+	///     instead of <c>/./assets/logo.svg</c>. Used only by the null-yamlDir path;
+	///     the normal resolve-against-filesystem path uses <c>Path.GetFullPath</c> which
+	///     handles this natively.
+	/// </summary>
+	private static string NormalizeRelativeSegments(string value)
+	{
+		string result = value;
+		while (result.StartsWith("./", StringComparison.Ordinal))
+		{
+			result = result[2..];
+		}
+
+		return result.Replace("/./", "/", StringComparison.Ordinal);
+	}
+
+	private static bool IsAbsoluteUrl(string value)
+	{
+		// Protocol-prefixed: http://, https://, ws://, data:, file:, mailto: etc.
+		if (value.Contains("://", StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		// Protocol-relative: //cdn.example.com/logo.png
+		if (value.StartsWith("//", StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		// data: and other schemeless URIs that use a colon
+		int colonIdx = value.IndexOf(':', StringComparison.Ordinal);
+		if (colonIdx > 0)
+		{
+			string scheme = value[..colonIdx];
+			// Must look like a scheme (letters / digits / +-.), not a Windows drive letter
+			if (scheme.Length >= 2
+			    && scheme.All(c => char.IsLetterOrDigit(c) || c == '+' || c == '-' || c == '.')
+			    // Windows drive letters are always 1 char ("C:"), so scheme >= 2 rules them out
+			    && !scheme.StartsWith('/'))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
 
 	#endregion
 }

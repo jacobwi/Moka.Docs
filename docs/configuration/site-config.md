@@ -61,29 +61,99 @@ site:
 
 ### `logo`
 
-- **Type:** `string` (nullable)
+- **Type:** `string` (nullable) — filesystem path or absolute URL
 - **Default:** `null`
 
-Path to a logo image file displayed in the site header alongside the title. The path is resolved relative to the configuration file. Supported formats include SVG, PNG, JPG, and WebP.
+Path to a logo image file displayed in the site header alongside the title.
+Supported formats include SVG, PNG, JPG, and WebP.
+
+**All paths are resolved relative to the directory containing `mokadocs.yaml`**,
+not the `content.docs` directory. The build pipeline finds the file, copies it
+into the output site, and emits the correct URL in the theme templates
+(including the `--base-path` prefix for GitHub Pages project-page deploys).
+
+#### Supported path forms
+
+| Yaml value | Resolved to | Publish URL |
+|---|---|---|
+| `logo.png` | `{yamlDir}/logo.png` | `/logo.png` |
+| `assets/logo.svg` | `{yamlDir}/assets/logo.svg` | `/assets/logo.svg` |
+| `./assets/logo.svg` | `{yamlDir}/assets/logo.svg` | `/assets/logo.svg` |
+| `/assets/logo.svg` | `{yamlDir}/assets/logo.svg` | `/assets/logo.svg` |
+| `../branding/logo.png` | `{yamlDir}/../branding/logo.png` | `/_media/logo.png` ⚠️ |
+| `https://cdn.example.com/logo.png` | *(no file copy)* | `https://cdn.example.com/logo.png` |
+| `//cdn.example.com/logo.png` | *(no file copy)* | `//cdn.example.com/logo.png` |
+| `data:image/svg+xml;base64,…` | *(no file copy)* | *(URL verbatim)* |
+
+#### Relative paths inside the yaml directory
+
+The simplest case. The file lives at or below `mokadocs.yaml`:
+
+```yaml
+# mokadocs.yaml at docs/mokadocs.yaml
+site:
+  logo: assets/logo.svg    # resolves to docs/assets/logo.svg
+```
+
+The publish URL mirrors the source layout, so `docs/assets/logo.svg` becomes
+`/assets/logo.svg` on the deployed site.
+
+#### Relative paths escaping the yaml directory (⚠️ flattened)
+
+When you reference a file **above** the yaml directory with `..`, the build
+copies it into `_site/_media/` and emits the URL `/_media/{filename}`. The
+flattening avoids URL normalization issues (`/../foo.png` doesn't work in
+browsers) and keeps out-of-tree assets from colliding with your content:
+
+```yaml
+# mokadocs.yaml at docs/mokadocs.yaml
+site:
+  logo: ../branding/logo.png     # source: branding/logo.png
+                                  # output: _site/_media/logo.png
+                                  # URL:    /_media/logo.png
+```
+
+**Collision detection**: if `site.logo` and `site.favicon` both flatten to
+the same publish URL (same filename from different source directories),
+the build fails with a clear error — rename or move one of them.
+
+#### Absolute URLs (CDN-hosted)
+
+Full URLs, protocol-relative URLs, and `data:` URIs are passed through
+verbatim. No file is copied, and the `--base-path` CLI flag is not applied
+(the host is already in the URL):
 
 ```yaml
 site:
-  logo: "./assets/logo.svg"
+  logo: https://cdn.example.com/brand/logo.svg
 ```
 
-When no logo is provided, only the site title text is shown in the header.
+Use this when your brand assets are hosted on a CDN and you want the docs
+site to reference them directly without duplicating the file.
+
+#### Default behavior when omitted
+
+When no logo is provided, the theme renders a generic SVG icon in the header
+alongside the site title. The `<img>` tag is skipped entirely.
 
 ### `favicon`
 
-- **Type:** `string` (nullable)
+- **Type:** `string` (nullable) — filesystem path or absolute URL
 - **Default:** `null`
 
-Path to a favicon file for the browser tab icon. The path is resolved relative to the configuration file. If omitted, browsers will attempt to load `/favicon.ico` from the site root.
+Path to a favicon file for the browser tab icon. All the resolution rules
+described for [`logo`](#logo) above apply identically — relative paths are
+resolved from the yaml directory, `../` escape flattens to `/_media/`,
+absolute URLs pass through verbatim, and path collisions with the logo
+cause a build error.
 
 ```yaml
 site:
-  favicon: "./assets/favicon.png"
+  favicon: assets/favicon.ico
 ```
+
+If omitted, browsers fall back to looking for `/favicon.ico` at the site
+root.
 
 ### `copyright`
 

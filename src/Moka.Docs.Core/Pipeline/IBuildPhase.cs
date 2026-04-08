@@ -70,6 +70,26 @@ public sealed class BuildContext
 	/// <summary>Discovered static asset file paths.</summary>
 	public List<string> DiscoveredAssetFiles { get; } = [];
 
+	/// <summary>
+	///     Resolved brand assets (logo + favicon) that need to be copied to the output site
+	///     from locations OUTSIDE the normal content.docs directory tree. Keyed by
+	///     site-root-relative publish URL (e.g. <c>/assets/logo.png</c> or <c>/_media/logo.png</c>);
+	///     value is the absolute filesystem source path.
+	///     <para>
+	///         Populated during the Discovery phase by <c>BrandAssetResolver</c> from the
+	///         <see cref="SiteAssetReference" /> data already parsed by <see cref="SiteConfigReader" />.
+	///         Consumed during the Output phase by <c>OutputPhase.CopyAssets</c>, which writes
+	///         each entry to <c>_site/{publishUrl}</c>.
+	///     </para>
+	///     <para>
+	///         This is a separate collection from <see cref="DiscoveredAssetFiles" /> because
+	///         those are relative-to-<c>content.docs</c> paths discovered by globbing, whereas
+	///         brand assets may live anywhere on disk (including above the yaml dir via <c>../</c>)
+	///         and need explicit filesystem lookup.
+	///     </para>
+	/// </summary>
+	public Dictionary<string, string> BrandAssetFiles { get; } = new(StringComparer.Ordinal);
+
 	/// <summary>Package metadata extracted from .csproj files (name and version for NuGet install widgets).</summary>
 	public PackageMetadata? PackageInfo { get; set; }
 

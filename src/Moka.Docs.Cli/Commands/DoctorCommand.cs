@@ -220,7 +220,14 @@ internal static class DoctorCommand
 				}
 			}
 
-			// 6. Broken links check
+			// 6. Brand assets check (site.logo, site.favicon)
+			if (config is not null)
+			{
+				CheckBrandAsset("Logo", config.Site.Logo, ref passed, ref errors, ref warnings);
+				CheckBrandAsset("Favicon", config.Site.Favicon, ref passed, ref errors, ref warnings);
+			}
+
+			// 7. Broken links check
 			if (docsDir is not null && markdownFiles.Length > 0)
 			{
 				var brokenLinks = new List<(string file, int line, string link)>();
@@ -290,7 +297,7 @@ internal static class DoctorCommand
 				}
 			}
 
-			// 7. Front matter check
+			// 8. Front matter check
 			if (docsDir is not null && markdownFiles.Length > 0)
 			{
 				var missingTitle = new List<string>();
@@ -362,7 +369,7 @@ internal static class DoctorCommand
 				}
 			}
 
-			// 8. Orphan images check
+			// 9. Orphan images check
 			if (docsDir is not null && markdownFiles.Length > 0)
 			{
 				var imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -428,7 +435,7 @@ internal static class DoctorCommand
 				}
 			}
 
-			// 9. Plugin availability check
+			// 10. Plugin availability check
 			if (config is not null)
 			{
 				List<PluginDeclaration> declaredPlugins = config.Plugins;
@@ -466,7 +473,7 @@ internal static class DoctorCommand
 				}
 			}
 
-			// 10. Search index check
+			// 11. Search index check
 			if (config is not null)
 			{
 				if (config.Features.Search.Enabled)
@@ -481,7 +488,7 @@ internal static class DoctorCommand
 				}
 			}
 
-			// 11. API coverage check
+			// 12. API coverage check
 			if (config is not null && config.Content.Projects.Count > 0)
 			{
 				int totalMissingSummary = 0;
@@ -573,6 +580,61 @@ internal static class DoctorCommand
 		AnsiConsole.MarkupLine($"  [red]✗[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
 
 	private static void PrintDetail(string detail) => AnsiConsole.MarkupLine($"      → {Markup.Escape(detail)}");
+
+	/// <summary>
+	///     Doctor check for a single brand asset (<c>site.logo</c> or <c>site.favicon</c>).
+	///     Validates that:
+	///     <list type="bullet">
+	///         <item><description>The asset reference resolved successfully (non-null = user set a value)</description></item>
+	///         <item><description>Absolute URLs are accepted and reported but not file-checked</description></item>
+	///         <item><description>Filesystem references point at existing files</description></item>
+	///         <item><description>Escaped paths (flattened into /_media/) are flagged as informational so users
+	///             understand why their <c>../branding/logo.png</c> is reachable at a different URL than they wrote</description></item>
+	///     </list>
+	///     Unset brand assets are silently skipped (no pass/fail message) — a site without
+	///     a logo is valid and shouldn't clutter the doctor output.
+	/// </summary>
+	private static void CheckBrandAsset(string label, SiteAssetReference? asset, ref int passed, ref int errors,
+		ref int warnings)
+	{
+		if (asset is null)
+		{
+			// Not set in yaml — no diagnosis, no row emitted.
+			return;
+		}
+
+		if (asset.IsAbsoluteUrl)
+		{
+			PrintPass(label, $"absolute URL (no file copy): {asset.PublishUrl}");
+			passed++;
+			return;
+		}
+
+		if (asset.SourcePath is null)
+		{
+			PrintWarn(label, $"'{asset.RawValue}' could not be resolved to a filesystem path");
+			warnings++;
+			return;
+		}
+
+		if (!File.Exists(asset.SourcePath))
+		{
+			PrintError(label, $"source file not found: {asset.SourcePath}");
+			PrintDetail($"publish URL would have been: {asset.PublishUrl}");
+			errors++;
+			return;
+		}
+
+		// Successful filesystem resolution. Flag escaped-path flattening so users see
+		// exactly what URL the theme will emit, which is especially useful when the source
+		// file lives above the yaml dir via `../`.
+		bool flattened = asset.PublishUrl.StartsWith("/_media/", StringComparison.Ordinal);
+		string detail = flattened
+			? $"{asset.RawValue} → {asset.PublishUrl} (flattened — source above yaml dir)"
+			: $"{asset.RawValue} → {asset.PublishUrl}";
+		PrintPass(label, detail);
+		passed++;
+	}
 
 	private static async Task<string?> GetDotnetSdkVersionAsync()
 	{

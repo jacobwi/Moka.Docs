@@ -33,6 +33,7 @@ public static class EngineServiceExtensions
 
 		services.AddSingleton<BuildPipeline>();
 		services.AddSingleton<FileDiscoveryService>();
+		services.AddSingleton<BrandAssetResolver>();
 
 		// Template engine and default theme
 		services.AddSingleton<ScribanTemplateEngine>();

@@ -5,6 +5,124 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 2026-04-08
+
+### ✨ New — `SiteAssetReference` for logo and favicon
+
+`site.logo` and `site.favicon` in `mokadocs.yaml` now support the full range
+of path forms users actually want to write, with automatic resolution,
+asset copying, and base-path-aware URL emission. The new
+`SiteAssetReference` type parses the yaml value once at config load time
+and downstream code works only with resolved data (`SourcePath`,
+`PublishUrl`, `IsAbsoluteUrl`).
+
+Supported path forms:
+
+| Yaml value | Publish URL | File copied |
+|---|---|---|
+| `logo.png` (bare filename) | `/logo.png` | `_site/logo.png` |
+| `assets/logo.svg` (relative) | `/assets/logo.svg` | `_site/assets/logo.svg` |
+| `./assets/logo.svg` | `/assets/logo.svg` | `_site/assets/logo.svg` |
+| `/assets/logo.svg` (leading slash) | `/assets/logo.svg` | `_site/assets/logo.svg` |
+| `../branding/logo.png` (escapes yaml dir) | `/_media/logo.png` | `_site/_media/logo.png` |
+| `https://cdn.example.com/logo.png` | `https://cdn.example.com/logo.png` | (no copy) |
+| `//cdn.example.com/logo.png` | `//cdn.example.com/logo.png` | (no copy) |
+| `data:image/svg+xml;base64,…` | *(URL verbatim)* | (no copy) |
+
+Prior to this release, only relative paths inside the `content.docs` tree
+were actually discovered by the asset glob. Paths at the yaml directory
+level, parent-directory escapes, and absolute URLs were silently broken
+or required unrelated assets under `content.docs` to work by accident.
+
+### 🛡 Implementation details
+
+- **`SiteAssetReference`** — new sealed record in `Moka.Docs.Core.Configuration`
+  with `RawValue`, `SourcePath`, `PublishUrl`, and `IsAbsoluteUrl` fields.
+- **`SiteConfigReader.ParseAssetReference()`** — new private helper that
+  resolves each logo/favicon yaml string against the source file's
+  directory, normalizes `./` prefixes, flattens `../` escapes to
+  `/_media/{filename}`, and detects absolute URLs (http/https/protocol-
+  relative/data URI) for pass-through.
+- **Collision detection** — when logo and favicon both flatten to the
+  same publish URL from different source files, `SiteConfigReader`
+  throws `SiteConfigException` with a clear error message.
+- **`BrandAssetResolver`** — new service in `Moka.Docs.Engine.Discovery`
+  that runs in the Discovery phase (after the normal glob) and populates
+  `BuildContext.BrandAssetFiles` with resolved logo + favicon entries.
+  Logs warnings for missing source files but doesn't fail the build.
+- **`OutputPhase.CopyAssets`** — now copies brand assets to their
+  resolved publish URLs in addition to the normal `content.docs` glob
+  output. Skips files already written by the main glob path to avoid
+  overwrite conflicts.
+- **`ScribanTemplateEngine`** — exposes two new template variables per
+  brand asset:
+  - `site.logo_url` / `site.favicon_url` — the final URL the theme
+    should emit, with base-path prefix applied for relative paths and
+    pass-through for absolute URLs.
+  - `site.logo` / `site.favicon` — the raw yaml value, kept for
+    backward compatibility with any custom user template that read the
+    old string directly.
+- **`EmbeddedThemeProvider`** — five template sites updated to use
+  `site.logo_url` / `site.favicon_url` instead of the old
+  `{{ base_path }}/{{ site.logo }}` concatenation, so the new
+  absolute-URL pass-through and out-of-tree `_media/` flattening work
+  without any conditional logic in the markup.
+
+### 🩺 `doctor` command
+
+Added a new check that validates `site.logo` and `site.favicon`:
+
+- ✓ Pass with the resolved `rawValue → publishUrl` mapping, flagging
+  when an escaped source is flattened to `/_media/`.
+- ✓ Pass for absolute URLs without touching the filesystem.
+- ⚠ Warn when the asset reference has no resolvable source path
+  (e.g. yaml parsed without a yamlDir).
+- ✗ Error when the source file doesn't exist on disk.
+
+Unset brand assets are silently skipped — a site without a logo is
+valid and shouldn't clutter the doctor output.
+
+### 📚 Docs
+
+- **`docs/plugins/blazor-preview.md`** — rewritten for the v3.x plugin
+  API. The previous doc described the legacy `mode: wasm | ssr` /
+  `wasmAppPath` / `stylesheets` schema which was removed in v1.3.0.
+  The new doc covers auto-scaffold + auto-publish, the `library:` yaml
+  option, the preview-host project structure, GitHub Pages deployment,
+  a full troubleshooting section, and migration notes for users coming
+  from the old schema.
+- **`docs/configuration/site-config.md`** — expanded the `logo` and
+  `favicon` sections with a full table of supported path forms plus
+  worked examples for each resolution rule.
+
+### 🧪 Tests
+
+- **`SiteConfigReaderTests`** — 13 new tests covering every path form
+  (bare filename, nested relative, `./` normalization, single-level
+  `../` escape, multi-level `../` escape, absolute URLs for all four
+  scheme types, leading-slash treatment, round-trip raw value
+  preservation, collision detection, missing asset returns null).
+- **`BrandAssetResolverTests`** — 6 new tests with `MockFileSystem`
+  covering inside-yaml-dir resolution, escape-to-media flattening,
+  missing source file handling (warns, doesn't throw), absolute URL
+  pass-through (not added to copy list), and multi-asset resolution.
+
+**Total:** 211 tests passing (was 198).
+
+### 🔄 Changed
+
+- `SiteMetadata.Logo` and `SiteMetadata.Favicon` changed type from
+  `string?` to `SiteAssetReference?`. This is a public API break for
+  anyone consuming mokadocs as a library (not a CLI), but the yaml
+  schema is 100% backward compatible — all existing `mokadocs.yaml`
+  files that set logo/favicon to a relative path inside `content.docs`
+  continue to work unchanged. The `SiteMetadataDto` (yaml-facing)
+  still uses `string?` on both fields; conversion happens in the reader.
+- `Moka.Docs.AspNetCore.SiteConfigFactory` updated to wrap
+  `MokaDocsOptions.LogoUrl` / `FaviconUrl` in a `SiteAssetReference`
+  with `IsAbsoluteUrl=true` (treats them as consumer-hosted URLs that
+  need no copy or base-path prefix).
+
 ## [1.3.7] - 2026-04-08
 
 ### 🎨 Changed — preview box fonts inherit from mokadocs theme

@@ -65,8 +65,28 @@ internal static class SiteConfigFactory
 			{
 				Title = options.Title,
 				Description = options.Description,
-				Logo = options.LogoUrl ?? "",
-				Favicon = options.FaviconUrl ?? "",
+				// LogoUrl/FaviconUrl from ASP.NET Core options are treated as pre-resolved URLs
+				// that the consumer is hosting themselves (e.g. /images/logo.png on their own
+				// wwwroot). Wrap them in SiteAssetReference with IsAbsoluteUrl=true so the
+				// template emits them verbatim without filesystem lookup or copy.
+				Logo = string.IsNullOrEmpty(options.LogoUrl)
+					? null
+					: new SiteAssetReference
+					{
+						RawValue = options.LogoUrl,
+						SourcePath = null,
+						PublishUrl = options.LogoUrl,
+						IsAbsoluteUrl = true
+					},
+				Favicon = string.IsNullOrEmpty(options.FaviconUrl)
+					? null
+					: new SiteAssetReference
+					{
+						RawValue = options.FaviconUrl,
+						SourcePath = null,
+						PublishUrl = options.FaviconUrl,
+						IsAbsoluteUrl = true
+					},
 				Url = options.BasePath.TrimEnd('/'),
 				Copyright = options.Copyright ?? $"© {DateTime.Now.Year} {options.Title}"
 			},

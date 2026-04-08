@@ -99,6 +99,36 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			$"""$1="{basePath}$2""");
 	}
 
+	/// <summary>
+	///     Builds the final URL for a brand asset (<c>site.logo_url</c> / <c>site.favicon_url</c>).
+	///     Absolute URLs (http/https/protocol-relative/data URIs) pass through unchanged so CDN-
+	///     hosted brand assets work without a base-path prefix. Root-relative publish URLs get
+	///     the build <see cref="BuildConfig.BasePath" /> prepended so GitHub Pages project-page
+	///     deploys (<c>/Moka.Red/_site/</c>) resolve correctly.
+	/// </summary>
+	private static string ResolveBrandUrl(SiteAssetReference? asset, string basePath)
+	{
+		if (asset is null)
+		{
+			return "";
+		}
+
+		if (asset.IsAbsoluteUrl)
+		{
+			return asset.PublishUrl;
+		}
+
+		if (basePath == "/" || string.IsNullOrEmpty(basePath))
+		{
+			return asset.PublishUrl;
+		}
+
+		// basePath already has no trailing slash (SiteConfigReader normalizes it);
+		// PublishUrl always starts with a single leading slash. Concatenation yields
+		// /basepath/assets/logo.png cleanly.
+		return basePath + asset.PublishUrl;
+	}
+
 	private static ScriptObject BuildScriptObject(DocPage page, ThemeRenderContext ctx)
 	{
 		var so = new ScriptObject();
@@ -132,14 +162,26 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		#region Site Config
 
+		// Brand assets expose two script variables each:
+		//   site.logo / site.favicon           — the user's raw yaml value (for backward
+		//                                        compatibility with any custom template that
+		//                                        read the old string directly).
+		//   site.logo_url / site.favicon_url   — the final resolved URL the theme should emit.
+		//                                        Absolute URLs pass through unchanged; relative
+		//                                        paths get the BasePath prefix prepended.
+		// Templates in EmbeddedThemeProvider use the *_url variants so they "just work" for
+		// both GitHub Pages subpath deploys and CDN-hosted brand assets without any
+		// conditional logic in the scriban markup.
 		so.SetValue("site", new ScriptObject
 		{
 			{ "title", ctx.Config.Site.Title },
 			{ "description", ctx.Config.Site.Description },
 			{ "url", ctx.Config.Site.Url },
 			{ "copyright", ctx.Config.Site.Copyright ?? "" },
-			{ "logo", ctx.Config.Site.Logo ?? "" },
-			{ "favicon", ctx.Config.Site.Favicon ?? "" }
+			{ "logo", ctx.Config.Site.Logo?.RawValue ?? "" },
+			{ "favicon", ctx.Config.Site.Favicon?.RawValue ?? "" },
+			{ "logo_url", ResolveBrandUrl(ctx.Config.Site.Logo, bp) },
+			{ "favicon_url", ResolveBrandUrl(ctx.Config.Site.Favicon, bp) }
 		}, false);
 
 		#endregion

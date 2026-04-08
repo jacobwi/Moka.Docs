@@ -5,278 +5,522 @@ order: 3
 
 # Blazor Component Preview Plugin
 
-The Blazor Preview plugin renders `blazor-preview` code blocks as live component previews in your documentation. It supports two rendering modes:
-
-- **WASM mode** (default) — Compiles components to DLLs at build time, then loads them interactively in the browser via Blazor WebAssembly. Fully interactive on static hosting (GitHub Pages, etc.).
-- **SSR mode** — Renders components to static HTML at build time using Blazor's `HtmlRenderer`. No JavaScript required, but non-interactive.
+The Blazor Preview plugin renders ` ```blazor-preview ` code blocks as **live,
+interactive component previews** in your documentation site. Each block is compiled
+at build time with Roslyn and hosted inside a lazy-loaded iframe that runs a
+Blazor WebAssembly preview-host — so clicks, state updates, form inputs,
+popovers, and dialogs all work, even on static hosts like GitHub Pages.
 
 **Plugin ID:** `mokadocs-blazor-preview`
 
-## What It Does
+**Version:** 3.x (the 1.x/2.x SSR and inline-mount modes are removed — see the
+migration note at the end of this page if you're coming from an older release).
 
-Each ` ```blazor-preview ` code block is compiled at build time with Roslyn. The result is displayed as a tabbed card:
+---
 
-- **Preview tab** — In WASM mode: an interactive iframe running the component. In SSR mode: static HTML from the component's initial render.
-- **Source tab** — The original Razor source with syntax highlighting.
+## Quick start
 
-## Rendering Modes
-
-### WASM Mode (default)
-
-Components are compiled to DLL assemblies and loaded in the browser via the `Moka.Blazor.Repl.Wasm` runtime. This enables **interactive previews on static sites** — buttons respond to clicks, inputs accept text, and state updates work.
-
-**Requirements:** Install the WASM runtime package so MokaDocs can locate it:
-
-```bash
-dotnet add package Moka.Blazor.Repl.Wasm
-```
-
-The plugin automatically finds the WASM app in your NuGet cache. No additional configuration needed.
-
-**Output structure:**
-
-```
-_site/
-  _preview-wasm/           # WASM runtime (copied from NuGet package)
-    index.html
-    _framework/
-  _preview-assemblies/     # Compiled preview DLLs
-    a1b2c3d4e5f6.dll
-```
-
-Each preview gets a `<noscript>` fallback with SSR-rendered HTML for users without JavaScript.
-
-### SSR Mode
-
-Components are rendered to static HTML at build time — no JavaScript, no WASM, no iframes. Readers see the exact output the component would produce on first render.
+All you need in `mokadocs.yaml`:
 
 ```yaml
 plugins:
   - name: mokadocs-blazor-preview
     options:
-      mode: ssr
+      library: MyLibrary@1.2.3
 ```
 
-Components are rendered with full type resolution, parameter binding, dependency injection stubs, and correct CSS isolation attributes (`b-xxxxxxxx` scoped attributes) — exactly as they would appear in a real Blazor app.
+That's it. On first build:
 
-## Markdown Syntax
+1. Plugin auto-discovers or **scaffolds** a `./preview-host/` Blazor WebAssembly
+   project with a PackageReference to `Moka.Blazor.Repl.Host` and your library.
+2. Plugin runs `dotnet publish` on that project (cached — skipped on subsequent
+   builds when nothing has changed).
+3. Plugin compiles every ` ```blazor-preview ` block with Roslyn against the
+   preview-host's built bin, writing one `.dll` per block to
+   `_site/_preview-assemblies/{sha}.dll`.
+4. Plugin emits one `<iframe loading="lazy">` per preview block pointing at
+   `/_preview-wasm/index.html?assembly=/_preview-assemblies/{sha}.dll`.
+
+Subsequent builds only recompile changed preview blocks, and the `dotnet
+publish` step is skipped entirely when no inputs changed.
+
+---
+
+## How interactive previews work
+
+```
+┌──────────────────────── mokadocs build ──────────────────────────┐
+│                                                                   │
+│  mokadocs.yaml: library: MyLibrary@1.2.3                         │
+│                        ↓                                          │
+│  preview-host/  ← auto-scaffolded if missing                     │
+│    ├── DocsPreviewHost.csproj  (PackageReference MyLibrary +     │
+│    │                            Moka.Blazor.Repl.Host)           │
+│    ├── Program.cs              (RootComponents.Add<App>("#app")) │
+│    └── wwwroot/index.html                                        │
+│                        ↓ dotnet publish (cached, incremental)    │
+│  _site/                                                           │
+│    ├── _preview-wasm/          (copy of preview-host/wwwroot)    │
+│    │   ├── index.html                                            │
+│    │   ├── _framework/         (Blazor WASM runtime + your lib)  │
+│    │   └── _content/           (your lib's scoped CSS bundles)   │
+│    └── _preview-assemblies/                                       │
+│        ├── a1b2c3d4e5f6.dll    (compiled from one preview block) │
+│        └── 7890abcdef01.dll                                       │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+                            ↓
+                ┌───── user visits page ─────┐
+                │                              │
+                │  _site/components/foo/      │
+                │   index.html contains:      │
+                │                              │
+                │  <iframe loading="lazy"     │
+                │   src="/_preview-wasm/      │
+                │        index.html?assembly=│
+                │        /_preview-assemblies│
+                │        /a1b2c3d4.dll">     │
+                │                              │
+                │  iframe boots lazily when   │
+                │  scrolled into view →       │
+                │  Moka.Blazor.Repl.Host      │
+                │  App.razor fetches the DLL, │
+                │  Assembly.Load's it, and    │
+                │  mounts the component via   │
+                │  [JSInvokable] LoadAssembly │
+                └──────────────────────────────┘
+```
+
+**Why iframes?** Each preview needs its own document root so portal-style
+components (Dialog, Popover, Toast, Drawer) can attach to `document.body`
+without conflicting with the doc page's own body. Lazy loading means only
+previews the user actually scrolls to boot a Blazor runtime — one
+`_framework/` download is shared across all iframes on a page via the HTTP
+cache.
+
+---
+
+## Markdown syntax
+
+Use a fenced code block with the `blazor-preview` info string:
 
 ````markdown
 ```blazor-preview
-@code { string _name = "Aria"; }
-<MokaTextField @bind-Value="_name" Label="Full name" Required />
+<MokaButton>Click me</MokaButton>
 ```
 ````
 
-## How It Works
+Any valid Razor is fine — `@code` blocks, `@using` directives, field
+initializers, multiple components, dependency injection. The plugin compiles
+each block as a standalone Razor file named `Preview.razor` with an entry
+component type of `MokaRepl.Preview`.
 
-### Architecture overview
+### Multi-snippet state sharing
 
-```
-Markdown: ```blazor-preview  →  BlazorPreviewExtension (Markdig)
-                                  ↓  wraps in <div data-blazor-preview="true">
-                              BlazorPreviewPlugin.ExecuteAsync
-                                  ↓
-                              CompileAndRenderBlocksAsync
-                               ├─ Pass 1: RoslynCompilationService.CompileAsync(source)
-                               │    ↓ on CS0103/CS0246 only
-                               └─ Pass 2: retry with accumulated @code preamble
-                                  ↓ success
-                              RenderComponentAsync
-                               ├─ PreviewAssemblyLoadContext.LoadFromStream(bytes)
-                               ├─ assembly.GetType(entryPointTypeName)
-                               └─ HtmlRenderer.RenderComponentAsync(type)
-                                  ↓
-                              Inject rendered HTML into page
-```
+Previews on the same page can share `@code`-declared state. Snippet 1 defines
+a field, snippet 2 references it:
 
-### Stage 1 — Markdown Extension
-
-`BlazorPreviewExtension` (a Markdig inline parser) detects ` ```blazor-preview ` fenced blocks and wraps each one in:
-
-```html
-<div class="blazor-preview-container" data-blazor-preview="true">
-  <div class="blazor-preview-source"><pre><code>…source…</code></pre></div>
-  <div class="blazor-preview-render"></div>
-</div>
-```
-
-The tab bar and JavaScript are injected once per page by the plugin after rendering, not by the extension.
-
-### Stage 2 — Roslyn Compilation
-
-For each `blazor-preview-render` placeholder, the plugin:
-
-1. Extracts and HTML-decodes the Razor source from the adjacent `blazor-preview-source` div.
-2. Creates a `ReplProject` with a single file `Preview.razor`.
-3. Adds all `usings` from `mokadocs.yaml` as global usings.
-4. Calls `RoslynCompilationService.CompileAsync(project)` which:
-   - Compiles the Razor file with the Razor compiler (`.razor` → C#)
-   - Compiles the generated C# with Roslyn
-   - Returns `CompilationResult` with either `AssemblyBytes + EntryPointTypeName` or a list of errors
-
-All DLL references configured under `references` are passed as `MetadataReference` entries so the Razor compiler can resolve component types, base classes, and constraints.
-
-### Stage 3 — Two-pass compilation
-
-Previews on the same page sometimes share state — a `@code` block in one snippet may define a record or list used by the next snippet:
-
-```razor
-@* Snippet 1: defines _people *@
-@code { record Person(string Name); List<Person> _people = [ new("Ada"), new("Grace") ]; }
+````markdown
+```blazor-preview
+@code { record Person(string Name, int Age); List<Person> _people = [new("Ada", 36), new("Grace", 47)]; }
 <div>@_people.Count people</div>
-
-@* Snippet 2: uses _people from snippet 1 *@
-<MokaTable Items="_people" ...>
 ```
 
-The plugin handles this with a **two-pass strategy**:
-
-- **Pass 1** — compile the snippet as a self-contained file. If it succeeds, use the result.
-- **Pass 2** — if pass 1 fails with only name-not-found errors (`CS0103`, `CS0246`, `CS0012`) _and_ previous snippets have already rendered successfully, prepend the accumulated `@code` blocks from those earlier snippets and retry.
-
-Pass 2 is only triggered for name-not-found errors because other error types (type mismatches, wrong signatures) indicate an incorrect snippet, not a missing dependency.
-
-### Stage 4 — Assembly Loading
-
-The compiled assembly bytes are loaded into a **collectible `PreviewAssemblyLoadContext`** — an isolated context that can be unloaded after each render to avoid memory accumulation:
-
+```blazor-preview
+<MokaDataList Items="_people" />
 ```
-PreviewAssemblyLoadContext.Load(assemblyName)
-  → try Default.LoadFromAssemblyName(assemblyName)   // framework + pre-loaded DLLs
-  → fall back to dllLookup[assemblyName]              // project DLLs from references
-```
+````
 
-Resolving from the **default context first** is critical. It keeps `IComponent`, `ILoggerFactory`, and all Moka.Red types at the same identity as the `HtmlRenderer`'s service provider. If project DLLs were loaded independently into the isolated context, type comparisons would fail (`MokaTextField from context A ≠ MokaTextField from context B`).
+The plugin uses a **two-pass compile strategy** for this: if the second
+snippet fails with name-not-found errors only (`CS0103`, `CS0246`, `CS0012`)
+and earlier snippets on the same page succeeded, the plugin prepends their
+accumulated `@code` blocks and retries. Non-name-related errors (type
+mismatches, wrong signatures) skip the retry to avoid masking real bugs.
 
-To ensure project DLLs are in the default context before the isolated context tries to find them, the plugin pre-loads all paths from `references` via `Assembly.LoadFrom()` before rendering begins.
+### Entry component
 
-### Stage 5 — HtmlRenderer SSR
+By default each block renders `MokaRepl.Preview` (the type the Razor compiler
+generates for `Preview.razor`). You can set `@code` fields on it but you
+cannot currently override the entry type name — the plugin finds it
+automatically from the compiled assembly metadata.
 
-A single `HtmlRenderer` is created once per build pass and reused for all pages. Its `ServiceProvider` is configured with:
-
-| Service | Implementation |
-|---------|---------------|
-| `ILoggerFactory` | From the MokaDocs host |
-| `IJSRuntime` | `NullJsRuntime` — no-op, returns `default(T)` |
-| `NavigationManager` | `NullNavigationManager` — pre-initialised to `https://localhost/` |
-| `IMokaToastService` | Stub registered via reflection if DLL is loaded |
-
-The render call:
-
-```csharp
-await htmlRenderer.Dispatcher.InvokeAsync(async () =>
-{
-    var output = await htmlRenderer.RenderComponentAsync(componentType);
-    return output.ToHtmlString();
-});
-```
-
-This executes the component's synchronous lifecycle (`SetParametersAsync`, `OnInitialized`, `BuildRenderTree`) and serialises the render tree to HTML. `OnAfterRenderAsync` and any JS interop are never invoked by `HtmlRenderer`.
+---
 
 ## Configuration
 
-### Full example
+### Minimal (recommended)
 
 ```yaml
 plugins:
   - name: mokadocs-blazor-preview
     options:
-      mode: wasm                # "wasm" (default) or "ssr"
-      wasmAppPath: ./my-wasm    # optional: override WASM app location
-      references:
-        - ../src/MyLibrary/bin/Debug/net9.0
-      stylesheets:
-        - ../src/MyLibrary/obj/Debug/net9.0/scopedcss/projectbundle/MyLibrary.bundle.scp.css
-        - ../src/MyLibrary/wwwroot/tokens.css
+      library: MyLibrary@1.2.3
+```
+
+Everything else — `previewHost`, `references`, `usings` — is optional. The
+plugin auto-scaffolds a preview-host project from a library-agnostic template
+and derives its references list from the scaffolded project's `bin/Release/`.
+
+### Full
+
+```yaml
+plugins:
+  - name: mokadocs-blazor-preview
+    options:
+      # Required unless previewHost exists already
+      library: MyLibrary@1.2.3
+
+      # Optional — path to an existing preview-host project.
+      # Auto-discovered when omitted (./preview-host/, ./docs-preview-host/, or
+      # any subdirectory containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
+      previewHost: ./preview-host
+
+      # Optional — namespaces added as global usings to every compiled preview.
+      # Equivalent to putting @using statements in a _Imports.razor file.
       usings:
         - MyLibrary.Components
         - MyLibrary.Components.Forms
         - System.ComponentModel.DataAnnotations
+
+      # Optional — additional Roslyn reference directories layered ON TOP of
+      # the preview-host's bin. Same-named assemblies here OVERRIDE the
+      # preview-host copies, so you can point at a local source build for
+      # your in-development library while the preview-host uses a stable
+      # NuGet version for everything else.
+      references:
+        - ../src/MyLibrary/bin/Debug/net10.0
 ```
 
-### `mode`
+### `library` (recommended)
 
-Rendering mode for previews. `wasm` (default) generates interactive iframes using Blazor WebAssembly. `ssr` generates static HTML at build time. If `wasm` is selected but the WASM runtime package is not installed, the plugin falls back to `ssr` with a warning.
+Pinned NuGet package ID + optional version for your component library, in
+the format `PackageId@Version` (e.g. `MyLibrary@1.2.3`) or just `PackageId`
+(resolves to latest). The scaffolded preview-host's `.csproj` uses this to
+build its own PackageReference to your library.
 
-### `wasmAppPath`
+Required when no `./preview-host/` exists yet. You can also omit it if you
+point `previewHost` at a pre-existing project.
 
-Optional path to a published Blazor WebAssembly app directory (must contain `index.html` and `_framework/`). By default, the plugin searches the NuGet global packages folder (`~/.nuget/packages/moka.blazor.repl.wasm/`) for the `Moka.Blazor.Repl.Wasm` package. Use this option to override with a custom path.
+### `previewHost`
 
-### `references`
+Path to your docs preview-host Blazor WebAssembly project directory
+(relative to `mokadocs.yaml`). When omitted the plugin auto-discovers one
+of:
 
-Paths to directories or individual DLL files containing the components you want to preview. Both absolute and relative (to `mokadocs.yaml`) paths are accepted. Directories are scanned recursively for `*.dll` files.
+1. `./preview-host/`
+2. `./docs-preview-host/`
+3. Any immediate subdirectory containing a csproj using
+   `Microsoft.NET.Sdk.BlazorWebAssembly`
 
-Every DLL in a directory is:
-1. Added as a `MetadataReference` so the Roslyn compiler can resolve types.
-2. Registered in `_knownDllPaths` so `PreviewAssemblyLoadContext` can locate them at runtime.
-3. Pre-loaded via `Assembly.LoadFrom()` so stub service registration works.
-
-Tip: point at your project's `bin/Debug/net9.0` directory so all transitive DLLs are picked up automatically.
-
-### `stylesheets`
-
-CSS files concatenated into a single bundle served at `/_preview-css/moka-preview.css`. List them in the order they should cascade:
-
-1. CSS reset / base tokens
-2. Component-level scoped CSS bundles (`*.bundle.scp.css` from the build output)
-3. Any supplemental CSS (icon fonts, extra utilities)
-
-The scoped CSS bundles contain the `b-xxxxxxxx` attribute selectors generated by Blazor's CSS isolation. Without them, previews render without component styles.
+If none exists and `library` is set, one is **scaffolded** at
+`./preview-host/` from a generic template. The scaffold is a one-time
+operation — mokadocs never overwrites an existing project.
 
 ### `usings`
 
-Namespace strings added as C# global usings to every compiled preview. These correspond to the `@using` statements you would put in `_Imports.razor`.
+Namespace strings added as C# global usings to every compiled preview
+block. These are the `@using` directives your previews would otherwise need
+at the top.
 
-You need one entry per namespace containing components you reference in previews. For example, if `<MokaButton>` is in `MyLibrary.Primitives.Button`, add `MyLibrary.Primitives.Button`.
+**Common system namespaces** (`System`, `System.Collections.Generic`,
+`System.Threading.Tasks`, `Microsoft.AspNetCore.Components`) are added
+by .NET's implicit global usings and don't need to be listed.
 
-Common system namespaces (`System`, `System.Collections.Generic`, `System.Threading.Tasks`, `Microsoft.AspNetCore.Components`) are added by .NET's implicit global usings and do not need to be listed.
+### `references`
 
-## CSS and theming
+Additional directories or DLL files to layer on top of the preview-host's
+bin as Roslyn `MetadataReference` entries. Useful when you want the compiler
+to resolve your in-development library against its local `bin/Debug/` output
+while the preview-host still ships the stable NuGet version.
 
-The plugin injects a `<style>` block once per page with:
+Same-named assemblies in these directories **override** the preview-host
+copies — so a `MyLibrary.dll` here wins over the one in the preview-host's
+bin. Framework assemblies (`System.*`, `Microsoft.AspNetCore.*`, etc.) are
+filtered out automatically to avoid duplicate-reference conflicts.
 
-1. **Design tokens** — CSS custom properties (`--moka-color-*`, `--moka-font-*`, etc.) scoped to `.blazor-preview-render`, covering both light and dark modes.
-2. **Preview container chrome** — tab bar, source/render pane layout, error styling.
+---
 
-If you need the previews to inherit the page's theme, structure your design tokens so that `[data-theme="dark"] .blazor-preview-render` overrides light-mode values. The plugin follows this convention for Moka.Red:
+## The preview-host project
 
-```css
-.blazor-preview-render {
-    --moka-color-primary: #d32f2f;
-    /* … other light tokens … */
-}
-[data-theme="dark"] .blazor-preview-render {
-    --moka-color-primary: #ef5350;
-    /* … dark overrides … */
-}
+The plugin owns a Blazor WebAssembly project that hosts the iframe runtime.
+This is a **normal user-editable project** — mokadocs scaffolds it once and
+never touches it again, so you can customize services, CSS, theme tokens,
+and HTML head tags freely.
+
+### Scaffolded files
+
+The first `mokadocs build` after you add `library:` creates these files:
+
+```
+preview-host/
+├── Directory.Build.props         ← empty shadow (isolates from parent repo)
+├── Directory.Build.targets       ← empty shadow
+├── Directory.Packages.props      ← empty shadow
+├── DocsPreviewHost.csproj        ← references MyLibrary + Moka.Blazor.Repl.Host
+├── Program.cs                    ← RootComponents.Add<App>("#app")
+└── wwwroot/
+    └── index.html                ← loads wasmPreview.js + blazor.webassembly.js
 ```
 
-## Generic components and type inference
+**Commit all of these to your repo.** They're source code you own, not
+generated artifacts. The `bin/`, `obj/`, and `publish-output/` subdirectories
+are fine to gitignore.
 
-Razor's type-inference code generator emits a constraint helper method for generic components (those with `@typeparam TValue where TValue : ...`). If the constraint references a type that is not in scope, compilation fails.
+### Customizing — Program.cs
 
-To avoid this, either:
+Between the comment markers, add your library's DI services so preview
+snippets can `@inject` them:
 
-- **Specify the type parameter explicitly** — `<MokaNumericField TValue="int" @bind-Value="_qty" />` — which bypasses the type inference path entirely.
-- **Add the constraint's namespace** to `usings` — but only if doing so does not conflict with other generated code.
+```csharp
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Moka.Blazor.Repl.Host;
+
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+builder.RootComponents.Add<App>("#app");
+builder.RootComponents.Add<HeadOutlet>("head::after");
+
+builder.Services.AddScoped(_ => new HttpClient
+{
+    BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+});
+
+// ── Customize: register your library's services here ─────────────
+builder.Services.AddMyLibrary();
+builder.Services.AddSingleton<IMyAppService, MyAppService>();
+// ──────────────────────────────────────────────────────────────────
+
+await builder.Build().RunAsync();
+```
+
+### Customizing — wwwroot/index.html
+
+Between the comment markers, add the CSS link tags for your library's
+global stylesheets. The Blazor WASM SDK already auto-bundles every
+referenced library's **scoped** CSS into `DocsPreviewHost.styles.css`, but
+global tokens (`--my-color-primary`, etc.) need explicit `<link>` tags
+pointing at `_content/<PackageId>/`:
+
+```html
+<!-- ── Customize: link your library's CSS here ──────────────── -->
+<link rel="stylesheet" href="_content/MyLibrary/reset.css" />
+<link rel="stylesheet" href="_content/MyLibrary/tokens.css" />
+<link rel="stylesheet" href="_content/MyLibrary/my-library.css" />
+<!-- ────────────────────────────────────────────────────────────── -->
+
+<link rel="stylesheet" href="DocsPreviewHost.styles.css" />
+```
+
+You can also add custom fonts, data attributes for theme toggles, or
+inline `<style>` blocks that control how the preview iframe body renders
+its content.
+
+---
+
+## Output layout
+
+After a build with `library: MyLibrary@1.2.3`:
+
+```
+_site/
+├── .nojekyll                      ← emitted by the plugin so GitHub Pages
+│                                     doesn't strip underscore-prefixed dirs
+├── _preview-wasm/                 ← copy of preview-host/publish-output/net10.0/wwwroot
+│   ├── index.html
+│   ├── DocsPreviewHost.styles.css
+│   ├── _framework/
+│   │   ├── blazor.webassembly.js
+│   │   ├── dotnet.js + dotnet.native.wasm
+│   │   └── *.wasm                 ← compiled assemblies (MyLibrary + deps)
+│   └── _content/
+│       ├── MyLibrary/             ← scoped CSS bundles + static web assets
+│       └── Moka.Blazor.Repl.Host/
+│           └── wasmPreview.js     ← resize + postMessage bridge
+└── _preview-assemblies/
+    ├── a1b2c3d4e5f6.dll           ← one DLL per blazor-preview block
+    └── 7890abcdef0123.dll
+```
+
+Each iframe loads from `/_preview-wasm/index.html?assembly=/_preview-assemblies/{hash}.dll`
+and the `_framework/` files are HTTP-cached across iframes on the same page.
+
+---
+
+## Deploying to GitHub Pages
+
+The plugin is designed to produce output that ships cleanly to GitHub Pages,
+including project-page subpath deploys.
+
+### `.nojekyll`
+
+The plugin automatically writes an empty `.nojekyll` file at the site root.
+**Without this**, Jekyll (GitHub Pages' default processor) strips every
+directory starting with `_` — including `_preview-wasm/`,
+`_preview-assemblies/`, `_framework/`, and `_content/`. The preview system
+would silently disappear from the deployed site.
+
+### Subpath deploys (`username.github.io/my-project/`)
+
+When building for a project page, pass `--base-path /my-project/`:
+
+```bash
+mokadocs build --base-path /my-project/
+```
+
+The plugin prefixes iframe `src="/…"` attributes and `?assembly=/…` query
+params with the base path so both the iframe location and its dynamic
+assembly load resolve correctly on the subpath. Root-deployed sites
+(`username.github.io`) work with a plain `mokadocs build`.
+
+### GitHub Actions workflow
+
+```yaml
+name: Deploy Docs
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build library (Roslyn references)
+        run: dotnet build MyLibrary.slnx -c Release
+
+      - name: Install mokadocs
+        run: dotnet tool install -g mokadocs
+
+      - name: Build docs (scaffolds + publishes preview-host automatically)
+        run: mokadocs build --base-path /my-project/
+        working-directory: docs
+
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: docs/_site }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4
+```
+
+The `mokadocs build` step transparently runs `dotnet publish` on the
+scaffolded preview-host, populates `_site/_preview-wasm/`, and compiles
+every preview block — no extra CI steps required.
+
+---
+
+## Troubleshooting
+
+### Previews show up as static buttons with no interactivity
+
+The iframes are loading but the Blazor runtime isn't mounting components.
+Most common causes:
+
+1. **Missing `.nojekyll`** — if you're on GitHub Pages, confirm
+   `_site/.nojekyll` exists. The plugin emits it automatically but a
+   post-build step could be stripping it.
+2. **IL trimming over the preview-host** — `Moka.Blazor.Repl.Host` ships a
+   `build/Moka.Blazor.Repl.Host.targets` file that sets
+   `PublishTrimmed=false` unconditionally. If your preview-host overrides
+   this by setting `PublishTrimmed=true` in its own csproj, the trimmer
+   will strip `RouteAttribute` and `CreateInferredEventCallback`, and
+   previews will throw `TypeLoadException` / `MissingMethodException` in
+   the browser console. Remove the override.
+
+### "Dynamic root components have not been enabled in this application"
+
+The preview-host is trying to use `Blazor.rootComponents.add()` but the
+shared host library isn't set up for it. This plugin does **not** use
+dynamic root components — each iframe uses a static `RootComponents.Add<App>("#app")`
+call with a `[JSInvokable] LoadAssembly` method. If you see this error,
+your preview-host's `Program.cs` was hand-authored with
+`RegisterForJavaScript<T>("…")` from an older tutorial. Replace it with
+the scaffolded template's `RootComponents.Add<App>("#app")` pattern.
+
+### "NETSDK1082: no runtime pack for Microsoft.AspNetCore.App"
+
+Your component library's NuGet package declares `<FrameworkReference
+Include="Microsoft.AspNetCore.App" />` in its nuspec, which transitively
+propagates to the Blazor WebAssembly preview-host — but there is no
+`Microsoft.AspNetCore.App` runtime pack for the `browser-wasm` RID.
+
+Fix this in the **library project**, not the preview-host: use a
+`PackageReference Include="Microsoft.AspNetCore.Components.Web"` instead of
+the framework reference, and strip the implicit framework reference at
+pack time via a `BeforeTargets="ProcessFrameworkReferences"` MSBuild
+target. See Moka.Red's `Directory.Build.targets` for a working example.
+
+### Preview compile errors
+
+Preview compile errors are shown inline in place of the iframe. The source
+code tab still works so you can see what the user entered. Common gotchas:
+
+- **Generic type inference** — Razor's generated code for components with
+  `@typeparam TValue where TValue : …` may reference a constraint type
+  that isn't in scope. Workaround: specify the type explicitly with
+  `<MokaNumericField TValue="int" @bind-Value="_qty" />`.
+- **Missing namespaces** — add the namespace to `usings` in your plugin
+  options instead of putting `@using` directives in the preview block
+  itself. Plugin global usings apply to every block without cluttering
+  each snippet.
+
+### Iframe keeps growing in height
+
+The `wasmPreview.js` bridge reports content size to the parent via
+postMessage, and `Moka.Blazor.Repl.Host` v1.3.5+ guards against monotonic
+growth by measuring the `#app` element instead of `documentElement.scrollHeight`,
+using a 2px change threshold, and rate-limiting to 20 posts/sec. If you're
+hitting the grow loop on an older version, upgrade `Moka.Blazor.Repl.Host`
+and run `dotnet publish` on the preview-host again.
+
+---
 
 ## Limitations
 
-### WASM mode
+- **One Blazor WebAssembly runtime per page** — each visible iframe boots
+  its own runtime. With `loading="lazy"`, only previews the user actually
+  scrolls to will boot, and all iframes on a page share the same
+  `_framework/` files via the HTTP cache.
+- **No cross-iframe communication** — each preview is isolated. State
+  sharing between previews on the same page happens only at compile time
+  via the two-pass `@code` inheritance described above, not at runtime.
+- **Compile-time source only** — `blazor-preview` blocks are compiled
+  during `mokadocs build`, not at runtime. Users can't edit the code in
+  the browser (that's what the REPL plugin is for).
 
-- **Requires `Moka.Blazor.Repl.Wasm` NuGet package** — The WASM runtime must be installed locally for the plugin to locate the preview app files.
-- **Output size** — The `_preview-wasm/_framework/` directory adds ~12MB (compressed) to the build output. This is shared across all preview blocks.
-- **Same-origin only** — The iframe must be served from the same origin as the docs site. This works on GitHub Pages and most static hosts.
+---
 
-### SSR mode
+## Migration from v1.x / v2.x
 
-- **No runtime interactivity** — `@onclick`, `@bind`, and other event handlers are compiled and stripped by `HtmlRenderer`. Buttons and inputs are rendered visually but do not respond to user interaction.
-- **No JS interop** — Calls to `IJSRuntime` return `default(T)`. Components that require JS for initial rendering (canvas-based, signature pads, rich editors) will render their host element but not their JS-initialised content.
-- **No `OnAfterRenderAsync`** — `HtmlRenderer` does not invoke `OnAfterRenderAsync`. Only `SetParametersAsync`, `OnInitialized[Async]`, `OnParametersSet[Async]`, and `BuildRenderTree` are executed.
-- **No injected services beyond stubs** — Services other than those explicitly registered in the `HtmlRenderer`'s `ServiceProvider` are unavailable. Components that `@inject` an unregistered service will throw at render time and fall back to an error display.
-- **Synchronous initial render only** — If a component awaits a network call inside `OnInitializedAsync`, the preview will show the loading/empty state, not the loaded state.
+The plugin was rewritten in v3.0 with a new yaml shape. If you're coming
+from the old `mode: wasm | ssr` / `wasmAppPath` / `stylesheets` schema:
 
-### Both modes
+| Old option | New equivalent |
+|---|---|
+| `mode: wasm` (default) | The only mode — removed, iframes always used |
+| `mode: ssr` | Removed — use a proper static site generator if you need non-interactive HTML |
+| `wasmAppPath: …` | Removed — use `previewHost: …` instead, pointing at a real Blazor WASM csproj |
+| `stylesheets: […]` | Moved into the preview-host's `wwwroot/index.html` `<link>` tags |
+| `references: […]` (required) | Optional and additive — the plugin derives refs from the preview-host's bin automatically |
+| (new) `library: PackageId@Version` | Required when auto-scaffolding |
 
-- **CSS isolation requires bundle** — Scoped styles only apply when the `*.bundle.scp.css` from your build output is included in `stylesheets`.
+The simplest migration is to **delete your old options and set just
+`library: …`** — the plugin will scaffold a new preview-host for you. If
+you had custom logic in your old wasmAppPath or stylesheets, move it into
+`preview-host/Program.cs` and `preview-host/wwwroot/index.html` after the
+scaffold runs.

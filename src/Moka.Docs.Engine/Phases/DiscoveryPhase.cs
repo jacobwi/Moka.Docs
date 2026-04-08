@@ -9,6 +9,7 @@ namespace Moka.Docs.Engine.Phases;
 /// </summary>
 public sealed class DiscoveryPhase(
 	FileDiscoveryService discoveryService,
+	BrandAssetResolver brandAssetResolver,
 	ILogger<DiscoveryPhase> logger) : IBuildPhase
 {
 	/// <inheritdoc />
@@ -26,8 +27,14 @@ public sealed class DiscoveryPhase(
 		context.DiscoveredProjectFiles.AddRange(result.ProjectFiles);
 		context.DiscoveredAssetFiles.AddRange(result.AssetFiles);
 
-		logger.LogInformation("Discovered {Md} markdown, {Proj} projects, {Assets} assets",
-			result.MarkdownFiles.Count, result.ProjectFiles.Count, result.AssetFiles.Count);
+		// Resolve brand assets (site.logo, site.favicon). May discover files outside
+		// content.docs via filesystem lookup, so this runs AFTER the normal glob.
+		brandAssetResolver.Resolve(context);
+
+		logger.LogInformation(
+			"Discovered {Md} markdown, {Proj} projects, {Assets} assets, {Brand} brand assets",
+			result.MarkdownFiles.Count, result.ProjectFiles.Count, result.AssetFiles.Count,
+			context.BrandAssetFiles.Count);
 
 		return Task.CompletedTask;
 	}
