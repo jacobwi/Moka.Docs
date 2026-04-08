@@ -236,6 +236,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	private RoslynCompilationService? _compilationService;
 	private string? _previewHostWwwroot;
 	private bool _servicesInitialized;
+	private string _basePathForAssemblyQuery = "";
 
 	// ── IMokaPlugin ────────────────────────────────────────────────────────────
 
@@ -277,6 +278,29 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// /_preview-wasm/ even if no pages on this build currently contain preview blocks.
 		buildContext.DeferredOutputDirectories.Add((_previewHostWwwroot, "_preview-wasm"));
 
+		// GitHub Pages runs Jekyll by default, which STRIPS directories starting with an
+		// underscore — which is exactly every directory this plugin writes (_preview-wasm,
+		// _preview-assemblies, _framework, _content). Without a .nojekyll marker at the site
+		// root, the entire preview runtime is missing from the deployed site. Emit an empty
+		// .nojekyll file so Jekyll is bypassed and every directory ships verbatim.
+		if (!buildContext.DeferredOutputFiles.ContainsKey(".nojekyll"))
+		{
+			buildContext.DeferredOutputFiles[".nojekyll"] = [];
+		}
+
+		// Resolve base path for the `?assembly=...` iframe query parameter. The Scriban
+		// template engine's RewriteContentLinks regex only matches `href="/..."` and
+		// `src="/..."` at the attribute OPENING — it does NOT rewrite `/` characters
+		// inside query strings. So while the iframe src itself (`src="/_preview-wasm/..."`)
+		// gets basePath-prefixed automatically during render, the assembly path buried
+		// in the query string (`?assembly=/_preview-assemblies/...`) does not. We have to
+		// prefix it ourselves at emission time so GitHub Pages project-page deployments
+		// (e.g. /Moka.Red/) resolve the DLL correctly.
+		string rawBase = buildContext.Config.Build.BasePath ?? "/";
+		_basePathForAssemblyQuery = rawBase == "/" || string.IsNullOrEmpty(rawBase)
+			? ""
+			: "/" + rawBase.Trim('/');
+
 		ILoggerFactory loggerFactory = context.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
 		await using HtmlRenderer htmlRenderer = CreateHtmlRenderer(loggerFactory, _knownDllPaths);
 
@@ -295,7 +319,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 			(string rewrittenHtml, int pageCompiled, int pageFailed) = await CompileAndRewritePageAsync(
 				html, _compilationService, _extraUsings, _knownDllPaths, htmlRenderer,
-				buildContext, context, ct);
+				buildContext, context, _basePathForAssemblyQuery, ct);
 
 			page.Content = page.Content with
 			{
@@ -1058,6 +1082,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		HtmlRenderer htmlRenderer,
 		BuildContext buildContext,
 		IPluginContext context,
+		string basePathForAssemblyQuery,
 		CancellationToken ct)
 	{
 		const string sourceStart = "<div class=\"blazor-preview-source\">";
@@ -1160,13 +1185,18 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 							ssrHtml = "";
 						}
 
-						// Emit one sandboxed, lazy-loaded iframe per preview. The `Moka.Blazor.Repl.Wasm`
-						// preview-host reads ?assembly=… &entry=… from its URL and mounts the component
-						// into its own static root (#app) via a plain RenderFragment — no dynamic
-						// root components API, no RegisterForJavaScript, just the static pattern that
-						// already works in your REPL app today.
+						// Emit one sandboxed, lazy-loaded iframe per preview. The preview-host WASM app
+						// reads ?assembly=… &entry=… from its URL and mounts the component into its
+						// own static root (#app) via a plain RenderFragment inside App.razor's
+						// [JSInvokable] LoadAssembly — no dynamic root components API required.
+						//
+						// iframe `src` is a root-relative absolute path; the mokadocs Scriban template
+						// engine's RewriteContentLinks auto-prefixes it with BasePath at render time.
+						// The `assembly` query parameter, however, lives INSIDE the src attribute
+						// value, so the regex-based rewriter doesn't touch it — we must prefix it
+						// ourselves here so GitHub Pages project-page deployments resolve the DLL.
 						string iframeSrc =
-							$"/_preview-wasm/index.html?assembly=/{dllRelPath}&amp;entry={WebUtility.HtmlEncode(entryPoint)}";
+							$"/_preview-wasm/index.html?assembly={basePathForAssemblyQuery}/{dllRelPath}&amp;entry={WebUtility.HtmlEncode(entryPoint)}";
 
 						sb.Append("<div class=\"blazor-preview-render\">")
 							.Append("<iframe class=\"blazor-preview-iframe\" src=\"")

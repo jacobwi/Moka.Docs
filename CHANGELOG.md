@@ -5,6 +5,38 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-04-08
+
+### ✨ New — GitHub Pages deployment support
+
+The `mokadocs-blazor-preview` plugin now produces output that deploys cleanly to
+GitHub Pages, including project-page subpath deployments (e.g.
+`username.github.io/Moka.Red/`).
+
+- **Emits `.nojekyll`** at the `_site/` root. GitHub Pages runs Jekyll by default,
+  which strips directories starting with `_` — which would wipe `_preview-wasm/`,
+  `_preview-assemblies/`, `_framework/`, and `_content/` from the deployed site,
+  leaving all preview iframes broken. The `.nojekyll` marker bypasses Jekyll
+  entirely so every file ships verbatim.
+- **Respects `--base-path` / `Build.BasePath` for the iframe `?assembly=...`
+  query parameter.** The `ScribanTemplateEngine.RewriteContentLinks` regex
+  already rewrites `src="/..."` attribute openings in page HTML automatically,
+  but its pattern only matches the leading `/` after `src="` — it doesn't touch
+  `/` characters inside query strings. The plugin now prefixes the assembly path
+  (which lives inside the iframe `src` attribute value as `?assembly=/...`) with
+  the base path itself, so GitHub Pages subpath deploys resolve the preview DLL
+  correctly.
+
+### 🐛 Fixed
+
+- **`BuildCommand` CLI `--base-path` normalization**. When `--base-path /foo/`
+  was passed with a trailing slash, the value was stored as-is in
+  `BuildContext.Config.Build.BasePath`, causing `ScribanTemplateEngine.RewriteContentLinks`
+  to produce `/foo//_preview-wasm/...` (double slash) when concatenating with
+  absolute paths in page HTML. `BuildCommand` now trims/normalizes the same way
+  `SiteConfigReader.NormalizBasePath` does for YAML-provided values: leading
+  slash, no trailing slash (except when the value is literally `/`).
+
 ## [1.3.1] - 2026-04-08
 
 ### ✨ New

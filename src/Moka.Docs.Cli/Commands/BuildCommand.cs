@@ -115,7 +115,30 @@ internal static class BuildCommand
 
 			if (basePath is not null)
 			{
-				config = config with { Build = config.Build with { BasePath = basePath } };
+				// Normalize the same way SiteConfigReader.NormalizBasePath does so the
+				// value in BuildContext matches what YAML-provided paths look like: leading
+				// slash, NO trailing slash (except when the value is literally "/"). This
+				// prevents downstream "/basepath//subpath" double-slash bugs in the Scriban
+				// RewriteContentLinks regex and elsewhere.
+				string normalized = basePath.Trim();
+				if (normalized.Length == 0)
+				{
+					normalized = "/";
+				}
+				else
+				{
+					if (!normalized.StartsWith('/'))
+					{
+						normalized = "/" + normalized;
+					}
+
+					if (normalized.Length > 1 && normalized.EndsWith('/'))
+					{
+						normalized = normalized.TrimEnd('/');
+					}
+				}
+
+				config = config with { Build = config.Build with { BasePath = normalized } };
 			}
 
 			string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
