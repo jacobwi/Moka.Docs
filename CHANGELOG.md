@@ -5,6 +5,42 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-04-08
+
+### 🎨 Changed — themed Blazor preview box
+
+All colors in the `mokadocs-blazor-preview` container chrome (the outer box
+with the Preview / Source tabs that wraps each preview iframe) now inherit
+from mokadocs theme tokens (`--color-primary`, `--color-border`,
+`--color-bg-secondary`, `--color-text`, `--color-text-muted`,
+`--color-border-light`). Previously the tabs and badge used hardcoded
+slate/violet/blue hex values (`#94a3b8`, `#60a5fa`, `#7c3aed`, `#ede9fe`)
+that clashed with consumer themes — e.g. Moka.Red docs with its red accent
+had blue active tabs and purple "Blazor" badges. Now:
+
+- Active tab underline + text inherit `--color-primary` → matches the
+  consumer's accent (red for Moka.Red, blue for ocean, emerald, etc.)
+- Hover state uses `--color-text` on `--color-bg` for a subtle theme-aware
+  highlight
+- Inactive tabs use `--color-text-muted`
+- Container border, tab separator, and grid background use
+  `--color-border` / `--color-border-light`
+- "Blazor" badge became a theme-colored outlined pill chip instead of a
+  hardcoded purple block
+- Error state uses `--color-primary` + `--color-bg-secondary` instead of
+  hardcoded red/pink
+- `.blazor-preview-render` default `min-height` bumped from 48px to 160px
+  so small previews don't render in a cramped strip before the iframe's
+  ResizeObserver reports actual content height
+- `.blazor-preview-iframe` gets a `transition: height 200ms ease-out` so
+  the post-boot resize is smooth instead of a jarring jump
+- `.blazor-preview-render` ships with a subtle 24px grid background so the
+  preview area is visually distinct from the surrounding page even while
+  the WASM runtime is booting
+
+All fallback values remain in place so standalone consumers without a
+mokadocs theme still get reasonable defaults.
+
 ## [1.3.5] - 2026-04-08
 
 ### ✨ New — GitHub Pages deployment support

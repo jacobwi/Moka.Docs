@@ -85,6 +85,10 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 {
 	#region Inline container CSS (tab wrapper + error + placeholder states)
 
+	// All colors inherit from mokadocs theme tokens (--color-*) so the preview chrome
+	// matches the surrounding docs theme in both light and dark mode, and across all
+	// color themes (ocean, emerald, violet, amber, rose, moka-red, ...). Fallbacks are
+	// only used when the page lacks a mokadocs theme (e.g. standalone render).
 	private const string _inlineCss = """
 	                                  <style>
 	                                  /* ── Preview container & tabs ────────────────────────────────── */
@@ -100,49 +104,56 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                      display: flex;
 	                                      align-items: center;
 	                                      border-bottom: 1px solid var(--color-border, #e2e8f0);
-	                                      background: var(--color-bg-code, #181825);
+	                                      background: var(--color-bg-secondary, var(--color-bg, #f7f7f9));
 	                                      padding: 0;
 	                                      margin: 0;
 	                                  }
 	                                  .blazor-preview-tab {
-	                                      padding: 0.5em 1.2em;
-	                                      font-size: 0.8rem;
+	                                      padding: 0.55em 1.1em;
+	                                      font-size: 0.78rem;
 	                                      font-weight: 600;
-	                                      color: #94a3b8;
+	                                      color: var(--color-text-muted, var(--color-text-secondary, #64748b));
 	                                      background: transparent;
 	                                      border: none;
 	                                      border-bottom: 2px solid transparent;
 	                                      cursor: pointer;
-	                                      transition: color 0.15s, border-color 0.15s;
-	                                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	                                      transition: color 0.15s ease-out, border-color 0.15s ease-out, background 0.15s ease-out;
+	                                      font-family: inherit;
+	                                      letter-spacing: 0.01em;
 	                                  }
-	                                  .blazor-preview-tab:hover { color: #cbd5e1; }
+	                                  .blazor-preview-tab:hover {
+	                                      color: var(--color-text, #1a1a1a);
+	                                      background: var(--color-bg, #ffffff);
+	                                  }
 	                                  .blazor-preview-tab.active {
-	                                      color: #60a5fa;
-	                                      border-bottom-color: #60a5fa;
+	                                      color: var(--color-primary, #0ea5e9);
+	                                      border-bottom-color: var(--color-primary, #0ea5e9);
+	                                      background: var(--color-bg, #ffffff);
 	                                  }
 	                                  .blazor-preview-source { display: none; }
 	                                  .blazor-preview-source.active { display: block; }
 	                                  .blazor-preview-source pre { margin: 0; border: none; border-radius: 0; }
 	                                  .blazor-preview-source code {
-	                                      font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+	                                      font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
 	                                  }
 	                                  .blazor-preview-render {
 	                                      display: none;
-	                                      padding: 1.25rem 1.5rem;
+	                                      padding: 0;
 	                                      background: var(--color-bg, #ffffff);
-	                                      min-height: 48px;
-	                                  }
-	                                  [data-theme="dark"] .blazor-preview-render {
-	                                      background: var(--color-bg, #0f172a);
+	                                      min-height: 160px;
+	                                      background-image: linear-gradient(var(--color-border-light, var(--color-border, #eef0f2)) 1px, transparent 1px),
+	                                                        linear-gradient(90deg, var(--color-border-light, var(--color-border, #eef0f2)) 1px, transparent 1px);
+	                                      background-size: 24px 24px;
+	                                      background-position: -1px -1px;
 	                                  }
 	                                  .blazor-preview-render.active { display: block; }
 	                                  .blazor-preview-error {
-	                                      color: #ef4444;
+	                                      color: var(--color-primary, #ef4444);
 	                                      font-size: 0.85rem;
-	                                      font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+	                                      font-family: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
 	                                      padding: 1em;
-	                                      background: #fef2f2;
+	                                      background: var(--color-bg-secondary, #fef2f2);
+	                                      border: 1px solid var(--color-border, #fecaca);
 	                                      white-space: pre-wrap;
 	                                      border-radius: 4px;
 	                                  }
@@ -159,15 +170,17 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                      border-radius: 4px;
 	                                  }
 	                                  .blazor-preview-badge {
-	                                      display: inline-block;
-	                                      font-size: 0.65rem;
+	                                      display: inline-flex;
+	                                      align-items: center;
+	                                      font-size: 0.62rem;
 	                                      font-weight: 700;
 	                                      text-transform: uppercase;
-	                                      letter-spacing: 0.05em;
-	                                      color: #7c3aed;
-	                                      background: #ede9fe;
-	                                      padding: 0.15em 0.5em;
-	                                      border-radius: 3px;
+	                                      letter-spacing: 0.06em;
+	                                      color: var(--color-primary, #0ea5e9);
+	                                      background: var(--color-bg, #ffffff);
+	                                      border: 1px solid var(--color-border, #e2e8f0);
+	                                      padding: 0.2em 0.55em;
+	                                      border-radius: 999px;
 	                                      margin-left: auto;
 	                                      margin-right: 0.75em;
 	                                  }
@@ -1359,14 +1372,19 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	/// </summary>
 	private static string InjectPreviewAssets(string html)
 	{
+		// iframe min-height is 160px (matches preview-host body min-height) so small
+		// previews aren't jammed into a cramped strip while the runtime boots and the
+		// ResizeObserver hasn't fired yet. The height transition smooths the jump when
+		// the postMessage resize event resizes the iframe to fit its actual content.
 		const string iframeCss = """
 		                         <style>
 		                         .blazor-preview-iframe {
 		                             width: 100%;
-		                             min-height: 80px;
+		                             min-height: 160px;
 		                             border: none;
 		                             display: block;
-		                             background: var(--color-bg, #ffffff);
+		                             background: transparent;
+		                             transition: height 200ms ease-out;
 		                         }
 		                         .blazor-preview-ssr-fallback { padding: 1.25rem 1.5rem; }
 		                         </style>
