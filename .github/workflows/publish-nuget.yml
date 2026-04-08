@@ -14,6 +14,13 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
+# Top-level permissions block. Required IN ADDITION TO the job-level block
+# below for some repository configurations — when the repo's default workflow
+# permissions are restrictive, only a top-level declaration is honored.
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   publish:
     name: Pack & Publish
@@ -53,11 +60,48 @@ jobs:
       - name: Push to NuGet.org
         run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
+      # ── GitHub Packages publish ──────────────────────────────────────────
+      #
+      # If this step 403s with "Your request could not be authenticated by the
+      # GitHub Packages service", check the following IN ORDER:
+      #
+      #   1. Repo Settings → Actions → General → Workflow permissions must be
+      #      set to "Read and write permissions". The job-level `permissions:
+      #      packages: write` block above CANNOT elevate above the repo default,
+      #      so a repo set to read-only will always 403 here.
+      #
+      #   2. github.com/users/jacobwi/packages/nuget/package/<PackageId> →
+      #      Package settings → "Manage Actions access" → make sure THIS repo
+      #      (jacobwi/Moka.Docs) is added with role: Write. Orphaned packages
+      #      from older / renamed repos will 403 even with correct permissions.
+      #
+      #   3. If this is the very first publish of a package and it still 403s,
+      #      delete the package from GitHub Packages entirely and let this push
+      #      re-create it linked to the current repo.
+      #
+      # Implementation notes:
+      #   * `dotnet nuget add source` with explicit username + password is more
+      #     reliable than the inline `--source <url> --api-key` pattern for
+      #     GitHub Packages — it registers proper Basic auth instead of just an
+      #     API-Key header, which some GH Packages endpoints require.
+      #   * `--no-symbols` skips the .snupkg upload. GH Packages snupkg pushes
+      #     have separate ACL requirements and frequently 403 even when .nupkg
+      #     pushes succeed; failing to push symbols should NOT fail the whole step.
+      - name: Register GitHub Packages source
+        run: |
+          dotnet nuget add source \
+            "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --name github \
+            --username "${{ github.repository_owner }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text
+
       - name: Push to GitHub Packages
         run: |
           dotnet nuget push "./nupkgs/*.nupkg" \
-            --api-key ${{ secrets.GITHUB_TOKEN }} \
-            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-            --skip-duplicate
+            --source github \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" \
+            --skip-duplicate \
+            --no-symbols
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
