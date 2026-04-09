@@ -20,6 +20,7 @@ using Moka.Docs.Plugins;
 using Moka.Docs.Plugins.BlazorPreview;
 using Moka.Docs.Plugins.Changelog;
 using Moka.Docs.Plugins.OpenApi;
+using Moka.Docs.Plugins.PythonApi;
 using Moka.Docs.Plugins.Repl;
 using Moka.Docs.Serve;
 using Moka.Docs.Versioning;
@@ -288,6 +289,7 @@ internal static class BuildCommand
 		services.AddSingleton<IMokaPlugin, ReplPlugin>();
 		services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
 		services.AddSingleton<IMokaPlugin, ChangelogPlugin>();
+		services.AddSingleton<IMokaPlugin, PythonApiPlugin>();
 
 		// Blazor preview: register compiler + preview service for build-time pre-rendering
 		services.AddSingleton<ICompilationService>(

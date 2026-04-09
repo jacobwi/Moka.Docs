@@ -20,4 +20,10 @@
     <PackageReference Include="Microsoft.OpenApi.Readers" />
   </ItemGroup>
 
+  <!-- Embed the Python analyzer script so the PythonApiPlugin can extract it
+       to a temp file and invoke it via subprocess at build time. -->
+  <ItemGroup>
+    <EmbeddedResource Include="PythonApi\mokadocs_python_analyzer.py" />
+  </ItemGroup>
+
 </Project>
