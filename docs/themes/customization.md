@@ -251,11 +251,14 @@ theme:
 Customize the site branding with logo and favicon settings:
 
 ```yaml
-logo: ./assets/logo.svg
-favicon: ./assets/favicon.ico
+site:
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
 ```
 
-The logo is displayed in the header next to the site title. Both SVG and raster image formats (PNG, JPG, ICO) are supported. Paths are relative to the project root.
+The logo is displayed in the header next to the site title. Both SVG and raster image formats (PNG, JPG, WebP, ICO) are supported.
+
+Paths are resolved **relative to the directory containing `mokadocs.yaml`** and support several forms — including parent-directory escapes via `../` and absolute URLs for CDN-hosted assets. See the [Site Configuration — Logo](/configuration/site-config#logo) page for the full path resolution rules and worked examples.
 
 ### Typography and Spacing
 
@@ -379,55 +382,101 @@ When animations are disabled (either by configuration or by the OS setting), all
 
 ## Footer Customization
 
-The default footer displays a copyright notice. Customize the footer text through configuration:
+The footer appears on every page below the main content area. It has two parts:
+
+1. **Copyright text** — your custom text (left side)
+2. **"Built with MokaDocs"** branding — automatic version badge (right side)
+
+### Copyright Text
+
+Set the `copyright` field under `site:` in your `mokadocs.yaml`:
 
 ```yaml
-footer:
-  copyright: "Copyright 2025 Your Organization. All rights reserved."
+site:
+  copyright: "© 2026 Your Organization. All rights reserved."
 ```
 
-The footer appears on every page below the main content area. For more advanced footer customization (adding links, logos, or additional sections), use the Custom Footer plugin described in the [Plugin System](/plugins/overview) documentation or inject custom CSS and HTML through the custom CSS injection point.
+This text is rendered verbatim in the footer. If omitted, the copyright area is empty (no placeholder text).
+
+### Disabling "Built with MokaDocs" Branding
+
+By default, the footer displays `Built with MokaDocs vX.Y` with a link to the GitHub repository. To hide this branding entirely:
+
+```yaml
+theme:
+  options:
+    showBuiltWith: false
+```
+
+When `showBuiltWith` is `false`, only your `site.copyright` text appears in the footer. When both `copyright` is empty and `showBuiltWith` is `false`, the footer renders as an empty bar.
+
+### Footer on the Landing Page
+
+The landing page layout uses a slightly different footer style with a heart icon: `Built with ❤ using MokaDocs vX.Y`. The same `showBuiltWith` toggle controls both layouts — setting it to `false` hides the branding on both the default and landing page footers.
+
+:::tip
+There is no `footer:` top-level key in `mokadocs.yaml`. The copyright text goes under `site: copyright:`, and the branding toggle goes under `theme: options: showBuiltWith:`.
+:::
 
 ## Full Configuration Example
 
 A complete `mokadocs.yaml` with all theme-related options:
 
 ```yaml
-title: My Library Docs
-description: Documentation for My Library
-primaryColor: "#6366f1"
-logo: ./assets/logo.svg
-favicon: ./assets/favicon.ico
-customCss: ./assets/custom.css
-
 site:
-  socialLinks:
-    - icon: github
-      url: "https://github.com/my-org/my-library"
-    - icon: nuget
-      url: "https://www.nuget.org/packages/MyLibrary"
-    - icon: discord
-      url: "https://discord.gg/my-community"
+  title: "My Library Docs"
+  description: "Documentation for My Library"
+  copyright: "© 2026 My Organization. All rights reserved."
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
   editLink:
     repo: "https://github.com/my-org/my-library"
     branch: main
     path: "docs/"
 
+content:
+  docs: ./docs
+
 theme:
+  name: default
   options:
+    # Branding
+    primaryColor: "#6366f1"
+
+    # Footer
+    showBuiltWith: true           # set to false to hide "Built with MokaDocs"
+
+    # Code blocks
+    codeTheme: "catppuccin-mocha"
+    codeThemeSelector: true
+    codeStyle: "plain"
+    codeStyleSelector: true
+
+    # Color theme presets (palette icon in header)
+    colorThemes: true
+
+    # Page features
     showEditLink: true
     showContributors: true
     showLastUpdated: true
     showFeedback: true
     showAnimations: true
-    codeTheme: "catppuccin-mocha"
-    codeThemeSelector: true
-    codeStyle: "plain"
-    codeStyleSelector: true
-    colorThemes: true
+    showSearch: true
+    showTableOfContents: true
+    showPrevNext: true
+    showBreadcrumbs: true
+    showBackToTop: true
+    showCopyButton: true
+    showDarkModeToggle: true
 
-footer:
-  copyright: "Copyright 2025 My Organization."
+    # Social links (icons in header)
+    socialLinks:
+      - icon: github
+        url: "https://github.com/my-org/my-library"
+      - icon: nuget
+        url: "https://www.nuget.org/packages/MyLibrary"
+      - icon: discord
+        url: "https://discord.gg/my-community"
 
 plugins:
   - name: mokadocs-repl
