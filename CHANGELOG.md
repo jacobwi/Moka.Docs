@@ -5,6 +5,49 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Python API Reference Plugin
+
+### ✨ New
+- **`mokadocs-python-api` plugin** — generates API reference documentation for
+  Python libraries. Parses `.py` source files via a bundled Python script
+  (pure stdlib `ast` module, zero pip dependencies) and produces the same page
+  layout as the existing C# API docs using `ApiPageRenderer`.
+
+  Supports:
+  - Classes, dataclasses (`Record`), enums, protocols/ABCs (`Interface`)
+  - Methods (instance, static, class, abstract), properties, fields
+  - Type annotations (parameters, return types, class variables, `Optional[T]`)
+  - Decorators → badges and attributes
+  - Google-style docstrings (Args, Returns, Raises, Examples, Attributes, Note,
+    Warning, See Also sections)
+  - `__all__` exports filter
+  - Module-level functions as static members of a synthetic module type
+  - Mermaid type dependency graphs
+
+  Configuration:
+  ```yaml
+  plugins:
+    - name: mokadocs-python-api
+      options:
+        source: ../src/mylib           # path to Python source dir
+        label: "Python API"             # nav label (default)
+        routePrefix: /python-api        # URL prefix (default)
+        docstringFormat: google          # docstring parser (default)
+        pythonPath: python3              # Python executable (default)
+  ```
+
+  Requires Python 3.9+ on PATH. Falls back from `python3` → `python` on
+  Windows where `python3` is a Microsoft Store alias (exit code 9009).
+
+### 📚 Docs
+- New `docs/plugins/python-api.md` — full plugin documentation with config
+  reference, supported constructs table, docstring parsing examples,
+  limitations, and a worked end-to-end example.
+- Fixed `docs/themes/customization.md` footer section — was using a fake
+  `footer: copyright:` top-level yaml key that doesn't exist in the schema.
+  Now correctly documents `site: copyright:` and `theme: options: showBuiltWith:`
+  to control the "Built with MokaDocs" branding.
+
 ## [1.3.8] - 2026-04-08
 
 ### ✨ New — `SiteAssetReference` for logo and favicon

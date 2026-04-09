@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Moka.Docs.Plugins.PythonApi;
 
 namespace Moka.Docs.Plugins;
 
@@ -15,6 +16,12 @@ public static class PluginServiceExtensions
 	public static IServiceCollection AddMokaDocsPlugins(this IServiceCollection services)
 	{
 		services.AddSingleton<PluginHost>();
+
+		// Register built-in plugins. Each is discoverable by the PluginHost via
+		// its Id property when the user adds the corresponding plugin declaration
+		// to their mokadocs.yaml.
+		services.AddSingleton<IMokaPlugin, PythonApiPlugin>();
+
 		return services;
 	}
 }

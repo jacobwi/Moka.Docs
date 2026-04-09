@@ -585,11 +585,21 @@ internal static class DoctorCommand
 	///     Doctor check for a single brand asset (<c>site.logo</c> or <c>site.favicon</c>).
 	///     Validates that:
 	///     <list type="bullet">
-	///         <item><description>The asset reference resolved successfully (non-null = user set a value)</description></item>
-	///         <item><description>Absolute URLs are accepted and reported but not file-checked</description></item>
-	///         <item><description>Filesystem references point at existing files</description></item>
-	///         <item><description>Escaped paths (flattened into /_media/) are flagged as informational so users
-	///             understand why their <c>../branding/logo.png</c> is reachable at a different URL than they wrote</description></item>
+	///         <item>
+	///             <description>The asset reference resolved successfully (non-null = user set a value)</description>
+	///         </item>
+	///         <item>
+	///             <description>Absolute URLs are accepted and reported but not file-checked</description>
+	///         </item>
+	///         <item>
+	///             <description>Filesystem references point at existing files</description>
+	///         </item>
+	///         <item>
+	///             <description>
+	///                 Escaped paths (flattened into /_media/) are flagged as informational so users
+	///                 understand why their <c>../branding/logo.png</c> is reachable at a different URL than they wrote
+	///             </description>
+	///         </item>
 	///     </list>
 	///     Unset brand assets are silently skipped (no pass/fail message) — a site without
 	///     a logo is valid and shouldn't clutter the doctor output.
