@@ -87,10 +87,20 @@ public sealed record SiteAssetReference
 	///     <para>
 	///         Examples:
 	///         <list type="bullet">
-	///             <item><description><c>assets/logo.png</c> → <c>/assets/logo.png</c></description></item>
-	///             <item><description><c>./logo.png</c> → <c>/logo.png</c></description></item>
-	///             <item><description><c>../branding/logo.png</c> → <c>/_media/logo.png</c></description></item>
-	///             <item><description><c>https://cdn.example.com/logo.png</c> → <c>https://cdn.example.com/logo.png</c></description></item>
+	///             <item>
+	///                 <description><c>assets/logo.png</c> → <c>/assets/logo.png</c></description>
+	///             </item>
+	///             <item>
+	///                 <description><c>./logo.png</c> → <c>/logo.png</c></description>
+	///             </item>
+	///             <item>
+	///                 <description><c>../branding/logo.png</c> → <c>/_media/logo.png</c></description>
+	///             </item>
+	///             <item>
+	///                 <description>
+	///                     <c>https://cdn.example.com/logo.png</c> → <c>https://cdn.example.com/logo.png</c>
+	///                 </description>
+	///             </item>
 	///         </list>
 	///     </para>
 	/// </summary>

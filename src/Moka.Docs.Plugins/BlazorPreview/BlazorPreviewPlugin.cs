@@ -242,14 +242,22 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	#endregion
 
+	// ── Preview-host auto-discovery / scaffolding / publishing ────────────────
+
+	/// <summary>
+	///     Pinned version of <c>Moka.Blazor.Repl.Host</c> that the scaffold template references.
+	///     Update this whenever a new compatible host RCL is published to NuGet.
+	/// </summary>
+	private const string _hostPackageVersion = "1.3.0";
+
 	// ── Instance state ─────────────────────────────────────────────────────────
 
 	private readonly List<string> _extraUsings = [];
 	private readonly List<string> _knownDllPaths = [];
+	private string _basePathForAssemblyQuery = "";
 	private RoslynCompilationService? _compilationService;
 	private string? _previewHostWwwroot;
 	private bool _servicesInitialized;
-	private string _basePathForAssemblyQuery = "";
 
 	// ── IMokaPlugin ────────────────────────────────────────────────────────────
 
@@ -529,24 +537,30 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		return true;
 	}
 
-	// ── Preview-host auto-discovery / scaffolding / publishing ────────────────
-
-	/// <summary>
-	///     Pinned version of <c>Moka.Blazor.Repl.Host</c> that the scaffold template references.
-	///     Update this whenever a new compatible host RCL is published to NuGet.
-	/// </summary>
-	private const string _hostPackageVersion = "1.3.0";
-
 	/// <summary>
 	///     Resolves the preview-host project directory from yaml options or convention.
 	///     <para>
 	///         Resolution order:
 	///         <list type="number">
-	///             <item><description>Explicit <c>previewHost:</c> yaml option (relative to docs root)</description></item>
-	///             <item><description><c>./preview-host/</c></description></item>
-	///             <item><description><c>./docs-preview-host/</c></description></item>
-	///             <item><description>Any subdirectory under the docs root that already contains a
-	///                 <c>Microsoft.NET.Sdk.BlazorWebAssembly</c> csproj</description></item>
+	///             <item>
+	///                 <description>Explicit <c>previewHost:</c> yaml option (relative to docs root)</description>
+	///             </item>
+	///             <item>
+	///                 <description>
+	///                     <c>./preview-host/</c>
+	///                 </description>
+	///             </item>
+	///             <item>
+	///                 <description>
+	///                     <c>./docs-preview-host/</c>
+	///                 </description>
+	///             </item>
+	///             <item>
+	///                 <description>
+	///                     Any subdirectory under the docs root that already contains a
+	///                     <c>Microsoft.NET.Sdk.BlazorWebAssembly</c> csproj
+	///                 </description>
+	///             </item>
 	///         </list>
 	///     </para>
 	///     <para>
@@ -704,8 +718,12 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	/// <summary>
 	///     Parses a <c>library:</c> yaml value into <c>(packageId, version)</c>.
 	///     <list type="bullet">
-	///         <item><description><c>Foo.Bar@1.2.3</c> → <c>("Foo.Bar", "1.2.3")</c></description></item>
-	///         <item><description><c>Foo.Bar</c>      → <c>("Foo.Bar", "*")</c> (latest)</description></item>
+	///         <item>
+	///             <description><c>Foo.Bar@1.2.3</c> → <c>("Foo.Bar", "1.2.3")</c></description>
+	///         </item>
+	///         <item>
+	///             <description><c>Foo.Bar</c>      → <c>("Foo.Bar", "*")</c> (latest)</description>
+	///         </item>
 	///     </list>
 	/// </summary>
 	private static (string id, string version) ParseLibrarySpec(string spec)
@@ -832,107 +850,6 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		return newest;
 	}
-
-	#region Scaffold templates
-
-	private const string _scaffoldCsprojTemplate = """
-	                                                <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
-
-	                                                  <PropertyGroup>
-	                                                    <TargetFramework>net10.0</TargetFramework>
-	                                                    <Nullable>enable</Nullable>
-	                                                    <ImplicitUsings>enable</ImplicitUsings>
-	                                                    <IsPackable>false</IsPackable>
-	                                                    <NoWarn>$(NoWarn);CA1515</NoWarn>
-	                                                    <!-- IL trimming is auto-disabled by Moka.Blazor.Repl.Host's build/.props
-	                                                         (the host loads arbitrary preview DLLs at runtime). -->
-	                                                  </PropertyGroup>
-
-	                                                  <ItemGroup>
-	                                                    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
-	                                                    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
-	                                                  </ItemGroup>
-
-	                                                  <ItemGroup>
-	                                                    <!-- The iframe-hosted App.razor + wasmPreview.js bridge. -->
-	                                                    <PackageReference Include="Moka.Blazor.Repl.Host" Version="{HOST_VERSION}" />
-
-	                                                    <!-- Your component library. The mokadocs plugin reads this project's
-	                                                         bin/Release/net10.0/ for Roslyn references when compiling docs
-	                                                         preview snippets, so any types you can `@using` from your library
-	                                                         here are available inside docs preview blocks. -->
-	                                                    <PackageReference Include="{LIBRARY_ID}" Version="{LIBRARY_VERSION}" />
-	                                                  </ItemGroup>
-
-	                                                </Project>
-
-	                                                """;
-
-	private const string _scaffoldProgramTemplate = """
-	                                                  using Microsoft.AspNetCore.Components.Web;
-	                                                  using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-	                                                  using Moka.Blazor.Repl.Host;
-
-	                                                  var builder = WebAssemblyHostBuilder.CreateDefault(args);
-
-	                                                  // Static-root mount of the shared App component from Moka.Blazor.Repl.Host.
-	                                                  // App owns the [JSInvokable] LoadAssembly method that wasmPreview.js calls
-	                                                  // to dynamically render compiled docs preview snippets.
-	                                                  builder.RootComponents.Add<App>("#app");
-	                                                  builder.RootComponents.Add<HeadOutlet>("head::after");
-
-	                                                  builder.Services.AddScoped(_ => new HttpClient
-	                                                  {
-	                                                      BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
-	                                                  });
-
-	                                                  // ── Customize: register your library's services here ─────────────
-	                                                  // Anything you add can be @inject-ed by docs preview snippets.
-	                                                  // Examples:
-	                                                  //   builder.Services.AddYourThing();
-	                                                  //   builder.Services.AddSingleton<IMyService, MyService>();
-	                                                  // ──────────────────────────────────────────────────────────────────
-
-	                                                  await builder.Build().RunAsync();
-
-	                                                  """;
-
-	private const string _scaffoldIndexHtmlTemplate = """
-	                                                   <!DOCTYPE html>
-	                                                   <html lang="en">
-	                                                   <head>
-	                                                     <meta charset="utf-8" />
-	                                                     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	                                                     <base href="./" />
-	                                                     <title>Docs preview host</title>
-
-	                                                     <!-- ── Customize: link your library's CSS here ──────────────────
-	                                                          Static web assets from referenced libraries live under
-	                                                          _content/<PackageId>/. The Blazor WASM SDK auto-bundles every
-	                                                          referenced library's scoped CSS into the .styles.css below.
-
-	                                                          Example:
-	                                                            <link rel="stylesheet" href="_content/{LIBRARY_ID}/your.css" />
-	                                                          ────────────────────────────────────────────────────────────── -->
-
-	                                                     <link rel="stylesheet" href="DocsPreviewHost.styles.css" />
-	                                                   </head>
-	                                                   <body>
-	                                                     <div id="app"><div style="padding:1rem;color:#888;font-family:sans-serif;font-size:13px">Loading…</div></div>
-	                                                     <div id="blazor-error-ui" style="display:none">
-	                                                       A rendering error occurred. <a href="">Reload</a>
-	                                                     </div>
-
-	                                                     <!-- The wasmPreview bridge ships as a static web asset from
-	                                                          Moka.Blazor.Repl.Host. Must load BEFORE blazor.webassembly.js. -->
-	                                                     <script src="_content/Moka.Blazor.Repl.Host/wasmPreview.js"></script>
-	                                                     <script src="_framework/blazor.webassembly.js"></script>
-	                                                   </body>
-	                                                   </html>
-
-	                                                   """;
-
-	#endregion
 
 	/// <summary>
 	///     Returns <c>true</c> if an assembly with the given simple-name is already resolvable
@@ -1526,4 +1443,105 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			return null;
 		}
 	}
+
+	#region Scaffold templates
+
+	private const string _scaffoldCsprojTemplate = """
+	                                               <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+	                                                 <PropertyGroup>
+	                                                   <TargetFramework>net10.0</TargetFramework>
+	                                                   <Nullable>enable</Nullable>
+	                                                   <ImplicitUsings>enable</ImplicitUsings>
+	                                                   <IsPackable>false</IsPackable>
+	                                                   <NoWarn>$(NoWarn);CA1515</NoWarn>
+	                                                   <!-- IL trimming is auto-disabled by Moka.Blazor.Repl.Host's build/.props
+	                                                        (the host loads arbitrary preview DLLs at runtime). -->
+	                                                 </PropertyGroup>
+
+	                                                 <ItemGroup>
+	                                                   <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
+	                                                   <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
+	                                                 </ItemGroup>
+
+	                                                 <ItemGroup>
+	                                                   <!-- The iframe-hosted App.razor + wasmPreview.js bridge. -->
+	                                                   <PackageReference Include="Moka.Blazor.Repl.Host" Version="{HOST_VERSION}" />
+
+	                                                   <!-- Your component library. The mokadocs plugin reads this project's
+	                                                        bin/Release/net10.0/ for Roslyn references when compiling docs
+	                                                        preview snippets, so any types you can `@using` from your library
+	                                                        here are available inside docs preview blocks. -->
+	                                                   <PackageReference Include="{LIBRARY_ID}" Version="{LIBRARY_VERSION}" />
+	                                                 </ItemGroup>
+
+	                                               </Project>
+
+	                                               """;
+
+	private const string _scaffoldProgramTemplate = """
+	                                                using Microsoft.AspNetCore.Components.Web;
+	                                                using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+	                                                using Moka.Blazor.Repl.Host;
+
+	                                                var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+	                                                // Static-root mount of the shared App component from Moka.Blazor.Repl.Host.
+	                                                // App owns the [JSInvokable] LoadAssembly method that wasmPreview.js calls
+	                                                // to dynamically render compiled docs preview snippets.
+	                                                builder.RootComponents.Add<App>("#app");
+	                                                builder.RootComponents.Add<HeadOutlet>("head::after");
+
+	                                                builder.Services.AddScoped(_ => new HttpClient
+	                                                {
+	                                                    BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+	                                                });
+
+	                                                // ── Customize: register your library's services here ─────────────
+	                                                // Anything you add can be @inject-ed by docs preview snippets.
+	                                                // Examples:
+	                                                //   builder.Services.AddYourThing();
+	                                                //   builder.Services.AddSingleton<IMyService, MyService>();
+	                                                // ──────────────────────────────────────────────────────────────────
+
+	                                                await builder.Build().RunAsync();
+
+	                                                """;
+
+	private const string _scaffoldIndexHtmlTemplate = """
+	                                                  <!DOCTYPE html>
+	                                                  <html lang="en">
+	                                                  <head>
+	                                                    <meta charset="utf-8" />
+	                                                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	                                                    <base href="./" />
+	                                                    <title>Docs preview host</title>
+
+	                                                    <!-- ── Customize: link your library's CSS here ──────────────────
+	                                                         Static web assets from referenced libraries live under
+	                                                         _content/<PackageId>/. The Blazor WASM SDK auto-bundles every
+	                                                         referenced library's scoped CSS into the .styles.css below.
+
+	                                                         Example:
+	                                                           <link rel="stylesheet" href="_content/{LIBRARY_ID}/your.css" />
+	                                                         ────────────────────────────────────────────────────────────── -->
+
+	                                                    <link rel="stylesheet" href="DocsPreviewHost.styles.css" />
+	                                                  </head>
+	                                                  <body>
+	                                                    <div id="app"><div style="padding:1rem;color:#888;font-family:sans-serif;font-size:13px">Loading…</div></div>
+	                                                    <div id="blazor-error-ui" style="display:none">
+	                                                      A rendering error occurred. <a href="">Reload</a>
+	                                                    </div>
+
+	                                                    <!-- The wasmPreview bridge ships as a static web asset from
+	                                                         Moka.Blazor.Repl.Host. Must load BEFORE blazor.webassembly.js. -->
+	                                                    <script src="_content/Moka.Blazor.Repl.Host/wasmPreview.js"></script>
+	                                                    <script src="_framework/blazor.webassembly.js"></script>
+	                                                  </body>
+	                                                  </html>
+
+	                                                  """;
+
+	#endregion
 }

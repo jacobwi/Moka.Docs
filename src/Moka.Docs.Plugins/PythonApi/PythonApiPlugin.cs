@@ -1,9 +1,9 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
@@ -28,12 +28,12 @@ public sealed class PythonApiPlugin : IMokaPlugin
 	private const string _defaultRoutePrefix = "/python-api";
 	private const string _defaultDocstringFormat = "google";
 	private const string _pythonScriptResourceName = "mokadocs_python_analyzer.py";
+	private string _docstringFormat = _defaultDocstringFormat;
+	private string _label = _defaultLabel;
+	private string _pythonPath = "python3";
+	private string _routePrefix = _defaultRoutePrefix;
 
 	private string? _sourceDir;
-	private string _label = _defaultLabel;
-	private string _routePrefix = _defaultRoutePrefix;
-	private string _docstringFormat = _defaultDocstringFormat;
-	private string _pythonPath = "python3";
 
 	/// <inheritdoc />
 	public string Id => "mokadocs-python-api";
@@ -62,6 +62,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 			_sourceDir = Path.GetFullPath(Path.Combine(buildContext.RootDirectory, srcStr));
 		}
 
+
 		if (string.IsNullOrWhiteSpace(_sourceDir))
 		{
 			context.LogError(
@@ -75,6 +76,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 			context.LogError($"mokadocs-python-api: source directory does not exist: {_sourceDir}");
 			return;
 		}
+
 
 		if (context.Options.TryGetValue("label", out object? labelObj) && labelObj is string labelStr)
 		{
@@ -125,7 +127,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 				return;
 			}
 
-			ApiReference apiRef = PythonApiMapper.ToApiReference(dto);
+			var apiRef = PythonApiMapper.ToApiReference(dto);
 
 			if (apiRef.Namespaces.Count == 0)
 			{
@@ -171,10 +173,11 @@ public sealed class PythonApiPlugin : IMokaPlugin
 	{
 		Assembly assembly = typeof(PythonApiPlugin).Assembly;
 		string resourceName = assembly.GetManifestResourceNames()
-			.FirstOrDefault(n => n.EndsWith(_pythonScriptResourceName, StringComparison.OrdinalIgnoreCase))
-			?? throw new InvalidOperationException(
-				$"mokadocs-python-api: embedded resource '{_pythonScriptResourceName}' not found in {assembly.FullName}. " +
-				"Ensure the .py file is included as an EmbeddedResource in the csproj.");
+			                      .FirstOrDefault(n =>
+				                      n.EndsWith(_pythonScriptResourceName, StringComparison.OrdinalIgnoreCase))
+		                      ?? throw new InvalidOperationException(
+			                      $"mokadocs-python-api: embedded resource '{_pythonScriptResourceName}' not found in {assembly.FullName}. " +
+			                      "Ensure the .py file is included as an EmbeddedResource in the csproj.");
 
 		using Stream stream = assembly.GetManifestResourceStream(resourceName)
 		                      ?? throw new InvalidOperationException(
@@ -212,7 +215,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 			try
 			{
-				using Process? proc = Process.Start(psi);
+				using var proc = Process.Start(psi);
 				if (proc is null)
 				{
 					continue; // Python not found, try next candidate
@@ -224,6 +227,13 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 				if (proc.ExitCode != 0)
 				{
+					// Exit code 9009 (Windows) or 127 (Linux) = command not found.
+					// Try the next Python candidate instead of reporting a hard failure.
+					if (proc.ExitCode is 9009 or 127)
+					{
+						continue;
+					}
+
 					context.LogError(
 						$"mokadocs-python-api: Python analyzer exited with code {proc.ExitCode}.\n" +
 						(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr));
@@ -251,10 +261,9 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 				return true;
 			}
-			catch (System.ComponentModel.Win32Exception)
+			catch (Win32Exception)
 			{
 				// Python executable not found on PATH, try next
-				continue;
 			}
 		}
 
@@ -303,7 +312,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 			FrontMatter = new FrontMatter
 			{
 				Title = _label,
-				Description = $"API reference for the Python library",
+				Description = "API reference for the Python library",
 				Layout = "default"
 			},
 			Content = new PageContent
@@ -316,7 +325,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 		});
 
 		// Generate per-type pages
-		List<ApiType> allTypes = apiRef.Namespaces.SelectMany(n => n.Types).ToList();
+		var allTypes = apiRef.Namespaces.SelectMany(n => n.Types).ToList();
 
 		foreach (ApiNamespace ns in apiRef.Namespaces)
 		foreach (ApiType type in ns.Types)

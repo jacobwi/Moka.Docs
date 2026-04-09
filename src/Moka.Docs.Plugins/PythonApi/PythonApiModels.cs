@@ -22,7 +22,7 @@ internal static class PythonApiMapper
 	/// </summary>
 	public static ApiReference ToApiReference(PythonAnalysisDto dto)
 	{
-		List<ApiNamespace> namespaces = dto.Namespaces
+		var namespaces = dto.Namespaces
 			.Select(ns => new ApiNamespace
 			{
 				Name = ns.Name,
@@ -140,7 +140,7 @@ internal static class PythonApiMapper
 			return defaultValue;
 		}
 
-		return Enum.TryParse<T>(value, true, out T result) ? result : defaultValue;
+		return Enum.TryParse(value, true, out T result) ? result : defaultValue;
 	}
 }
 
@@ -170,7 +170,10 @@ internal sealed class PythonTypeDto
 	[JsonPropertyName("isRecord")] public bool IsRecord { get; set; }
 	[JsonPropertyName("typeParameters")] public List<PythonTypeParamDto>? TypeParameters { get; set; }
 	[JsonPropertyName("baseType")] public string? BaseType { get; set; }
-	[JsonPropertyName("implementedInterfaces")] public List<string>? ImplementedInterfaces { get; set; }
+
+	[JsonPropertyName("implementedInterfaces")]
+	public List<string>? ImplementedInterfaces { get; set; }
+
 	[JsonPropertyName("members")] public List<PythonMemberDto>? Members { get; set; }
 	[JsonPropertyName("documentation")] public PythonDocDto? Documentation { get; set; }
 	[JsonPropertyName("attributes")] public List<PythonAttrDto>? Attributes { get; set; }
@@ -194,7 +197,10 @@ internal sealed class PythonMemberDto
 	[JsonPropertyName("isAbstract")] public bool IsAbstract { get; set; }
 	[JsonPropertyName("isOverride")] public bool IsOverride { get; set; }
 	[JsonPropertyName("isSealed")] public bool IsSealed { get; set; }
-	[JsonPropertyName("isExtensionMethod")] public bool IsExtensionMethod { get; set; }
+
+	[JsonPropertyName("isExtensionMethod")]
+	public bool IsExtensionMethod { get; set; }
+
 	[JsonPropertyName("parameters")] public List<PythonParamDto>? Parameters { get; set; }
 	[JsonPropertyName("typeParameters")] public List<PythonTypeParamDto>? TypeParameters { get; set; }
 	[JsonPropertyName("documentation")] public PythonDocDto? Documentation { get; set; }
