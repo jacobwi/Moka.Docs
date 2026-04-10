@@ -5,6 +5,19 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-04-08
+
+### 🐛 Fixed
+- **Sidebar navigation links are now always root-relative.** Nav paths from
+  `mokadocs.yaml` like `path: mpc-fopdt` (no leading `/`) were rendered as
+  relative `href` attributes. When viewing a deeply-nested page like
+  `/algo-api/base/basecontroller`, clicking such a link navigated to
+  `/algo-api/base/mpc-fopdt` instead of `/mpc-fopdt`. The
+  `NavigationBuildPhase` now normalizes all nav paths to start with `/`
+  before matching pages and before storing on the `NavigationNode.Route`,
+  so sidebar links always resolve from the site root regardless of the
+  current page depth.
+
 ## [1.4.0] - 2026-04-08
 
 ### ✨ New

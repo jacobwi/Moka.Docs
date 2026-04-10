@@ -43,18 +43,27 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 	{
 		return navItems.Select(item =>
 		{
+			// Normalize path to root-relative (leading "/") so sidebar links always
+			// resolve from the site root regardless of what page the user is currently
+			// viewing. Without this, a yaml `path: mpc-fopdt` rendered as a relative
+			// href while viewing /algo-api/base/someclass would navigate to
+			// /algo-api/base/mpc-fopdt instead of /mpc-fopdt.
+			string? normalizedPath = NormalizePath(item.Path);
+
 			List<NavigationNode> children = item.Children.Count > 0
 				? BuildFromConfig(item.Children, pages)
-				: BuildChildrenFromPath(item.Path ?? "", pages);
+				: BuildChildrenFromPath(normalizedPath ?? "", pages);
 
-			// Check if the nav item's path points to an actual page
+			// Check if the nav item's path points to an actual page.
+			// Match against both the normalized path and the raw path so that users
+			// who write `path: /mpc-fopdt` and `path: mpc-fopdt` both resolve correctly.
 			DocPage? matchingPage = pages.FirstOrDefault(p =>
-				string.Equals(p.Route, item.Path, StringComparison.OrdinalIgnoreCase));
+				string.Equals(p.Route, normalizedPath, StringComparison.OrdinalIgnoreCase));
 
 			// If no page exists at this path, resolve to first child's route
 			// so clicking doesn't hit a redirect page
-			string? resolvedRoute = item.Path;
-			if (matchingPage is null && !string.IsNullOrEmpty(item.Path) && children.Count > 0)
+			string? resolvedRoute = normalizedPath;
+			if (matchingPage is null && !string.IsNullOrEmpty(normalizedPath) && children.Count > 0)
 			{
 				resolvedRoute = children[0].Route;
 			}
@@ -68,6 +77,21 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 				Children = children
 			};
 		}).ToList();
+	}
+
+	/// <summary>
+	///     Ensures a nav path starts with "/" so sidebar links are always root-relative.
+	///     Yaml authors commonly write both <c>path: mpc-fopdt</c> (no slash) and
+	///     <c>path: /mpc-fopdt</c> (with slash) — both should produce the same href.
+	/// </summary>
+	private static string? NormalizePath(string? path)
+	{
+		if (string.IsNullOrWhiteSpace(path))
+		{
+			return path;
+		}
+
+		return path.StartsWith('/') ? path : "/" + path;
 	}
 
 	private static List<NavigationNode> BuildChildrenFromPath(string parentPath, List<DocPage> pages)
