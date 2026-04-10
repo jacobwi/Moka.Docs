@@ -222,10 +222,20 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		#endregion
 
-		// MokaDocs version for footer branding
-		Version? asmVersion = typeof(ScribanTemplateEngine).Assembly.GetName().Version;
-		so.SetValue("mokadocs_version",
-			asmVersion is not null ? $"{asmVersion.Major}.{asmVersion.Minor}.{asmVersion.Build}" : "1.0.0", false);
+		// MokaDocs version for footer/header branding. Use InformationalVersion (set from
+		// <Version> in Directory.Build.props, e.g. "1.4.1+commithash") rather than
+		// AssemblyVersion (which stays at 1.0.0.0 unless explicitly overridden).
+		// Strip the "+commithash" suffix so the display is clean.
+		string mokaVersion = System.Reflection.CustomAttributeExtensions
+			.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(ScribanTemplateEngine).Assembly)
+			?.InformationalVersion ?? "0.0.0";
+		int plusIdx = mokaVersion.IndexOf('+');
+		if (plusIdx > 0)
+		{
+			mokaVersion = mokaVersion[..plusIdx];
+		}
+
+		so.SetValue("mokadocs_version", mokaVersion, false);
 
 		// Edit link
 		if (ctx.Config.Site.EditLink is { } el && ctx.Config.Theme.Options.ShowEditLink)
