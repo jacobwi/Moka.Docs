@@ -79,19 +79,21 @@ Tags provide additional keywords that help the search engine match pages even wh
 Search is enabled by default. To disable it entirely:
 
 ```yaml
-search:
-  enabled: false
+features:
+  search:
+    enabled: false
 ```
 
 When disabled, the search button and keyboard shortcut are removed from the site.
 
 ### Search Provider
 
-MokaDocs supports multiple search provider implementations. Configure the provider in your `mokadocs.yml`:
+MokaDocs supports multiple search provider implementations. Configure the provider in your `mokadocs.yaml`:
 
 ```yaml
-search:
-  provider: flexsearch
+features:
+  search:
+    provider: flexsearch
 ```
 
 Available providers:
@@ -120,8 +122,9 @@ Best for:
 - Projects that need more advanced search features like content weighting
 
 ```yaml
-search:
-  provider: pagefind
+features:
+  search:
+    provider: pagefind
 ```
 
 ::: note
@@ -139,6 +142,10 @@ The generated `search-index.json` file contains an array of search entries. Each
 | `content`  | Plain text excerpt of the page or section content        |
 | `category` | Either "Documentation" or "API Reference"                |
 | `tags`     | Array of tags from the page front matter (if any)        |
+
+::: note Compact Field Names
+The actual `search-index.json` file uses abbreviated field names for a smaller payload: `t` (title), `s` (section/url), `r` (route), `c` (content), and `g` (tags/category). The table above shows the logical field names for clarity.
+:::
 
 ### Page-Level vs Section-Level Entries
 

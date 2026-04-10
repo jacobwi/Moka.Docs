@@ -15,18 +15,20 @@ Plugins participate in the build pipeline at a specific ordering point, giving t
 
 ### Build Pipeline Order
 
-| Order | Stage                  |
-|-------|------------------------|
-| 100   | Content discovery      |
-| 200   | Front matter parsing   |
-| 300   | Asset processing       |
-| 400   | Markdown parsing       |
-| **500** | **Plugin execution** |
-| 600   | Navigation generation  |
-| 700   | Template rendering     |
-| 800   | Output writing         |
+| Order | Phase | Description |
+|-------|-------|-------------|
+| 200 | Discovery | Scans for markdown, projects, and assets |
+| 300 | C# Analysis | Roslyn analysis of .csproj files to generate API pages |
+| 400 | Markdown Parse | Parses markdown with custom extensions |
+| **500** | **Feature Gate + Plugin Hook** | Feature flags are applied and plugins execute here |
+| 600 | Navigation Build | Builds sidebar navigation tree |
+| 700 | Search Index | Builds client-side search entries |
+| 900 | Render | Applies Scriban templates |
+| 1100 | Output | Writes pages and assets to `_site/` |
+| 1150 | Theme Assets | Writes CSS/JS to `_theme/` |
+| 1200 | Post-Process | Generates `sitemap.xml` and `robots.txt` |
 
-Because plugins run at order 500, they receive fully parsed HTML from the markdown stage and can modify it before navigation and template rendering occur. This means plugins can add new pages that will appear in the sidebar, or alter page HTML that will be wrapped in the site layout.
+Because plugins run at order 500, they receive fully parsed HTML from the markdown stage and can modify it before navigation, search indexing, and template rendering occur. This means plugins can add new pages that will appear in the sidebar, or alter page HTML that will be wrapped in the site layout.
 
 ## Built-in Plugins
 

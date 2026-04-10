@@ -46,20 +46,21 @@ The `variant` attribute controls the visual style of the card. Three variants ar
 | Variant    | Description                                          |
 |------------|------------------------------------------------------|
 | `default`  | Standard card with subtle background and border      |
-| `outlined` | Card with a prominent border and no background fill  |
-| `filled`   | Card with a solid background color                   |
+| `info`     | Card with an informational blue accent               |
+| `success`  | Card with a green success accent                     |
+| `warning`  | Card with an orange/yellow warning accent            |
 
 ```markdown
 :::card{title="Default Card" icon="box" variant="default"}
 This is the default card style with a subtle background.
 :::
 
-:::card{title="Outlined Card" icon="square" variant="outlined"}
-This card uses only a border with no background fill.
+:::card{title="Info Card" icon="info" variant="info"}
+This card uses an informational blue accent.
 :::
 
-:::card{title="Filled Card" icon="palette" variant="filled"}
-This card has a solid background color for maximum emphasis.
+:::card{title="Success Card" icon="check-circle" variant="success"}
+This card uses a green success accent.
 :::
 ```
 
@@ -67,12 +68,12 @@ This card has a solid background color for maximum emphasis.
 This is the default card style with a subtle background.
 :::
 
-:::card{title="Outlined Card" icon="square" variant="outlined"}
-This card uses only a border with no background fill.
+:::card{title="Info Card" icon="info" variant="info"}
+This card uses an informational blue accent.
 :::
 
-:::card{title="Filled Card" icon="palette" variant="filled"}
-This card has a solid background color for maximum emphasis.
+:::card{title="Success Card" icon="check-circle" variant="success"}
+This card uses a green success accent.
 :::
 
 ### Rich Content in Cards
@@ -100,7 +101,7 @@ See the [full guide](./getting-started.md) for more options.
 |-----------|----------|--------|------------------------------------------------|
 | `title`   | Yes      | string | The title displayed at the top of the card      |
 | `icon`    | No       | string | A Lucide icon name (e.g., `rocket`, `book`, `zap`) |
-| `variant` | No       | string | Visual style: `default`, `outlined`, or `filled` |
+| `variant` | No       | string | Visual style: `default`, `info`, `success`, or `warning` |
 
 ## Steps
 
@@ -190,9 +191,10 @@ Open the `docs/` folder and start writing Markdown files. The dev server will au
 Create a `mokadocs.yml` file in your repository root:
 
 \`\`\`yaml
-title: My Project Docs
-description: Documentation for My Project
-base_url: https://docs.myproject.com
+site:
+  title: My Project Docs
+  description: Documentation for My Project
+  url: https://docs.myproject.com
 \`\`\`
 
 ### Add your API project
@@ -200,7 +202,7 @@ base_url: https://docs.myproject.com
 Reference your .NET project for API documentation generation:
 
 \`\`\`yaml
-api:
+content:
   projects:
     - src/MyProject/MyProject.csproj
 \`\`\`

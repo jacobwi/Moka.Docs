@@ -83,12 +83,12 @@ You can annotate a release heading with a `type` to control the badge color:
 ## v2.1.1 — 2025-06-20 {type: patch}
 ````
 
-| Type | Badge Color | Use Case |
-|---|---|---|
-| `initial` | Blue | First public release |
-| `major` | Red | Breaking changes, major new version |
-| `minor` | Green | New features, backward-compatible |
-| `patch` | Gray | Bug fixes and small improvements |
+| Type | Badge Color | Hex | Use Case |
+|---|---|---|---|
+| `initial` | Purple/Violet | `#8b5cf6` | First public release |
+| `major` | Red | | Breaking changes, major new version |
+| `minor` | Blue | `#3b82f6` | New features, backward-compatible |
+| `patch` | Green | `#22c55e` | Bug fixes and small improvements |
 
 When no type is specified, the plugin infers it from the version number (major version bump, minor bump, or patch bump).
 

@@ -293,14 +293,14 @@ A set of options that control the default theme's appearance and behavior. Custo
 #### `options.primaryColor`
 
 - **Type:** `string`
-- **Default:** `"#6366f1"`
+- **Default:** `"#0ea5e9"`
 
 The primary brand color used throughout the site for links, active states, sidebar highlights, and interactive elements. Accepts any valid CSS color value (hex, RGB, HSL, or named colors).
 
 ```yaml
 theme:
   options:
-    primaryColor: "#6366f1"
+    primaryColor: "#0ea5e9"
 ```
 
 #### `options.accentColor`
@@ -342,14 +342,14 @@ theme:
 #### `options.codeThemeSelector`
 
 - **Type:** `bool`
-- **Default:** `true`
+- **Default:** `false`
 
 Controls whether the code syntax theme selector button (`</>`) is displayed in the site header. When enabled, readers can switch between all 7 built-in themes. The selection is persisted in `localStorage`.
 
 ```yaml
 theme:
   options:
-    codeThemeSelector: true
+    codeThemeSelector: false
 ```
 
 #### `options.codeStyle`
@@ -375,14 +375,14 @@ theme:
 #### `options.codeStyleSelector`
 
 - **Type:** `bool`
-- **Default:** `true`
+- **Default:** `false`
 
 Controls whether the code block window style selector button is displayed in the site header. When enabled, readers can switch between all 4 built-in window styles. The selection is persisted in `localStorage`.
 
 ```yaml
 theme:
   options:
-    codeStyleSelector: true
+    codeStyleSelector: false
 ```
 
 #### `options.colorThemes`
@@ -390,7 +390,7 @@ theme:
 - **Type:** `bool`
 - **Default:** `true`
 
-Controls whether the color theme preset selector (palette icon) is displayed in the site header. When enabled, readers can switch between 5 built-in color presets (Ocean, Emerald, Violet, Amber, Rose). The selection is persisted in `localStorage`.
+Controls whether the color theme preset selector (palette icon) is displayed in the site header. When enabled, readers can switch between 6 built-in color presets (Ocean, Emerald, Violet, Amber, Rose, Moka Red). The selection is persisted in `localStorage`.
 
 ```yaml
 theme:
@@ -401,14 +401,14 @@ theme:
 #### `options.showEditLink`
 
 - **Type:** `bool`
-- **Default:** `true`
+- **Default:** `false`
 
 Controls whether the "Edit this page" link is displayed at the bottom of documentation pages. Requires the `site.editLink` section to be configured. When set to `false`, edit links are hidden globally regardless of the `editLink` configuration.
 
 ```yaml
 theme:
   options:
-    showEditLink: true
+    showEditLink: false
 ```
 
 #### `options.showLastUpdated`
@@ -453,14 +453,14 @@ theme:
 #### `options.showAnimations`
 
 - **Type:** `bool`
-- **Default:** `true`
+- **Default:** `false`
 
 Controls whether UI animations are enabled across the site. When set to `false`, all animations (page transitions, sidebar expand/collapse, landing hero entrance, hover effects) are replaced with instant state changes. MokaDocs also respects the `prefers-reduced-motion` OS setting automatically, suppressing animations for users who have enabled reduced motion regardless of this value.
 
 ```yaml
 theme:
   options:
-    showAnimations: true
+    showAnimations: false
 ```
 
 #### `options.showBuiltWith`
@@ -474,6 +474,151 @@ Show the "Built with MokaDocs v{version}" branding in the site footer. The versi
 theme:
   options:
     showBuiltWith: true
+```
+
+#### `options.showDarkModeToggle`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether the dark mode toggle button (sun/moon icon) is displayed in the site header.
+
+```yaml
+theme:
+  options:
+    showDarkModeToggle: true
+```
+
+#### `options.showSearch`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether the search bar is displayed in the site header.
+
+```yaml
+theme:
+  options:
+    showSearch: true
+```
+
+#### `options.showTableOfContents`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether the table of contents sidebar is displayed on documentation pages.
+
+```yaml
+theme:
+  options:
+    showTableOfContents: true
+```
+
+#### `options.showPrevNext`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether Previous/Next page navigation links are displayed at the bottom of documentation pages.
+
+```yaml
+theme:
+  options:
+    showPrevNext: true
+```
+
+#### `options.showBreadcrumbs`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether breadcrumb navigation is displayed at the top of documentation pages.
+
+```yaml
+theme:
+  options:
+    showBreadcrumbs: true
+```
+
+#### `options.showBackToTop`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether the back-to-top button is displayed when the user scrolls down the page.
+
+```yaml
+theme:
+  options:
+    showBackToTop: true
+```
+
+#### `options.showCopyButton`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether the copy button is displayed on code blocks.
+
+```yaml
+theme:
+  options:
+    showCopyButton: true
+```
+
+#### `options.showLineNumbers`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether line numbers are displayed on code blocks.
+
+```yaml
+theme:
+  options:
+    showLineNumbers: true
+```
+
+#### `options.tocDepth`
+
+- **Type:** `int`
+- **Default:** `3`
+- **Range:** `2` to `6`
+
+The maximum heading level included in the table of contents. For example, a value of `3` includes `h2` and `h3` headings, while `6` includes all heading levels from `h2` through `h6`.
+
+```yaml
+theme:
+  options:
+    tocDepth: 3
+```
+
+#### `options.showVersionSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Controls whether the version dropdown selector is displayed in the site header. Only relevant when versioning is enabled.
+
+```yaml
+theme:
+  options:
+    showVersionSelector: true
+```
+
+#### `options.defaultColorTheme`
+
+- **Type:** `string`
+- **Default:** `"ocean"`
+- **Values:** `ocean`, `emerald`, `violet`, `amber`, `rose`, `moka-red`
+
+The initial color theme preset applied to the site. This sets which color preset is active by default when a reader first visits the site.
+
+```yaml
+theme:
+  options:
+    defaultColorTheme: "ocean"
 ```
 
 #### `options.socialLinks`
@@ -545,20 +690,20 @@ Enables or disables the search feature entirely. When disabled, the search bar i
 #### `search.provider`
 
 - **Type:** `string`
-- **Default:** `"pagefind"`
+- **Default:** `"flexsearch"`
 
 The search provider to use. MokaDocs supports two providers:
 
 | Provider | Description |
 |---|---|
-| `pagefind` | Static search index generated at build time. No server required. Fast and lightweight. Recommended for most sites. |
-| `flexsearch` | In-memory JavaScript-based search. The full index is loaded into the browser. Better for small sites where instant results are preferred over index size. |
+| `flexsearch` | In-memory JavaScript-based search. The full index is loaded into the browser. Fast and lightweight. Recommended for most sites. |
+| `pagefind` | Static search index generated at build time. No server required. Better for very large sites where index size is a concern. |
 
 ```yaml
 features:
   search:
     enabled: true
-    provider: "pagefind"
+    provider: "flexsearch"
 ```
 
 ### `versioning`
@@ -899,15 +1044,27 @@ theme:
     primaryColor: "#0ea5e9"
     accentColor: "#f59e0b"
     codeTheme: "catppuccin-mocha"
-    codeThemeSelector: true
+    codeThemeSelector: false
     codeStyle: "plain"
-    codeStyleSelector: true
+    codeStyleSelector: false
     colorThemes: true
-    showEditLink: true
+    defaultColorTheme: "ocean"
+    showEditLink: false
     showLastUpdated: true
-    showContributors: true
+    showContributors: false
     showFeedback: true
-    showAnimations: true
+    showAnimations: false
+    showBuiltWith: true
+    showDarkModeToggle: true
+    showSearch: true
+    showTableOfContents: true
+    showPrevNext: true
+    showBreadcrumbs: true
+    showBackToTop: true
+    showCopyButton: true
+    showLineNumbers: true
+    showVersionSelector: true
+    tocDepth: 3
     socialLinks:
       - icon: "github"
         url: "https://github.com/contoso/sdk-dotnet"
@@ -921,7 +1078,7 @@ theme:
 features:
   search:
     enabled: true
-    provider: "pagefind"
+    provider: "flexsearch"
   versioning:
     enabled: true
     strategy: "directory"
@@ -993,7 +1150,7 @@ site:
   title: "My Docs"
 ```
 
-With this minimal configuration, MokaDocs uses all default values: it looks for Markdown files in `./docs`, uses the default theme with default colors, enables search with Pagefind, and outputs to `./_site`.
+With this minimal configuration, MokaDocs uses all default values: it looks for Markdown files in `./docs`, uses the default theme with default colors, enables search with FlexSearch, and outputs to `./_site`.
 
 A more practical minimal configuration might look like this:
 

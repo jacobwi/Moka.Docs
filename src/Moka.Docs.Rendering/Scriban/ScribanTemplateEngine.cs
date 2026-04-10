@@ -181,7 +181,11 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "logo", ctx.Config.Site.Logo?.RawValue ?? "" },
 			{ "favicon", ctx.Config.Site.Favicon?.RawValue ?? "" },
 			{ "logo_url", ResolveBrandUrl(ctx.Config.Site.Logo, bp) },
-			{ "favicon_url", ResolveBrandUrl(ctx.Config.Site.Favicon, bp) }
+			{ "favicon_url", ResolveBrandUrl(ctx.Config.Site.Favicon, bp) },
+			// repo_url is used by the landing page "View on GitHub" button.
+			// Derived from editLink.repo when available; falls back to empty string
+			// which the template uses to hide the button entirely.
+			{ "repo_url", ctx.Config.Site.EditLink?.Repo ?? "" }
 		}, false);
 
 		#endregion

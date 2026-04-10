@@ -23,6 +23,8 @@ By default, the server starts on port 5080. Open `http://localhost:5080` in your
 | `--config <path>` | Path to the configuration file | `mokadocs.yaml` |
 | `--output <path>` | Output directory for built files | Value from config |
 | `--verbose` | Enable verbose logging for debugging | Off |
+| `--open` | Open the browser automatically after starting | On |
+| `--no-open` | Suppress automatic browser opening | Off |
 
 ### Examples
 
@@ -58,7 +60,7 @@ The entire cycle — from saving a file to seeing the updated page — typically
 
 ### Debouncing
 
-File system events are debounced to prevent multiple rapid rebuilds when a single save operation triggers multiple file system notifications. The server waits for a brief quiet period (typically 100-200ms) after the last file system event before starting a rebuild.
+File system events are debounced to prevent multiple rapid rebuilds when a single save operation triggers multiple file system notifications. The server waits for a brief quiet period (300ms) after the last file system event before starting a rebuild.
 
 ## Static File Serving
 
@@ -194,4 +196,4 @@ mokadocs serve --port 5081
 
 - The WebSocket client reconnects automatically if the connection drops.
 - If hot reload stops working, check for browser extensions that might block WebSocket connections.
-- The WebSocket endpoint is at `ws://localhost:<port>/_ws`.
+- The WebSocket endpoint is at `ws://localhost:<port>/__mokadocs-ws`.

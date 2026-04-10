@@ -425,6 +425,58 @@ sudo dnf install mokadocs
 When multiple tabbed content blocks on the same page share identical tab labels, selecting a tab in one block automatically selects the matching tab in all other blocks. This provides a consistent experience when a page shows multiple examples for different platforms.
 :::
 
+## Additional Extensions
+
+Beyond the features documented above, MokaDocs also supports the following special Markdown extensions through its plugin and extension system:
+
+### Mermaid Diagrams
+
+Use the `mermaid` info string on fenced code blocks to render diagrams using Mermaid:
+
+````markdown
+```mermaid
+graph LR
+    A[Start] --> B[Process]
+    B --> C[End]
+```
+````
+
+### Interactive REPL Code Blocks
+
+Use the `csharp-repl` (or `cs-repl`) info string to create interactive, runnable C# code blocks. Requires the REPL plugin to be enabled.
+
+````markdown
+```csharp-repl
+Console.WriteLine("Hello from the REPL!");
+```
+````
+
+### Blazor Preview Blocks
+
+Use the `blazor-preview` (or `razor-preview`) info string to create live-rendered Blazor component previews. Requires the Blazor Preview plugin to be enabled.
+
+````markdown
+```blazor-preview
+<h3>Hello, @Name!</h3>
+@code {
+    string Name = "World";
+}
+```
+````
+
+### Changelog Containers
+
+Use the `:::changelog` fenced container to render rich release timeline UI. Requires the Changelog plugin to be enabled.
+
+````markdown
+:::changelog
+## v1.0.0 — 2025-01-01
+
+### Added
+- Initial release
+:::
+````
+
 ## Combining Features
 
 All of these features can be combined freely. Here is an example using admonitions inside tabs:

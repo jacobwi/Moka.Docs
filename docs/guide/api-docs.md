@@ -24,7 +24,7 @@ The result is a fully navigable API reference that stays in sync with your sourc
 Add your .NET projects to the MokaDocs configuration file:
 
 ```yaml
-api:
+content:
   projects:
     - src/MyLibrary/MyLibrary.csproj
     - src/MyLibrary.Abstractions/MyLibrary.Abstractions.csproj
@@ -35,7 +35,7 @@ api:
 Each project entry supports additional options:
 
 ```yaml
-api:
+content:
   projects:
     - path: src/MyLibrary/MyLibrary.csproj
       label: Core Library

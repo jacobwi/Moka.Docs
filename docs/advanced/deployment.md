@@ -56,10 +56,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install MokaDocs
-        run: dotnet tool install --global MokaDocs.Cli
+        run: dotnet tool install -g mokadocs
 
       - name: Build documentation
         run: mokadocs build
@@ -87,6 +87,10 @@ jobs:
 2. Under "Source", select "GitHub Actions".
 3. Push the workflow file to your `main` branch.
 4. The documentation will build and deploy automatically on each push to `main`.
+
+### `.nojekyll` File
+
+Add an empty `.nojekyll` file to the site root to prevent Jekyll from stripping directories starting with `_` (like `_theme/`). The `mokadocs-blazor-preview` plugin emits this automatically, but other sites need it too. You can create this file in your `docs/` directory so it is copied to the output during build.
 
 ### Base Path for GitHub Pages Project Sites
 
@@ -118,11 +122,11 @@ Create a `netlify.toml` file in your repository root:
 
 ```toml
 [build]
-  command = "dotnet tool install --global MokaDocs.Cli && mokadocs build"
+  command = "dotnet tool install -g mokadocs && mokadocs build"
   publish = "_site"
 
 [build.environment]
-  DOTNET_VERSION = "8.0"
+  DOTNET_VERSION = "10.0"
 
 # Clean URL support
 [[redirects]]
@@ -154,7 +158,7 @@ Create a `vercel.json` file in your repository root:
 
 ```json
 {
-  "buildCommand": "dotnet tool install --global MokaDocs.Cli && mokadocs build",
+  "buildCommand": "dotnet tool install -g mokadocs && mokadocs build",
   "outputDirectory": "_site",
   "cleanUrls": true
 }
@@ -192,10 +196,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install MokaDocs
-        run: dotnet tool install --global MokaDocs.Cli
+        run: dotnet tool install -g mokadocs
 
       - name: Build documentation
         run: mokadocs build
@@ -218,10 +222,10 @@ You can serve MokaDocs output with any static file server. Here is an example us
 
 ```dockerfile
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
-RUN dotnet tool install --global MokaDocs.Cli
+RUN dotnet tool install -g mokadocs
 ENV PATH="$PATH:/root/.dotnet/tools"
 RUN mokadocs build
 
@@ -272,8 +276,8 @@ Most hosting platforms support custom domains. The general process is:
 3. **Update the base URL** in your MokaDocs configuration if needed:
 
 ```yaml
-site:
-  baseUrl: /
+build:
+  basePath: /
   # No prefix needed when using a custom domain at the root
 ```
 
@@ -304,7 +308,7 @@ Speed up CI builds by caching the .NET tool installation:
     key: dotnet-tools-${{ runner.os }}-mokadocs
 
 - name: Install MokaDocs
-  run: dotnet tool install --global MokaDocs.Cli || true
+  run: dotnet tool install -g mokadocs || true
 ```
 
 ### Build Validation on Pull Requests
@@ -328,10 +332,10 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install MokaDocs
-        run: dotnet tool install --global MokaDocs.Cli
+        run: dotnet tool install -g mokadocs
 
       - name: Build documentation
         run: mokadocs build --verbose
@@ -362,19 +366,19 @@ Most static hosting platforms handle this automatically. If your platform requir
 
 ## Base URL Configuration
 
-When deploying to a subdirectory (e.g., `https://example.com/docs/`), set the `baseUrl` in your configuration:
+When deploying to a subdirectory (e.g., `https://example.com/docs/`), set the `basePath` in your configuration:
 
 ```yaml
-site:
-  baseUrl: /docs/
+build:
+  basePath: /docs/
 ```
 
-This prefixes all internal links and asset paths with the specified base URL. Without this setting, links will point to the domain root and break when served from a subdirectory.
+This prefixes all internal links and asset paths with the specified base path. Without this setting, links will point to the domain root and break when served from a subdirectory.
 
 **Common scenarios:**
 
-| Hosting Setup | baseUrl |
-|--------------|---------|
+| Hosting Setup | basePath |
+|--------------|----------|
 | Custom domain root (`docs.example.com`) | `/` |
 | GitHub Pages user site (`username.github.io`) | `/` |
 | GitHub Pages project site (`username.github.io/repo`) | `/repo/` |

@@ -5,13 +5,13 @@ order: 4
 
 # OpenAPI Plugin
 
-The OpenAPI plugin generates API reference documentation pages from OpenAPI 3.0 JSON specification files. It creates structured, navigable pages for your REST API endpoints, grouped by tags, with full documentation of parameters, request bodies, response schemas, and examples.
+The OpenAPI plugin generates API reference documentation pages from OpenAPI 3.0 specification files (JSON and YAML). It creates structured, navigable pages for your REST API endpoints, grouped by tags, with full documentation of parameters, request bodies, response schemas, and examples.
 
 **Plugin ID:** `openapi`
 
 ## What It Does
 
-Given an OpenAPI 3.0 JSON specification, the plugin automatically generates:
+Given an OpenAPI 3.0 specification (JSON or YAML), the plugin automatically generates:
 
 - An **index overview page** listing all available endpoints grouped by tag
 - **Per-tag detail pages** with full documentation for each endpoint in that group
@@ -39,18 +39,21 @@ plugins:
 
 | Option        | Type   | Default              | Description |
 |---------------|--------|----------------------|-------------|
-| `spec`        | string | Auto-discovered      | Path to the OpenAPI 3.0 JSON file, relative to the project root. |
-| `label`       | string | `"API Reference"`    | The display label used in navigation for the generated API section. |
+| `spec`        | string | Auto-discovered      | Path to the OpenAPI 3.0 spec file (JSON or YAML), relative to the project root. |
+| `label`       | string | `"REST API"`         | The display label used in navigation for the generated API section. |
 | `routePrefix` | string | `"/api"`             | The URL prefix for all generated API pages. |
 
 ### Auto-Discovery
 
-If the `spec` option is not specified, the plugin searches for specification files in the project root in the following order:
+If the `spec` option is not specified, the plugin searches for specification files in both the project root directory and the `docs/` directory, in the following order:
 
 1. `openapi.json`
-2. `swagger.json`
+2. `openapi.yaml`
+3. `openapi.yml`
+4. `swagger.json`
+5. `swagger.yaml`
 
-The first file found is used. If neither file exists and no `spec` path is configured, the plugin logs a warning and skips generation.
+The first file found is used. If no file is found in either directory and no `spec` path is configured, the plugin logs a warning and skips generation.
 
 ## Generated Pages
 
@@ -148,7 +151,7 @@ These pages appear in the site navigation under the "REST API" label and are ful
 
 ## Specification Requirements
 
-The plugin supports **OpenAPI 3.0** format in JSON. YAML specification files are not currently supported. If your specification is in YAML format, convert it to JSON before using it with this plugin.
+The plugin supports **OpenAPI 3.0** format in both JSON and YAML (`.yaml`/`.yml`). YAML support is provided via the `Microsoft.OpenApi.Readers` library.
 
 The specification should include:
 

@@ -5,6 +5,10 @@ site:
   logo: "icon.png"
   favicon: "icon.png"
   copyright: "© 2026 MokaDocs"
+  editLink:
+    repo: "https://github.com/jacobwi/Moka.Docs"
+    branch: master
+    path: "docs/"
 
 content:
   docs: ./docs

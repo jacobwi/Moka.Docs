@@ -15,7 +15,7 @@ The REPL plugin transforms specially marked code blocks into interactive editors
 
 ## Markdown Syntax
 
-Use the `csharp-repl` language identifier on fenced code blocks to mark them as interactive:
+Use the `csharp-repl` language identifier on fenced code blocks to mark them as interactive. The following aliases are also recognized: `cs-repl`, `csharp repl`, and `cs repl`.
 
 ````markdown
 ```csharp-repl
@@ -191,8 +191,9 @@ plugins:
 
 The REPL execution environment includes several safety measures:
 
-- **AppDomain isolation** -- Scripts run in a restricted AppDomain with limited permissions, preventing access to the file system, network, and other system resources outside the sandbox.
+- **Roslyn scripting sandbox** -- Scripts run via the Roslyn scripting API with captured console output, providing isolation from the host process.
 - **5-second timeout** -- Execution is forcefully cancelled after 5 seconds, protecting against infinite loops, `Thread.Sleep` abuse, and other long-running operations.
+- **10KB code size limit** -- Submitted code is limited to 10KB to prevent abuse and excessive memory consumption.
 - **No persistent state** -- Each execution is independent. Variables and state do not carry over between Run clicks, even on the same code block.
 
 These restrictions mean certain operations will fail in the REPL:
@@ -201,6 +202,7 @@ These restrictions mean certain operations will fail in the REPL:
 - Network requests (`HttpClient`, `WebClient`, etc.)
 - Thread and process creation
 - Assembly loading beyond the pre-configured packages
+- Code submissions exceeding 10KB in size
 
 ## Static Build Behavior
 

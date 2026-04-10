@@ -26,7 +26,7 @@ The theme exposes CSS custom properties that you can override to customize the l
 
 | Property                  | Default (Light)   | Default (Dark)     | Description |
 |---------------------------|-------------------|--------------------|-------------|
-| `--color-primary`         | `#6366f1`         | `#818cf8`          | Primary brand color used for links, active states, and accents |
+| `--color-primary`         | `#0ea5e9`         | `#818cf8`          | Primary brand color used for links, active states, and accents |
 | `--color-primary-light`   | Derived           | Derived            | Lighter variant of primary, used for hover states and backgrounds |
 | `--color-primary-dark`    | Derived           | Derived            | Darker variant of primary, used for active/pressed states |
 | `--color-bg`              | `#ffffff`         | `#0f172a`          | Page background color |
@@ -64,7 +64,9 @@ The `mokadocs.yaml` file provides several options for customizing the theme with
 Set the `primaryColor` property to change the brand color across the entire site:
 
 ```yaml
-primaryColor: "#e11d48"
+theme:
+  options:
+    primaryColor: "#e11d48"
 ```
 
 MokaDocs uses CSS `color-mix()` to automatically derive the light and dark variants from your primary color. This means you only need to specify a single color value, and the hover states, active states, and background tints are computed automatically.
@@ -72,17 +74,19 @@ MokaDocs uses CSS `color-mix()` to automatically derive the light and dark varia
 Any valid CSS color value is accepted:
 
 ```yaml
-# Hex
-primaryColor: "#6366f1"
+theme:
+  options:
+    # Hex
+    primaryColor: "#0ea5e9"
 
-# Named color
-primaryColor: "rebeccapurple"
+    # Named color
+    primaryColor: "rebeccapurple"
 
-# HSL
-primaryColor: "hsl(250, 80%, 60%)"
+    # HSL
+    primaryColor: "hsl(250, 80%, 60%)"
 
-# RGB
-primaryColor: "rgb(99, 102, 241)"
+    # RGB
+    primaryColor: "rgb(99, 102, 241)"
 ```
 
 ### Code Syntax Themes
@@ -161,7 +165,7 @@ theme:
 
 ### Color Theme Presets
 
-MokaDocs includes 5 built-in color theme presets that change the primary color across the entire site with one click. A palette icon button in the header opens a dropdown showing all available presets. The selected preset is saved to `localStorage`.
+MokaDocs includes 6 built-in color theme presets that change the primary color across the entire site with one click. A palette icon button in the header opens a dropdown showing all available presets. The selected preset is saved to `localStorage`.
 
 The presets provide a quick way for readers to personalize the documentation appearance without the site author needing to set up multiple themes.
 
@@ -174,6 +178,7 @@ The presets provide a quick way for readers to personalize the documentation app
 | Violet | Purple | `#8b5cf6` |
 | Amber | Orange | `#f59e0b` |
 | Rose | Pink | `#f43f5e` |
+| Moka Red | Red | `#d32f2f` |
 
 The default primary color configured via `primaryColor` is always available alongside these presets.
 
@@ -192,14 +197,15 @@ theme:
 Add social media and external links to the site header using the `socialLinks` configuration. Each entry is rendered as an icon button in the header navigation.
 
 ```yaml
-site:
-  socialLinks:
-    - icon: github
-      url: "https://github.com/your-org/your-repo"
-    - icon: discord
-      url: "https://discord.gg/your-server"
-    - icon: nuget
-      url: "https://www.nuget.org/packages/YourPackage"
+theme:
+  options:
+    socialLinks:
+      - icon: github
+        url: "https://github.com/your-org/your-repo"
+      - icon: discord
+        url: "https://discord.gg/your-server"
+      - icon: nuget
+        url: "https://www.nuget.org/packages/YourPackage"
 ```
 
 Common icon names: `github`, `twitter`, `discord`, `nuget`, `youtube`, `linkedin`, `mastodon`. Icons are rendered as SVGs in the header navigation.
@@ -278,13 +284,10 @@ For spacing adjustments, the theme uses a consistent spacing scale based on `rem
 
 ### Custom CSS Injection
 
-You can inject additional CSS to extend or override the default theme. Place your custom CSS file in the project and reference it in the configuration:
+You can inject additional CSS to extend or override the default theme by placing a CSS file in the project and overriding the theme's CSS custom properties. The custom CSS file is loaded after the theme styles, so your rules take precedence. This is the recommended approach for advanced styling changes that go beyond what the CSS custom properties offer.
 
-```yaml
-customCss: ./assets/custom.css
-```
-
-The custom CSS file is loaded after the theme styles, so your rules take precedence. This is the recommended approach for advanced styling changes that go beyond what the CSS custom properties offer.
+::: note
+A `customCss` configuration option is planned but not yet implemented. For now, place your custom CSS file in the `docs/` directory so it is copied to the output, or override CSS custom properties in your own stylesheet.
 
 ## Dark Mode
 
@@ -441,7 +444,7 @@ theme:
   name: default
   options:
     # Branding
-    primaryColor: "#6366f1"
+    primaryColor: "#0ea5e9"
 
     # Footer
     showBuiltWith: true           # set to false to hide "Built with MokaDocs"

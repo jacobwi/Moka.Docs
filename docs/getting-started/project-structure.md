@@ -54,7 +54,7 @@ Every Markdown file should include YAML front matter:
 
 ```yaml
 ---
-title: Page Title        # Required — used in nav and <title>
+title: Page Title        # Recommended — used in nav and <title> (defaults to "Untitled" if missing)
 description: Summary     # Optional — meta description
 order: 1                 # Optional — sort order in sidebar
 icon: rocket             # Optional — sidebar icon
