@@ -231,6 +231,9 @@ public sealed record NavItem
 	/// <summary>Whether this section is expanded by default.</summary>
 	public bool Expanded { get; init; }
 
+	/// <summary>Sort order within its parent section. Lower values appear first. Default is 0.</summary>
+	public int Order { get; init; }
+
 	/// <summary>Auto-generate children from C# projects.</summary>
 	public bool AutoGenerate { get; init; }
 

@@ -98,6 +98,7 @@ internal sealed class NavItemDto
 	public string? Label { get; set; }
 	public string? Path { get; set; }
 	public string? Icon { get; set; }
+	public int Order { get; set; }
 	public bool Expanded { get; set; }
 	public bool AutoGenerate { get; set; }
 	public List<NavItemDto>? Children { get; set; }

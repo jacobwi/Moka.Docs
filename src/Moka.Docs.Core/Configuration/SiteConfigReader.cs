@@ -246,6 +246,7 @@ public sealed class SiteConfigReader
 			Label = d.Label ?? "",
 			Path = d.Path,
 			Icon = d.Icon,
+			Order = d.Order,
 			Expanded = d.Expanded,
 			AutoGenerate = d.AutoGenerate,
 			Children = MapNavItems(d.Children)

@@ -73,10 +73,14 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 				Label = item.Label,
 				Route = resolvedRoute,
 				Icon = item.Icon,
+				Order = item.Order,
 				Expanded = item.Expanded,
 				Children = children
 			};
-		}).ToList();
+		})
+		.OrderBy(n => n.Order)
+		.ThenBy(n => n.Label, StringComparer.OrdinalIgnoreCase)
+		.ToList();
 	}
 
 	/// <summary>

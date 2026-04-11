@@ -864,6 +864,32 @@ The URL path this item links to. For pages, this is the route (e.g., `"/guides/g
 
 A Lucide icon name displayed next to the label in the sidebar. See the Navigation & Sidebar page for a list of commonly used icons.
 
+### `nav[].order`
+
+- **Type:** `int`
+- **Default:** `0`
+
+Sort order within the same level of the sidebar. Lower values appear first. Items with the same `order` are sorted alphabetically by `label`. When all items have the default `order: 0`, the yaml array order is preserved.
+
+This is useful when you want to control the sidebar order from each item's declaration rather than relying on the physical position in the yaml file:
+
+```yaml
+nav:
+  - label: "API Reference"
+    path: /api
+    order: 10           # appears last even though listed first in yaml
+  - label: "Getting Started"
+    path: /getting-started
+    order: 1            # appears first
+  - label: "Guides"
+    path: /guides
+    order: 5            # appears in the middle
+```
+
+:::tip
+The same `order` property works at every nesting level — top-level sections AND their children are both sorted by `order` then by `label`.
+:::
+
 ### `nav[].expanded`
 
 - **Type:** `bool`
