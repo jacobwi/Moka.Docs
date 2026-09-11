@@ -17,7 +17,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOTNET_VERSION: '9.0.x'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -33,7 +32,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          # Both are required: the solution multi-targets net9.0;net10.0.
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Restore
         run: dotnet restore MokaDocs.sln
@@ -42,7 +44,7 @@ jobs:
         run: dotnet build MokaDocs.sln --no-restore --configuration Release -warnaserror
 
       - name: Test
-        run: dotnet test MokaDocs.sln --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test MokaDocs.sln --no-build --configuration Release --report-trx --report-trx-filename test-results.trx
 
       - name: Upload test results
         uses: actions/upload-artifact@v5

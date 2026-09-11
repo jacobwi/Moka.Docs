@@ -5,6 +5,68 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-11
+
+### 🔄 Changed
+
+- **All NuGet dependencies updated to their latest compatible versions.** 31
+  package bumps in `Directory.Packages.props`, including Scriban 7.0.6 to 7.4.0,
+  Markdig 1.1.2 to 1.3.2, YamlDotNet 16.3.0 to 18.1.0, Roslyn 5.3.0 to 5.9.0,
+  Spectre.Console 0.55.0 to 0.57.2, System.CommandLine 2.0.5 to 2.0.12,
+  Microsoft.Extensions.* 10.0.5 to 10.0.12, Moka.Blazor.Repl.* to 1.3.5, and on
+  the test side xunit.v3 3.2.2 to 4.0.0, NSubstitute 5.3.0 to 6.2.0 and
+  Verify.XunitV3 31.15.0 to 32.0.0.
+
+  This clears the NuGet audit advisories that were failing `dotnet build` under
+  `TreatWarningsAsErrors`. No source changes were needed for any bump except
+  OpenAPI (below).
+
+- **Central package management now pins transitive dependencies.**
+  `CentralPackageTransitivePinningEnabled` is on, with `NuGet.Packaging` and
+  `NuGet.Protocol` pinned to 7.9.0. Those arrive transitively through
+  `Moka.Blazor.Repl.Compiler`, which still depends on 7.3.0 (advisory
+  GHSA-g4vj-cjjj-v7hg). The pins can come out once that package moves up.
+
+  The two sample web projects joined central package management as part of this;
+  `Moka.Docs.Samples.Api` keeps its per-framework OpenAPI split via
+  `VersionOverride`.
+
+### ⚠️ Breaking
+
+- **`Moka.Docs.Plugins` now depends on `Microsoft.OpenApi` 2.12.2 instead of
+  `Microsoft.OpenApi.Readers` 1.6.x.** `OpenApiParser` was rewritten against the
+  2.x API: `OpenApiDocument.Parse` in place of `OpenApiStringReader`, `JsonNode`
+  in place of the removed `IOpenApiAny` hierarchy, `JsonSchemaType` flags in
+  place of the plain type string, and `OpenApiSchemaReference` for `$ref`
+  detection. YAML support moved to the separate `Microsoft.OpenApi.YamlReader`
+  package, which is now referenced and registered.
+
+  The `OpenApiParser.Parse(string)` / `Parse(Stream)` signatures are unchanged
+  and generated output is byte-identical apart from one improvement: datetime
+  examples now render exactly as written in the spec instead of being round
+  tripped through `OpenApiDateTime` (`"2026-03-19T10:30:00Z"` rather than
+  `"2026-03-19T10:30:00.0000000+00:00"`).
+
+  Held at 2.x rather than 3.x because `Microsoft.AspNetCore.OpenApi` 10.x
+  constrains `Microsoft.OpenApi` to `>= 2.12.0 && < 3.0.0`.
+
+### 🧪 Tests
+
+- **Test runs now use Microsoft.Testing.Platform instead of VSTest.** xunit.v3
+  4.0.0 dropped VSTest support on the .NET 10 SDK, so a root `global.json` opts
+  in with `"test": { "runner": "Microsoft.Testing.Platform" }`. It sets no `sdk`
+  section, so no SDK version is pinned.
+
+  This changes the test CLI: use `--report-trx --report-trx-filename x.trx`
+  instead of `--logger "trx;LogFileName=x.trx"`. CI was updated to match.
+
+- Full suite is 422 tests (211 per target framework), all passing.
+
+### 🔧 CI
+
+- Both workflows now install the .NET 9 **and** .NET 10 SDKs. The solution
+  multi-targets `net9.0;net10.0`, which the .NET 9 SDK alone cannot build.
+
 ## [1.4.1] - 2026-04-08
 
 ### 🐛 Fixed

@@ -796,6 +796,7 @@ _site/
 .DS_Store
 .idea/
 .claude/
+CLAUDE.md
 
 ### VisualStudio Patch ###
 # Additional files built by Visual Studio

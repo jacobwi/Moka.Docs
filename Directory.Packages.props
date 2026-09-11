@@ -1,49 +1,62 @@
 <Project>
 	<PropertyGroup>
 		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+		<!-- Lets a PackageVersion entry below also pin a *transitive* dependency, which is how
+		     the NuGet.* pins at the bottom of this file take effect. -->
+		<CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
 	</PropertyGroup>
 	<ItemGroup>
 		<!-- CLI & Console -->
-		<PackageVersion Include="Moka.Blazor.Repl.Compiler" Version="1.0.0" />
-		<PackageVersion Include="Moka.Blazor.Repl.Wasm" Version="1.2.4" />
-		<PackageVersion Include="System.CommandLine" Version="2.0.5" />
-		<PackageVersion Include="Spectre.Console" Version="0.55.0" />
+		<PackageVersion Include="Moka.Blazor.Repl.Compiler" Version="1.3.5" />
+		<PackageVersion Include="Moka.Blazor.Repl.Wasm" Version="1.3.5" />
+		<PackageVersion Include="System.CommandLine" Version="2.0.12" />
+		<PackageVersion Include="Spectre.Console" Version="0.57.2" />
 		<!-- Markdown -->
-		<PackageVersion Include="Markdig" Version="1.1.2" />
+		<PackageVersion Include="Markdig" Version="1.3.2" />
 		<!-- Templating -->
-		<PackageVersion Include="Scriban" Version="7.0.6" />
+		<PackageVersion Include="Scriban" Version="7.4.0" />
 		<!-- Roslyn / C# Analysis -->
-		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
-		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
-		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.3.0" />
+		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
+		<PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
 		<!-- File System Abstraction -->
-		<PackageVersion Include="System.IO.Abstractions" Version="22.1.0" />
-		<PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.1.0" />
-		<PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.1.0" />
+		<PackageVersion Include="System.IO.Abstractions" Version="22.2.0" />
+		<PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.2.0" />
+		<PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.2.0" />
 		<!-- DI / Logging / Configuration (.NET 10 compatible) -->
-		<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.5" />
+		<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.12" />
 		<!-- Feature Management -->
-		<PackageVersion Include="Microsoft.FeatureManagement" Version="4.4.0" />
-		<PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="10.0.5" />
-		<PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+		<PackageVersion Include="Microsoft.FeatureManagement" Version="4.7.0" />
+		<PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="10.0.12" />
+		<PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
 		<!-- YAML -->
-		<PackageVersion Include="YamlDotNet" Version="16.3.0" />
+		<PackageVersion Include="YamlDotNet" Version="18.1.0" />
 		<!-- OpenAPI -->
-		<PackageVersion Include="Microsoft.OpenApi" Version="1.6.28" />
-		<PackageVersion Include="Microsoft.OpenApi.Readers" Version="1.6.28" />
+		<!-- Samples.Api pins the net9.0 leg down to 9.0.20 via VersionOverride. -->
+		<PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+		<!-- Held at 2.x, not 3.x: Microsoft.AspNetCore.OpenApi 10.x constrains Microsoft.OpenApi
+		     to >= 2.12.0 && < 3.0.0, and the Samples.Api project pulls it in transitively.
+		     2.x already has the post-1.x API (OpenApiDocument.Parse, JsonNode, JsonSchemaType). -->
+		<PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
+		<PackageVersion Include="Microsoft.OpenApi.YamlReader" Version="2.12.2" />
 		<!-- Testing (xUnit v3) -->
-		<PackageVersion Include="xunit.v3" Version="3.2.2" />
-		<PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
-		<PackageVersion Include="FluentAssertions" Version="8.9.0" />
-		<PackageVersion Include="NSubstitute" Version="5.3.0" />
-		<PackageVersion Include="Verify.XunitV3" Version="31.15.0" />
+		<PackageVersion Include="xunit.v3" Version="4.0.0" />
+		<PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+		<PackageVersion Include="FluentAssertions" Version="8.10.0" />
+		<PackageVersion Include="NSubstitute" Version="6.2.0" />
+		<PackageVersion Include="Verify.XunitV3" Version="32.0.0" />
 		<PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+		<!-- Transitive pins. Moka.Blazor.Repl.Compiler 1.3.5 depends on NuGet.* 7.3.0, which carries
+		     advisory GHSA-g4vj-cjjj-v7hg. Pinning forward clears it without touching that package.
+		     Remove these once Moka.Blazor.Repl.Compiler ships against NuGet.* >= 7.3.1. -->
+		<PackageVersion Include="NuGet.Packaging" Version="7.9.0" />
+		<PackageVersion Include="NuGet.Protocol" Version="7.9.0" />
 	</ItemGroup>
 </Project>

@@ -1,55 +1,101 @@
-using System.Text;
 using System.Text.Json;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi.Reader;
+using OApi = Microsoft.OpenApi;
 
 namespace Moka.Docs.Plugins.OpenApi;
 
 /// <summary>
 ///     Reads an OpenAPI specification (JSON or YAML, versions 2.0/3.0/3.1)
-///     using the official <c>Microsoft.OpenApi.Readers</c> package and maps
+///     using the official <c>Microsoft.OpenApi</c> package and maps
 ///     the result to MokaDocs' own <see cref="OpenApiSpec" /> model.
 /// </summary>
+/// <remarks>
+///     Every type from the SDK is referenced through the <c>OApi</c> alias because
+///     this namespace declares its own <see cref="OpenApiSchema" />,
+///     <see cref="OpenApiParameter" />, <see cref="OpenApiRequestBody" /> and
+///     <see cref="OpenApiResponse" /> types that would otherwise collide.
+/// </remarks>
 public static class OpenApiParser
 {
+	private static readonly JsonSerializerOptions _indentedJson = new() { WriteIndented = true };
+
 	/// <summary>
 	///     Parses the given specification string (JSON or YAML).
 	/// </summary>
 	/// <param name="content">Raw content of the OpenAPI spec file.</param>
 	/// <returns>A populated <see cref="OpenApiSpec" /> instance.</returns>
+	/// <exception cref="InvalidOperationException">Thrown when the spec cannot be parsed.</exception>
 	public static OpenApiSpec Parse(string content)
 	{
-		var reader = new OpenApiStringReader();
-		OpenApiDocument? document = reader.Read(content, out OpenApiDiagnostic? diagnostic);
-
-		if (document is null)
-		{
-			string errors = string.Join("; ", diagnostic.Errors.Select(e => e.Message));
-			throw new InvalidOperationException($"Failed to parse OpenAPI spec: {errors}");
-		}
-
-		return MapDocument(document);
+		ReadResult result = OApi.OpenApiDocument.Parse(content, DetectFormat(content), CreateSettings());
+		return MapDocument(RequireDocument(result));
 	}
 
 	/// <summary>
 	///     Parses an OpenAPI spec from a stream (JSON or YAML).
 	/// </summary>
+	/// <param name="stream">Stream positioned at the start of the spec content.</param>
+	/// <returns>A populated <see cref="OpenApiSpec" /> instance.</returns>
+	/// <exception cref="InvalidOperationException">Thrown when the spec cannot be parsed.</exception>
 	public static OpenApiSpec Parse(Stream stream)
 	{
-		var reader = new OpenApiStreamReader();
-		OpenApiDocument? document = reader.Read(stream, out OpenApiDiagnostic? diagnostic);
-
-		if (document is null)
-		{
-			string errors = string.Join("; ", diagnostic.Errors.Select(e => e.Message));
-			throw new InvalidOperationException($"Failed to parse OpenAPI spec: {errors}");
-		}
-
-		return MapDocument(document);
+		using var reader = new StreamReader(stream);
+		return Parse(reader.ReadToEnd());
 	}
 
-	private static OpenApiSpec MapDocument(OpenApiDocument doc)
+	#region Reader Plumbing
+
+	/// <summary>
+	///     Builds reader settings with the YAML reader registered. The JSON reader is
+	///     built in; YAML support moved to a separate package in Microsoft.OpenApi 2.x.
+	/// </summary>
+	private static OpenApiReaderSettings CreateSettings()
+	{
+		var settings = new OpenApiReaderSettings();
+		settings.AddYamlReader();
+		return settings;
+	}
+
+	/// <summary>
+	///     Picks the reader format from the first meaningful character. A spec starting
+	///     with an opening brace is JSON; anything else is treated as YAML (which is a
+	///     superset, so this is a safe fallback rather than a guess).
+	/// </summary>
+	private static string DetectFormat(string content)
+	{
+		foreach (char c in content)
+		{
+			if (char.IsWhiteSpace(c))
+			{
+				continue;
+			}
+
+			return c == '{' ? "json" : "yaml";
+		}
+
+		return "json";
+	}
+
+	private static OApi.OpenApiDocument RequireDocument(ReadResult result)
+	{
+		if (result.Document is not null)
+		{
+			return result.Document;
+		}
+
+		string errors = result.Diagnostic is not null
+			? string.Join("; ", result.Diagnostic.Errors.Select(e => e.Message))
+			: "unknown error";
+
+		throw new InvalidOperationException($"Failed to parse OpenAPI spec: {errors}");
+	}
+
+	#endregion
+
+	#region Document Mapping
+
+	private static OpenApiSpec MapDocument(OApi.OpenApiDocument doc)
 	{
 		var spec = new OpenApiSpec
 		{
@@ -71,9 +117,9 @@ public static class OpenApiParser
 		// Schemas
 		if (doc.Components?.Schemas is not null)
 		{
-			foreach ((string? name, Microsoft.OpenApi.Models.OpenApiSchema? schema) in doc.Components.Schemas)
+			foreach ((string name, OApi.IOpenApiSchema schema) in doc.Components.Schemas)
 			{
-				spec.Schemas[name] = MapSchema(schema);
+				spec.Schemas[name] = MapSchema(schema, []);
 			}
 		}
 
@@ -82,20 +128,27 @@ public static class OpenApiParser
 
 		if (doc.Paths is not null)
 		{
-			foreach ((string? pathStr, OpenApiPathItem? pathItem) in doc.Paths)
-			foreach ((OperationType operationType, OpenApiOperation? operation) in pathItem.Operations)
+			foreach ((string pathStr, OApi.IOpenApiPathItem pathItem) in doc.Paths)
 			{
-				OpenApiEndpoint endpoint = MapEndpoint(operationType, pathStr, operation, pathItem);
-
-				foreach (string tag in endpoint.Tags)
+				if (pathItem.Operations is null)
 				{
-					if (tagSet.Add(tag))
-					{
-						spec.Tags.Add(tag);
-					}
+					continue;
 				}
 
-				spec.Endpoints.Add(endpoint);
+				foreach ((HttpMethod method, OApi.OpenApiOperation operation) in pathItem.Operations)
+				{
+					OpenApiEndpoint endpoint = MapEndpoint(method, pathStr, operation, pathItem);
+
+					foreach (string tag in endpoint.Tags)
+					{
+						if (tagSet.Add(tag))
+						{
+							spec.Tags.Add(tag);
+						}
+					}
+
+					spec.Endpoints.Add(endpoint);
+				}
 			}
 		}
 
@@ -103,14 +156,14 @@ public static class OpenApiParser
 	}
 
 	private static OpenApiEndpoint MapEndpoint(
-		OperationType method,
+		HttpMethod method,
 		string path,
-		OpenApiOperation operation,
-		OpenApiPathItem pathItem)
+		OApi.OpenApiOperation operation,
+		OApi.IOpenApiPathItem pathItem)
 	{
 		var endpoint = new OpenApiEndpoint
 		{
-			Method = method.ToString().ToUpperInvariant(),
+			Method = method.Method.ToUpperInvariant(),
 			Path = path,
 			Summary = operation.Summary ?? "",
 			Description = operation.Description ?? "",
@@ -121,7 +174,7 @@ public static class OpenApiParser
 		// Tags
 		if (operation.Tags is not null)
 		{
-			foreach (OpenApiTag? tag in operation.Tags)
+			foreach (OApi.OpenApiTagReference tag in operation.Tags)
 			{
 				if (!string.IsNullOrEmpty(tag.Name))
 				{
@@ -131,15 +184,12 @@ public static class OpenApiParser
 		}
 
 		// Merge path-level + operation-level parameters
-		var allParams = new List<Microsoft.OpenApi.Models.OpenApiParameter>();
+		var allParams = new List<OApi.IOpenApiParameter>();
 
 		// Path-level parameters first
 		if (pathItem.Parameters is not null)
 		{
-			foreach (Microsoft.OpenApi.Models.OpenApiParameter? p in pathItem.Parameters)
-			{
-				allParams.Add(p);
-			}
+			allParams.AddRange(pathItem.Parameters);
 		}
 
 		// Operation-level parameters override path-level ones
@@ -154,7 +204,7 @@ public static class OpenApiParser
 			allParams.AddRange(operation.Parameters);
 		}
 
-		foreach (Microsoft.OpenApi.Models.OpenApiParameter p in allParams)
+		foreach (OApi.IOpenApiParameter p in allParams)
 		{
 			endpoint.Parameters.Add(MapParameter(p));
 		}
@@ -169,7 +219,7 @@ public static class OpenApiParser
 		// Responses
 		if (operation.Responses is not null)
 		{
-			foreach ((string? statusCode, Microsoft.OpenApi.Models.OpenApiResponse? resp) in operation.Responses)
+			foreach ((string statusCode, OApi.IOpenApiResponse resp) in operation.Responses)
 			{
 				OpenApiResponse response = MapResponse(statusCode, resp);
 				endpoint.Responses.Add(response);
@@ -189,19 +239,19 @@ public static class OpenApiParser
 		return endpoint;
 	}
 
-	private static OpenApiParameter MapParameter(Microsoft.OpenApi.Models.OpenApiParameter param)
+	private static OpenApiParameter MapParameter(OApi.IOpenApiParameter param)
 	{
 		return new OpenApiParameter
 		{
 			Name = param.Name ?? "",
-			In = param.In?.ToString()?.ToLowerInvariant() ?? "",
+			In = param.In?.ToString().ToLowerInvariant() ?? "",
 			Description = param.Description ?? "",
 			Required = param.Required,
 			SchemaType = param.Schema is not null ? SchemaToTypeString(param.Schema) : ""
 		};
 	}
 
-	private static OpenApiRequestBody MapRequestBody(Microsoft.OpenApi.Models.OpenApiRequestBody body)
+	private static OpenApiRequestBody MapRequestBody(OApi.IOpenApiRequestBody body)
 	{
 		var rb = new OpenApiRequestBody
 		{
@@ -211,18 +261,18 @@ public static class OpenApiParser
 
 		if (body.Content is { Count: > 0 })
 		{
-			KeyValuePair<string, OpenApiMediaType> first = body.Content.First();
+			KeyValuePair<string, OApi.OpenApiMediaType> first = body.Content.First();
 			rb.ContentType = first.Key;
 			if (first.Value.Schema is not null)
 			{
-				rb.Schema = MapSchema(first.Value.Schema);
+				rb.Schema = MapSchema(first.Value.Schema, []);
 			}
 		}
 
 		return rb;
 	}
 
-	private static OpenApiResponse MapResponse(string statusCode, Microsoft.OpenApi.Models.OpenApiResponse resp)
+	private static OpenApiResponse MapResponse(string statusCode, OApi.IOpenApiResponse resp)
 	{
 		var response = new OpenApiResponse
 		{
@@ -232,234 +282,108 @@ public static class OpenApiParser
 
 		if (resp.Content is { Count: > 0 })
 		{
-			KeyValuePair<string, OpenApiMediaType> first = resp.Content.First();
+			KeyValuePair<string, OApi.OpenApiMediaType> first = resp.Content.First();
 			if (first.Value.Schema is not null)
 			{
-				response.Schema = MapSchema(first.Value.Schema);
+				response.Schema = MapSchema(first.Value.Schema, []);
 			}
 		}
 
 		return response;
 	}
 
-	private static OpenApiSchema MapSchema(Microsoft.OpenApi.Models.OpenApiSchema schema)
-	{
-		// Handle reference
-		if (schema.Reference is not null)
-		{
-			string refName = schema.Reference.Id ?? "";
+	#endregion
 
-			// Microsoft.OpenApi auto-resolves references, so we can still get properties
-			var resolved = new OpenApiSchema
+	#region Schema Mapping
+
+	/// <summary>
+	///     Maps an SDK schema to the local model.
+	/// </summary>
+	/// <param name="schema">The schema, possibly an <c>OpenApiSchemaReference</c>.</param>
+	/// <param name="expanding">
+	///     Component names already being expanded further up the call stack. Microsoft.OpenApi 2.x
+	///     resolves references transparently - reading <c>Properties</c> on a reference returns the
+	///     target's properties - so a self-referencing schema (a tree node whose children are the
+	///     same type, say) would recurse forever. Re-entering a name already in this set emits the
+	///     reference name only and stops.
+	/// </param>
+	private static OpenApiSchema MapSchema(OApi.IOpenApiSchema schema, HashSet<string> expanding)
+	{
+		string? refName = (schema as OApi.OpenApiSchemaReference)?.Reference.Id;
+
+		if (refName is not null && !expanding.Add(refName))
+		{
+			// Cycle: this component is already being expanded higher up the stack.
+			return new OpenApiSchema { RefName = refName, Type = TypeToString(schema.Type) };
+		}
+
+		try
+		{
+			var result = new OpenApiSchema
 			{
+				// Must stay null (not "") for non-references: OpenApiSchema.ToDisplayString
+				// returns RefName whenever it is non-null.
 				RefName = refName,
-				Type = schema.Type ?? "",
+				Type = TypeToString(schema.Type),
 				Format = schema.Format ?? "",
 				Description = schema.Description ?? ""
 			};
 
-			// Map properties from the resolved reference
+			// Array items
+			if (result.Type == "array" && schema.Items is not null)
+			{
+				result.Items = MapSchema(schema.Items, expanding);
+			}
+
+			// Object properties
 			if (schema.Properties is not null)
 			{
-				foreach ((string? name, Microsoft.OpenApi.Models.OpenApiSchema? propSchema) in schema.Properties)
+				foreach ((string name, OApi.IOpenApiSchema propSchema) in schema.Properties)
 				{
-					resolved.Properties[name] = MapSchema(propSchema);
+					result.Properties[name] = MapSchema(propSchema, expanding);
 				}
 			}
 
+			// Required properties
 			if (schema.Required is not null)
 			{
-				foreach (string? req in schema.Required)
+				foreach (string req in schema.Required)
 				{
-					resolved.RequiredProperties.Add(req);
+					result.RequiredProperties.Add(req);
 				}
 			}
 
-			return resolved;
-		}
-
-		var result = new OpenApiSchema
-		{
-			Type = schema.Type ?? "",
-			Format = schema.Format ?? "",
-			Description = schema.Description ?? ""
-		};
-
-		// Array items
-		if (result.Type == "array" && schema.Items is not null)
-		{
-			result.Items = MapSchema(schema.Items);
-		}
-
-		// Object properties
-		if (schema.Properties is not null)
-		{
-			foreach ((string? name, Microsoft.OpenApi.Models.OpenApiSchema? propSchema) in schema.Properties)
+			// Enum values
+			if (schema.Enum is not null)
 			{
-				result.Properties[name] = MapSchema(propSchema);
-			}
-		}
-
-		// Required properties
-		if (schema.Required is not null)
-		{
-			foreach (string? req in schema.Required)
-			{
-				result.RequiredProperties.Add(req);
-			}
-		}
-
-		// Enum values
-		if (schema.Enum is not null)
-		{
-			foreach (IOpenApiAny? val in schema.Enum)
-			{
-				if (val is OpenApiString strVal)
+				foreach (JsonNode? val in schema.Enum)
 				{
-					result.EnumValues.Add(strVal.Value);
-				}
-				else
-				{
-					result.EnumValues.Add(val.ToString() ?? "");
-				}
-			}
-		}
-
-		return result;
-	}
-
-	/// <summary>
-	///     Extracts an example JSON string from content media types.
-	/// </summary>
-	private static string? ExtractExample(IDictionary<string, OpenApiMediaType>? content)
-	{
-		if (content is null or { Count: 0 })
-		{
-			return null;
-		}
-
-		foreach ((string _, OpenApiMediaType mediaType) in content)
-		{
-			// Check media type level example
-			if (mediaType.Example is not null)
-			{
-				return FormatOpenApiAny(mediaType.Example);
-			}
-
-			// Check examples map
-			if (mediaType.Examples is { Count: > 0 })
-			{
-				OpenApiExample? first = mediaType.Examples.Values.First();
-				if (first.Value is not null)
-				{
-					return FormatOpenApiAny(first.Value);
+					result.EnumValues.Add(JsonNodeToScalar(val));
 				}
 			}
 
-			// Check schema-level example
-			if (mediaType.Schema?.Example is not null)
+			return result;
+		}
+		finally
+		{
+			if (refName is not null)
 			{
-				return FormatOpenApiAny(mediaType.Schema.Example);
+				expanding.Remove(refName);
 			}
-
-			break;
-		}
-
-		return null;
-	}
-
-	/// <summary>
-	///     Serializes an <see cref="Microsoft.OpenApi.Any.IOpenApiAny" /> to a pretty-printed JSON string.
-	/// </summary>
-	private static string FormatOpenApiAny(IOpenApiAny any)
-	{
-		using var stream = new MemoryStream();
-		using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
-		{
-			WriteOpenApiAny(writer, any);
-		}
-
-		return Encoding.UTF8.GetString(stream.ToArray());
-	}
-
-	private static void WriteOpenApiAny(Utf8JsonWriter writer, IOpenApiAny any)
-	{
-		switch (any)
-		{
-			case OpenApiObject obj:
-				writer.WriteStartObject();
-				foreach ((string? key, IOpenApiAny? value) in obj)
-				{
-					writer.WritePropertyName(key);
-					WriteOpenApiAny(writer, value);
-				}
-
-				writer.WriteEndObject();
-				break;
-
-			case OpenApiArray arr:
-				writer.WriteStartArray();
-				foreach (IOpenApiAny? item in arr)
-				{
-					WriteOpenApiAny(writer, item);
-				}
-
-				writer.WriteEndArray();
-				break;
-
-			case OpenApiString str:
-				writer.WriteStringValue(str.Value);
-				break;
-
-			case OpenApiInteger intVal:
-				writer.WriteNumberValue(intVal.Value);
-				break;
-
-			case OpenApiLong longVal:
-				writer.WriteNumberValue(longVal.Value);
-				break;
-
-			case OpenApiFloat floatVal:
-				writer.WriteNumberValue(floatVal.Value);
-				break;
-
-			case OpenApiDouble doubleVal:
-				writer.WriteNumberValue(doubleVal.Value);
-				break;
-
-			case OpenApiBoolean boolVal:
-				writer.WriteBooleanValue(boolVal.Value);
-				break;
-
-			case OpenApiDate dateVal:
-				writer.WriteStringValue(dateVal.Value.ToString("yyyy-MM-dd"));
-				break;
-
-			case OpenApiDateTime dateTimeVal:
-				writer.WriteStringValue(dateTimeVal.Value.ToString("O"));
-				break;
-
-			case OpenApiNull:
-				writer.WriteNullValue();
-				break;
-
-			default:
-				writer.WriteStringValue(any.ToString() ?? "");
-				break;
 		}
 	}
 
 	/// <summary>
 	///     Produces a concise type string from a schema (for parameter display).
 	/// </summary>
-	private static string SchemaToTypeString(Microsoft.OpenApi.Models.OpenApiSchema schema)
+	private static string SchemaToTypeString(OApi.IOpenApiSchema schema)
 	{
-		if (schema.Reference is not null)
+		if (schema is OApi.OpenApiSchemaReference schemaRef)
 		{
-			return schema.Reference.Id ?? "object";
+			return schemaRef.Reference.Id ?? "object";
 		}
 
-		string type = schema.Type ?? "";
+		string type = TypeToString(schema.Type);
 
 		if (type == "array" && schema.Items is not null)
 		{
@@ -473,4 +397,100 @@ public static class OpenApiParser
 
 		return type;
 	}
+
+	/// <summary>
+	///     Renders a JSON Schema type as its lowercase spec name. The SDK models this as a
+	///     <c>[Flags]</c> enum so nullable types arrive as e.g. <c>String | Null</c>; the
+	///     <c>Null</c> bit is dropped so the display name matches what the spec author wrote.
+	/// </summary>
+	private static string TypeToString(OApi.JsonSchemaType? type)
+	{
+		if (type is null)
+		{
+			return "";
+		}
+
+		OApi.JsonSchemaType flags = type.Value & ~OApi.JsonSchemaType.Null;
+
+		return flags switch
+		{
+			0 => "null",
+			OApi.JsonSchemaType.Array => "array",
+			OApi.JsonSchemaType.Object => "object",
+			OApi.JsonSchemaType.String => "string",
+			OApi.JsonSchemaType.Integer => "integer",
+			OApi.JsonSchemaType.Number => "number",
+			OApi.JsonSchemaType.Boolean => "boolean",
+			_ => flags.ToString().ToLowerInvariant()
+		};
+	}
+
+	#endregion
+
+	#region Examples
+
+	/// <summary>
+	///     Extracts an example JSON string from content media types.
+	/// </summary>
+	private static string? ExtractExample(IDictionary<string, OApi.OpenApiMediaType>? content)
+	{
+		if (content is null or { Count: 0 })
+		{
+			return null;
+		}
+
+		foreach ((string _, OApi.OpenApiMediaType mediaType) in content)
+		{
+			// Check media type level example
+			if (mediaType.Example is not null)
+			{
+				return FormatJsonNode(mediaType.Example);
+			}
+
+			// Check examples map
+			if (mediaType.Examples is { Count: > 0 })
+			{
+				OApi.IOpenApiExample first = mediaType.Examples.Values.First();
+				if (first.Value is not null)
+				{
+					return FormatJsonNode(first.Value);
+				}
+			}
+
+			// Check schema-level examples. The singular `Schema.Example` is obsolete in
+			// Microsoft.OpenApi 2.x in favour of the JSON Schema `examples` array.
+			if (mediaType.Schema?.Examples is { Count: > 0 } schemaExamples
+			    && schemaExamples[0] is { } schemaExample)
+			{
+				return FormatJsonNode(schemaExample);
+			}
+
+			break;
+		}
+
+		return null;
+	}
+
+	/// <summary>
+	///     Pretty-prints a <see cref="JsonNode" /> as indented JSON.
+	/// </summary>
+	private static string FormatJsonNode(JsonNode node) => node.ToJsonString(_indentedJson);
+
+	/// <summary>
+	///     Renders a <see cref="JsonNode" /> for a list of literal values: plain strings are
+	///     unquoted, everything else falls back to its JSON form.
+	/// </summary>
+	private static string JsonNodeToScalar(JsonNode? node)
+	{
+		if (node is null)
+		{
+			return "null";
+		}
+
+		return node.GetValueKind() == JsonValueKind.String
+			? node.GetValue<string>()
+			: node.ToJsonString();
+	}
+
+	#endregion
 }
