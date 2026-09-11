@@ -191,7 +191,7 @@ public sealed class ReplPlugin : IMokaPlugin
 	/// <inheritdoc />
 	public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
 	{
-		context.LogInfo("REPL plugin initialized — interactive C# code blocks enabled");
+		context.LogInfo("REPL plugin initialized - interactive C# code blocks enabled");
 		return Task.CompletedTask;
 	}
 

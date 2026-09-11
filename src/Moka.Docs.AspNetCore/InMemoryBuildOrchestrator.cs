@@ -13,7 +13,7 @@ namespace Moka.Docs.AspNetCore;
 
 /// <summary>
 ///     Orchestrates a full MokaDocs build using a <see cref="MockFileSystem" />
-///     so all output stays in memory — no disk I/O required.
+///     so all output stays in memory - no disk I/O required.
 /// </summary>
 public sealed class InMemoryBuildOrchestrator(
 	BuildPipeline pipeline,

@@ -171,7 +171,7 @@ public sealed class FileWatcher : IDisposable
 				}
 				catch (TaskCanceledException)
 				{
-					// Debounce was reset — expected behavior
+					// Debounce was reset - expected behavior
 				}
 				catch (Exception ex)
 				{

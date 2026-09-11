@@ -182,7 +182,7 @@ public sealed record ThemeOptions
 	/// <summary>Show line numbers on code blocks.</summary>
 	public bool ShowLineNumbers { get; init; } = MokaDefaults.ShowLineNumbers;
 
-	/// <summary>Maximum heading level shown in the table of contents (2–6). Default is 3 (h2 + h3).</summary>
+	/// <summary>Maximum heading level shown in the table of contents (2-6). Default is 3 (h2 + h3).</summary>
 	public int TocDepth { get; init; } = MokaDefaults.TocDepth;
 
 	/// <summary>Show the version selector dropdown.</summary>
@@ -326,7 +326,7 @@ public sealed record PluginDeclaration
 /// </summary>
 public sealed record CloudConfig
 {
-	/// <summary>Master switch — nothing calls home unless true.</summary>
+	/// <summary>Master switch - nothing calls home unless true.</summary>
 	public bool Enabled { get; init; } = MokaDefaults.EnableCloudFeatures;
 
 	/// <summary>API key for cloud features.</summary>

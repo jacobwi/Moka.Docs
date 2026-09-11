@@ -397,7 +397,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 				}
 			}
 
-			// Regular character — escape it
+			// Regular character - escape it
 			renderer.WriteEscape(text.AsSpan(i, 1));
 			i++;
 		}

@@ -200,7 +200,7 @@ internal static class StatsCommand
 			else
 			{
 				AnsiConsole.MarkupLine(
-					$"[bold blue]mokadocs stats[/] — {Markup.Escape(config.Site.Title)}");
+					$"[bold blue]mokadocs stats[/] - {Markup.Escape(config.Site.Title)}");
 				AnsiConsole.WriteLine();
 
 				Table table = new Table()

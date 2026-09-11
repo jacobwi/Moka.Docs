@@ -161,7 +161,7 @@ public sealed class ReplExecutionService
 		}
 		catch (CompilationErrorException ex)
 		{
-			_logger.LogDebug("REPL: Compilation error — {Message}", ex.Message);
+			_logger.LogDebug("REPL: Compilation error - {Message}", ex.Message);
 			return new ReplResult { Error = ex.Message };
 		}
 		catch (OperationCanceledException) when (!ct.IsCancellationRequested)

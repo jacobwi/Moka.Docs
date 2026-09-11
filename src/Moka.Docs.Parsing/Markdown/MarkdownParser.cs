@@ -86,16 +86,16 @@ public sealed class MarkdownParser
 		// Auto-generate IDs on headings
 		builder.UseAutoIdentifiers(AutoIdentifierOptions.GitHub);
 
-		// Mermaid diagram support — renders ```mermaid blocks as <pre class="mermaid">
+		// Mermaid diagram support - renders ```mermaid blocks as <pre class="mermaid">
 		builder.Extensions.AddIfNotAlready<MermaidExtension>();
 
-		// Blazor preview support — renders ```blazor-preview blocks as preview containers
+		// Blazor preview support - renders ```blazor-preview blocks as preview containers
 		builder.Extensions.AddIfNotAlready<BlazorPreviewExtension>();
 
-		// REPL support — renders ```csharp-repl blocks as interactive containers
+		// REPL support - renders ```csharp-repl blocks as interactive containers
 		builder.Extensions.AddIfNotAlready<ReplExtension>();
 
-		// Changelog support — renders :::changelog blocks as rich timeline UI
+		// Changelog support - renders :::changelog blocks as rich timeline UI
 		builder.Extensions.Add(new ChangelogExtension());
 
 		return builder.Build();

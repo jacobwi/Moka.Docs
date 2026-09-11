@@ -256,7 +256,7 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 				break;
 
 			default:
-				// Unknown element — render its text content
+				// Unknown element - render its text content
 				sb.Append(element.Value);
 				break;
 		}

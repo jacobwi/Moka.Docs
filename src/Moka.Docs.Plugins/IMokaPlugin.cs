@@ -1,4 +1,4 @@
-// MokaDocs — Plugin contract and context interfaces
+// MokaDocs - Plugin contract and context interfaces
 
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Pipeline;

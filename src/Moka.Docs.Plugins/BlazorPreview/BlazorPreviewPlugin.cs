@@ -23,16 +23,16 @@ namespace Moka.Docs.Plugins.BlazorPreview;
 ///     MokaDocs plugin that compiles <c>```blazor-preview</c> code blocks with Roslyn at build
 ///     time and wires them up for interactive in-page hydration in the browser.
 ///     <para>
-///         <b>Architecture</b> — one iframe per preview block. Each block is compiled to a
+///         <b>Architecture</b> - one iframe per preview block. Each block is compiled to a
 ///         standalone .dll at build time, written to <c>_site/_preview-assemblies/</c>, and
 ///         rendered inside an <c>&lt;iframe loading="lazy"&gt;</c> pointing at the consumer's
 ///         published Blazor WebAssembly preview-host app at <c>/_preview-wasm/</c>. Lazy loading
 ///         means iframes beyond the viewport don't boot a runtime until scrolled into view.
 ///         Components portal to the iframe's own <c>document.body</c>, so Dialog/Popover/Toast
-///         render inside the preview frame — an intentional, documented constraint.
+///         render inside the preview frame - an intentional, documented constraint.
 ///     </para>
 ///     <para>
-///         <b>Inputs</b> — one yaml option:
+///         <b>Inputs</b> - one yaml option:
 ///         <list type="bullet">
 ///             <item>
 ///                 <term>previewHost</term>
@@ -43,12 +43,12 @@ namespace Moka.Docs.Plugins.BlazorPreview;
 ///                     <list type="bullet">
 ///                         <item>
 ///                             <description>
-///                                 <c>bin/Release/{tfm}/</c> — build-time .dll references for Roslyn.
+///                                 <c>bin/Release/{tfm}/</c> - build-time .dll references for Roslyn.
 ///                             </description>
 ///                         </item>
 ///                         <item>
 ///                             <description>
-///                                 <c>publish-output/wwwroot/</c> — the published static WASM
+///                                 <c>publish-output/wwwroot/</c> - the published static WASM
 ///                                 runtime that is copied to <c>_site/_preview-wasm/</c>.
 ///                             </description>
 ///                         </item>
@@ -64,13 +64,13 @@ namespace Moka.Docs.Plugins.BlazorPreview;
 ///         </list>
 ///     </para>
 ///     <para>
-///         <b>Outputs</b> — per build:
+///         <b>Outputs</b> - per build:
 ///         <list type="bullet">
 ///             <item>
-///                 <description><c>_site/_preview-wasm/</c> — copy of the preview-host's published wwwroot.</description>
+///                 <description><c>_site/_preview-wasm/</c> - copy of the preview-host's published wwwroot.</description>
 ///             </item>
 ///             <item>
-///                 <description><c>_site/_preview-assemblies/{sha}.dll</c> — one compiled assembly per preview block.</description>
+///                 <description><c>_site/_preview-assemblies/{sha}.dll</c> - one compiled assembly per preview block.</description>
 ///             </item>
 ///             <item>
 ///                 <description>
@@ -273,7 +273,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	/// <inheritdoc />
 	public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
 	{
-		context.LogInfo("Blazor preview plugin initialized — interactive in-page hydration mode");
+		context.LogInfo("Blazor preview plugin initialized - interactive in-page hydration mode");
 		return Task.CompletedTask;
 	}
 
@@ -300,7 +300,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		buildContext.DeferredOutputDirectories.Add((_previewHostWwwroot, "_preview-wasm"));
 
 		// GitHub Pages runs Jekyll by default, which STRIPS directories starting with an
-		// underscore — which is exactly every directory this plugin writes (_preview-wasm,
+		// underscore - which is exactly every directory this plugin writes (_preview-wasm,
 		// _preview-assemblies, _framework, _content). Without a .nojekyll marker at the site
 		// root, the entire preview runtime is missing from the deployed site. Emit an empty
 		// .nojekyll file so Jekyll is bypassed and every directory ships verbatim.
@@ -311,7 +311,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		// Resolve base path for the `?assembly=...` iframe query parameter. The Scriban
 		// template engine's RewriteContentLinks regex only matches `href="/..."` and
-		// `src="/..."` at the attribute OPENING — it does NOT rewrite `/` characters
+		// `src="/..."` at the attribute OPENING - it does NOT rewrite `/` characters
 		// inside query strings. So while the iframe src itself (`src="/_preview-wasm/..."`)
 		// gets basePath-prefixed automatically during render, the assembly path buried
 		// in the query string (`?assembly=/_preview-assemblies/...`) does not. We have to
@@ -388,7 +388,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		// Auto-scaffold a fresh preview-host project from a generic template if the
 		// resolved directory doesn't yet contain a Blazor WASM csproj. The user owns the
-		// scaffolded files thereafter — mokadocs never overwrites them.
+		// scaffolded files thereafter - mokadocs never overwrites them.
 		if (!HasBlazorWasmCsproj(previewHostDir))
 		{
 			if (string.IsNullOrWhiteSpace(library))
@@ -405,7 +405,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			ScaffoldPreviewHost(previewHostDir, library, context);
 		}
 
-		// Run `dotnet publish` on the preview-host (incremental — skipped when nothing
+		// Run `dotnet publish` on the preview-host (incremental - skipped when nothing
 		// upstream of the published wwwroot has changed since the last build).
 		if (!EnsurePreviewHostPublished(previewHostDir, context))
 		{
@@ -415,9 +415,9 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// Conventional layout for the consumer's Blazor WebAssembly preview-host project
 		// (e.g. Moka.Blazor.Repl.Wasm):
 		//   {previewHostDir}/publish-output/{tfm}/wwwroot/  OR  {previewHostDir}/publish-output/wwwroot/
-		//     — runtime static files (the WASM app copied to _site/_preview-wasm/)
+		//     - runtime static files (the WASM app copied to _site/_preview-wasm/)
 		//   {previewHostDir}/bin/Release/{tfm}/
-		//     — build-time Roslyn .dll references
+		//     - build-time Roslyn .dll references
 		string? wwwroot = FindPublishedWwwroot(previewHostDir);
 		if (wwwroot is null)
 		{
@@ -458,7 +458,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// framework assemblies (Microsoft.*, System.*) that Roslyn already supplies via the
 		// host runtime. Adding those causes CS0433 type-conflict errors when the TFMs differ
 		// (e.g. preview-host built against net9, mokadocs runs on net10). Only include the
-		// NON-framework assemblies — i.e. the consumer's own component library DLLs.
+		// NON-framework assemblies - i.e. the consumer's own component library DLLs.
 		foreach (string dll in Directory.GetFiles(refBinDir, "*.dll"))
 		{
 			string name = Path.GetFileNameWithoutExtension(dll);
@@ -564,7 +564,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///         </list>
 	///     </para>
 	///     <para>
-	///         If nothing is found, returns <c>./preview-host/</c> as the default scaffold target —
+	///         If nothing is found, returns <c>./preview-host/</c> as the default scaffold target -
 	///         the caller is expected to scaffold a fresh project there.
 	///     </para>
 	/// </summary>
@@ -636,7 +636,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///     Program.cs + wwwroot/index.html) into <paramref name="dir" />, substituting the
 	///     consumer's library package id and version into the csproj's <c>PackageReference</c>
 	///     and into the index.html theme/customization markers. Files are written ONLY when they
-	///     do not already exist — mokadocs never overwrites user edits.
+	///     do not already exist - mokadocs never overwrites user edits.
 	/// </summary>
 	private static void ScaffoldPreviewHost(string dir, string librarySpec, IPluginContext context)
 	{
@@ -651,7 +651,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		// Empty Directory.Build.props/.targets and Directory.Packages.props in the
 		// preview-host directory shadow any parent repo's central files. MSBuild walks
-		// UP the directory tree and stops at the first match — so by dropping empty
+		// UP the directory tree and stops at the first match - so by dropping empty
 		// markers here, the preview-host becomes hermetic and inherits nothing from
 		// the consumer's parent build configuration (multi-target overrides, central
 		// package management, FrameworkReference stripping, etc.).
@@ -711,7 +711,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			context.LogInfo(
 				$"mokadocs-blazor-preview: scaffolded preview-host at '{dir}' " +
 				$"(library: {libId}@{libVersion}, host: Moka.Blazor.Repl.Host@{_hostPackageVersion}). " +
-				"Edit Program.cs / wwwroot/index.html to add your services and CSS — mokadocs will not overwrite them.");
+				"Edit Program.cs / wwwroot/index.html to add your services and CSS - mokadocs will not overwrite them.");
 		}
 	}
 
@@ -853,13 +853,13 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	/// <summary>
 	///     Returns <c>true</c> if an assembly with the given simple-name is already resolvable
-	///     by the host runtime — i.e. it is part of the .NET shared framework (BCL, ASP.NET Core,
+	///     by the host runtime - i.e. it is part of the .NET shared framework (BCL, ASP.NET Core,
 	///     Extensions, JSInterop) that the mokadocs tool itself is running on top of.
 	///     <para>
 	///         The base <see cref="RoslynCompilationService" /> already seeds its compilation with
 	///         these host-runtime framework assemblies. Re-adding duplicates from a preview-host's
 	///         bin directory (which may have been built against a different TFM) causes CS0433 /
-	///         CS1704 type-conflict errors. This check works identically on .NET 9 and .NET 10 —
+	///         CS1704 type-conflict errors. This check works identically on .NET 9 and .NET 10 -
 	///         whichever runtime mokadocs is executing on is the reference version used.
 	///     </para>
 	///     <para>
@@ -885,9 +885,9 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		try
 		{
 			var loaded = Assembly.Load(new AssemblyName(simpleName));
-			// Only TRUSTED host runtime locations count — an assembly that the host loaded from
+			// Only TRUSTED host runtime locations count - an assembly that the host loaded from
 			// a user-supplied path is not "framework". The shared framework lives under
-			// dotnet/shared or dotnet/packs — both contain "dotnet" in a normalized path.
+			// dotnet/shared or dotnet/packs - both contain "dotnet" in a normalized path.
 			string location = loaded.Location;
 			if (string.IsNullOrEmpty(location))
 			{
@@ -949,7 +949,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	}
 
 	/// <summary>
-	///     Looks for <c>{previewHostDir}/bin/Release/net*.0/</c> — the Blazor WASM project's
+	///     Looks for <c>{previewHostDir}/bin/Release/net*.0/</c> - the Blazor WASM project's
 	///     intermediate output directory, which contains normal .dll files suitable as Roslyn
 	///     references (unlike the published <c>_framework/*.wasm</c> files which are WebCIL).
 	///     Prefers the highest TFM present.
@@ -1118,12 +1118,12 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 						// Emit one sandboxed, lazy-loaded iframe per preview. The preview-host WASM app
 						// reads ?assembly=… &entry=… from its URL and mounts the component into its
 						// own static root (#app) via a plain RenderFragment inside App.razor's
-						// [JSInvokable] LoadAssembly — no dynamic root components API required.
+						// [JSInvokable] LoadAssembly - no dynamic root components API required.
 						//
 						// iframe `src` is a root-relative absolute path; the mokadocs Scriban template
 						// engine's RewriteContentLinks auto-prefixes it with BasePath at render time.
 						// The `assembly` query parameter, however, lives INSIDE the src attribute
-						// value, so the regex-based rewriter doesn't touch it — we must prefix it
+						// value, so the regex-based rewriter doesn't touch it - we must prefix it
 						// ourselves here so GitHub Pages project-page deployments resolve the DLL.
 						string iframeSrc =
 							$"/_preview-wasm/index.html?assembly={basePathForAssemblyQuery}/{dllRelPath}&amp;entry={WebUtility.HtmlEncode(entryPoint)}";
@@ -1380,7 +1380,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		}
 		catch
 		{
-			// DLL not loaded yet or types unavailable — skip silently
+			// DLL not loaded yet or types unavailable - skip silently
 		}
 	}
 
@@ -1430,7 +1430,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			}
 			catch
 			{
-				// Not in default context — fall through.
+				// Not in default context - fall through.
 			}
 
 			if (assemblyName.Name is not null

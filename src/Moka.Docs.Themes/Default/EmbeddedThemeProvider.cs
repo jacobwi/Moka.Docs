@@ -11,7 +11,7 @@ public static class EmbeddedThemeProvider
 	#region Embedded CSS
 
 	private const string _embeddedCss = """
-	                                    /* MokaDocs Default Theme — "Moka" */
+	                                    /* MokaDocs Default Theme - "Moka" */
 	                                    /* ================================ */
 
 	                                    :root {
@@ -54,7 +54,7 @@ public static class EmbeddedThemeProvider
 	                                        --color-border-light: #1e293b;
 	                                    }
 
-	                                    /* Color theme presets — override primary accent colors
+	                                    /* Color theme presets - override primary accent colors
 	                                       Uses html[] for higher specificity than inline :root overrides */
 	                                    html[data-color-theme="ocean"] {
 	                                        --color-primary: #0ea5e9 !important;
@@ -425,7 +425,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .code-style-option.active .code-style-check { opacity: 1; }
 
-	                                    /* Appearance group — wraps color/code/style selectors */
+	                                    /* Appearance group - wraps color/code/style selectors */
 	                                    .appearance-group { display: flex; align-items: center; gap: 0.5rem; }
 
 	                                    .mobile-nav-toggle { display: none; }
@@ -574,7 +574,7 @@ public static class EmbeddedThemeProvider
 	                                        line-height: 1.6;
 	                                    }
 
-	                                    /* Copy button on code blocks — uses inherit to match code block theme */
+	                                    /* Copy button on code blocks - uses inherit to match code block theme */
 	                                    .page-content pre .copy-btn {
 	                                        position: absolute;
 	                                        top: 0.5rem;
@@ -726,7 +726,7 @@ public static class EmbeddedThemeProvider
 
 	                                    /* ── Code Block Window Styles ─────────────────────────── */
 
-	                                    /* macOS style — three traffic-light dots in a title bar */
+	                                    /* macOS style - three traffic-light dots in a title bar */
 	                                    html[data-code-style="macos"] .page-content pre {
 	                                        padding-top: 2.75rem !important;
 	                                        border-radius: 10px !important;
@@ -779,7 +779,7 @@ public static class EmbeddedThemeProvider
 	                                        background: rgba(128,128,128,0.06);
 	                                    }
 
-	                                    /* Terminal style — dark header with prompt icon */
+	                                    /* Terminal style - dark header with prompt icon */
 	                                    html[data-code-style="terminal"] .page-content pre {
 	                                        padding-top: 2.75rem !important;
 	                                        border-radius: 2px !important;
@@ -838,7 +838,7 @@ public static class EmbeddedThemeProvider
 	                                        color: #16a34a !important;
 	                                    }
 
-	                                    /* VS Code style — tab header with accent bar and activity border */
+	                                    /* VS Code style - tab header with accent bar and activity border */
 	                                    html[data-code-style="vscode"] .page-content pre {
 	                                        padding-top: 2.75rem !important;
 	                                        border-radius: 4px !important;
@@ -1085,7 +1085,7 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text-secondary);
 	                                    }
 
-	                                    /* Admonitions — Markdig renders ::: type as <div class="type"> */
+	                                    /* Admonitions - Markdig renders ::: type as <div class="type"> */
 	                                    .page-content > .note,
 	                                    .page-content > .tip,
 	                                    .page-content > .warning,
@@ -1130,7 +1130,7 @@ public static class EmbeddedThemeProvider
 	                                    .tab-content { padding: 1rem 1.25rem; }
 	                                    .tab-content[hidden] { display: none; }
 
-	                                    /* UI Components — Card */
+	                                    /* UI Components - Card */
 	                                    .component-card {
 	                                        margin: 1.5rem 0;
 	                                        padding: 1.25rem 1.5rem;
@@ -1174,7 +1174,7 @@ public static class EmbeddedThemeProvider
 	                                    .component-card-body > *:first-child { margin-top: 0; }
 	                                    .component-card-body > *:last-child { margin-bottom: 0; }
 
-	                                    /* UI Components — Steps */
+	                                    /* UI Components - Steps */
 	                                    .component-steps {
 	                                        margin: 1.5rem 0;
 	                                        display: flex;
@@ -1235,7 +1235,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .component-step-content > *:last-child { margin-bottom: 0; }
 
-	                                    /* UI Components — Link Cards */
+	                                    /* UI Components - Link Cards */
 	                                    .component-link-cards {
 	                                        display: grid;
 	                                        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -1286,7 +1286,7 @@ public static class EmbeddedThemeProvider
 	                                        transform: translateX(2px);
 	                                    }
 
-	                                    /* UI Components — Code Group */
+	                                    /* UI Components - Code Group */
 	                                    .component-code-group .tab-content { padding: 0; }
 	                                    .component-code-group .tab-content pre {
 	                                        margin: 0;
@@ -1294,7 +1294,7 @@ public static class EmbeddedThemeProvider
 	                                        border-radius: 0 0 var(--radius) var(--radius);
 	                                    }
 
-	                                    /* ToC Sidebar — "On this page" */
+	                                    /* ToC Sidebar - "On this page" */
 	                                    .toc-sidebar {
 	                                        position: sticky;
 	                                        top: var(--header-height);
@@ -1715,7 +1715,7 @@ public static class EmbeddedThemeProvider
 	                                    .landing { position: relative; }
 	                                    .landing .landing-content { position: relative; z-index: 1; }
 
-	                                    /* Hero — first h1 + first p */
+	                                    /* Hero - first h1 + first p */
 	                                    .landing .landing-content > h1:first-child,
 	                                    .landing .landing-content > h1:first-of-type {
 	                                        font-size: clamp(2.75rem, 6vw, 4.5rem);
@@ -1740,7 +1740,7 @@ public static class EmbeddedThemeProvider
 	                                        line-height: 1.6;
 	                                    }
 
-	                                    /* CTA buttons row — first ul after hero p, or a p with links */
+	                                    /* CTA buttons row - first ul after hero p, or a p with links */
 	                                    .landing .landing-content > h1:first-of-type + p + p,
 	                                    .landing .landing-content > h1:first-of-type + p + ul {
 	                                        text-align: center;
@@ -1791,7 +1791,7 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-primary);
 	                                    }
 
-	                                    /* Feature cards — h2 sections become cards */
+	                                    /* Feature cards - h2 sections become cards */
 	                                    .landing .landing-content > h2 {
 	                                        font-size: 1.75rem;
 	                                        text-align: center;
@@ -1833,7 +1833,7 @@ public static class EmbeddedThemeProvider
 	                                        font-size: 0.8125rem;
 	                                    }
 
-	                                    /* Divider line — hr */
+	                                    /* Divider line - hr */
 	                                    .landing .landing-content > hr {
 	                                        border: none;
 	                                        border-top: 1px solid var(--color-border);
@@ -1857,7 +1857,7 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text-secondary);
 	                                    }
 
-	                                    /* Landing code blocks — reuse page-content pre styles */
+	                                    /* Landing code blocks - reuse page-content pre styles */
 	                                    .landing-content pre { position: relative; margin: 2rem auto; padding: 1.25rem 1.5rem; border-radius: var(--radius); overflow-x: auto; border: 1px solid var(--color-border); max-width: 720px; background: var(--color-bg-secondary); }
 	                                    .landing-content pre code { font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.7; background: none; padding: 0; border: none; }
 	                                    .landing-content pre .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); padding: 0.25rem 0.625rem; border-radius: var(--radius-sm); font-size: 0.75rem; font-family: var(--font-mono); cursor: pointer; transition: all var(--transition); }
@@ -2472,7 +2472,7 @@ public static class EmbeddedThemeProvider
 	                                        user-select: none;
 	                                    }
 
-	                                    /* Landing copy button — high contrast on dark code blocks */
+	                                    /* Landing copy button - high contrast on dark code blocks */
 	                                    .landing-code-block .copy-btn {
 	                                        position: absolute;
 	                                        top: 0.5rem;
@@ -3167,9 +3167,9 @@ public static class EmbeddedThemeProvider
 	                                           }
 	                                       });
 
-	                                       // Sidebar nav expand/collapse — toggle sections
+	                                       // Sidebar nav expand/collapse - toggle sections
 	                                       document.querySelectorAll('.nav-toggle').forEach(toggle => {
-	                                           // Find the nav-children list — it's a sibling of the toggle or its parent (.nav-header)
+	                                           // Find the nav-children list - it's a sibling of the toggle or its parent (.nav-header)
 	                                           const section = toggle.closest('.nav-section');
 	                                           const children = section?.querySelector('.nav-children');
 	                                           if (children) {
@@ -3338,7 +3338,7 @@ public static class EmbeddedThemeProvider
 	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.default_color_theme ?? "ocean" }}';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
 	                                          <meta name="viewport" content="width=device-width, initial-scale=1" />
-	                                          <title>{{ page.title }} — {{ site.title }}</title>
+	                                          <title>{{ page.title }} - {{ site.title }}</title>
 	                                          <meta name="description" content="{{ page.description }}" />
 	                                          {{ if site.url }}<link rel="canonical" href="{{ site.url }}{{ page.route }}" />{{ end }}
 	                                          {{ if site.url }}<meta property="og:title" content="{{ page.title }}" />
@@ -3738,7 +3738,7 @@ public static class EmbeddedThemeProvider
 	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.default_color_theme ?? "ocean" }}';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
 	                                          <meta name="viewport" content="width=device-width, initial-scale=1" />
-	                                          <title>{{ site.title }}{{ if page.description != "" }} — {{ page.description }}{{ end }}</title>
+	                                          <title>{{ site.title }}{{ if page.description != "" }} - {{ page.description }}{{ end }}</title>
 	                                          <meta name="description" content="{{ page.description }}" />
 	                                          {{ if site.url != "" }}<link rel="canonical" href="{{ site.url }}{{ page.route }}" />{{ end }}
 	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />

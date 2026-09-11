@@ -37,7 +37,7 @@ public sealed class FeatureGatePhase(
 			bool isEnabled = await featureManager.IsEnabledAsync(requiredFeature);
 			if (!isEnabled)
 			{
-				logger.LogDebug("Excluding page {Route} — feature flag '{Feature}' is disabled",
+				logger.LogDebug("Excluding page {Route} - feature flag '{Feature}' is disabled",
 					context.Pages[i].Route, requiredFeature);
 				context.Pages.RemoveAt(i);
 				removed++;

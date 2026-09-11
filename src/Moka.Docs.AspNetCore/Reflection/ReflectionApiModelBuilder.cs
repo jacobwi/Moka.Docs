@@ -408,7 +408,7 @@ public sealed class ReflectionApiModelBuilder(
 
 		foreach (PropertyInfo prop in properties)
 		{
-			// Skip indexers — they are treated separately
+			// Skip indexers - they are treated separately
 			ParameterInfo[] indexParams = prop.GetIndexParameters();
 			if (indexParams.Length > 0)
 			{

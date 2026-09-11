@@ -8,25 +8,25 @@ namespace Moka.Docs.CSharp.XmlDoc;
 ///     Prefixes:
 ///     <list type="bullet">
 ///         <item>
-///             <description><c>T:</c> — Type</description>
+///             <description><c>T:</c> - Type</description>
 ///         </item>
 ///         <item>
-///             <description><c>M:</c> — Method or constructor</description>
+///             <description><c>M:</c> - Method or constructor</description>
 ///         </item>
 ///         <item>
-///             <description><c>P:</c> — Property</description>
+///             <description><c>P:</c> - Property</description>
 ///         </item>
 ///         <item>
-///             <description><c>F:</c> — Field</description>
+///             <description><c>F:</c> - Field</description>
 ///         </item>
 ///         <item>
-///             <description><c>E:</c> — Event</description>
+///             <description><c>E:</c> - Event</description>
 ///         </item>
 ///         <item>
-///             <description><c>N:</c> — Namespace</description>
+///             <description><c>N:</c> - Namespace</description>
 ///         </item>
 ///         <item>
-///             <description><c>!:</c> — Error reference</description>
+///             <description><c>!:</c> - Error reference</description>
 ///         </item>
 ///     </list>
 /// </remarks>

@@ -87,7 +87,7 @@ public static class ApiPageRenderer
 				"<div class=\"table-responsive\"><table><thead><tr><th>Name</th><th>Constraints</th><th>Description</th></tr></thead><tbody>");
 			foreach (ApiTypeParameter tp in type.TypeParameters)
 			{
-				string constraints = tp.Constraints.Count > 0 ? string.Join(", ", tp.Constraints) : "—";
+				string constraints = tp.Constraints.Count > 0 ? string.Join(", ", tp.Constraints) : "-";
 				string desc = type.Documentation?.TypeParameters.GetValueOrDefault(tp.Name) ?? "";
 				sb.AppendLine(
 					$"<tr><td><code>{Esc(tp.Name)}</code></td><td>{Esc(constraints)}</td><td>{desc}</td></tr>");
@@ -433,7 +433,7 @@ public static class ApiPageRenderer
 		var nodes = new HashSet<string> { type.Name };
 		var edges = new List<(string From, string To, string Label, string Arrow)>();
 
-		// Base type (skip Object — not meaningful)
+		// Base type (skip Object - not meaningful)
 		if (type.BaseType is not null && type.BaseType != "Object" && type.BaseType != "object")
 		{
 			string baseShort = GetShortTypeName(type.BaseType);
@@ -454,7 +454,7 @@ public static class ApiPageRenderer
 			edges.Add((type.Name, ifaceShort, "implements", "..|>"));
 		}
 
-		// Derived types — types that list this type as their base
+		// Derived types - types that list this type as their base
 		foreach (ApiType other in allTypes)
 		{
 			if (nodes.Count >= maxNodes)

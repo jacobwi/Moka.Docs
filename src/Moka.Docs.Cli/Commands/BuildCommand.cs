@@ -78,7 +78,7 @@ internal static class BuildCommand
 				version = version[..plusIdx];
 			}
 
-			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Building documentation site...");
+			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] - Building documentation site...");
 			AnsiConsole.WriteLine();
 
 			string resolvedConfigPath = configPath != null
@@ -94,7 +94,7 @@ internal static class BuildCommand
 				var reader = new SiteConfigReader(fs);
 				config = reader.Read(resolvedConfigPath);
 				AnsiConsole.MarkupLine(
-					$"[green]✓ Config:[/] {Path.GetFileName(resolvedConfigPath)} — \"{Markup.Escape(config.Site.Title)}\"");
+					$"[green]✓ Config:[/] {Path.GetFileName(resolvedConfigPath)} - \"{Markup.Escape(config.Site.Title)}\"");
 			}
 			catch (FileNotFoundException)
 			{
@@ -172,7 +172,7 @@ internal static class BuildCommand
 				PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
 				await pluginHost.DiscoverAndInitializeAsync();
 
-				// Run main pipeline — plugins execute as a hook after content phases
+				// Run main pipeline - plugins execute as a hook after content phases
 				pipeline.PluginHook = async (ctx, ct) =>
 				{
 					if (pluginHost.LoadedPlugins.Count > 0)

@@ -584,7 +584,7 @@ public sealed class ChangelogPlugin : IMokaPlugin
 	/// <inheritdoc />
 	public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
 	{
-		context.LogInfo("Changelog plugin initialized — release timeline UI enabled");
+		context.LogInfo("Changelog plugin initialized - release timeline UI enabled");
 		return Task.CompletedTask;
 	}
 

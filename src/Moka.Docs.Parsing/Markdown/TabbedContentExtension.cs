@@ -162,7 +162,7 @@ public sealed class TabGroupParser : BlockParser
 	{
 		StringSlice line = processor.Line;
 
-		// Check for closing === (no title — end of tab group)
+		// Check for closing === (no title - end of tab group)
 		if (line.CurrentChar == '=')
 		{
 			StringSlice saved = line;

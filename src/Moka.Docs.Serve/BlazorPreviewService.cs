@@ -53,7 +53,7 @@ public sealed class BlazorPreviewService
 			}
 		}
 
-		// Minimal service provider for HtmlRenderer — components rendered in preview
+		// Minimal service provider for HtmlRenderer - components rendered in preview
 		// don't have access to app-level services (intentional isolation)
 		var services = new ServiceCollection();
 		services.AddLogging(b => b.AddProvider(new ForwardingLoggerProvider(loggerFactory)));

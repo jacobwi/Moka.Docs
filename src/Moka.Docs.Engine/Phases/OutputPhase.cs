@@ -114,7 +114,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		}
 
 		// Brand assets (site.logo, site.favicon) can live OUTSIDE the content.docs tree
-		// — e.g. at the mokadocs.yaml directory level, or above it via `../`. The
+		// - e.g. at the mokadocs.yaml directory level, or above it via `../`. The
 		// BrandAssetResolver has already resolved these to (publish URL → source path)
 		// pairs during the Discovery phase; we just need to copy each one to its
 		// publish location under the output dir.
@@ -137,7 +137,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 
 			// Don't overwrite a file already copied by the main asset glob above (a user
 			// whose logo IS inside content.docs will end up with the same file visible
-			// through both code paths — the first one that wrote it wins, and that's
+			// through both code paths - the first one that wrote it wins, and that's
 			// always the glob since it runs first).
 			if (fs.File.Exists(destPath))
 			{
@@ -253,7 +253,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		               <head>
 		                   <meta charset="utf-8" />
 		                   <meta name="viewport" content="width=device-width, initial-scale=1" />
-		                   <title>Page Not Found — {HttpUtility.HtmlEncode(config.Site.Title)}</title>
+		                   <title>Page Not Found - {HttpUtility.HtmlEncode(config.Site.Title)}</title>
 		                   <link rel="stylesheet" href="{bp}/_theme/css/main.css" />
 		               </head>
 		               <body>

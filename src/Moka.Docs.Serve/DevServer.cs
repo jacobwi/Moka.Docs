@@ -412,7 +412,7 @@ public sealed class DevServer : IDisposable
 				html = string.Concat(html.AsSpan(0, bodyCloseIndex), _hotReloadScript, html.AsSpan(bodyCloseIndex));
 			}
 			else
-				// No </body> tag — append script at the end
+				// No </body> tag - append script at the end
 			{
 				html += _hotReloadScript;
 			}

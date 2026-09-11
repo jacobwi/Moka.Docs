@@ -25,7 +25,7 @@ public sealed class VersionManager
 		_logger = logger;
 		_versions = BuildVersionList(_config);
 
-		_logger.LogDebug("VersionManager initialized — enabled={Enabled}, versions={Count}",
+		_logger.LogDebug("VersionManager initialized - enabled={Enabled}, versions={Count}",
 			IsEnabled, _versions.Count);
 	}
 

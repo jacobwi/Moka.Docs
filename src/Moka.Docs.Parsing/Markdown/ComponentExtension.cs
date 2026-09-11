@@ -285,7 +285,7 @@ public sealed class ComponentParser : BlockParser
 			}
 			else
 			{
-				// Unquoted value — read until space
+				// Unquoted value - read until space
 				int spaceIdx = span.IndexOf(' ');
 				if (spaceIdx < 0)
 				{
@@ -511,7 +511,9 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 					else if (inline is LiteralInline literal)
 					{
 						string text = literal.Content.ToString().Trim();
-						// The description follows " — " or " - " after the link
+						// The description follows " — " or " - " after the link.
+						// The em dash here is DATA, not prose: it matches what doc authors
+						// actually type in link-cards markdown. Do not "clean" it away.
 						if (text.StartsWith("—") || text.StartsWith("-"))
 						{
 							description = text.TrimStart('—', '-', ' ');
@@ -605,7 +607,7 @@ public sealed class CodeGroupRenderer : HtmlObjectRenderer<CodeGroupBlock>
 		renderer.Write("</div>");
 		renderer.WriteLine();
 
-		// Tab content panels — render each code block in its own panel
+		// Tab content panels - render each code block in its own panel
 		for (int i = 0; i < codeBlocks.Count; i++)
 		{
 			string activeClass = i == 0 ? " active" : "";

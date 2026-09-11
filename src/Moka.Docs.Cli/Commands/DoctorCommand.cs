@@ -38,7 +38,7 @@ internal static class DoctorCommand
 			string rootDir = Directory.GetCurrentDirectory();
 			string resolvedConfigPath = configPath ?? Path.Combine(rootDir, "mokadocs.yaml");
 
-			AnsiConsole.MarkupLine("[bold blue]mokadocs doctor[/] — Diagnosing your documentation project...");
+			AnsiConsole.MarkupLine("[bold blue]mokadocs doctor[/] - Diagnosing your documentation project...");
 			AnsiConsole.WriteLine();
 
 			int passed = 0;
@@ -324,13 +324,13 @@ internal static class DoctorCommand
 
 							if (fmMatch.Success)
 							{
-								// Front matter exists but no title — inject title
+								// Front matter exists but no title - inject title
 								string newFm = $"---\ntitle: {title}\n{fmMatch.Groups[1].Value}\n---";
 								content = frontMatterRegex.Replace(content, newFm, 1);
 							}
 							else
 							{
-								// No front matter at all — prepend
+								// No front matter at all - prepend
 								content = $"---\ntitle: {title}\n---\n\n{content}";
 							}
 
@@ -546,13 +546,13 @@ internal static class DoctorCommand
 
 					if (totalMissingSummary == 0)
 					{
-						PrintPass("API Coverage", $"100% — all {totalTypes} public type(s) have XML doc summaries");
+						PrintPass("API Coverage", $"100% - all {totalTypes} public type(s) have XML doc summaries");
 						passed++;
 					}
 					else
 					{
 						PrintWarn("API Coverage",
-							$"{coverage}% — {totalMissingSummary} public type(s) missing <summary>");
+							$"{coverage}% - {totalMissingSummary} public type(s) missing <summary>");
 						warnings++;
 					}
 				}
@@ -601,7 +601,7 @@ internal static class DoctorCommand
 	///             </description>
 	///         </item>
 	///     </list>
-	///     Unset brand assets are silently skipped (no pass/fail message) — a site without
+	///     Unset brand assets are silently skipped (no pass/fail message) - a site without
 	///     a logo is valid and shouldn't clutter the doctor output.
 	/// </summary>
 	private static void CheckBrandAsset(string label, SiteAssetReference? asset, ref int passed, ref int errors,
@@ -609,7 +609,7 @@ internal static class DoctorCommand
 	{
 		if (asset is null)
 		{
-			// Not set in yaml — no diagnosis, no row emitted.
+			// Not set in yaml - no diagnosis, no row emitted.
 			return;
 		}
 
@@ -640,7 +640,7 @@ internal static class DoctorCommand
 		// file lives above the yaml dir via `../`.
 		bool flattened = asset.PublishUrl.StartsWith("/_media/", StringComparison.Ordinal);
 		string detail = flattened
-			? $"{asset.RawValue} → {asset.PublishUrl} (flattened — source above yaml dir)"
+			? $"{asset.RawValue} → {asset.PublishUrl} (flattened - source above yaml dir)"
 			: $"{asset.RawValue} → {asset.PublishUrl}";
 		PrintPass(label, detail);
 		passed++;

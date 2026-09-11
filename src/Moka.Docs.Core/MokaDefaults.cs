@@ -61,7 +61,7 @@ public static class MokaDefaults
 	/// <summary>Show line numbers on code blocks.</summary>
 	public static bool ShowLineNumbers { get; set; } = true;
 
-	/// <summary>Maximum heading level shown in the table of contents (2–6).</summary>
+	/// <summary>Maximum heading level shown in the table of contents (2-6).</summary>
 	public static int TocDepth { get; set; } = 3;
 
 	#endregion

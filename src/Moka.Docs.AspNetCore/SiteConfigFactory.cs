@@ -93,7 +93,7 @@ internal static class SiteConfigFactory
 			Content = new ContentConfig
 			{
 				Docs = "docs",
-				Projects = [] // empty — we use reflection, not Roslyn
+				Projects = [] // empty - we use reflection, not Roslyn
 			},
 			Theme = new ThemeConfig
 			{

@@ -37,7 +37,7 @@ public sealed class FrontMatterExtractor
 		int closingIndex = FindClosingDelimiter(afterFirstDelimiter);
 
 		if (closingIndex < 0)
-			// No closing delimiter — treat entire content as body
+			// No closing delimiter - treat entire content as body
 		{
 			return new FrontMatterResult(DefaultFrontMatter("Untitled"), markdown);
 		}
@@ -66,7 +66,7 @@ public sealed class FrontMatterExtractor
 		}
 		catch
 		{
-			// Malformed YAML — treat as no front matter
+			// Malformed YAML - treat as no front matter
 			return new FrontMatterResult(DefaultFrontMatter("Untitled"), markdown);
 		}
 	}

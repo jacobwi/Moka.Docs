@@ -6,7 +6,7 @@ namespace Moka.Docs.Core.Configuration;
 ///     <para>
 ///         Unlike the raw yaml string, this record knows BOTH where the file lives on
 ///         disk (for asset copying) AND what URL the theme templates should emit (for
-///         browser resolution) — including correct handling of paths that traverse
+///         browser resolution) - including correct handling of paths that traverse
 ///         out of the <c>content.docs</c> directory via <c>../</c>, and absolute URLs
 ///         (http/https/data) which pass through unchanged.
 ///     </para>
@@ -80,7 +80,7 @@ public sealed record SiteAssetReference
 
 	/// <summary>
 	///     The URL the theme should emit for this asset. Always site-root-absolute
-	///     (<c>/something</c>) for filesystem assets — the Scriban template engine prepends
+	///     (<c>/something</c>) for filesystem assets - the Scriban template engine prepends
 	///     the build <see cref="BuildConfig.BasePath" /> to it automatically for GitHub Pages
 	///     subpath deploys. For absolute URLs, this is the URL itself and the template
 	///     skips the base-path prefix.

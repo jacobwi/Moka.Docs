@@ -3,7 +3,7 @@ using Moka.Docs.Cli.Commands;
 
 var rootCommand =
 	new RootCommand(
-		"MokaDocs — A modern, beautiful, extensible static documentation site generator for .NET projects.")
+		"MokaDocs - A modern, beautiful, extensible static documentation site generator for .NET projects.")
 	{
 		InitCommand.Create(),
 		NewCommand.Create(),

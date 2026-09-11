@@ -63,6 +63,6 @@ public sealed class MokaDocsService(
 	{
 		_isBuilt = false;
 		_site = null;
-		logger.LogInformation("MokaDocs cache invalidated — site will be rebuilt on next request");
+		logger.LogInformation("MokaDocs cache invalidated - site will be rebuilt on next request");
 	}
 }

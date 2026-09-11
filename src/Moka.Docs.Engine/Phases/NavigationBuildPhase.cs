@@ -86,7 +86,7 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 	/// <summary>
 	///     Ensures a nav path starts with "/" so sidebar links are always root-relative.
 	///     Yaml authors commonly write both <c>path: mpc-fopdt</c> (no slash) and
-	///     <c>path: /mpc-fopdt</c> (with slash) — both should produce the same href.
+	///     <c>path: /mpc-fopdt</c> (with slash) - both should produce the same href.
 	/// </summary>
 	private static string? NormalizePath(string? path)
 	{

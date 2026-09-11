@@ -62,7 +62,7 @@ internal static class ServeCommand
 				version = version[..plusIdx];
 			}
 
-			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] — Dev server starting...");
+			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] - Dev server starting...");
 			AnsiConsole.WriteLine();
 
 			string resolvedConfigPath = configPath != null
@@ -78,7 +78,7 @@ internal static class ServeCommand
 				var reader = new SiteConfigReader(fs);
 				config = reader.Read(resolvedConfigPath);
 				AnsiConsole.MarkupLine(
-					$"[green]Config:[/] {Path.GetFileName(resolvedConfigPath)} — \"{Markup.Escape(config.Site.Title)}\"");
+					$"[green]Config:[/] {Path.GetFileName(resolvedConfigPath)} - \"{Markup.Escape(config.Site.Title)}\"");
 			}
 			catch (FileNotFoundException)
 			{
@@ -292,7 +292,7 @@ internal static class ServeCommand
 				if (await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager))
 				{
 					await server.NotifyReloadAsync();
-					AnsiConsole.MarkupLine("[green]Rebuild complete — browser reloaded[/]");
+					AnsiConsole.MarkupLine("[green]Rebuild complete - browser reloaded[/]");
 				}
 			};
 

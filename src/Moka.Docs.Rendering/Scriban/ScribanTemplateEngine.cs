@@ -163,10 +163,10 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		#region Site Config
 
 		// Brand assets expose two script variables each:
-		//   site.logo / site.favicon           — the user's raw yaml value (for backward
+		//   site.logo / site.favicon           - the user's raw yaml value (for backward
 		//                                        compatibility with any custom template that
 		//                                        read the old string directly).
-		//   site.logo_url / site.favicon_url   — the final resolved URL the theme should emit.
+		//   site.logo_url / site.favicon_url   - the final resolved URL the theme should emit.
 		//                                        Absolute URLs pass through unchanged; relative
 		//                                        paths get the BasePath prefix prepended.
 		// Templates in EmbeddedThemeProvider use the *_url variants so they "just work" for
@@ -580,7 +580,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			result.Append(html, pos, preStart - pos);
 
 			int contentStart = preStart + preOpen.Length;
-			// Find matching </pre> — handle <pre ...> with attributes too
+			// Find matching </pre> - handle <pre ...> with attributes too
 			int actualPreEnd = html.IndexOf('>', preStart);
 			if (actualPreEnd < 0)
 			{

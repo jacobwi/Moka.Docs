@@ -1,4 +1,4 @@
-// MokaDocs — CLI clean command
+// MokaDocs - CLI clean command
 
 using System.CommandLine;
 using System.IO.Abstractions;

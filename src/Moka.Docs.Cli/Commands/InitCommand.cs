@@ -49,11 +49,11 @@ internal static class InitCommand
 
 		## Features
 
-		- **Markdown-first** — Write docs in Markdown with YAML front matter
-		- **API Reference** — Auto-generated from your C# XML documentation
-		- **Beautiful Themes** — Clean, modern design with dark mode
-		- **Instant Search** — Find anything with Cmd/Ctrl+K
-		- **Versioning** — Multi-version documentation support
+		- **Markdown-first** - Write docs in Markdown with YAML front matter
+		- **API Reference** - Auto-generated from your C# XML documentation
+		- **Beautiful Themes** - Clean, modern design with dark mode
+		- **Instant Search** - Find anything with Cmd/Ctrl+K
+		- **Versioning** - Multi-version documentation support
 		""";
 
 	/// <summary>Creates the init command.</summary>
@@ -63,7 +63,7 @@ internal static class InitCommand
 
 		command.SetAction(_ =>
 		{
-			AnsiConsole.MarkupLine("[bold green]mokadocs init[/] — Scaffolding new project...");
+			AnsiConsole.MarkupLine("[bold green]mokadocs init[/] - Scaffolding new project...");
 
 			string configPath = Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
 			if (File.Exists(configPath))

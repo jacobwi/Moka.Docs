@@ -12,7 +12,7 @@ namespace Moka.Docs.Engine.Discovery;
 ///     even when they live outside the <c>content.docs</c> directory tree.
 ///     <para>
 ///         Invoked from <c>DiscoveryPhase</c> after the normal markdown/asset glob.
-///         Logs warnings for missing source files but does not throw — a missing logo
+///         Logs warnings for missing source files but does not throw - a missing logo
 ///         should not break a docs build, just fall back to the default SVG logo in
 ///         the theme.
 ///     </para>
@@ -47,7 +47,7 @@ public sealed class BrandAssetResolver(IFileSystem fileSystem, ILogger<BrandAsse
 
 		// Use the publish URL (leading "/") as the key and store the absolute source path.
 		// If logo and favicon both resolve to the same publish URL, the SiteConfigReader
-		// already threw a SiteConfigException during parsing — so we can safely overwrite
+		// already threw a SiteConfigException during parsing - so we can safely overwrite
 		// here (it means the same asset was referenced twice with identical source paths,
 		// which is fine).
 		context.BrandAssetFiles[asset.PublishUrl] = sourcePath;

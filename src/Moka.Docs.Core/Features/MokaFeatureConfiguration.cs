@@ -16,7 +16,7 @@ public static class MokaFeatureConfiguration
 	{
 		return new Dictionary<string, bool>
 		{
-			// Premium/Cloud — all OFF by default
+			// Premium/Cloud - all OFF by default
 			[MokaFeatureFlags.Cloud] = MokaDefaults.EnableCloudFeatures,
 			[MokaFeatureFlags.Analytics] = MokaDefaults.EnableAnalytics,
 			[MokaFeatureFlags.AiSearch] = MokaDefaults.EnableAiSearch,
@@ -30,7 +30,7 @@ public static class MokaFeatureConfiguration
 			[MokaFeatureFlags.AuditLog] = false,
 			[MokaFeatureFlags.ApiAccess] = false,
 
-			// UI Selectors — all ON by default
+			// UI Selectors - all ON by default
 			[MokaFeatureFlags.ColorThemeSelector] = MokaDefaults.ShowColorThemeSelector,
 			[MokaFeatureFlags.CodeThemeSelector] = MokaDefaults.ShowCodeThemeSelector,
 			[MokaFeatureFlags.CodeStyleSelector] = MokaDefaults.ShowCodeStyleSelector,
@@ -54,13 +54,13 @@ public static class MokaFeatureConfiguration
 			[MokaFeatureFlags.LineNumbers] = MokaDefaults.ShowLineNumbers,
 			[MokaFeatureFlags.CodeLanguageBadge] = true,
 
-			// Plugins — all OFF by default (opt-in)
+			// Plugins - all OFF by default (opt-in)
 			[MokaFeatureFlags.ReplPlugin] = false,
 			[MokaFeatureFlags.BlazorPreview] = false,
 			[MokaFeatureFlags.ChangelogPlugin] = false,
 			[MokaFeatureFlags.OpenApiPlugin] = false,
 
-			// API Docs Features — all ON by default
+			// API Docs Features - all ON by default
 			[MokaFeatureFlags.TypeDependencyGraph] = true,
 			[MokaFeatureFlags.ViewSource] = true,
 			[MokaFeatureFlags.InheritDocResolution] = true,
@@ -72,7 +72,7 @@ public static class MokaFeatureConfiguration
 			[MokaFeatureFlags.SearchIndex] = MokaDefaults.SearchEnabled,
 			[MokaFeatureFlags.MinifyOutput] = true,
 
-			// Documentation Gating — OFF (hide premium docs from public builds)
+			// Documentation Gating - OFF (hide premium docs from public builds)
 			[MokaFeatureFlags.ShowCloudDocs] = false,
 			[MokaFeatureFlags.ShowPremiumDocs] = false,
 			[MokaFeatureFlags.ShowBetaDocs] = false,

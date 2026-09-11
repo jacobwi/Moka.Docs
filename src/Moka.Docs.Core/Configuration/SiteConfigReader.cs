@@ -47,7 +47,7 @@ public sealed class SiteConfigReader
 	///     relative brand asset paths (<c>site.logo</c>, <c>site.favicon</c>) against the yaml
 	///     file's location. When null (e.g. when parsing a yaml string that isn't backed by a
 	///     file), brand assets keep their raw value but <see cref="SiteAssetReference.SourcePath" />
-	///     will be null, meaning the build pipeline won't copy them — that's the correct behavior
+	///     will be null, meaning the build pipeline won't copy them - that's the correct behavior
 	///     for virtual / in-memory configs.
 	/// </param>
 	/// <returns>The parsed <see cref="SiteConfig" />.</returns>
@@ -477,7 +477,7 @@ public sealed class SiteConfigReader
 	/// <param name="yamlDir">
 	///     Absolute directory of the source mokadocs.yaml file. When null (e.g. parsing a
 	///     standalone yaml string not backed by a file), filesystem resolution is skipped
-	///     and <see cref="SiteAssetReference.SourcePath" /> is left null — the build
+	///     and <see cref="SiteAssetReference.SourcePath" /> is left null - the build
 	///     pipeline will then log a warning and omit the asset from copy.
 	/// </param>
 	private static SiteAssetReference? ParseAssetReference(string? raw, string? yamlDir)

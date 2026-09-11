@@ -21,7 +21,7 @@ public sealed class ReplExtension : IMarkdownExtension
 	/// <inheritdoc />
 	public void Setup(MarkdownPipelineBuilder pipeline)
 	{
-		// No block parser changes needed — we reuse the built-in FencedCodeBlock parser.
+		// No block parser changes needed - we reuse the built-in FencedCodeBlock parser.
 	}
 
 	/// <inheritdoc />

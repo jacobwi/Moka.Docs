@@ -15,7 +15,7 @@ internal static class ValidateCommand
 
 		command.SetAction(_ =>
 		{
-			AnsiConsole.MarkupLine("[bold blue]MokaDocs[/] — Validating...");
+			AnsiConsole.MarkupLine("[bold blue]MokaDocs[/] - Validating...");
 			AnsiConsole.MarkupLine("[yellow]Validation not yet implemented. Coming in Phase 5.[/]");
 			return 0;
 		});

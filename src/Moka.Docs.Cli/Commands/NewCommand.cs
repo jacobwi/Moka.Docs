@@ -67,10 +67,10 @@ internal static class NewCommand
 		                 # Link Cards Component
 
 		                 :::link-cards
-		                 - [Getting Started](/getting-started/quickstart) — Set up your first project
-		                 - [Configuration](/configuration/site-config) — Customize your site
-		                 - [Markdown Features](/guide/markdown) — Explore supported syntax
-		                 - [Deployment](/advanced/deployment) — Deploy to production
+		                 - [Getting Started](/getting-started/quickstart) - Set up your first project
+		                 - [Configuration](/configuration/site-config) - Customize your site
+		                 - [Markdown Features](/guide/markdown) - Explore supported syntax
+		                 - [Deployment](/advanced/deployment) - Deploy to production
 		                 :::
 		                 """,
 
@@ -105,7 +105,7 @@ internal static class NewCommand
 
 		                :::changelog
 
-		                ## v1.1.0 — 2025-07-01
+		                ## v1.1.0 - 2025-07-01
 
 		                ### Added
 		                - New feature description here
@@ -114,7 +114,7 @@ internal static class NewCommand
 		                ### Fixed
 		                - Bug fix description here
 
-		                ## v1.0.0 — 2025-06-01
+		                ## v1.0.0 - 2025-06-01
 
 		                ### Added
 		                - Initial release feature one
@@ -187,7 +187,7 @@ internal static class NewCommand
 			string layout = parseResult.GetValue(layoutOpt)!;
 			int? order = parseResult.GetValue(orderOpt);
 
-			AnsiConsole.MarkupLine("[bold green]mokadocs new page[/] — Scaffolding new page...");
+			AnsiConsole.MarkupLine("[bold green]mokadocs new page[/] - Scaffolding new page...");
 
 			var sb = new StringBuilder();
 			sb.AppendLine("---");
@@ -241,7 +241,7 @@ internal static class NewCommand
 			string outputDir = parseResult.GetValue(pathOpt)!;
 			string pascal = ToPascalCase(name);
 
-			AnsiConsole.MarkupLine("[bold green]mokadocs new plugin[/] — Scaffolding new plugin...");
+			AnsiConsole.MarkupLine("[bold green]mokadocs new plugin[/] - Scaffolding new plugin...");
 
 			string projectName = $"Moka.Docs.Plugins.{pascal}";
 			string projectDir = Path.GetFullPath(Path.Combine(outputDir, projectName));
@@ -340,7 +340,7 @@ internal static class NewCommand
 			string name = parseResult.GetValue(nameArg)!.ToLowerInvariant();
 			string outputDir = parseResult.GetValue(pathOpt)!;
 
-			AnsiConsole.MarkupLine("[bold green]mokadocs new component[/] — Scaffolding component example...");
+			AnsiConsole.MarkupLine("[bold green]mokadocs new component[/] - Scaffolding component example...");
 
 			if (!_componentTemplates.TryGetValue(name, out string? template))
 			{
