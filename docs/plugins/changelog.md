@@ -33,7 +33,7 @@ Wrap your release notes in a `:::changelog` fenced container. Inside the contain
 ````markdown
 :::changelog
 
-## v2.1.0 — 2025-06-15
+## v2.1.0 - 2025-06-15
 
 ### Added
 - New dashboard analytics widget
@@ -43,7 +43,7 @@ Wrap your release notes in a `:::changelog` fenced container. Inside the contain
 - Resolved timeout on large dataset queries
 - Corrected currency formatting in invoices
 
-## v2.0.0 — 2025-05-01
+## v2.0.0 - 2025-05-01
 
 ### Breaking
 - Removed deprecated `v1/auth` endpoint
@@ -64,7 +64,7 @@ Wrap your release notes in a `:::changelog` fenced container. Inside the contain
 Each release heading follows the format:
 
 ```markdown
-## vX.Y.Z — YYYY-MM-DD
+## vX.Y.Z - YYYY-MM-DD
 ```
 
 The version number and date are extracted and displayed in the timeline UI. The date portion after the em dash is optional but recommended.
@@ -74,13 +74,13 @@ The version number and date are extracted and displayed in the timeline UI. The 
 You can annotate a release heading with a `type` to control the badge color:
 
 ````markdown
-## v1.0.0 — 2025-01-01 {type: initial}
+## v1.0.0 - 2025-01-01 {type: initial}
 
-## v2.0.0 — 2025-05-01 {type: major}
+## v2.0.0 - 2025-05-01 {type: major}
 
-## v2.1.0 — 2025-06-15 {type: minor}
+## v2.1.0 - 2025-06-15 {type: minor}
 
-## v2.1.1 — 2025-06-20 {type: patch}
+## v2.1.1 - 2025-06-20 {type: patch}
 ````
 
 | Type | Badge Color | Hex | Use Case |
@@ -140,7 +140,7 @@ order: 99
 
 :::changelog
 
-## v3.0.0 — 2025-07-01 {type: major}
+## v3.0.0 - 2025-07-01 {type: major}
 
 ### Breaking
 - Dropped support for .NET 6; minimum is now .NET 8
@@ -153,7 +153,7 @@ order: 99
 ### Changed
 - Upgraded Markdig to 0.38
 
-## v2.2.0 — 2025-06-15 {type: minor}
+## v2.2.0 - 2025-06-15 {type: minor}
 
 ### Added
 - Dark mode code theme auto-pairing
@@ -163,7 +163,7 @@ order: 99
 - Sidebar scroll position lost on navigation
 - Broken anchor links with special characters
 
-## v2.1.1 — 2025-06-02 {type: patch}
+## v2.1.1 - 2025-06-02 {type: patch}
 
 ### Fixed
 - Hot-reload crash when deleting a docs folder

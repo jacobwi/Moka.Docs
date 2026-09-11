@@ -5,7 +5,7 @@ order: 4
 
 # Dev Server & Hot Reload
 
-MokaDocs includes a built-in development server that serves your documentation locally with automatic hot reload. This gives you a fast feedback loop while writing docs — save a file, and the browser updates immediately.
+MokaDocs includes a built-in development server that serves your documentation locally with automatic hot reload. This gives you a fast feedback loop while writing docs - save a file, and the browser updates immediately.
 
 ## Starting the Dev Server
 
@@ -56,7 +56,7 @@ The dev server provides automatic browser refresh when source files change. Here
 
 4. **Browser Refresh**: A small JavaScript client injected into every served page listens on the WebSocket connection. When it receives a reload notification, it automatically refreshes the page.
 
-The entire cycle — from saving a file to seeing the updated page — typically completes in under a second for most documentation sites.
+The entire cycle - from saving a file to seeing the updated page - typically completes in under a second for most documentation sites.
 
 ### Debouncing
 

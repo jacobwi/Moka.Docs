@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://dotnet.microsoft.com"><img src="https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4?style=flat-square&logo=dotnet" alt=".NET 9/10" /></a>
   <a href="https://github.com/jacobwi/Moka.Docs/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
-  <a href="https://github.com/jacobwi/Moka.Docs/actions"><img src="https://img.shields.io/badge/tests-384%20passed-brightgreen?style=flat-square" alt="Tests" /></a>
+  <a href="https://github.com/jacobwi/Moka.Docs/actions"><img src="https://img.shields.io/badge/tests-424%20passed-brightgreen?style=flat-square" alt="Tests" /></a>
   <a href="https://www.nuget.org/packages/Moka.Docs.Core"><img src="https://img.shields.io/nuget/v/Moka.Docs.Core?style=flat-square&logo=nuget&color=orange" alt="NuGet" /></a>
 </p>
 
@@ -40,23 +40,23 @@ mokadocs build
 
 ## Features
 
-- **C# API Reference** — Auto-generate docs from assemblies with full type info, XML comments, and `<inheritdoc/>` support
-- **Markdown Guides** — Admonitions, tabs, code groups, task lists, footnotes, and more via Markdig
-- **Interactive REPL** — Readers run C# code directly in the browser (Roslyn-powered)
-- **Blazor Component Preview** — Live-render Razor components in your docs
-- **Mermaid Diagrams** — Flowcharts, sequence diagrams, class diagrams with dark/light mode
-- **UI Components** — Cards, steps, link-cards, and code-group custom blocks
-- **Release Changelog** — Rich timeline UI with version badges, category filters, and collapsible entries
-- **Full-Text Search** — Client-side instant search with `Ctrl+K` / `Cmd+K`
-- **5 Color Themes** — Ocean, Emerald, Violet, Amber, Rose with live switcher
-- **7 Code Syntax Themes** — Catppuccin, GitHub, Dracula, One Dark, Nord
-- **4 Code Block Styles** — Plain, macOS (traffic lights), Terminal, VS Code
-- **Dark/Light Mode** — Auto-detects system preference with manual toggle
-- **Versioning** — Multi-version docs with dropdown selector
-- **Hot Reload** — File watcher + WebSocket for instant preview
-- **Feedback Widget** — "Was this page helpful?" on every page
-- **Type Dependency Graphs** — Auto-generated Mermaid diagrams on API pages
-- **ASP.NET Core Integration** — Embed docs directly in your web app
+- **C# API Reference** - Auto-generate docs from assemblies with full type info, XML comments, and `<inheritdoc/>` support
+- **Markdown Guides** - Admonitions, tabs, code groups, task lists, footnotes, and more via Markdig
+- **Interactive REPL** - Readers run C# code directly in the browser (Roslyn-powered)
+- **Blazor Component Preview** - Live-render Razor components in your docs
+- **Mermaid Diagrams** - Flowcharts, sequence diagrams, class diagrams with dark/light mode
+- **UI Components** - Cards, steps, link-cards, and code-group custom blocks
+- **Release Changelog** - Rich timeline UI with version badges, category filters, and collapsible entries
+- **Full-Text Search** - Client-side instant search with `Ctrl+K` / `Cmd+K`
+- **5 Color Themes** - Ocean, Emerald, Violet, Amber, Rose with live switcher
+- **7 Code Syntax Themes** - Catppuccin, GitHub, Dracula, One Dark, Nord
+- **4 Code Block Styles** - Plain, macOS (traffic lights), Terminal, VS Code
+- **Dark/Light Mode** - Auto-detects system preference with manual toggle
+- **Versioning** - Multi-version docs with dropdown selector
+- **Hot Reload** - File watcher + WebSocket for instant preview
+- **Feedback Widget** - "Was this page helpful?" on every page
+- **Type Dependency Graphs** - Auto-generated Mermaid diagrams on API pages
+- **ASP.NET Core Integration** - Embed docs directly in your web app
 
 ## ASP.NET Core Integration
 
@@ -122,7 +122,7 @@ plugins:
 # Build
 dotnet build MokaDocs.sln
 
-# Test (384 tests across 5 projects x 2 TFMs)
+# Test (424 tests across 5 projects x 2 TFMs)
 dotnet test MokaDocs.sln
 
 # Run self-documenting site

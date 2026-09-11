@@ -114,7 +114,7 @@ public class DocPage
 }
 ```
 
-- **FrontMatter**: Contains all YAML front matter fields — `title`, `order`, `icon`, `visibility`, `description`, `tags`, `layout`, and any custom fields.
+- **FrontMatter**: Contains all YAML front matter fields - `title`, `order`, `icon`, `visibility`, `description`, `tags`, `layout`, and any custom fields.
 - **PageContent**: Holds both the rendered HTML (`Html`) and a plain text extraction (`PlainText`) used for search indexing.
 - **TableOfContents**: A list of heading entries with `Level`, `Text`, `Id`, and nesting structure.
 - **Route**: The clean URL path for the page, derived from the file's location in the docs directory.
@@ -188,17 +188,17 @@ MokaDocs uses **Scriban** as its template engine. Scriban uses a Liquid-like syn
 The `ThemeRenderContext` is the data object passed to every template during rendering. It provides access to all site data:
 
 ```
-{{ page.title }}           — Current page title
-{{ page.content }}         — Rendered HTML content
-{{ page.toc }}             — Table of contents entries
-{{ site.title }}           — Site name from config
-{{ site.description }}     — Site description
-{{ navigation }}           — The full navigation tree
-{{ search_index }}         — Search index JSON
-{{ package.name }}         — Package name from .csproj
-{{ package.version }}      — Package version
-{{ version.current }}      — Current documentation version
-{{ version.all }}          — All available versions
+{{ page.title }}           - Current page title
+{{ page.content }}         - Rendered HTML content
+{{ page.toc }}             - Table of contents entries
+{{ site.title }}           - Site name from config
+{{ site.description }}     - Site description
+{{ navigation }}           - The full navigation tree
+{{ search_index }}         - Search index JSON
+{{ package.name }}         - Package name from .csproj
+{{ package.version }}      - Package version
+{{ version.current }}      - Current documentation version
+{{ version.all }}          - All available versions
 ```
 
 ### Partials

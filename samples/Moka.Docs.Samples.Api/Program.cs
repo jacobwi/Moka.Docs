@@ -1,4 +1,4 @@
-// SampleApi — A minimal API project showcasing MokaDocs ASP.NET Core integration
+// SampleApi - A minimal API project showcasing MokaDocs ASP.NET Core integration
 
 using Moka.Docs.AspNetCore;
 using SampleApi.Models;
@@ -9,7 +9,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSingleton<TodoService>();
 builder.Services.AddSingleton<WeatherService>();
 
-// Register MokaDocs — auto-discovers API from this assembly
+// Register MokaDocs - auto-discovers API from this assembly
 builder.Services.AddMokaDocs(options =>
 {
 	options.Title = "SampleApi Docs";

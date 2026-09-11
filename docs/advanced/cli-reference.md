@@ -23,9 +23,9 @@ Scaffolds a new MokaDocs project in the current directory. This creates a starte
 
 ### What It Creates
 
-- `mokadocs.yaml` — Default site configuration file with common settings pre-filled
-- `docs/` — Documentation source directory
-- `docs/index.md` — A starter homepage with example front matter and content
+- `mokadocs.yaml` - Default site configuration file with common settings pre-filled
+- `docs/` - Documentation source directory
+- `docs/index.md` - A starter homepage with example front matter and content
 
 ### Options
 

@@ -293,7 +293,7 @@ public sealed class SiteConfigReaderTests
 	// ── SiteAssetReference parsing ────────────────────────────────────────────
 	//
 	// These tests exercise the logo/favicon path-resolution rules added in v1.3.8
-	// without touching the filesystem — they use Parse(yaml, yamlDir) directly so
+	// without touching the filesystem - they use Parse(yaml, yamlDir) directly so
 	// yamlDir can be a synthetic path. The resolver's SourcePath will point at a
 	// non-existent file; that's fine for parse-only tests, and the existing
 	// BrandAssetResolver integration tests cover the filesystem-aware branch.
@@ -346,7 +346,7 @@ public sealed class SiteConfigReaderTests
 
 		SiteConfig config = SiteConfigReader.Parse(yaml, yamlDir);
 
-		// Leading ./ is stripped — no ugly "/./assets/logo.png"
+		// Leading ./ is stripped - no ugly "/./assets/logo.png"
 		config.Site.Logo!.PublishUrl.Should().Be("/assets/logo.png");
 	}
 
@@ -412,7 +412,7 @@ public sealed class SiteConfigReaderTests
 	public void Parse_Logo_LeadingSlash_TreatedAsYamlDirRelative()
 	{
 		// A leading slash (e.g. /assets/logo.png) is interpreted as "relative to the
-		// yaml dir" not "filesystem root" — this is the ergonomic choice for users who
+		// yaml dir" not "filesystem root" - this is the ergonomic choice for users who
 		// naturally want to reference site-absolute paths. Users who genuinely want a
 		// CDN/host should use a full URL instead.
 		const string yaml = """
@@ -460,7 +460,7 @@ public sealed class SiteConfigReaderTests
 		string roundTripYaml = SiteConfigReader.ToYaml(config);
 		SiteConfig reparsed = SiteConfigReader.Parse(roundTripYaml, yamlDir);
 
-		// Raw value — exactly what the user wrote — is preserved across round-trip
+		// Raw value - exactly what the user wrote - is preserved across round-trip
 		reparsed.Site.Logo!.RawValue.Should().Be("../branding/logo.png");
 		reparsed.Site.Favicon!.RawValue.Should().Be("assets/favicon.ico");
 	}

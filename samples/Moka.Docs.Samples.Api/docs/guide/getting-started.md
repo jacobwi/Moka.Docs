@@ -48,7 +48,7 @@ curl https://localhost:5001/api/weather/forecast?days=3
 
 The API uses these key types:
 
-- `TodoItem` — The main todo record with ID, title, priority, and due date
-- `TodoPriority` — Enum: `Low`, `Medium`, `High`, `Critical`
-- `WeatherForecast` — Daily forecast with high/low temps and conditions
-- `WeatherCondition` — Enum: `Sunny`, `PartlyCloudy`, `Cloudy`, `Rainy`, etc.
+- `TodoItem` - The main todo record with ID, title, priority, and due date
+- `TodoPriority` - Enum: `Low`, `Medium`, `High`, `Critical`
+- `WeatherForecast` - Daily forecast with high/low temps and conditions
+- `WeatherCondition` - Enum: `Sunny`, `PartlyCloudy`, `Cloudy`, `Rainy`, etc.

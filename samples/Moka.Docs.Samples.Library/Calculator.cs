@@ -1,4 +1,4 @@
-// SampleLibrary — A sample library with comprehensive XML documentation for testing MokaDocs
+// SampleLibrary - A sample library with comprehensive XML documentation for testing MokaDocs
 
 namespace SampleLibrary;
 
@@ -588,7 +588,7 @@ public sealed class ResultBuilder<T>
 	/// <summary>
 	///     Builds and returns the final <see cref="OperationResult{T}" />.
 	/// </summary>
-	/// <returns>The result of the entire chain — either the final success value or the first failure.</returns>
+	/// <returns>The result of the entire chain - either the final success value or the first failure.</returns>
 	public OperationResult<T> Build() => _current;
 }
 

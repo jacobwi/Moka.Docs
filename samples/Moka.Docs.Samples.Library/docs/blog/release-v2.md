@@ -9,7 +9,7 @@ icon: package
 
 # SampleLibrary v2.0 Released
 
-We are excited to announce **SampleLibrary v2.0** — the biggest update since the initial release. This version introduces new shape types, numeric utilities, safe division, and a fluent result builder.
+We are excited to announce **SampleLibrary v2.0** - the biggest update since the initial release. This version introduces new shape types, numeric utilities, safe division, and a fluent result builder.
 
 ::: tip
 Upgrade today with `dotnet add package SampleLibrary --version 2.0.0`
@@ -124,8 +124,8 @@ var r = OperationResult<int>.Ok(42);
 ## Explore More
 
 :::link-cards
-- [Getting Started](/guide/getting-started) — Updated guide with v2.0 examples
-- [Features Overview](/guide/features) — See every feature in action
-- [API Reference](/api) — Full documentation for all new types
-- [Diagrams](/guide/diagrams) — Updated architecture diagrams
+- [Getting Started](/guide/getting-started) - Updated guide with v2.0 examples
+- [Features Overview](/guide/features) - See every feature in action
+- [API Reference](/api) - Full documentation for all new types
+- [Diagrams](/guide/diagrams) - Updated architecture diagrams
 :::

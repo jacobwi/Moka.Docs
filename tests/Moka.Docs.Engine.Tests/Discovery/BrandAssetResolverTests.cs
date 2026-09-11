@@ -10,7 +10,7 @@ namespace Moka.Docs.Engine.Tests.Discovery;
 public sealed class BrandAssetResolverTests
 {
 	// Tests use a normalized forward-slash rootDir so assertions work identically on
-	// Windows and Linux — System.IO.Abstractions' MockFileSystem converts to the
+	// Windows and Linux - System.IO.Abstractions' MockFileSystem converts to the
 	// platform separator internally but keeps our forward-slash inputs consistent.
 	private const string RootDir = "/mokadocs-test/docs";
 	private const string ParentDir = "/mokadocs-test";

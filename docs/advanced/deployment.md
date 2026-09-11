@@ -281,7 +281,7 @@ build:
   # No prefix needed when using a custom domain at the root
 ```
 
-4. **Enable HTTPS** — most platforms provide free SSL certificates via Let's Encrypt.
+4. **Enable HTTPS** - most platforms provide free SSL certificates via Let's Encrypt.
 
 ### CNAME File
 

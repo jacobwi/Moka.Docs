@@ -1,4 +1,4 @@
-// MokaDocs — Tests for FrontMatterExtractor
+// MokaDocs - Tests for FrontMatterExtractor
 
 using FluentAssertions;
 using Moka.Docs.Core.Content;
@@ -130,7 +130,7 @@ public sealed class FrontMatterExtractorTests
 		                     """;
 
 		FrontMatterResult result = _extractor.Extract(input);
-		// Should not crash — falls back gracefully
+		// Should not crash - falls back gracefully
 		result.FrontMatter.Title.Should().Be("Untitled");
 	}
 

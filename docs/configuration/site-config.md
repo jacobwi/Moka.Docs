@@ -61,7 +61,7 @@ site:
 
 ### `logo`
 
-- **Type:** `string` (nullable) — filesystem path or absolute URL
+- **Type:** `string` (nullable) - filesystem path or absolute URL
 - **Default:** `null`
 
 Path to a logo image file displayed in the site header alongside the title.
@@ -115,7 +115,7 @@ site:
 
 **Collision detection**: if `site.logo` and `site.favicon` both flatten to
 the same publish URL (same filename from different source directories),
-the build fails with a clear error — rename or move one of them.
+the build fails with a clear error - rename or move one of them.
 
 #### Absolute URLs (CDN-hosted)
 
@@ -138,11 +138,11 @@ alongside the site title. The `<img>` tag is skipped entirely.
 
 ### `favicon`
 
-- **Type:** `string` (nullable) — filesystem path or absolute URL
+- **Type:** `string` (nullable) - filesystem path or absolute URL
 - **Default:** `null`
 
 Path to a favicon file for the browser tab icon. All the resolution rules
-described for [`logo`](#logo) above apply identically — relative paths are
+described for [`logo`](#logo) above apply identically - relative paths are
 resolved from the yaml directory, `../` escape flattens to `/_media/`,
 absolute URLs pass through verbatim, and path collisions with the logo
 cause a build error.
@@ -887,7 +887,7 @@ nav:
 ```
 
 :::tip
-The same `order` property works at every nesting level — top-level sections AND their children are both sorted by `order` then by `label`.
+The same `order` property works at every nesting level - top-level sections AND their children are both sorted by `order` then by `label`.
 :::
 
 ### `nav[].expanded`
@@ -963,7 +963,7 @@ build:
 ### `basePath`
 
 - **Type:** `string`
-- **Default:** `""` (empty — site is served from root)
+- **Default:** `""` (empty - site is served from root)
 
 A path prefix added to all generated routes, asset links, and navigation URLs. Use this when deploying to a subdirectory, such as GitHub Pages project sites (`/repo-name`) or IIS virtual directories.
 

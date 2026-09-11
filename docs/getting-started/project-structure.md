@@ -12,7 +12,7 @@ MokaDocs follows conventions to keep your documentation organized. Understanding
 
 ```
 my-project/
-├── mokadocs.yaml          # Required — site configuration
+├── mokadocs.yaml          # Required - site configuration
 ├── docs/                  # Markdown documentation
 │   ├── index.md           # Site landing page
 │   ├── getting-started.md # Top-level guide page
@@ -54,16 +54,16 @@ Every Markdown file should include YAML front matter:
 
 ```yaml
 ---
-title: Page Title        # Recommended — used in nav and <title> (defaults to "Untitled" if missing)
-description: Summary     # Optional — meta description
-order: 1                 # Optional — sort order in sidebar
-icon: rocket             # Optional — sidebar icon
-layout: default          # Optional — template to use
-tags: [guide, basics]    # Optional — for search
-visibility: public       # Optional — public, hidden, or draft
-toc: true                # Optional — show table of contents
-expanded: true           # Optional — expand section in sidebar
-route: /custom-url       # Optional — override URL
+title: Page Title        # Recommended - used in nav and <title> (defaults to "Untitled" if missing)
+description: Summary     # Optional - meta description
+order: 1                 # Optional - sort order in sidebar
+icon: rocket             # Optional - sidebar icon
+layout: default          # Optional - template to use
+tags: [guide, basics]    # Optional - for search
+visibility: public       # Optional - public, hidden, or draft
+toc: true                # Optional - show table of contents
+expanded: true           # Optional - expand section in sidebar
+route: /custom-url       # Optional - override URL
 ---
 ```
 

@@ -1,4 +1,4 @@
-// SampleApi — Mock weather service
+// SampleApi - Mock weather service
 
 using SampleApi.Models;
 

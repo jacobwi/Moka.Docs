@@ -209,8 +209,8 @@ public sealed class ComponentExtensionTests
 	{
 		const string md = """
 		                  ::: link-cards
-		                  - [Getting Started](/docs/getting-started) — Learn the basics
-		                  - [API Reference](/docs/api) — Full API documentation
+		                  - [Getting Started](/docs/getting-started) - Learn the basics
+		                  - [API Reference](/docs/api) - Full API documentation
 		                  :::
 		                  """;
 
@@ -231,7 +231,7 @@ public sealed class ComponentExtensionTests
 	{
 		const string md = """
 		                  ::: link-cards
-		                  - [Docs](/docs) — Complete documentation
+		                  - [Docs](/docs) - Complete documentation
 		                  :::
 		                  """;
 
@@ -239,6 +239,22 @@ public sealed class ComponentExtensionTests
 
 		html.Should().Contain("component-link-card-desc");
 		html.Should().Contain("Complete documentation");
+	}
+
+	[Fact]
+	public void LinkCards_WithEmDashSeparator_StripsSeparatorFromDescription()
+	{
+		// LinkCardsRenderer accepts an em dash as well as a hyphen between the link
+		// and its description. This is the only place an em dash is legitimate in
+		// this repo, so it needs its own test: the last time the separator was
+		// "cleaned" to a hyphen, every description rendered with a leading dash.
+		const string md = "::: link-cards\n- [Docs](/docs) — Complete documentation\n:::";
+
+		string html = Render(md);
+
+		html.Should().Contain("component-link-card-desc");
+		html.Should().Contain(">Complete documentation<");
+		html.Should().NotContain("— Complete documentation");
 	}
 
 	[Fact]

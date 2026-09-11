@@ -164,7 +164,7 @@ Import `SampleLibrary` once and get `Truncate`, `Clamp`, and `IsInRange` on buil
 ## Next Steps
 
 :::link-cards
-- [Features Overview](/guide/features) — Explore every MokaDocs documentation feature
-- [API Reference](/api) — Full type and member documentation
-- [v2.0 Release Notes](/blog/release-v2) — See everything new in v2.0
+- [Features Overview](/guide/features) - Explore every MokaDocs documentation feature
+- [API Reference](/api) - Full type and member documentation
+- [v2.0 Release Notes](/blog/release-v2) - See everything new in v2.0
 :::

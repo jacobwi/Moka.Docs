@@ -264,7 +264,7 @@ site:
 
 The logo is displayed in the header next to the site title. Both SVG and raster image formats (PNG, JPG, WebP, ICO) are supported.
 
-Paths are resolved **relative to the directory containing `mokadocs.yaml`** and support several forms — including parent-directory escapes via `../` and absolute URLs for CDN-hosted assets. See the [Site Configuration — Logo](/configuration/site-config#logo) page for the full path resolution rules and worked examples.
+Paths are resolved **relative to the directory containing `mokadocs.yaml`** and support several forms - including parent-directory escapes via `../` and absolute URLs for CDN-hosted assets. See the [Site Configuration - Logo](/configuration/site-config#logo) page for the full path resolution rules and worked examples.
 
 ### Typography and Spacing
 
@@ -387,8 +387,8 @@ When animations are disabled (either by configuration or by the OS setting), all
 
 The footer appears on every page below the main content area. It has two parts:
 
-1. **Copyright text** — your custom text (left side)
-2. **"Built with MokaDocs"** branding — automatic version badge (right side)
+1. **Copyright text** - your custom text (left side)
+2. **"Built with MokaDocs"** branding - automatic version badge (right side)
 
 ### Copyright Text
 
@@ -415,7 +415,7 @@ When `showBuiltWith` is `false`, only your `site.copyright` text appears in the 
 
 ### Footer on the Landing Page
 
-The landing page layout uses a slightly different footer style with a heart icon: `Built with ❤ using MokaDocs vX.Y`. The same `showBuiltWith` toggle controls both layouts — setting it to `false` hides the branding on both the default and landing page footers.
+The landing page layout uses a slightly different footer style with a heart icon: `Built with ❤ using MokaDocs vX.Y`. The same `showBuiltWith` toggle controls both layouts - setting it to `false` hides the branding on both the default and landing page footers.
 
 :::tip
 There is no `footer:` top-level key in `mokadocs.yaml`. The copyright text goes under `site: copyright:`, and the branding toggle goes under `theme: options: showBuiltWith:`.

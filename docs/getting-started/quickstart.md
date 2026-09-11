@@ -17,9 +17,9 @@ mokadocs init
 ```
 
 This creates:
-- `mokadocs.yaml` — site configuration
-- `docs/` — directory for your Markdown guides
-- `docs/index.md` — your landing page
+- `mokadocs.yaml` - site configuration
+- `docs/` - directory for your Markdown guides
+- `docs/index.md` - your landing page
 
 ## 2. Configure Your Site
 
@@ -102,7 +102,7 @@ When you're ready to deploy:
 mokadocs build
 ```
 
-The static site is generated in `_site/` (configurable). Deploy this directory to any static hosting provider — GitHub Pages, Netlify, Vercel, Azure Static Web Apps, etc.
+The static site is generated in `_site/` (configurable). Deploy this directory to any static hosting provider - GitHub Pages, Netlify, Vercel, Azure Static Web Apps, etc.
 
 ## Project Structure
 
@@ -127,8 +127,8 @@ my-library/
 ## What's Next?
 
 ::: link-cards
-- [Configuration](/configuration/site-config) — Learn about all configuration options
-- [Markdown Guide](/guide/markdown) — Master the Markdown extensions
-- [API Documentation](/guide/api-docs) — Configure API reference generation
-- [Themes](/themes/customization) — Customize the look and feel
+- [Configuration](/configuration/site-config) - Learn about all configuration options
+- [Markdown Guide](/guide/markdown) - Master the Markdown extensions
+- [API Documentation](/guide/api-docs) - Configure API reference generation
+- [Themes](/themes/customization) - Customize the look and feel
 :::

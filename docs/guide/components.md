@@ -227,18 +227,18 @@ Link cards render a grid of clickable card elements, each linking to a different
 
 ```markdown
 :::link-cards
-- [Getting Started](/guide/getting-started) — Set up your first MokaDocs project
-- [Configuration](/guide/configuration) — Customize your documentation site
-- [Markdown Features](/guide/markdown) — Learn about supported Markdown syntax
-- [Deployment](/guide/deployment) — Deploy your site to production
+- [Getting Started](/guide/getting-started) - Set up your first MokaDocs project
+- [Configuration](/guide/configuration) - Customize your documentation site
+- [Markdown Features](/guide/markdown) - Learn about supported Markdown syntax
+- [Deployment](/guide/deployment) - Deploy your site to production
 :::
 ```
 
 :::link-cards
-- [Getting Started](/getting-started/quickstart) — Set up your first MokaDocs project
-- [Configuration](/configuration/site-config) — Customize your documentation site
-- [Markdown Features](/guide/markdown) — Learn about supported Markdown syntax
-- [Deployment](/advanced/deployment) — Deploy your site to production
+- [Getting Started](/getting-started/quickstart) - Set up your first MokaDocs project
+- [Configuration](/configuration/site-config) - Customize your documentation site
+- [Markdown Features](/guide/markdown) - Learn about supported Markdown syntax
+- [Deployment](/advanced/deployment) - Deploy your site to production
 :::
 
 ### How Link Cards Work
@@ -246,7 +246,7 @@ Link cards render a grid of clickable card elements, each linking to a different
 Each list item inside the container follows a specific format:
 
 ```
-- [Card Title](url) — Description text
+- [Card Title](url) - Description text
 ```
 
 | Part          | Source                | Description                          |
@@ -263,10 +263,10 @@ Link cards work with both internal and external URLs:
 
 ```markdown
 :::link-cards
-- [GitHub Repository](https://github.com/example/mokadocs) — View the source code and contribute
-- [NuGet Package](https://nuget.org/packages/MokaDocs) — Install from NuGet
-- [API Reference](/api/) — Browse the full API documentation
-- [Changelog](/changelog) — See what changed in each release
+- [GitHub Repository](https://github.com/example/mokadocs) - View the source code and contribute
+- [NuGet Package](https://nuget.org/packages/MokaDocs) - Install from NuGet
+- [API Reference](/api/) - Browse the full API documentation
+- [Changelog](/changelog) - See what changed in each release
 :::
 ```
 

@@ -145,10 +145,10 @@ Use `Truncate` for display purposes only. The original string is never modified.
 ## Next Steps
 
 :::link-cards
-- [Features Overview](/guide/features) — Explore everything SampleLibrary offers
-- [API Reference](/api) — Browse all types and members
-- [Diagrams](/guide/diagrams) — Visual architecture of the library
-- [Colors & Enums](/guide/colors) — Working with the Color enum
+- [Features Overview](/guide/features) - Explore everything SampleLibrary offers
+- [API Reference](/api) - Browse all types and members
+- [Diagrams](/guide/diagrams) - Visual architecture of the library
+- [Colors & Enums](/guide/colors) - Working with the Color enum
 :::
 
 ::: danger

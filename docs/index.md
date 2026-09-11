@@ -38,14 +38,14 @@ mokadocs serve
 ## Key Features
 
 :::link-cards
-- [API Documentation](/guide/api-docs) — Auto-generate API reference pages from C# code and XML comments
-- [Markdown Guides](/guide/markdown) — Admonitions, tabs, code groups, and more
-- [UI Components](/guide/components) — Cards, steps, link-cards, and code-group components
-- [Mermaid Diagrams](/guide/diagrams) — Flowcharts, sequence diagrams, class diagrams
-- [Interactive REPL](/plugins/repl) — Let readers run C# code in the browser
-- [Blazor Preview](/plugins/blazor-preview) — Live preview Blazor components in docs
-- [Versioning](/advanced/versioning) — Multi-version documentation support
-- [Themes](/themes/customization) — Customize colors, fonts, and layout
+- [API Documentation](/guide/api-docs) - Auto-generate API reference pages from C# code and XML comments
+- [Markdown Guides](/guide/markdown) - Admonitions, tabs, code groups, and more
+- [UI Components](/guide/components) - Cards, steps, link-cards, and code-group components
+- [Mermaid Diagrams](/guide/diagrams) - Flowcharts, sequence diagrams, class diagrams
+- [Interactive REPL](/plugins/repl) - Let readers run C# code in the browser
+- [Blazor Preview](/plugins/blazor-preview) - Live preview Blazor components in docs
+- [Versioning](/advanced/versioning) - Multi-version documentation support
+- [Themes](/themes/customization) - Customize colors, fonts, and layout
 :::
 
 ## Packages

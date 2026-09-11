@@ -470,7 +470,7 @@ Use the `:::changelog` fenced container to render rich release timeline UI. Requ
 
 ````markdown
 :::changelog
-## v1.0.0 — 2025-01-01
+## v1.0.0 - 2025-01-01
 
 ### Added
 - Initial release

@@ -2,9 +2,9 @@
 
 **The modern documentation site generator built for .NET libraries.**
 
-Point MokaDocs at your `.csproj` and `docs/` folder — it auto-discovers your API surface, parses XML docs, and generates a complete documentation site.
+Point MokaDocs at your `.csproj` and `docs/` folder - it auto-discovers your API surface, parses XML docs, and generates a complete documentation site.
 
-[![.NET 9/10](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com) [![MIT License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/jacobwi/Moka.Docs/blob/main/LICENSE) [![Tests](https://img.shields.io/badge/tests-384%20passed-brightgreen?style=flat-square)](https://github.com/jacobwi/Moka.Docs/actions) [![NuGet](https://img.shields.io/nuget/v/Moka.Docs.Core?style=flat-square&logo=nuget&color=orange)](https://www.nuget.org/packages/Moka.Docs.Core)
+[![.NET 9/10](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com) [![MIT License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/jacobwi/Moka.Docs/blob/main/LICENSE) [![Tests](https://img.shields.io/badge/tests-424%20passed-brightgreen?style=flat-square)](https://github.com/jacobwi/Moka.Docs/actions) [![NuGet](https://img.shields.io/nuget/v/Moka.Docs.Core?style=flat-square&logo=nuget&color=orange)](https://www.nuget.org/packages/Moka.Docs.Core)
 
 ## Quick Start
 
@@ -16,16 +16,16 @@ mokadocs serve
 
 ## Features
 
-- **C# API Reference** — Auto-generated from assemblies with full type info, XML comments, and `<inheritdoc/>` support
-- **Markdown Guides** — Admonitions, tabs, code groups, task lists, footnotes, and more
-- **Interactive REPL** — Run C# code directly in the browser (Roslyn-powered)
-- **Full-Text Search** — Client-side instant search with `Ctrl+K` / `Cmd+K`
-- **5 Color Themes** — Ocean, Emerald, Violet, Amber, Rose with live switcher
-- **7 Code Themes** — Catppuccin, GitHub, Dracula, One Dark, Nord
-- **Dark/Light Mode** — Auto-detects system preference
-- **Hot Reload** — File watcher + WebSocket for instant preview
-- **Versioning** — Multi-version docs with dropdown selector
-- **ASP.NET Core Integration** — Embed docs directly in your web app
+- **C# API Reference** - Auto-generated from assemblies with full type info, XML comments, and `<inheritdoc/>` support
+- **Markdown Guides** - Admonitions, tabs, code groups, task lists, footnotes, and more
+- **Interactive REPL** - Run C# code directly in the browser (Roslyn-powered)
+- **Full-Text Search** - Client-side instant search with `Ctrl+K` / `Cmd+K`
+- **5 Color Themes** - Ocean, Emerald, Violet, Amber, Rose with live switcher
+- **7 Code Themes** - Catppuccin, GitHub, Dracula, One Dark, Nord
+- **Dark/Light Mode** - Auto-detects system preference
+- **Hot Reload** - File watcher + WebSocket for instant preview
+- **Versioning** - Multi-version docs with dropdown selector
+- **ASP.NET Core Integration** - Embed docs directly in your web app
 
 ## ASP.NET Core Integration
 

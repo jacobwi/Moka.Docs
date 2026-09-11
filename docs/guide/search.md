@@ -49,12 +49,12 @@ Press **Cmd+K** (macOS) or **Ctrl+K** (Windows/Linux) from any page to open the 
 
 The search dialog provides several features for a fast and fluid experience:
 
-- **Instant results** — Results appear as you type with no submit button required
-- **Keyboard navigation** — Use arrow keys to move through results and Enter to select
-- **Deep linking** — Results that match a heading link directly to that section of the page
-- **Category grouping** — Results are grouped by Documentation and API Reference
-- **Result highlighting** — Matched terms are highlighted in the result titles and excerpts
-- **Escape to close** — Press Escape or click outside the dialog to dismiss it
+- **Instant results** - Results appear as you type with no submit button required
+- **Keyboard navigation** - Use arrow keys to move through results and Enter to select
+- **Deep linking** - Results that match a heading link directly to that section of the page
+- **Category grouping** - Results are grouped by Documentation and API Reference
+- **Result highlighting** - Matched terms are highlighted in the result titles and excerpts
+- **Escape to close** - Press Escape or click outside the dialog to dismiss it
 
 ### Tags
 
@@ -173,9 +173,9 @@ Configuration details...
 
 The search index will contain three entries:
 
-1. **Page entry** — title: "Getting Started", url: `/guide/getting-started`
-2. **Section entry** — title: "Installation", url: `/guide/getting-started#installation`
-3. **Section entry** — title: "Configuration", url: `/guide/getting-started#configuration`
+1. **Page entry** - title: "Getting Started", url: `/guide/getting-started`
+2. **Section entry** - title: "Installation", url: `/guide/getting-started#installation`
+3. **Section entry** - title: "Configuration", url: `/guide/getting-started#configuration`
 
 This granularity ensures that users searching for "installation" are taken directly to the relevant section rather than just the top of the page.
 
@@ -197,8 +197,8 @@ The index is loaded once when the user first opens the search dialog and cached 
 
 To get the best search results:
 
-1. **Use descriptive page titles** — The title field carries the most weight in search ranking
-2. **Write clear section headings** — Each heading becomes a searchable entry
-3. **Add relevant tags** — Tags help surface pages for queries that use different terminology
-4. **Keep content focused** — Pages that cover a single topic rank better than pages that cover many unrelated topics
-5. **Use consistent terminology** — Consistent naming across your documentation helps users find related content
+1. **Use descriptive page titles** - The title field carries the most weight in search ranking
+2. **Write clear section headings** - Each heading becomes a searchable entry
+3. **Add relevant tags** - Tags help surface pages for queries that use different terminology
+4. **Keep content focused** - Pages that cover a single topic rank better than pages that cover many unrelated topics
+5. **Use consistent terminology** - Consistent naming across your documentation helps users find related content

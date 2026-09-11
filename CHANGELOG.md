@@ -83,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] - 2026-04-08
 
 ### ✨ New
-- **`mokadocs-python-api` plugin** — generates API reference documentation for
+- **`mokadocs-python-api` plugin** - generates API reference documentation for
   Python libraries. Parses `.py` source files via a bundled Python script
   (pure stdlib `ast` module, zero pip dependencies) and produces the same page
   layout as the existing C# API docs using `ApiPageRenderer`.
@@ -115,17 +115,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows where `python3` is a Microsoft Store alias (exit code 9009).
 
 ### 📚 Docs
-- New `docs/plugins/python-api.md` — full plugin documentation with config
+- New `docs/plugins/python-api.md` - full plugin documentation with config
   reference, supported constructs table, docstring parsing examples,
   limitations, and a worked end-to-end example.
-- Fixed `docs/themes/customization.md` footer section — was using a fake
+- Fixed `docs/themes/customization.md` footer section - was using a fake
   `footer: copyright:` top-level yaml key that doesn't exist in the schema.
   Now correctly documents `site: copyright:` and `theme: options: showBuiltWith:`
   to control the "Built with MokaDocs" branding.
 
 ## [1.3.8] - 2026-04-08
 
-### ✨ New — `SiteAssetReference` for logo and favicon
+### ✨ New - `SiteAssetReference` for logo and favicon
 
 `site.logo` and `site.favicon` in `mokadocs.yaml` now support the full range
 of path forms users actually want to write, with automatic resolution,
@@ -154,33 +154,33 @@ or required unrelated assets under `content.docs` to work by accident.
 
 ### 🛡 Implementation details
 
-- **`SiteAssetReference`** — new sealed record in `Moka.Docs.Core.Configuration`
+- **`SiteAssetReference`** - new sealed record in `Moka.Docs.Core.Configuration`
   with `RawValue`, `SourcePath`, `PublishUrl`, and `IsAbsoluteUrl` fields.
-- **`SiteConfigReader.ParseAssetReference()`** — new private helper that
+- **`SiteConfigReader.ParseAssetReference()`** - new private helper that
   resolves each logo/favicon yaml string against the source file's
   directory, normalizes `./` prefixes, flattens `../` escapes to
   `/_media/{filename}`, and detects absolute URLs (http/https/protocol-
   relative/data URI) for pass-through.
-- **Collision detection** — when logo and favicon both flatten to the
+- **Collision detection** - when logo and favicon both flatten to the
   same publish URL from different source files, `SiteConfigReader`
   throws `SiteConfigException` with a clear error message.
-- **`BrandAssetResolver`** — new service in `Moka.Docs.Engine.Discovery`
+- **`BrandAssetResolver`** - new service in `Moka.Docs.Engine.Discovery`
   that runs in the Discovery phase (after the normal glob) and populates
   `BuildContext.BrandAssetFiles` with resolved logo + favicon entries.
   Logs warnings for missing source files but doesn't fail the build.
-- **`OutputPhase.CopyAssets`** — now copies brand assets to their
+- **`OutputPhase.CopyAssets`** - now copies brand assets to their
   resolved publish URLs in addition to the normal `content.docs` glob
   output. Skips files already written by the main glob path to avoid
   overwrite conflicts.
-- **`ScribanTemplateEngine`** — exposes two new template variables per
+- **`ScribanTemplateEngine`** - exposes two new template variables per
   brand asset:
-  - `site.logo_url` / `site.favicon_url` — the final URL the theme
+  - `site.logo_url` / `site.favicon_url` - the final URL the theme
     should emit, with base-path prefix applied for relative paths and
     pass-through for absolute URLs.
-  - `site.logo` / `site.favicon` — the raw yaml value, kept for
+  - `site.logo` / `site.favicon` - the raw yaml value, kept for
     backward compatibility with any custom user template that read the
     old string directly.
-- **`EmbeddedThemeProvider`** — five template sites updated to use
+- **`EmbeddedThemeProvider`** - five template sites updated to use
   `site.logo_url` / `site.favicon_url` instead of the old
   `{{ base_path }}/{{ site.logo }}` concatenation, so the new
   absolute-URL pass-through and out-of-tree `_media/` flattening work
@@ -197,30 +197,30 @@ Added a new check that validates `site.logo` and `site.favicon`:
   (e.g. yaml parsed without a yamlDir).
 - ✗ Error when the source file doesn't exist on disk.
 
-Unset brand assets are silently skipped — a site without a logo is
+Unset brand assets are silently skipped - a site without a logo is
 valid and shouldn't clutter the doctor output.
 
 ### 📚 Docs
 
-- **`docs/plugins/blazor-preview.md`** — rewritten for the v3.x plugin
+- **`docs/plugins/blazor-preview.md`** - rewritten for the v3.x plugin
   API. The previous doc described the legacy `mode: wasm | ssr` /
   `wasmAppPath` / `stylesheets` schema which was removed in v1.3.0.
   The new doc covers auto-scaffold + auto-publish, the `library:` yaml
   option, the preview-host project structure, GitHub Pages deployment,
   a full troubleshooting section, and migration notes for users coming
   from the old schema.
-- **`docs/configuration/site-config.md`** — expanded the `logo` and
+- **`docs/configuration/site-config.md`** - expanded the `logo` and
   `favicon` sections with a full table of supported path forms plus
   worked examples for each resolution rule.
 
 ### 🧪 Tests
 
-- **`SiteConfigReaderTests`** — 13 new tests covering every path form
+- **`SiteConfigReaderTests`** - 13 new tests covering every path form
   (bare filename, nested relative, `./` normalization, single-level
   `../` escape, multi-level `../` escape, absolute URLs for all four
   scheme types, leading-slash treatment, round-trip raw value
   preservation, collision detection, missing asset returns null).
-- **`BrandAssetResolverTests`** — 6 new tests with `MockFileSystem`
+- **`BrandAssetResolverTests`** - 6 new tests with `MockFileSystem`
   covering inside-yaml-dir resolution, escape-to-media flattening,
   missing source file handling (warns, doesn't throw), absolute URL
   pass-through (not added to copy list), and multi-asset resolution.
@@ -232,7 +232,7 @@ valid and shouldn't clutter the doctor output.
 - `SiteMetadata.Logo` and `SiteMetadata.Favicon` changed type from
   `string?` to `SiteAssetReference?`. This is a public API break for
   anyone consuming mokadocs as a library (not a CLI), but the yaml
-  schema is 100% backward compatible — all existing `mokadocs.yaml`
+  schema is 100% backward compatible - all existing `mokadocs.yaml`
   files that set logo/favicon to a relative path inside `content.docs`
   continue to work unchanged. The `SiteMetadataDto` (yaml-facing)
   still uses `string?` on both fields; conversion happens in the reader.
@@ -243,7 +243,7 @@ valid and shouldn't clutter the doctor output.
 
 ## [1.3.7] - 2026-04-08
 
-### 🎨 Changed — preview box fonts inherit from mokadocs theme
+### 🎨 Changed - preview box fonts inherit from mokadocs theme
 
 Follow-up to v1.3.6 theme token inheritance. The Blazor preview box's
 Preview / Source tabs and source code block were still rendering with
@@ -261,7 +261,7 @@ theme.
 
 ## [1.3.6] - 2026-04-08
 
-### 🎨 Changed — themed Blazor preview box
+### 🎨 Changed - themed Blazor preview box
 
 All colors in the `mokadocs-blazor-preview` container chrome (the outer box
 with the Preview / Source tabs that wraps each preview iframe) now inherit
@@ -269,7 +269,7 @@ from mokadocs theme tokens (`--color-primary`, `--color-border`,
 `--color-bg-secondary`, `--color-text`, `--color-text-muted`,
 `--color-border-light`). Previously the tabs and badge used hardcoded
 slate/violet/blue hex values (`#94a3b8`, `#60a5fa`, `#7c3aed`, `#ede9fe`)
-that clashed with consumer themes — e.g. Moka.Red docs with its red accent
+that clashed with consumer themes - e.g. Moka.Red docs with its red accent
 had blue active tabs and purple "Blazor" badges. Now:
 
 - Active tab underline + text inherit `--color-primary` → matches the
@@ -297,21 +297,21 @@ mokadocs theme still get reasonable defaults.
 
 ## [1.3.5] - 2026-04-08
 
-### ✨ New — GitHub Pages deployment support
+### ✨ New - GitHub Pages deployment support
 
 The `mokadocs-blazor-preview` plugin now produces output that deploys cleanly to
 GitHub Pages, including project-page subpath deployments (e.g.
 `username.github.io/Moka.Red/`).
 
 - **Emits `.nojekyll`** at the `_site/` root. GitHub Pages runs Jekyll by default,
-  which strips directories starting with `_` — which would wipe `_preview-wasm/`,
+  which strips directories starting with `_` - which would wipe `_preview-wasm/`,
   `_preview-assemblies/`, `_framework/`, and `_content/` from the deployed site,
   leaving all preview iframes broken. The `.nojekyll` marker bypasses Jekyll
   entirely so every file ships verbatim.
 - **Respects `--base-path` / `Build.BasePath` for the iframe `?assembly=...`
   query parameter.** The `ScribanTemplateEngine.RewriteContentLinks` regex
   already rewrites `src="/..."` attribute openings in page HTML automatically,
-  but its pattern only matches the leading `/` after `src="` — it doesn't touch
+  but its pattern only matches the leading `/` after `src="` - it doesn't touch
   `/` characters inside query strings. The plugin now prefixes the assembly path
   (which lives inside the iframe `src` attribute value as `?assembly=/...`) with
   the base path itself, so GitHub Pages subpath deploys resolve the preview DLL
@@ -345,7 +345,7 @@ GitHub Pages, including project-page subpath deployments (e.g.
   `{LIBRARY_VERSION}` from the new `library:` yaml option, plus a pinned
   `Moka.Blazor.Repl.Host` `PackageReference` for the runtime.
 - **Auto-publish**: the plugin shells out to `dotnet publish -c Release -f
-  net10.0 -o publish-output/net10.0` on the preview-host. Incremental — skipped
+  net10.0 -o publish-output/net10.0` on the preview-host. Incremental - skipped
   when the publish-output marker (`_framework/blazor.webassembly.js`) is newer
   than every input file under the preview-host directory (excluding `bin/`,
   `obj/`, `publish-output/`).
@@ -361,7 +361,7 @@ GitHub Pages, including project-page subpath deployments (e.g.
 - `previewHost:` yaml option is now **optional**. When omitted, auto-discovery
   resolves it to a conventional location.
 - `references:` and `usings:` yaml options remain supported but are usually
-  unnecessary now — the auto-scaffolded preview-host's bin already contains the
+  unnecessary now - the auto-scaffolded preview-host's bin already contains the
   consumer's library DLLs (resolved from nuget.org via the PackageReference),
   which the plugin reads for Roslyn references automatically.
 
@@ -370,14 +370,14 @@ GitHub Pages, including project-page subpath deployments (e.g.
 ### ⚠️ Breaking
 - **`mokadocs-blazor-preview` plugin** rewritten. The yaml schema for the plugin's
   options changed:
-  - **Removed** `mode` (was `wasm` | `ssr`) — the plugin now always emits one Blazor
+  - **Removed** `mode` (was `wasm` | `ssr`) - the plugin now always emits one Blazor
     WebAssembly iframe per preview block, with an SSR snapshot in `<noscript>` for
     crawlers and JS-disabled visitors.
   - **Removed** `wasmAppPath` and the implicit NuGet-cache discovery via
     `WasmAppAssetResolver`. The plugin no longer scans `~/.nuget/packages`.
-  - **Removed** `stylesheets` — the consumer's preview-host project now ships its own
+  - **Removed** `stylesheets` - the consumer's preview-host project now ships its own
     CSS in its `index.html` and via Blazor's static web asset bundle.
-  - **Added** required `previewHost` — path (relative to docs root) to the consumer's
+  - **Added** required `previewHost` - path (relative to docs root) to the consumer's
     Blazor WebAssembly preview-host project. Conventional layout:
     `{previewHost}/bin/Release/{tfm}/` (Roslyn references) and
     `{previewHost}/publish-output/{tfm}/wwwroot/` or `publish-output/wwwroot/`
@@ -390,7 +390,7 @@ GitHub Pages, including project-page subpath deployments (e.g.
 - Mokadocs is now **library-agnostic**: zero hardcoded references to Moka.Red. The
   previously hardcoded `Moka.Red.Feedback.Toast.IMokaToastService` SSR stub was removed.
 - Framework-assembly filtering uses `Assembly.Load()` against the host runtime to
-  detect which DLLs the .NET shared framework supplies — works on both .NET 9 and
+  detect which DLLs the .NET shared framework supplies - works on both .NET 9 and
   .NET 10 hosts with no hardcoded prefix lists.
 - Iframes are emitted with `loading="lazy"` so off-screen previews don't boot a
   Blazor runtime until scrolled into view.
@@ -408,11 +408,11 @@ GitHub Pages, including project-page subpath deployments (e.g.
 ## [1.2.0] - 2026-04-06
 
 ### ✨ New
-- **WASM Blazor preview mode** — interactive component previews on static sites (GitHub Pages, etc.)
+- **WASM Blazor preview mode** - interactive component previews on static sites (GitHub Pages, etc.)
   - Components compiled to DLLs at build time, loaded in-browser via Blazor WebAssembly iframe
   - SSR fallback in `<noscript>` for users without JavaScript
   - Configurable via `mode: wasm` (default) or `mode: ssr` in plugin options
-- `Moka.Blazor.Repl.Wasm` auto-downloaded as dependency — no manual install needed
+- `Moka.Blazor.Repl.Wasm` auto-downloaded as dependency - no manual install needed
 - `WasmAppAssetResolver` auto-discovers WASM app from NuGet cache
 - Updated Blazor preview docs with WASM mode documentation
 
@@ -423,7 +423,7 @@ GitHub Pages, including project-page subpath deployments (e.g.
 ## [1.1.2] - 2026-04-06
 
 ### ✨ New
-- `showBuiltWith` theme option — shows "Built with MokaDocs v{version}" in footer (default `true`, set `false` to hide)
+- `showBuiltWith` theme option - shows "Built with MokaDocs v{version}" in footer (default `true`, set `false` to hide)
 - MokaDocs version automatically read from assembly and displayed in footer
 
 ### 🔄 Changed
@@ -438,7 +438,7 @@ GitHub Pages, including project-page subpath deployments (e.g.
 ## [1.1.0] - 2026-04-06
 
 ### ✨ New
-- **Blazor SSR preview** — replaced regex renderer with real Roslyn + HtmlRenderer server-side rendering
+- **Blazor SSR preview** - replaced regex renderer with real Roslyn + HtmlRenderer server-side rendering
 - `Moka.Blazor.Repl.Compiler` package integration for live Blazor component previews
 
 ### 🐛 Fixed
@@ -456,7 +456,7 @@ GitHub Pages, including project-page subpath deployments (e.g.
 ## [1.0.6] - 2026-03-27
 
 ### ✨ New
-- Show version in CLI startup messages (`MokaDocs v1.0.6 — Building...`)
+- Show version in CLI startup messages (`MokaDocs v1.0.6 - Building...`)
 
 ### 🐛 Fixed
 - NuGet social link icon now uses official NuGet logo SVG from [NuGet/Media](https://github.com/NuGet/Media)
@@ -502,18 +502,18 @@ GitHub Pages, including project-page subpath deployments (e.g.
 - **13 projects**: Core, CLI, Engine, Parsing, CSharp, Rendering, Themes, Search, Plugins, Serve, Versioning, Cloud, AspNetCore
 - **10-phase build pipeline** with Roslyn C# analysis and Markdig markdown parsing
 - **4 built-in plugins**: Interactive REPL, Blazor preview, Changelog timeline, OpenAPI docs
-- **Embedded default theme** — 5 color themes, 7 code syntax themes, 4 code block styles, dark/light mode
+- **Embedded default theme** - 5 color themes, 7 code syntax themes, 4 code block styles, dark/light mode
 - **Full-text client-side search** with `Ctrl+K` / `Cmd+K` shortcut
 - **Dev server** with WebSocket hot reload and file watcher
 - **ASP.NET Core integration** via `AddMokaDocs()` / `MapMokaDocs()`
 - **Versioning** with multi-version dropdown selector
 - **`basePath` support** for subdirectory deployments (GitHub Pages, IIS subfolders)
-- **Social links** in footer — GitHub, NuGet, Discord, Twitter, 70+ Lucide icons
-- **Type dependency graphs** — auto-generated Mermaid class diagrams on API pages
+- **Social links** in footer - GitHub, NuGet, Discord, Twitter, 70+ Lucide icons
+- **Type dependency graphs** - auto-generated Mermaid class diagrams on API pages
 - **Custom markdown extensions**: admonitions, tabs, cards, steps, link-cards, code groups, Mermaid, changelogs
-- **`<inheritdoc/>` resolution** — walks base types and interfaces for missing docs
+- **`<inheritdoc/>` resolution** - walks base types and interfaces for missing docs
 - **Favicon and logo** via `site.favicon` / `site.logo` config
-- **Feature gating** — hide pages behind feature flags via `requires` front matter
+- **Feature gating** - hide pages behind feature flags via `requires` front matter
 - **Sitemap and robots.txt** generation
 - **384 tests** across 5 test projects (net9.0 + net10.0)
 - **9 CLI commands**: `init`, `build`, `serve`, `clean`, `info`, `validate`, `doctor`, `stats`, `new`

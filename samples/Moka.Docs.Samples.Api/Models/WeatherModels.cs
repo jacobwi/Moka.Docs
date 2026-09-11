@@ -1,4 +1,4 @@
-// SampleApi — Weather domain models
+// SampleApi - Weather domain models
 
 namespace SampleApi.Models;
 

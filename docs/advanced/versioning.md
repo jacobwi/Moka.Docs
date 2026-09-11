@@ -60,7 +60,7 @@ The `dropdown-only` strategy adds a version selector dropdown to the site header
 - The version selector appears in the header bar, listing all configured versions.
 - Selecting a different version navigates to that version's deployed URL.
 - Each version is built and deployed as a separate site (or subdomain).
-- The output directory structure is flat — no version-specific subdirectories.
+- The output directory structure is flat - no version-specific subdirectories.
 
 **Best for:**
 - Projects that deploy each version to a separate subdomain (e.g., `v1.docs.example.com`, `v2.docs.example.com`).
@@ -114,7 +114,7 @@ The version selector appears as a dropdown in the site header bar. It displays t
 
 **Default versions** are shown normally with their label text.
 
-**Prerelease versions** are displayed with distinct visual styling — typically a badge or italic text — to indicate they are not yet stable. This helps readers understand they are viewing documentation for an unreleased version.
+**Prerelease versions** are displayed with distinct visual styling - typically a badge or italic text - to indicate they are not yet stable. This helps readers understand they are viewing documentation for an unreleased version.
 
 When a reader selects a version, the browser navigates to the equivalent page in the selected version. If the equivalent page does not exist in the target version, the reader is directed to that version's homepage.
 

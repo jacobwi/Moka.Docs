@@ -49,7 +49,7 @@ public sealed class InheritDocResolverTests
 									Name = "DoWork",
 									Kind = ApiMemberKind.Method,
 									Signature = "void DoWork()",
-									Documentation = null // No doc — should inherit
+									Documentation = null // No doc - should inherit
 								}
 							]
 						}

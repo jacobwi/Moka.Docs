@@ -9,13 +9,13 @@ The Python API plugin generates API reference documentation for Python
 libraries, producing the same page layout as the built-in C# API docs.
 Point it at a directory of `.py` source files and it extracts classes,
 functions, dataclasses, enums, protocols, type annotations, and
-Google-style docstrings — then renders fully navigable type pages with
+Google-style docstrings - then renders fully navigable type pages with
 signatures, parameter tables, return types, examples, and inheritance.
 
 **Plugin ID:** `mokadocs-python-api`
 
 **Requires:** Python 3.9+ on PATH (uses the standard library's `ast`
-module — zero pip dependencies).
+module - zero pip dependencies).
 
 ---
 
@@ -100,7 +100,7 @@ Google format parses these section headers:
 
 Path to the Python executable. Default: tries `python3` first, falls back
 to `python`. On Windows, `python3` is often a Microsoft Store alias that
-returns exit code 9009 — the plugin handles this gracefully by trying the
+returns exit code 9009 - the plugin handles this gracefully by trying the
 next candidate.
 
 Set this to a full path if Python isn't on your PATH:
@@ -228,7 +228,7 @@ Each type page includes:
 
 - **Python 3.9+** on the build machine (the analyzer uses `ast.unparse()`
   which was added in Python 3.9). No pip packages required.
-- The Python source files must be **syntactically valid** — the analyzer
+- The Python source files must be **syntactically valid** - the analyzer
   uses `ast.parse()` which will skip files with syntax errors (logged as
   warnings, not build failures).
 
@@ -236,16 +236,16 @@ Each type page includes:
 
 ## Limitations
 
-- **Google-style docstrings only** — NumPy-style and reStructuredText
+- **Google-style docstrings only** - NumPy-style and reStructuredText
   (Sphinx) formats are not currently parsed. Plain text docstrings are
   rendered as-is in the summary field.
-- **No runtime analysis** — the plugin uses static AST parsing, not
+- **No runtime analysis** - the plugin uses static AST parsing, not
   `import`. Dynamic attributes, monkey-patched methods, and metaclass-
   generated members are not discovered.
-- **No cross-reference linking** — type names in annotations and
+- **No cross-reference linking** - type names in annotations and
   docstrings are rendered as plain text, not hyperlinks to other type
   pages. This may be added in a future version.
-- **Single source directory** — the plugin processes one `source:`
+- **Single source directory** - the plugin processes one `source:`
   directory per declaration. To document multiple packages, add multiple
   plugin entries with different `routePrefix` values.
 
@@ -313,7 +313,7 @@ plugins:
 ```
 
 Produces pages at:
-- `/api/` — index with Color (Enum), DataPoint (Record), Calculator (Class)
-- `/api/{module}/color/` — enum with RED, GREEN, BLUE values
-- `/api/{module}/datapoint/` — dataclass with label, value, unit fields
-- `/api/{module}/calculator/` — class with constructor + add method
+- `/api/` - index with Color (Enum), DataPoint (Record), Calculator (Class)
+- `/api/{module}/color/` - enum with RED, GREEN, BLUE values
+- `/api/{module}/datapoint/` - dataclass with label, value, unit fields
+- `/api/{module}/calculator/` - class with constructor + add method

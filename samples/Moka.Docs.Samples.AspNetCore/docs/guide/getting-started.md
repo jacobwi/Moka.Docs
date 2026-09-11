@@ -39,7 +39,7 @@ MokaDocs automatically discovers all public types in your assemblies and generat
 :::
 
 :::card{title="Live Docs" icon="zap"}
-Documentation is served directly from your running application — no separate build step needed. Changes to your code are reflected immediately when `CacheOutput = false`.
+Documentation is served directly from your running application - no separate build step needed. Changes to your code are reflected immediately when `CacheOutput = false`.
 :::
 
 :::card{title="Markdown Guides" icon="book-open"}

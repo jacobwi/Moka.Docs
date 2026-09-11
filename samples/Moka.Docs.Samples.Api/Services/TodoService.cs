@@ -1,4 +1,4 @@
-// SampleApi — In-memory todo service
+// SampleApi - In-memory todo service
 
 using SampleApi.Models;
 

@@ -68,9 +68,9 @@ dotnet run
 Create a grid of clickable navigation cards.
 
 :::link-cards
-- [Getting Started](/guide/getting-started) — Learn the basics of SampleLibrary
-- [API Reference](/api) — Browse all types and members
-- [Configuration](/guide/colors) — Customize colors and themes
+- [Getting Started](/guide/getting-started) - Learn the basics of SampleLibrary
+- [API Reference](/api) - Browse all types and members
+- [Configuration](/guide/colors) - Customize colors and themes
 :::
 
 ## Code Group

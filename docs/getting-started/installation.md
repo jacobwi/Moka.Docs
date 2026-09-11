@@ -43,7 +43,7 @@ Then run with `dotnet mokadocs` instead of `mokadocs`.
 
 ## Prerequisites
 
-- **.NET 9 SDK** or later — [Download](https://dotnet.microsoft.com/download)
+- **.NET 9 SDK** or later - [Download](https://dotnet.microsoft.com/download)
 - A .NET class library project with XML documentation enabled
 - Markdown files for guide content (optional)
 
@@ -63,4 +63,4 @@ MokaDocs runs on any platform supported by .NET 9:
 
 - **Windows** 10/11 (x64, ARM64)
 - **macOS** 12+ (x64, Apple Silicon)
-- **Linux** (x64, ARM64) — Ubuntu, Fedora, Alpine, etc.
+- **Linux** (x64, ARM64) - Ubuntu, Fedora, Alpine, etc.

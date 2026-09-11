@@ -10,7 +10,7 @@ All notable changes to SampleLibrary are documented below.
 
 :::changelog
 
-## v2.1.0 — 2026-03-15
+## v2.1.0 - 2026-03-15
 type: minor
 ### Added
 - New `ResultBuilder<T>` for fluent operation chaining
@@ -25,7 +25,7 @@ type: minor
 - Division by zero no longer crashes; returns a descriptive error result
 - `Circle.Area` precision improved for very small radii
 
-## v2.0.0 — 2026-02-01
+## v2.0.0 - 2026-02-01
 type: major
 ### Added
 - Generic `Process<T>` method on `Calculator` for type-safe numeric operations
@@ -38,14 +38,14 @@ type: major
 - `Color` struct now implements `IEquatable<Color>` and `IFormattable`
 
 ### Breaking
-- Removed legacy `LegacyCalculator` class — use `Calculator` instead
+- Removed legacy `LegacyCalculator` class - use `Calculator` instead
 - Changed `IShape.Area` from method to read-only property
 - Renamed `ColorUtils` to `ColorExtensions` for consistency
 
 ### Deprecated
 - `Calculator.OldDivide()` is deprecated in favor of the new `Divide` returning `OperationResult<T>`
 
-## v1.1.0 — 2026-01-10
+## v1.1.0 - 2026-01-10
 type: minor
 ### Added
 - `Color.FromHex()` static factory for parsing hex color strings
@@ -58,7 +58,7 @@ type: minor
 ### Security
 - Updated dependency on `System.Text.Json` to patch CVE-2026-0001
 
-## v1.0.0 — 2025-12-01
+## v1.0.0 - 2025-12-01
 type: initial
 ### Added
 - Initial release with `Calculator`, `Circle`, and `Color` types

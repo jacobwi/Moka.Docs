@@ -47,7 +47,7 @@ content:
 
 | Option             | Type   | Default | Description                                       |
 |--------------------|--------|---------|---------------------------------------------------|
-| `path`             | string | —       | Path to the `.csproj` file (required)             |
+| `path`             | string | -       | Path to the `.csproj` file (required)             |
 | `label`            | string | Project name | Display name in the API navigation           |
 | `includeInternals` | bool   | `false` | Include `internal` types and members in the output |
 
@@ -353,7 +353,7 @@ MokaDocs extracts package metadata from your `.csproj` file properties:
 | `PackageId`     | Used as the package name in install instructions     |
 | `Version`       | Displayed version and used in install commands       |
 
-When package metadata is available, MokaDocs automatically generates a NuGet installation widget at the top of the API section. This widget renders a tabbed UI with three installation methods — .NET CLI, Package Manager Console, and PackageReference — so readers can copy the command that matches their workflow:
+When package metadata is available, MokaDocs automatically generates a NuGet installation widget at the top of the API section. This widget renders a tabbed UI with three installation methods - .NET CLI, Package Manager Console, and PackageReference - so readers can copy the command that matches their workflow:
 
 ```
 dotnet add package MyLibrary --version 2.1.0

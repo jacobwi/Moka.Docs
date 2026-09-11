@@ -1,4 +1,4 @@
-// SampleApi — Todo domain models
+// SampleApi - Todo domain models
 
 namespace SampleApi.Models;
 
@@ -48,15 +48,15 @@ public sealed record UpdateTodoRequest(
 /// </summary>
 public enum TodoPriority
 {
-	/// <summary>Low priority — can be done whenever.</summary>
+	/// <summary>Low priority - can be done whenever.</summary>
 	Low,
 
-	/// <summary>Medium priority — should be done soon.</summary>
+	/// <summary>Medium priority - should be done soon.</summary>
 	Medium,
 
-	/// <summary>High priority — needs attention.</summary>
+	/// <summary>High priority - needs attention.</summary>
 	High,
 
-	/// <summary>Critical priority — must be done immediately.</summary>
+	/// <summary>Critical priority - must be done immediately.</summary>
 	Critical
 }

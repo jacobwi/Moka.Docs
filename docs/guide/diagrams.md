@@ -70,19 +70,19 @@ flowchart TD
 ```
 
 Flowchart direction options:
-- `TD` or `TB` — Top to bottom
-- `BT` — Bottom to top
-- `LR` — Left to right
-- `RL` — Right to left
+- `TD` or `TB` - Top to bottom
+- `BT` - Bottom to top
+- `LR` - Left to right
+- `RL` - Right to left
 
 Node shapes:
-- `[Text]` — Rectangle
-- `(Text)` — Rounded rectangle
-- `{Text}` — Diamond (decision)
-- `([Text])` — Stadium
-- `[[Text]]` — Subroutine
-- `[(Text)]` — Cylinder (database)
-- `((Text))` — Circle
+- `[Text]` - Rectangle
+- `(Text)` - Rounded rectangle
+- `{Text}` - Diamond (decision)
+- `([Text])` - Stadium
+- `[[Text]]` - Subroutine
+- `[(Text)]` - Cylinder (database)
+- `((Text))` - Circle
 
 ### Sequence Diagram
 
@@ -135,10 +135,10 @@ sequenceDiagram
 ```
 
 Arrow types:
-- `->>` — Solid line with arrowhead (synchronous)
-- `-->>` — Dashed line with arrowhead (response)
-- `--)` — Solid line with open arrow (asynchronous)
-- `--x` — Dashed line with cross (lost message)
+- `->>` - Solid line with arrowhead (synchronous)
+- `-->>` - Dashed line with arrowhead (response)
+- `--)` - Solid line with open arrow (asynchronous)
+- `--x` - Dashed line with cross (lost message)
 
 ### Class Diagram
 
@@ -211,12 +211,12 @@ classDiagram
 ```
 
 Relationship types:
-- `<|--` — Inheritance
-- `<|..` — Implementation
-- `-->` — Association
-- `..>` — Dependency
-- `--o` — Aggregation
-- `--*` — Composition
+- `<|--` - Inheritance
+- `<|..` - Implementation
+- `-->` - Association
+- `..>` - Dependency
+- `--o` - Aggregation
+- `--*` - Composition
 
 ### State Diagram
 

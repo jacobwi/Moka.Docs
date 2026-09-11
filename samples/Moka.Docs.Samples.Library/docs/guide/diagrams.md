@@ -99,7 +99,7 @@ classDiagram
     Calculator ..> OperationResult~T~ : creates
 ```
 
-## Sequence Diagram — Calculator Usage
+## Sequence Diagram - Calculator Usage
 
 A typical interaction between application code and the Calculator:
 
@@ -124,7 +124,7 @@ sequenceDiagram
     Result-->>App: { Success: true, Value: 5.0 }
 ```
 
-## Sequence Diagram — Observable List Events
+## Sequence Diagram - Observable List Events
 
 How events fire when items are added to an ObservableList:
 
@@ -147,7 +147,7 @@ sequenceDiagram
     List-->>Consumer: 2
 ```
 
-## State Diagram — OperationResult Lifecycle
+## State Diagram - OperationResult Lifecycle
 
 The possible states of an `OperationResult<T>`:
 

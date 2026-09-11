@@ -5,7 +5,7 @@ site:
 content:
   docs: ./docs
   projects:
-    - path: ./SampleApi.csproj
+    - path: ./Moka.Docs.Samples.Api.csproj
       label: "SampleApi"
 
 theme:

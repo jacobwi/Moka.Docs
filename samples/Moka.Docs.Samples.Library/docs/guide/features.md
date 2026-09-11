@@ -80,12 +80,12 @@ if (!result.Success)
 Link cards create a clickable navigation grid. Each bullet becomes a card.
 
 :::link-cards
-- [Getting Started](/guide/getting-started) — Install and run your first project
-- [API Reference](/api) — Full type and member documentation
-- [Diagrams](/guide/diagrams) — Architecture and data-flow visualizations
-- [Colors & Enums](/guide/colors) — Working with the Color enum
-- [UI Components](/guide/components) — Cards, steps, code groups, and more
-- [Blazor Preview](/guide/blazor-preview) — Live component rendering in docs
+- [Getting Started](/guide/getting-started) - Install and run your first project
+- [API Reference](/api) - Full type and member documentation
+- [Diagrams](/guide/diagrams) - Architecture and data-flow visualizations
+- [Colors & Enums](/guide/colors) - Working with the Color enum
+- [UI Components](/guide/components) - Cards, steps, code groups, and more
+- [Blazor Preview](/guide/blazor-preview) - Live component rendering in docs
 :::
 
 ---
@@ -189,7 +189,7 @@ A comparison table of the core types in SampleLibrary:
 
 ## NuGet Install Widget
 
-The NuGet install widget appears automatically on the **API Reference** index page when your project has a `.csproj` with package metadata. It shows tabbed install commands for Package Manager, .NET CLI, and PackageReference — plus a direct link to the package on NuGet.org.
+The NuGet install widget appears automatically on the **API Reference** index page when your project has a `.csproj` with package metadata. It shows tabbed install commands for Package Manager, .NET CLI, and PackageReference - plus a direct link to the package on NuGet.org.
 
 Head to the [API Reference](/api) page to see it in action.
 
