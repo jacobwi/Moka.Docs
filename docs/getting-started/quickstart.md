@@ -1,29 +1,31 @@
 ---
 title: Quick Start
-description: Get your first MokaDocs site up and running in 5 minutes
+description: Set up a MokaDocs site and preview it locally
 order: 2
 ---
 
 # Quick Start
 
-This guide walks you through creating your first MokaDocs documentation site.
+This guide sets up a docs site for a .NET library, previews it with the dev server, then builds the static output.
 
 ## 1. Initialize Your Project
 
-Navigate to your .NET solution directory and run:
+In the folder that should hold the site config (usually your solution folder), run:
 
 ```bash
 mokadocs init
 ```
 
-This creates:
+`init` takes no arguments and writes two files to the current directory:
+
 - `mokadocs.yaml` - site configuration
-- `docs/` - directory for your Markdown guides
-- `docs/index.md` - your landing page
+- `docs/index.md` - a starter home page
+
+If `mokadocs.yaml` already exists, `init` does nothing.
 
 ## 2. Configure Your Site
 
-Edit `mokadocs.yaml` to point to your project:
+Edit `mokadocs.yaml` and list the projects you want API reference pages for:
 
 ```yaml
 site:
@@ -42,13 +44,18 @@ theme:
 features:
   search:
     enabled: true
+
+build:
+  output: ./_site
 ```
+
+Relative paths resolve against the folder that contains `mokadocs.yaml`.
 
 ## 3. Write Your First Guide
 
 Create `docs/getting-started.md`:
 
-```markdown
+````markdown
 ---
 title: Getting Started
 description: Learn how to use MyLibrary
@@ -63,19 +70,19 @@ Welcome to MyLibrary! Here's how to get started.
 
 Install from NuGet:
 
-\`\`\`bash
+```bash
 dotnet add package MyLibrary
-\`\`\`
+```
 
 ## Basic Usage
 
-\`\`\`csharp
+```csharp
 using MyLibrary;
 
 var result = MyClass.DoSomething("hello");
 Console.WriteLine(result);
-\`\`\`
 ```
+````
 
 ## 4. Start the Dev Server
 
@@ -83,16 +90,21 @@ Console.WriteLine(result);
 mokadocs serve
 ```
 
-Open your browser to `http://localhost:5080`. You'll see:
+This builds the site, serves it at `http://localhost:5080` and opens your browser. Use `-p` to pick another port and `--no-open` to skip the browser. You'll see:
 
-- Your landing page
-- Auto-generated API reference from your `.csproj`
-- Full-text search
-- Responsive sidebar navigation
+- Your home page from `docs/index.md`
+- API reference pages under `/api`, generated from the `.cs` files in your project's folder
+- Search (Ctrl+K or Cmd+K), which matches page titles, headings, tags and the first 300 characters of each page's text. Code blocks aren't indexed.
+- A sidebar generated from the `docs/` folder
 
 ::: tip
-The dev server watches for changes and automatically rebuilds. Edit a `.md` file or your C# code and the browser refreshes instantly.
+The dev server watches the docs folder (`content.docs`) and `mokadocs.yaml`. Saving a file there triggers a rebuild, then the browser reloads. Two limits:
+
+- C# source files aren't watched. Your changes to them show up on the next rebuild or after you restart `serve`.
+- Editing `mokadocs.yaml` triggers a rebuild, but `serve` keeps using the config it loaded at startup. Restart `serve` to apply config changes.
 :::
+
+See [Dev Server & Hot Reload](/advanced/dev-server) for the other options.
 
 ## 5. Build for Production
 
@@ -102,7 +114,9 @@ When you're ready to deploy:
 mokadocs build
 ```
 
-The static site is generated in `_site/` (configurable). Deploy this directory to any static hosting provider - GitHub Pages, Netlify, Vercel, Azure Static Web Apps, etc.
+The site is written to `build.output` (`./_site` here), or to the folder you pass with `-o`. With `build.clean` left at its default of `true`, the build deletes that folder before writing. `mokadocs build` exits with code 1 when the build reports errors, so a CI job fails instead of publishing a broken site.
+
+The output is plain static files. See [Deployment](/advanced/deployment) for GitHub Pages, base paths and other hosts.
 
 ## Project Structure
 
@@ -115,20 +129,23 @@ my-library/
 │       ├── MyLibrary.csproj
 │       └── MyClass.cs
 ├── docs/
-│   ├── index.md              # Landing page
+│   ├── index.md              # Home page
 │   ├── getting-started.md    # Guide page
 │   └── guide/
 │       ├── configuration.md  # Nested guide
 │       └── advanced.md       # Nested guide
 ├── mokadocs.yaml             # Site configuration
+├── .mokadocs/                # API analysis cache (gitignore this)
 └── _site/                    # Generated output (gitignore this)
 ```
+
+See [Project Structure](/getting-started/project-structure) for how files map to URLs.
 
 ## What's Next?
 
 ::: link-cards
-- [Configuration](/configuration/site-config) - Learn about all configuration options
-- [Markdown Guide](/guide/markdown) - Master the Markdown extensions
+- [Configuration](/configuration/site-config) - The mokadocs.yaml reference
+- [Markdown Guide](/guide/markdown) - The Markdown extensions MokaDocs adds
 - [API Documentation](/guide/api-docs) - Configure API reference generation
-- [Themes](/themes/customization) - Customize the look and feel
+- [Themes](/themes/customization) - Theme options and custom themes
 :::

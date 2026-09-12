@@ -5,60 +5,75 @@ order: 5
 
 # Search
 
-MokaDocs includes a built-in client-side search system that is enabled by default. Search allows users to quickly find content across all documentation pages and API reference entries without requiring a server-side search backend.
+MokaDocs builds a search index along with the site and runs queries against it in the browser, so search needs no server or external service. It is on by default.
 
 ## How It Works
 
-During the build process, MokaDocs generates a `search-index.json` file that contains all searchable content from your documentation site. This index is loaded in the browser and searched entirely on the client side, providing instant results with no network latency.
+The build writes `search-index.json` to the root of the output folder. The first time a reader opens search on a page, the theme downloads that file and matches queries against it in the browser. The file is not kept between page loads: the next page fetches it again, normally from the browser cache.
 
 ### What Gets Indexed
 
-The search index is built from two sources:
+| Source              | Index entries |
+|---------------------|---------------|
+| Markdown pages      | One entry for the page, plus one for each heading, the page's `#` heading included |
+| Generated API pages | One entry for each page (the API index and each type page), plus one for each section heading on a type page, such as Remarks, Constructors and Methods |
 
-| Source              | Index Entries Created                              |
-|---------------------|----------------------------------------------------|
-| Documentation pages | One entry per page, plus one entry per heading      |
-| API reference pages | One entry per documented type and member            |
+Members such as methods and properties have no entries of their own, and neither do namespaces.
 
-For each documentation page, the indexer extracts:
+A **page entry** holds:
 
-- **Page title** from the YAML front matter or first heading
-- **Section headings** (each heading becomes a separately searchable entry with a deep link)
-- **Plain text content** with all Markdown formatting, HTML tags, and code block syntax stripped
+- **Title**: the front matter `title`. The first heading is not used as a fallback, so a page without a title is indexed as "Untitled".
+- **Content**: the first 300 characters of the page's text. The text comes from paragraphs and headings, inline code and link text included; code blocks are left out. For an API type page, the content is the type's XML `<summary>`.
+- **Tags**: the front matter `tags`.
 
-This means users can search for content within a specific section of a page and jump directly to that section from the search results.
+A **heading entry** holds the page title, the heading text and a link to the heading. It has no content and no tags, so it matches on the heading text and the page title only.
+
+Words after the first 300 characters of a page are not in the index. Readers can still find that part of the page through its headings.
+
+Draft pages are indexed only when you build with `--draft`. Pages with `visibility: hidden` stay out of the navigation but are still indexed.
 
 ### Search Categories
 
-Search results are organized into two categories:
+Every entry has one of two categories:
 
-| Category          | Content                                           |
-|-------------------|----------------------------------------------------|
-| Documentation     | All Markdown documentation pages and their sections |
-| API Reference     | Generated API types, members, and namespaces       |
+| Category      | Entries |
+|---------------|---------|
+| Documentation | Markdown pages and their headings |
+| API Reference | Generated API pages and their headings |
 
-Categories are displayed as grouped sections in the search results panel, making it easy to distinguish between narrative documentation and API reference entries.
+Each result shows its category as a label. Results are a single list sorted by score; they are not grouped by category.
 
 ## Using Search
 
-### Keyboard Shortcut
+### Opening Search
 
-Press **Cmd+K** (macOS) or **Ctrl+K** (Windows/Linux) from any page to open the search dialog. This shortcut works globally, regardless of where focus is on the page.
+Click **Search** in the header or press **Ctrl+K** (**Cmd+K** on macOS). The same shortcut closes the dialog.
 
-### Search UI Features
+### Results
 
-The search dialog provides several features for a fast and fluid experience:
+- Results update as you type.
+- **Up** and **Down** move through the results, and **Enter** opens the selected one.
+- **Escape**, or a click outside the dialog, closes it.
+- The list shows the 20 best matches.
 
-- **Instant results** - Results appear as you type with no submit button required
-- **Keyboard navigation** - Use arrow keys to move through results and Enter to select
-- **Deep linking** - Results that match a heading link directly to that section of the page
-- **Category grouping** - Results are grouped by Documentation and API Reference
-- **Result highlighting** - Matched terms are highlighted in the result titles and excerpts
-- **Escape to close** - Press Escape or click outside the dialog to dismiss it
+A result shows the page title, the heading (for heading entries) and the category. A page entry also shows an excerpt of its content with the query words highlighted. Titles and headings are not highlighted, and tags are not shown.
+
+### How Matching Works
+
+Every word in the query has to appear in the entry's title, heading, content or tags. Matching is a case-insensitive substring test, so `config` matches "Configuration". There is no stemming or typo tolerance, and accents count: `cafe` does not match "Café".
+
+Each word adds points for every field it appears in, and results are sorted by the total:
+
+| Field   | Points |
+|---------|--------|
+| Title   | 10 |
+| Heading | 5 |
+| Tags    | 3 |
+| Content | 1 |
 
 ### Tags
 
-Pages can include `tags` in their YAML front matter to improve searchability:
+Front matter `tags` add keywords to a page's entry:
 
 ```yaml
 ---
@@ -70,13 +85,15 @@ tags:
 ---
 ```
 
-Tags provide additional keywords that help the search engine match pages even when the search query does not appear in the page title or body text.
+A query word found in the tags adds 3 points, so tags help a page turn up for words that are not in its title or text. Tags are only on the page entry, not on its heading entries. The default theme does not display them.
+
+Write tags as a YAML list. A plain string such as `tags: setup, yaml` stops the whole front matter block from parsing. The build warns about the file, and the page is indexed as "Untitled" with no tags.
 
 ## Configuration
 
 ### Enabling and Disabling Search
 
-Search is enabled by default. To disable it entirely:
+Search is on by default. To turn it off:
 
 ```yaml
 features:
@@ -84,72 +101,36 @@ features:
     enabled: false
 ```
 
-When disabled, the search button and keyboard shortcut are removed from the site.
+With search off, the build writes no `search-index.json`, and pages have no Search button, search dialog or keyboard shortcut.
 
-### Search Provider
-
-MokaDocs supports multiple search provider implementations. Configure the provider in your `mokadocs.yaml`:
+To remove search from the pages but keep writing the index, set `showSearch` instead:
 
 ```yaml
-features:
-  search:
-    provider: flexsearch
+theme:
+  options:
+    showSearch: false
 ```
 
-Available providers:
-
-| Provider     | Description                                                  |
-|--------------|--------------------------------------------------------------|
-| `flexsearch` | Default provider. Lightweight, fast, and works entirely client-side. Good for most documentation sites. |
-| `pagefind`   | A more advanced search engine that builds a compressed index at build time. Better for very large sites with thousands of pages. |
-
-### FlexSearch Provider
-
-FlexSearch is the default provider and requires no additional setup. It loads the full search index into memory on the client and provides near-instant results.
-
-Best for:
-- Small to medium documentation sites (up to several hundred pages)
-- Sites where simplicity is preferred
-- Offline-capable documentation
-
-### Pagefind Provider
-
-Pagefind generates a highly optimized, compressed search index during the build step. Only relevant index fragments are loaded on demand, making it efficient for large sites.
-
-Best for:
-- Large documentation sites with many pages
-- Sites where initial page load size is a concern
-- Projects that need more advanced search features like content weighting
-
-```yaml
-features:
-  search:
-    provider: pagefind
-```
-
-::: note
-When using the Pagefind provider, the search index is generated as part of the build process. The index files are placed in the output directory alongside the rest of the static site.
-:::
+There is one search implementation, the one described on this page. A `features.search.provider` value is accepted in `mokadocs.yaml` but has no effect.
 
 ## Index Structure
 
-The generated `search-index.json` file contains an array of search entries. Each entry includes:
+`search-index.json` is a JSON array with one object per entry. Field names are single letters to keep the file small:
 
-| Field      | Description                                              |
-|------------|----------------------------------------------------------|
-| `title`    | The page title or section heading                        |
-| `url`      | The URL path to the page, with anchor for section entries |
-| `content`  | Plain text excerpt of the page or section content        |
-| `category` | Either "Documentation" or "API Reference"                |
-| `tags`     | Array of tags from the page front matter (if any)        |
+| Field | Meaning  | Page entry | Heading entry |
+|-------|----------|------------|---------------|
+| `t`   | Title    | Page title | Page title |
+| `s`   | Section  | Empty string | Heading text |
+| `r`   | Route    | Page URL | Page URL plus `#` and the heading id |
+| `c`   | Content  | First 300 characters of the page text | Empty string |
+| `g`   | Category | `Documentation` or `API Reference` | Same as its page |
+| `k`   | Tags     | Tags separated by spaces; left out when the page has none | Left out |
 
-::: note Compact Field Names
-The actual `search-index.json` file uses abbreviated field names for a smaller payload: `t` (title), `s` (section/url), `r` (route), `c` (content), and `g` (tags/category). The table above shows the logical field names for clarity.
-:::
+URLs in `r` include `build.basePath` when the site sets one.
 
 ### Page-Level vs Section-Level Entries
 
-For a documentation page with the following structure:
+For `docs/guide/getting-started.md` with this content:
 
 ```markdown
 ---
@@ -171,34 +152,23 @@ Installation instructions...
 Configuration details...
 ```
 
-The search index will contain three entries:
+the index gets four entries:
 
-1. **Page entry** - title: "Getting Started", url: `/guide/getting-started`
-2. **Section entry** - title: "Installation", url: `/guide/getting-started#installation`
-3. **Section entry** - title: "Configuration", url: `/guide/getting-started#configuration`
+1. **Page entry**: title "Getting Started", URL `/guide/getting-started`, tags `quickstart`
+2. **Heading entry**: "Getting Started", URL `/guide/getting-started#getting-started`
+3. **Heading entry**: "Installation", URL `/guide/getting-started#installation`
+4. **Heading entry**: "Configuration", URL `/guide/getting-started#configuration`
 
-This granularity ensures that users searching for "installation" are taken directly to the relevant section rather than just the top of the page.
+A search for "installation" scores 5 on the Installation heading entry and 1 on the page entry (the word is in its content). The heading entry ranks higher, and it links straight to that section.
 
 ## Performance Considerations
 
 ### Index Size
 
-The search index size depends on the amount of content in your documentation. For typical documentation sites:
-
-| Site Size         | Approximate Index Size |
-|-------------------|----------------------|
-| Small (< 50 pages) | Under 100 KB         |
-| Medium (50-200 pages) | 100-500 KB        |
-| Large (200+ pages) | 500 KB+              |
-
-The index is loaded once when the user first opens the search dialog and cached for the duration of the session.
+Each page adds one entry with at most 300 characters of text and one short entry per heading, so a page with many headings adds more to the file than a long page with few. `mokadocs build` prints the entry count in its summary. The whole file is downloaded before the first query on a page.
 
 ### Optimizing Search Quality
 
-To get the best search results:
-
-1. **Use descriptive page titles** - The title field carries the most weight in search ranking
-2. **Write clear section headings** - Each heading becomes a searchable entry
-3. **Add relevant tags** - Tags help surface pages for queries that use different terminology
-4. **Keep content focused** - Pages that cover a single topic rank better than pages that cover many unrelated topics
-5. **Use consistent terminology** - Consistent naming across your documentation helps users find related content
+1. **Put the words readers search for in titles and headings.** A match in the title scores 10 and a match in a heading scores 5.
+2. **Add tags for other words readers might use.** A tag match scores 3.
+3. **Put key terms near the top of the page.** Only the first 300 characters of the page text are indexed.

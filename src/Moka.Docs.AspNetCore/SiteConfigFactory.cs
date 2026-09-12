@@ -87,7 +87,9 @@ internal static class SiteConfigFactory
 						PublishUrl = options.FaviconUrl,
 						IsAbsoluteUrl = true
 					},
-				Url = options.BasePath.TrimEnd('/'),
+				// No public URL is known in embedded mode, so no canonical links or Open Graph URLs.
+				// This held the base path, which is not a URL and doubled in every canonical link.
+				Url = "",
 				Copyright = options.Copyright ?? $"© {DateTime.Now.Year} {options.Title}"
 			},
 			Content = new ContentConfig
@@ -117,7 +119,11 @@ internal static class SiteConfigFactory
 				Output = "./_site",
 				Clean = true,
 				Sitemap = false,
-				Robots = false
+				Robots = false,
+				// The pipeline prefixes every route, asset and search result with this and tells the
+				// theme script where the site lives. It used to stay "/" while the finished HTML was
+				// patched afterwards, which missed the search index and the script's fetch paths.
+				BasePath = SiteConfigReader.NormalizeBasePath(options.BasePath)
 			}
 		};
 	}

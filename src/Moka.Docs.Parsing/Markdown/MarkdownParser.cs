@@ -36,13 +36,28 @@ public sealed class MarkdownParser
 	/// </summary>
 	/// <param name="markdown">The raw Markdown content (may include YAML front matter).</param>
 	/// <returns>The fully parsed result.</returns>
-	public MarkdownParseResult Parse(string markdown)
+	public MarkdownParseResult Parse(string markdown) => Parse(markdown, null);
+
+	/// <summary>
+	///     Parses a Markdown file into structured content, resolving its relative links.
+	/// </summary>
+	/// <param name="markdown">The raw Markdown content (may include YAML front matter).</param>
+	/// <param name="sourcePath">
+	///     The file's path relative to the docs folder. When given, relative links and images
+	///     are rewritten to site-root links; see <see cref="RelativeLinks" />.
+	/// </param>
+	/// <returns>The fully parsed result.</returns>
+	public MarkdownParseResult Parse(string markdown, string? sourcePath)
 	{
 		// Step 1: Extract front matter
 		FrontMatterResult fmResult = _frontMatterExtractor.Extract(markdown);
 
 		// Step 2: Parse Markdown body
 		MarkdownDocument document = Markdig.Markdown.Parse(fmResult.Body, _pipeline);
+		if (sourcePath is not null)
+		{
+			RelativeLinks.Rewrite(document, sourcePath);
+		}
 
 		// Step 3: Generate ToC
 		TableOfContents toc = _tocGenerator.Generate(document);
@@ -61,6 +76,7 @@ public sealed class MarkdownParser
 		return new MarkdownParseResult
 		{
 			FrontMatter = fmResult.FrontMatter,
+			FrontMatterError = fmResult.Error,
 			Html = html,
 			PlainText = plainText,
 			TableOfContents = toc
@@ -94,8 +110,10 @@ public sealed class MarkdownParser
 		// UI Components (card, steps, link-cards, code-group)
 		builder.Extensions.Add(new ComponentExtension());
 
-		// Auto-generate IDs on headings
-		builder.UseAutoIdentifiers(AutoIdentifierOptions.GitHub);
+		// Heading ids come from the AutoIdentifiers extension that UseAdvancedExtensions adds
+		// with Markdig's default options. A UseAutoIdentifiers(GitHub) call used to sit here, but
+		// Markdig only adds an extension once, so it never applied. Switching to GitHub-style ids
+		// now would change the anchors of existing pages.
 
 		// Mermaid diagram support - renders ```mermaid blocks as <pre class="mermaid">
 		builder.Extensions.AddIfNotAlready<MermaidExtension>();
@@ -195,4 +213,7 @@ public sealed record MarkdownParseResult
 
 	/// <summary>The auto-generated table of contents.</summary>
 	public required TableOfContents TableOfContents { get; init; }
+
+	/// <summary>Why the front matter block could not be read, or <c>null</c> when it was fine or absent.</summary>
+	public string? FrontMatterError { get; init; }
 }

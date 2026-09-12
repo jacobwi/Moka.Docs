@@ -5,68 +5,98 @@ order: 1
 
 # Themes & Customization
 
-MokaDocs ships with a default theme that is responsive, accessible, and customizable. You can adjust colors, typography, layout dimensions, and more through configuration and CSS custom properties.
+MokaDocs ships with one built-in theme. Options under `theme.options` in `mokadocs.yaml` change its colors and turn its features on and off. For changes beyond that, point `theme.name` at a theme folder of your own.
 
 ## Default Theme Features
 
 The built-in theme includes:
 
-- **Responsive layout** -- Adapts to desktop, tablet, and mobile screen sizes with a collapsible sidebar
-- **Dark and light mode** -- Automatic detection via `prefers-color-scheme` with a manual toggle in the header
-- **Syntax highlighting** -- Code blocks are highlighted with configurable color themes
-- **Search overlay** -- Full-text search with keyboard shortcut support (Ctrl+K / Cmd+K)
-- **Smooth navigation** -- Client-side page transitions with scroll position restoration
-- **Table of contents** -- Auto-generated from headings with scroll-spy highlighting
+- **Responsive layout**: on screens 768px wide or less, the sidebar moves behind a menu button.
+- **Dark and light mode**: follows the system setting on a first visit, with a header toggle that remembers the reader's choice.
+- **Syntax highlighting**: done in the browser, with seven color themes.
+- **Search**: a dialog opened from the header button or with `Ctrl+K` / `Cmd+K`. It matches page titles, headings, tags and the first 300 characters of each page's text. See [Search](/guide/search).
+- **Table of contents**: built from the page's headings, highlighting the section in view.
+
+Links between pages are ordinary page loads; there is no client-side navigation.
 
 ## CSS Custom Properties
 
-The theme exposes CSS custom properties that you can override to customize the look and feel without modifying theme files. These properties control the core visual design system.
+The default theme's stylesheet defines these custom properties. The default theme has no setting for loading an extra stylesheet, so overriding them takes a custom theme (see [Changing Styles](#changing-styles)). `primaryColor` and `accentColor` set the two brand colors from configuration.
 
-### Color Properties
+### Colors
 
-| Property                  | Default (Light)   | Default (Dark)     | Description |
-|---------------------------|-------------------|--------------------|-------------|
-| `--color-primary`         | `#0ea5e9`         | `#818cf8`          | Primary brand color used for links, active states, and accents |
-| `--color-primary-light`   | Derived           | Derived            | Lighter variant of primary, used for hover states and backgrounds |
-| `--color-primary-dark`    | Derived           | Derived            | Darker variant of primary, used for active/pressed states |
-| `--color-bg`              | `#ffffff`         | `#0f172a`          | Page background color |
-| `--color-surface`         | `#f8fafc`         | `#1e293b`          | Surface color for cards, sidebar, and elevated elements |
-| `--color-text`            | `#1e293b`         | `#e2e8f0`          | Primary text color |
-| `--color-text-muted`      | `#64748b`         | `#94a3b8`          | Secondary/muted text color for descriptions and metadata |
-| `--color-border`          | `#e2e8f0`         | `#334155`          | Border color for dividers, cards, and input fields |
-| `--color-code-bg`         | `#f1f5f9`         | `#1e293b`          | Background color for inline code and code blocks |
+| Property | Light | Dark | Used for |
+|----------|-------|------|----------|
+| `--color-primary` | `#0ea5e9` | unchanged | Links, active navigation, buttons |
+| `--color-primary-light` | `#38bdf8` | unchanged | Lighter shade of the primary color |
+| `--color-primary-dark` | `#0284c7` | unchanged | Darker shade, used for link hover |
+| `--color-accent` | `#f59e0b` | unchanged | Highlighted matches in search results |
+| `--color-bg` | `#ffffff` | `#0f172a` | Page background |
+| `--color-bg-secondary` | `#f8fafc` | `#1e293b` | Secondary surfaces and hover backgrounds |
+| `--color-bg-code` | `#f1f5f9` | `#1e293b` | Inline code background |
+| `--color-text` | `#1e293b` | `#e2e8f0` | Body text |
+| `--color-text-secondary` | `#64748b` | `#94a3b8` | Secondary text |
+| `--color-text-muted` | `#94a3b8` | `#64748b` | Muted text |
+| `--color-border` | `#e2e8f0` | `#334155` | Borders and dividers |
+| `--color-border-light` | `#f1f5f9` | `#1e293b` | Defined, but not used by the default stylesheet |
+| `--gradient-secondary` | `#06b6d4` | unchanged | Second color of the landing page title gradient |
+| `--gradient-tertiary` | `#3b82f6` | unchanged | Third color of the landing page title gradient |
 
-### Layout Properties
+Code block colors come from the selected [code theme](#code-syntax-themes), which sets `--sh-comment`, `--sh-string`, `--sh-keyword` and the other `--sh-*` properties.
 
-| Property           | Default    | Description |
-|--------------------|------------|-------------|
-| `--sidebar-width`  | `280px`    | Width of the sidebar navigation panel |
-| `--header-height`  | `60px`     | Height of the top header bar |
+### Layout
 
-### Overriding Custom Properties
+| Property | Default | Description |
+|----------|---------|-------------|
+| `--sidebar-width` | `280px` | Width of the sidebar |
+| `--toc-width` | `220px` | Width of the "On this page" column |
+| `--header-height` | `60px` | Height of the header, also used to offset sticky elements |
+| `--content-max-width` | `780px` | Maximum width of the page content |
 
-Create a CSS file and reference it in your project, or use the custom CSS injection point in your configuration. For example, to use a green color scheme:
+### Typography and Shape
+
+| Property | Default |
+|----------|---------|
+| `--font-body` | `'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif` |
+| `--font-mono` | `'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace` |
+| `--radius` | `8px` |
+| `--radius-sm` | `4px` |
+| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` |
+| `--shadow-md` | `0 4px 6px -1px rgba(0,0,0,0.1)` |
+| `--shadow-lg` | `0 10px 25px -3px rgba(0,0,0,0.15)` |
+| `--transition` | `150ms ease` |
+
+The theme doesn't load web fonts, so Inter and JetBrains Mono are only used when they're installed on the reader's machine. The body font size (16px) and line height (1.7) are fixed values, not properties.
+
+### Changing Styles
+
+With the default theme, `css_files` contains only `/_theme/css/main.css`, and there is no `customCss` option. A `.css` file in the docs folder is copied to the output, but no page links to it.
+
+That leaves two options:
+
+- `primaryColor` and `accentColor` in `theme.options` change the brand colors. See [Config-Driven Customization](#config-driven-customization).
+- A [custom theme](#choosing-a-theme) can ship its own stylesheets. It replaces the default theme entirely, layouts included. Building a site with the default theme writes its stylesheet and script to `_theme/css/main.css` and `_theme/js/main.js`, which you can copy into your theme as a starting point. The default layouts are defined in `EmbeddedThemeProvider.cs` in the MokaDocs source.
+
+A stylesheet in a custom theme can override any of the properties above:
 
 ```css
+/* my-theme/css/overrides.css (sorts after main.css) */
 :root {
-    --color-primary: #10b981;
-    --color-primary-light: #34d399;
-    --color-primary-dark: #059669;
+    --sidebar-width: 320px;
+    --font-body: system-ui, sans-serif;
 }
 ```
 
 ## Choosing a Theme
 
-`theme.name` selects which theme renders the site. The default is the theme built
-into MokaDocs:
+`theme.name` selects which theme renders the site. The default is the theme built into MokaDocs:
 
 ```yaml
 theme:
   name: default
 ```
 
-Any other value is treated as a path to a theme directory, resolved relative to
-`mokadocs.yaml`:
+Any other value is a path to a theme folder, absolute or relative to `mokadocs.yaml`:
 
 ```yaml
 theme:
@@ -78,10 +108,10 @@ theme:
 ```
 my-theme/
   layouts/
-    default.html      # required - used by every page unless overridden
-    landing.html      # optional - used by pages with `layout: landing`
+    default.html      # required: used by every page unless front matter names another layout
+    landing.html      # optional: used by pages with `layout: landing`
   partials/
-    footer.html       # optional
+    footer.html       # optional: available to layouts as partials.footer
   css/
     main.css
   js/
@@ -90,8 +120,7 @@ my-theme/
     logo.svg
 ```
 
-Layouts are [Scriban](https://github.com/scriban/scriban) templates. A minimal
-`default.html`:
+Layouts are [Scriban](https://github.com/scriban/scriban) templates. A minimal `default.html`:
 
 ```html
 <!DOCTYPE html>
@@ -109,24 +138,49 @@ Layouts are [Scriban](https://github.com/scriban/scriban) templates. A minimal
 </html>
 ```
 
-Everything under `css/`, `js/` and `assets/` is copied to `_theme/` in the output,
-and `css_files` / `js_files` are populated from what it finds. The built-in
-stylesheet is not included, so a custom theme owns its own styling completely.
+Everything under `css/`, `js/` and `assets/`, subfolders included, is copied to `_theme/` in the output. `css_files` lists every `.css` file under `css/`, subfolders included, in alphabetical order of path. `js_files` lists only the `.js` files directly inside `js/`. The built-in stylesheet and script are not included, so a custom theme owns its styling completely.
+
+A few things to know when writing layouts:
+
+- The variables a layout can use are listed in [Template Variables](/advanced/architecture#template-variables).
+- Partials are inserted as raw text: `{{ partials.footer }}` outputs the file as written, without evaluating Scriban expressions in it. Scriban's `include` doesn't work in MokaDocs layouts. See [Partials](/advanced/architecture#partials).
+- A page whose front matter names a layout the theme doesn't have renders with `default.html`, and the build reports a warning for each missing layout name.
+- The build still generates `404.html` from its own markup, which links `_theme/css/main.css` and `_theme/js/main.js`.
+- `mokadocs serve` caches the theme for the life of the process, so restart it after editing theme files.
 
 ### Fallback Behaviour
 
-MokaDocs falls back to the default theme, with a warning, when the directory does
-not exist or contains no `layouts/*.html`. A typo in `theme.name` produces a
-styled site plus a warning rather than a failed build. Run with `--verbose` to see
-the warning.
+When the theme folder doesn't exist or contains no `layouts/*.html`, MokaDocs builds the site with the default theme and reports a warning. A typo in `theme.name` produces a styled site plus a warning rather than a failed build. `mokadocs build` counts the warning in its summary and lists it with `--verbose`, and `mokadocs validate` lists it.
 
 ## Config-Driven Customization
 
-The `mokadocs.yaml` file provides several options for customizing the theme without writing CSS.
+`theme.options` in `mokadocs.yaml` customizes the default theme without writing CSS. The full list of options is in [Site Configuration](/configuration/site-config).
+
+### Feature Toggles
+
+| Option | Default | Controls |
+|--------|---------|----------|
+| `showSearch` | `true` | Search button, search dialog and the `Ctrl+K` shortcut. Search also needs `features.search.enabled` |
+| `showDarkModeToggle` | `true` | Dark mode button in the header |
+| `showTableOfContents` | `true` | "On this page" column. Front matter `toc: false` hides it on one page |
+| `tocDepth` | `3` | Deepest heading level in the table of contents, from 2 to 6 |
+| `showBreadcrumbs` | `true` | Breadcrumb trail above the content |
+| `showPrevNext` | `true` | Previous and next page links below the content |
+| `showBackToTop` | `true` | Back-to-top button |
+| `showCopyButton` | `true` | Copy button on code blocks |
+| `showLineNumbers` | `true` | Line numbers on code blocks of three or more lines |
+| `showVersionSelector` | `true` | Version menu in the header, when versions are configured |
+| `showFeedback` | `true` | [Feedback widget](#feedback-widget) |
+| `showLastUpdated` | `true` | [Last updated](#last-updated) date |
+| `showEditLink` | `false` | [Edit link](#edit-links) |
+| `showAnimations` | `false` | [Animations](#animations) |
+| `showBuiltWith` | `true` | ["Built with MokaDocs"](#footer-customization) footer text |
+
+The breadcrumbs, previous and next links, back-to-top button, version menu, feedback widget, last updated date and edit link appear in the default layout only, not on landing pages.
 
 ### Primary Color
 
-Set the `primaryColor` property to change the brand color across the entire site:
+Set `primaryColor` to change the brand color across the site:
 
 ```yaml
 theme:
@@ -134,9 +188,9 @@ theme:
     primaryColor: "#e11d48"
 ```
 
-MokaDocs uses CSS `color-mix()` to automatically derive the light and dark variants from your primary color. This means you only need to specify a single color value, and the hover states, active states, and background tints are computed automatically.
+The value becomes `--color-primary` in an inline style, and `--color-primary-light` and `--color-primary-dark` are derived from it with CSS `color-mix()`: 75% of your color mixed with white, and 80% mixed with black. You only set one value.
 
-Any valid CSS color value is accepted:
+The value is inserted as written, so any CSS color works:
 
 ```yaml
 theme:
@@ -154,11 +208,21 @@ theme:
     primaryColor: "rgb(99, 102, 241)"
 ```
 
+A color preset overrides `primaryColor` while it's applied. See [Color Theme Presets](#color-theme-presets).
+
+### Accent Color
+
+```yaml
+theme:
+  options:
+    accentColor: "#22c55e"
+```
+
+`accentColor` sets `--color-accent` (default `#f59e0b`). The default theme uses it to highlight matching words in search results.
+
 ### Code Syntax Themes
 
-MokaDocs ships with 7 built-in syntax highlighting themes for code blocks. A `</>` button in the site header opens a dropdown listing all available themes with colored previews, allowing readers to switch themes on the fly. The selected theme is saved to `localStorage` and persists across pages.
-
-Set the default code theme with the `codeTheme` option:
+MokaDocs ships with 7 syntax highlighting themes for code blocks. Set the default with the `codeTheme` option:
 
 ```yaml
 theme:
@@ -171,37 +235,37 @@ theme:
 | Theme | Style | Description |
 |---|---|---|
 | `catppuccin-mocha` | Dark | Warm dark theme with pastel accents (default) |
-| `catppuccin-latte` | Light | Warm light companion to catppuccin-mocha |
+| `catppuccin-latte` | Light | Light companion to catppuccin-mocha |
 | `github-dark` | Dark | GitHub's dark syntax colors |
 | `github-light` | Light | GitHub's light syntax colors |
-| `dracula` | Dark | Popular Dracula color scheme |
-| `one-dark` | Dark | Atom One Dark inspired |
-| `nord` | Dark | Arctic, north-bluish palette |
+| `dracula` | Dark | The Dracula color scheme |
+| `one-dark` | Dark | Based on Atom One Dark |
+| `nord` | Dark | Arctic, blue-gray palette |
 
 #### Automatic Light/Dark Pairing
 
-When a reader toggles between light and dark mode using the header switch, the code theme automatically switches to its paired counterpart if one exists:
+When a reader switches between light and dark mode with the header button, the code theme changes to its light or dark counterpart to match, if it has one:
 
 - `catppuccin-mocha` (dark) swaps with `catppuccin-latte` (light)
 - `github-dark` swaps with `github-light`
 
-Themes without a pair (such as `dracula`, `one-dark`, and `nord`) remain unchanged when toggling site mode.
+Themes without a pair (`dracula`, `one-dark` and `nord`) stay as they are. The switched theme is saved in `localStorage` like a choice the reader made.
 
-#### Hiding the Theme Selector
+#### Showing the Theme Selector
 
-The code theme selector button is visible by default. To hide it:
+The code theme selector, a `</>` button in the header, is hidden by default. To show it:
 
 ```yaml
 theme:
   options:
-    codeThemeSelector: false
+    codeThemeSelector: true
 ```
+
+It lists the seven themes with a color preview, and the reader's choice is saved in `localStorage`.
 
 ### Code Block Window Styles
 
-MokaDocs provides 4 window frame styles that change the visual chrome around fenced code blocks. A window icon button in the site header opens a selector dropdown. The selected style is saved to `localStorage` and persists across pages.
-
-Set the default window style with the `codeStyle` option:
+Four frame styles change the chrome around fenced code blocks. Set the default with the `codeStyle` option:
 
 ```yaml
 theme:
@@ -213,43 +277,53 @@ theme:
 
 | Style | Description |
 |---|---|
-| `plain` | No frame decoration (default). Code blocks render with a simple background. |
-| `macos` | macOS-style title bar with red, yellow, and green traffic light dots. |
-| `terminal` | Terminal style with a `$` prompt indicator in the top bar. |
-| `vscode` | VS Code style with an accent-colored tab bar along the top edge. |
+| `plain` | No frame (default). Code blocks render with a plain background. |
+| `macos` | A title bar with red, yellow and green window buttons. |
+| `terminal` | A terminal-style top bar with a green `$` prompt. |
+| `vscode` | A tab bar with a primary-colored top edge and left border. |
 
-#### Hiding the Style Selector
+#### Showing the Style Selector
 
-The window style selector button is visible by default. To hide it:
+The window style selector, a window icon button in the header, is hidden by default. To show it:
 
 ```yaml
 theme:
   options:
-    codeStyleSelector: false
+    codeStyleSelector: true
 ```
+
+The reader's choice is saved in `localStorage`.
 
 ### Color Theme Presets
 
-MokaDocs includes 6 built-in color theme presets that change the primary color across the entire site with one click. A palette icon button in the header opens a dropdown showing all available presets. The selected preset is saved to `localStorage`.
-
-The presets provide a quick way for readers to personalize the documentation appearance without the site author needing to set up multiple themes.
+Six presets set the primary color, along with the landing page title gradient. A palette button in the header lists them, and the reader's pick is saved in `localStorage`. The palette is shown by default.
 
 #### Available Presets
 
-| Preset | Color | Hex |
+| Preset | ID | Hex |
 |---|---|---|
-| Ocean | Blue | `#0ea5e9` |
-| Emerald | Green | `#10b981` |
-| Violet | Purple | `#8b5cf6` |
-| Amber | Orange | `#f59e0b` |
-| Rose | Pink | `#f43f5e` |
-| Moka Red | Red | `#d32f2f` |
+| Ocean | `ocean` | `#0ea5e9` |
+| Emerald | `emerald` | `#10b981` |
+| Violet | `violet` | `#8b5cf6` |
+| Amber | `amber` | `#f59e0b` |
+| Rose | `rose` | `#f43f5e` |
+| Moka Red | `moka-red` | `#d32f2f` |
 
-The default primary color configured via `primaryColor` is always available alongside these presets.
+#### Presets and `primaryColor`
+
+Presets set `--color-primary` with `!important`, so while a preset is applied, `primaryColor` has no visible effect. `defaultColorTheme` (default `ocean`) names the preset applied on a reader's first visit:
+
+- If you change `primaryColor` and leave `defaultColorTheme` unset or `ocean`, no preset is applied and your color shows.
+- If you set `defaultColorTheme` to another preset, that preset is applied and `primaryColor` doesn't show.
+- Once a reader picks a preset from the palette, their pick applies on every page.
+
+```yaml
+theme:
+  options:
+    defaultColorTheme: emerald
+```
 
 #### Hiding the Color Preset Selector
-
-The color preset selector is visible by default. To hide it:
 
 ```yaml
 theme:
@@ -257,9 +331,11 @@ theme:
     colorThemes: false
 ```
 
+This hides the palette button only. `defaultColorTheme` still applies, and so does a preset a reader picked earlier.
+
 ### Social Links
 
-Add social media and external links to the site header using the `socialLinks` configuration. Each entry is rendered as an icon button in the header navigation.
+`socialLinks` adds icon links to the footer of the default layout. Landing pages don't show them.
 
 ```yaml
 theme:
@@ -273,11 +349,11 @@ theme:
         url: "https://www.nuget.org/packages/YourPackage"
 ```
 
-Common icon names: `github`, `twitter`, `discord`, `nuget`, `youtube`, `linkedin`, `mastodon`. Icons are rendered as SVGs in the header navigation.
+`icon` must be a name from MokaDocs' built-in icon set, which is a small subset of Lucide. The brand icons are `github`, `twitter`, `discord` and `nuget`; general icons such as `globe`, `mail`, `link` and `message-circle` also work. A name that isn't in the set is printed as plain text in place of the icon, and the build warns about it.
 
 ### Edit Links
 
-Add an "Edit this page" link to the bottom of every documentation page. This is useful for open-source projects where you want readers to contribute corrections directly.
+An "Edit this page" link at the bottom of each page lets readers propose corrections. It needs both `site.editLink` and `showEditLink`, which is off by default:
 
 ```yaml
 site:
@@ -285,37 +361,23 @@ site:
     repo: "https://github.com/your-org/your-repo"
     branch: main
     path: "docs/"
-```
 
-The `repo` value is the base URL of your repository. The `branch` specifies which branch the edit link should point to, and `path` is the directory prefix where your documentation source files live relative to the repository root.
-
-To disable the edit link, set the following theme option:
-
-```yaml
 theme:
   options:
-    showEditLink: false
+    showEditLink: true
 ```
+
+Markdown pages link to `{repo}/edit/{branch}/{path}/{file}`, where `{file}` is the page's path inside the docs folder. That URL layout matches GitHub. `branch` defaults to `main` and `path` to `docs/`. Generated pages, such as API pages, have no source file and get no edit link.
 
 ### Contributors
 
-Display contributor avatars on documentation pages. When enabled, MokaDocs shows the avatars of contributors who have modified each page (pulled from Git history).
-
-```yaml
-theme:
-  options:
-    showContributors: true
-```
+`showContributors` is accepted in `mokadocs.yaml` but has no effect. The default theme doesn't show contributors, and MokaDocs doesn't read git history.
 
 ### Last Updated
 
-Show the last modification date at the bottom of each documentation page. The date is derived from the file's last modified timestamp.
+The date a page was last modified appears at the bottom of each page, formatted `yyyy-MM-dd`. It's on by default; `showLastUpdated: false` hides it.
 
-```yaml
-theme:
-  options:
-    showLastUpdated: true
-```
+The date is the Markdown file's last write time on disk. A fresh git clone gives every file the time of the checkout, so a site built in CI shows the build date on every page.
 
 ### Logo and Favicon
 
@@ -327,85 +389,52 @@ site:
   favicon: assets/favicon.ico
 ```
 
-The logo is displayed in the header next to the site title. Both SVG and raster image formats (PNG, JPG, WebP, ICO) are supported.
+The logo replaces the book icon next to the site title in the header. Any image format the browser can display works.
 
-Paths are resolved **relative to the directory containing `mokadocs.yaml`** and support several forms - including parent-directory escapes via `../` and absolute URLs for CDN-hosted assets. See the [Site Configuration - Logo](/configuration/site-config#logo) page for the full path resolution rules and worked examples.
-
-### Typography and Spacing
-
-The default theme uses a system font stack for optimal performance and native appearance. To customize typography, override the relevant CSS custom properties:
-
-```css
-:root {
-    --font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    --font-family-mono: 'JetBrains Mono', 'Fira Code', monospace;
-    --font-size-base: 16px;
-    --line-height-base: 1.7;
-    --content-max-width: 48rem;
-}
-```
-
-For spacing adjustments, the theme uses a consistent spacing scale based on `rem` units. Override specific spacing values in your custom CSS as needed.
-
-### Custom CSS Injection
-
-You can inject additional CSS to extend or override the default theme by placing a CSS file in the project and overriding the theme's CSS custom properties. The custom CSS file is loaded after the theme styles, so your rules take precedence. This is the recommended approach for advanced styling changes that go beyond what the CSS custom properties offer.
-
-::: note
-A `customCss` configuration option is planned but not yet implemented. For now, place your custom CSS file in the `docs/` directory so it is copied to the output, or override CSS custom properties in your own stylesheet.
+Paths are resolved **relative to the directory containing `mokadocs.yaml`** and support several forms, including parent-directory escapes via `../` and absolute URLs for CDN-hosted assets. See the [Site Configuration - Logo](/configuration/site-config#logo) page for the full path resolution rules and worked examples.
 
 ## Dark Mode
 
 ### Automatic Detection
 
-The default theme automatically detects the user's system preference using the `prefers-color-scheme` CSS media query. If the operating system or browser is set to dark mode, the documentation site renders in dark mode on first visit.
+On a reader's first visit, a script at the top of the page picks dark mode when the system prefers it (`prefers-color-scheme: dark`) and light mode otherwise. It sets `data-theme` on the `<html>` element before the page renders.
 
 ### Manual Toggle
 
-A sun/moon toggle button is displayed in the header, allowing readers to manually switch between light and dark modes. The selected preference is persisted in `localStorage` so it is remembered across visits.
+The sun/moon button in the header switches modes and saves the choice in `localStorage`. A saved choice takes priority over the system setting on later visits. `showDarkModeToggle: false` hides the button.
 
 ### Customizing Dark Mode Colors
 
-Dark mode colors are defined under a `[data-theme="dark"]` selector. To customize dark mode specifically:
+Dark mode colors are defined under a `[data-theme="dark"]` selector, which redefines the background, text and border properties listed in [Colors](#colors). `--color-primary` and its shades are not redefined, so the primary color is the same in both modes.
+
+To change the dark colors, override them in a custom theme's stylesheet:
 
 ```css
 [data-theme="dark"] {
     --color-bg: #0a0a0a;
-    --color-surface: #171717;
+    --color-bg-secondary: #171717;
+    --color-bg-code: #1c1c1e;
     --color-text: #fafafa;
-    --color-text-muted: #a1a1aa;
+    --color-text-secondary: #a1a1aa;
     --color-border: #27272a;
-    --color-code-bg: #1c1c1e;
 }
 ```
-
-Both light and dark variants of `--color-primary` are computed from your `primaryColor` configuration, so the accent color adapts to both modes automatically.
 
 ## Landing Page
 
-The landing page (your site's root `/` page) supports a gradient hero section. The gradient is derived from the primary color by default, creating a visually distinct entry point to your documentation.
+Pages with `layout: landing` in their front matter use the landing layout. It starts with a hero section: the site logo, the site title, the page's `description`, a **Get Started** button that links to the first sidebar item, and a **View on GitHub** button when `site.editLink.repo` is set. A fixed feature grid and a sample `mokadocs.yaml` block follow, then the page's own Markdown content. The feature grid and sample block can't be changed from configuration.
 
 ### Gradient Customization
 
-To customize the landing page gradient, override the gradient CSS properties:
-
-```css
-.landing-hero {
-    --landing-gradient-start: #6366f1;
-    --landing-gradient-end: #a855f7;
-    --landing-gradient-angle: 135deg;
-}
-```
-
-The landing page hero section includes the site title, description, and call-to-action buttons. The gradient serves as the background for this section.
+The hero title's gradient runs from `--color-primary` through `--gradient-secondary` to `--gradient-tertiary`, and the hero background mixes `--color-primary` with fixed colors. A color preset sets all three properties. There are no `--landing-gradient-*` properties; other changes to the gradients need a custom theme.
 
 ## Feedback Widget
 
-Every documentation page displays a "Was this page helpful?" widget at the bottom, allowing readers to provide quick feedback with a thumbs-up or thumbs-down vote.
+Pages using the default layout end with a "Was this page helpful?" widget with thumbs-up and thumbs-down buttons. Landing pages don't include it.
 
 ### Configuration
 
-The feedback widget is enabled by default. To disable it globally, set the `showFeedback` theme option to `false`:
+The widget is on by default. To remove it everywhere:
 
 ```yaml
 theme:
@@ -415,45 +444,42 @@ theme:
 
 ### How It Works
 
-- **Vote storage:** Each vote is persisted in the reader's `localStorage` so that returning visitors see their previous selection and are not prompted again for the same page.
-- **Dev mode reporting:** When running the MokaDocs dev server, the widget sends a `POST` request to `/api/feedback` with the page path and vote value. This lets you collect feedback data during local development or when running behind a backend.
-- **Static builds:** In static/exported builds where no backend is available, the POST request silently fails. Votes are still recorded in `localStorage` so the UI remains consistent for the reader.
+- **Vote storage:** each vote is saved in the reader's `localStorage` under the page path, so a returning reader sees their earlier vote.
+- **Reporting:** the widget also sends `POST {base path}/api/feedback` with the page path and the vote. `mokadocs serve` logs the vote at Information level, which only prints with `--verbose`. A server of your own that handles that route receives the same request.
+- **Static hosts:** a static host has no such endpoint. The request fails without an error shown to the reader, and the vote is still stored in `localStorage`.
 
 ## Animations
 
-MokaDocs includes subtle animations throughout the interface -- page transitions, sidebar expand/collapse, the landing page hero entrance, and hover effects on interactive elements. These are all controlled by a single theme option.
-
-### Configuration
-
-Animations are enabled by default. To disable all animations globally:
+Animations are off by default. To turn them on:
 
 ```yaml
 theme:
   options:
-    showAnimations: false
+    showAnimations: true
 ```
 
 ### Accessibility: `prefers-reduced-motion`
 
-MokaDocs automatically respects the operating system's reduced-motion accessibility setting. When a reader has enabled "Reduce motion" in their OS preferences, all animations are suppressed regardless of the `showAnimations` value. This ensures your documentation is accessible without requiring any configuration on your part.
+When a reader's system asks for reduced motion (`prefers-reduced-motion: reduce`), animations stay off whatever `showAnimations` says.
 
 ### What Is Affected
 
-The following animations are controlled by `showAnimations` and `prefers-reduced-motion`:
+With animations on:
 
-- **Page transitions** -- Fade/slide effects when navigating between pages
-- **Sidebar expand/collapse** -- Smooth open/close animation for sidebar sections
-- **Landing page hero** -- Entrance animation on the hero section of the landing page
-- **Hover effects** -- Scale and color transition effects on buttons, links, and cards
+- **Page load**: the page content fades in and headings slide up.
+- **Sidebar**: sections animate open and closed.
+- **Landing page hero**: the title, subtitle and buttons fade in, the icon floats, and the background gradient shifts.
+- **Hover effects**: buttons, links and cards change with transitions.
 
-When animations are disabled (either by configuration or by the OS setting), all transitions are replaced with instant state changes.
+When animations are off, by configuration or by the system setting, the stylesheet cuts animation and transition durations to 0.01ms, so state changes look instant.
 
 ## Footer Customization
 
-The footer appears on every page below the main content area. It has two parts:
+The footer of the default layout contains:
 
-1. **Copyright text** - your custom text (left side)
-2. **"Built with MokaDocs"** branding - automatic version badge (right side)
+1. **Copyright text** from `site.copyright`
+2. **Social links** from `theme.options.socialLinks`
+3. **"Built with MokaDocs"** branding with the MokaDocs version
 
 ### Copyright Text
 
@@ -461,14 +487,14 @@ Set the `copyright` field under `site:` in your `mokadocs.yaml`:
 
 ```yaml
 site:
-  copyright: "© 2026 Your Organization. All rights reserved."
+  copyright: "© {year} Your Organization. All rights reserved."
 ```
 
-This text is rendered verbatim in the footer. If omitted, the copyright area is empty (no placeholder text).
+`{year}` is replaced with the current year when the site is built. The rest of the text is inserted as written. Without `copyright`, the footer shows no copyright text.
 
 ### Disabling "Built with MokaDocs" Branding
 
-By default, the footer displays `Built with MokaDocs vX.Y` with a link to the GitHub repository. To hide this branding entirely:
+By default, the footer displays `Built with MokaDocs vX.Y.Z` with a link to the GitHub repository. To hide it:
 
 ```yaml
 theme:
@@ -476,11 +502,11 @@ theme:
     showBuiltWith: false
 ```
 
-When `showBuiltWith` is `false`, only your `site.copyright` text appears in the footer. When both `copyright` is empty and `showBuiltWith` is `false`, the footer renders as an empty bar.
+With `showBuiltWith: false`, no `copyright` and no social links, the footer is an empty bar.
 
 ### Footer on the Landing Page
 
-The landing page layout uses a slightly different footer style with a heart icon: `Built with ❤ using MokaDocs vX.Y`. The same `showBuiltWith` toggle controls both layouts - setting it to `false` hides the branding on both the default and landing page footers.
+The landing layout's footer reads `Built with ❤ using MokaDocs vX.Y.Z`, followed by the copyright text. The same `showBuiltWith` option controls both layouts. Social links don't appear on the landing page.
 
 :::tip
 There is no `footer:` top-level key in `mokadocs.yaml`. The copyright text goes under `site: copyright:`, and the branding toggle goes under `theme: options: showBuiltWith:`.
@@ -488,13 +514,14 @@ There is no `footer:` top-level key in `mokadocs.yaml`. The copyright text goes 
 
 ## Full Configuration Example
 
-A complete `mokadocs.yaml` with all theme-related options:
+A `mokadocs.yaml` with every theme option that has an effect. Apart from the `site` values, `showEditLink` and `socialLinks`, the values shown are the defaults.
 
 ```yaml
 site:
   title: "My Library Docs"
   description: "Documentation for My Library"
-  copyright: "© 2026 My Organization. All rights reserved."
+  url: "https://my-org.github.io/my-library"   # canonical and Open Graph tags are only written when set
+  copyright: "© {year} My Organization. All rights reserved."
   logo: assets/logo.svg
   favicon: assets/favicon.ico
   editLink:
@@ -508,36 +535,38 @@ content:
 theme:
   name: default
   options:
-    # Branding
+    # Colors
     primaryColor: "#0ea5e9"
-
-    # Footer
-    showBuiltWith: true           # set to false to hide "Built with MokaDocs"
+    accentColor: "#f59e0b"
+    colorThemes: true             # palette button in the header
+    defaultColorTheme: ocean      # preset applied on a first visit
 
     # Code blocks
     codeTheme: "catppuccin-mocha"
-    codeThemeSelector: true
+    codeThemeSelector: false
     codeStyle: "plain"
-    codeStyleSelector: true
-
-    # Color theme presets (palette icon in header)
-    colorThemes: true
+    codeStyleSelector: false
+    showCopyButton: true
+    showLineNumbers: true
 
     # Page features
-    showEditLink: true
-    showContributors: true
-    showLastUpdated: true
-    showFeedback: true
-    showAnimations: true
     showSearch: true
-    showTableOfContents: true
-    showPrevNext: true
-    showBreadcrumbs: true
-    showBackToTop: true
-    showCopyButton: true
     showDarkModeToggle: true
+    showTableOfContents: true
+    tocDepth: 3
+    showBreadcrumbs: true
+    showPrevNext: true
+    showBackToTop: true
+    showVersionSelector: true
+    showFeedback: true
+    showLastUpdated: true
+    showEditLink: true            # default: false
+    showAnimations: false
 
-    # Social links (icons in header)
+    # Footer
+    showBuiltWith: true
+
+    # Social links (footer of the default layout)
     socialLinks:
       - icon: github
         url: "https://github.com/my-org/my-library"
@@ -545,9 +574,4 @@ theme:
         url: "https://www.nuget.org/packages/MyLibrary"
       - icon: discord
         url: "https://discord.gg/my-community"
-
-plugins:
-  - name: mokadocs-repl
-  - name: mokadocs-blazor-preview
-  - name: mokadocs-changelog
 ```

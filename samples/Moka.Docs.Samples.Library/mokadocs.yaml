@@ -60,7 +60,7 @@ nav:
     expanded: true
   - label: "Blog"
     path: /blog
-    icon: rss
+    icon: newspaper
   - label: "SampleLibrary"
     path: /
     icon: package

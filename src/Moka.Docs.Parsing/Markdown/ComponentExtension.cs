@@ -6,6 +6,7 @@ using Markdig.Renderers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using Moka.Docs.Core.Theming;
 
 namespace Moka.Docs.Parsing.Markdown;
 
@@ -88,6 +89,8 @@ public sealed class CodeGroupBlock : ContainerBlock
 {
 	private static int _counter;
 
+	/// <summary>Creates the block and assigns it the next <see cref="GroupId" />.</summary>
+	/// <param name="parser">The parser that opened the block.</param>
 	public CodeGroupBlock(BlockParser parser) : base(parser)
 	{
 		GroupId = $"codegroup-{Interlocked.Increment(ref _counter)}";
@@ -112,6 +115,7 @@ public sealed class ComponentParser : BlockParser
 		"card", "steps", "link-cards", "code-group"
 	};
 
+	/// <summary>Creates a parser that opens on <c>:</c>.</summary>
 	public ComponentParser()
 	{
 		OpeningCharacters = [':'];
@@ -203,6 +207,7 @@ public sealed class ComponentParser : BlockParser
 			_ => throw new InvalidOperationException($"Unexpected component type: {typeName}")
 		};
 
+		ContainerFence.Set(block, colons);
 		processor.NewBlocks.Push(block);
 		return BlockState.ContinueDiscard;
 	}
@@ -222,7 +227,7 @@ public sealed class ComponentParser : BlockParser
 		{
 			StringSlice saved = line;
 			int colons = MarkdigHelpers.CountAndSkipChar(ref line, ':');
-			if (colons >= 3)
+			if (colons >= 3 && ContainerFence.Reaches(block, colons))
 			{
 				string after = line.ToString().Trim();
 				if (string.IsNullOrEmpty(after))
@@ -348,7 +353,12 @@ public sealed class CardRenderer : HtmlObjectRenderer<CardBlock>
 		if (!string.IsNullOrEmpty(block.Title))
 		{
 			renderer.Write("<div class=\"component-card-header\">");
-			if (!string.IsNullOrEmpty(block.Icon) && _iconMap.TryGetValue(block.Icon, out string? svg))
+			// The local map only covers ten names; anything else in the shared icon set
+			// used to render no icon at all.
+			string? svg = string.IsNullOrEmpty(block.Icon)
+				? null
+				: _iconMap.GetValueOrDefault(block.Icon) ?? LucideIcons.Get(block.Icon);
+			if (svg is not null)
 			{
 				renderer.Write($"<span class=\"component-card-icon\">{svg}</span>");
 			}
@@ -405,8 +415,15 @@ public sealed class StepsRenderer : HtmlObjectRenderer<StepsBlock>
 				renderer.Write("<div class=\"component-step-content\">");
 				renderer.WriteLine();
 
-				// Render heading text as step title
-				renderer.Write("<h3 class=\"component-step-title\">");
+				// Keep the heading's generated id. The table of contents and the search index link
+				// to it, and without it those links went nowhere.
+				renderer.Write("<h3");
+				if (heading.TryGetAttributes()?.Id is { Length: > 0 } id)
+				{
+					renderer.Write(" id=\"").WriteEscape(id).Write("\"");
+				}
+
+				renderer.Write(" class=\"component-step-title\">");
 				if (heading.Inline != null)
 				{
 					renderer.WriteChildren(heading.Inline);
@@ -480,6 +497,31 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 		renderer.WriteLine();
 	}
 
+	/// <summary>The text of an inline and its children, without markup.</summary>
+	private static string PlainText(Inline inline) => inline switch
+	{
+		LiteralInline literal => literal.Content.ToString(),
+		CodeInline code => code.Content,
+		ContainerInline container => string.Concat(container.Select(PlainText)),
+		LineBreakInline => " ",
+		_ => ""
+	};
+
+	private static string EscapeHtml(string text) =>
+		text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+
+	/// <summary>Appends a description inline as HTML: code spans stay code, the rest is text.</summary>
+	private static void AppendDescription(StringBuilder html, Inline inline)
+	{
+		if (inline is CodeInline code)
+		{
+			html.Append("<code>").Append(EscapeHtml(code.Content)).Append("</code>");
+			return;
+		}
+
+		html.Append(EscapeHtml(PlainText(inline)));
+	}
+
 	private static void RenderLinkCard(HtmlRenderer renderer, ListItemBlock item)
 	{
 		// Extract the link and description from the list item
@@ -491,38 +533,38 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 		{
 			if (block is ParagraphBlock para && para.Inline != null)
 			{
+				var descriptionHtml = new StringBuilder();
+				bool afterLink = false;
+
 				foreach (Inline inline in para.Inline)
 				{
-					if (inline is LinkInline link)
+					if (inline is LinkInline link && !afterLink)
 					{
 						href = link.Url;
-						// Get link text
-						var sb = new StringBuilder();
-						foreach (Inline linkChild in link)
-						{
-							if (linkChild is LiteralInline lit)
-							{
-								sb.Append(lit.Content);
-							}
-						}
-
-						title = sb.ToString();
+						title = PlainText(link);
+						afterLink = true;
 					}
-					else if (inline is LiteralInline literal)
+					else if (afterLink)
 					{
-						string text = literal.Content.ToString().Trim();
-						// The description follows " — " or " - " after the link.
-						// The em dash here is DATA, not prose: it matches what doc authors
-						// actually type in link-cards markdown. Do not "clean" it away.
-						if (text.StartsWith("—") || text.StartsWith("-"))
-						{
-							description = text.TrimStart('—', '-', ' ');
-						}
-						else if (!string.IsNullOrWhiteSpace(text))
-						{
-							description = text;
-						}
+						// Everything after the link is the description. Only the last plain-text
+						// run used to be kept, so "- Uses `IFileSystem` everywhere" became
+						// "everywhere".
+						AppendDescription(descriptionHtml, inline);
 					}
+				}
+
+				// The description follows " — " or " - " after the link. The em dash here is
+				// DATA, not prose: it matches what doc authors actually type in link-cards
+				// markdown. Do not "clean" it away.
+				string text = descriptionHtml.ToString().TrimStart();
+				if (text.StartsWith('—') || text.StartsWith('-'))
+				{
+					text = text.TrimStart('—', '-').TrimStart();
+				}
+
+				if (!string.IsNullOrWhiteSpace(text))
+				{
+					description = text.TrimEnd();
 				}
 			}
 		}
@@ -536,7 +578,7 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 		renderer.WriteLine();
 		renderer.Write("<div class=\"component-link-card-content\">");
 		renderer.WriteLine();
-		renderer.Write($"<span class=\"component-link-card-title\">{title}</span>");
+		renderer.Write("<span class=\"component-link-card-title\">").WriteEscape(title).Write("</span>");
 		renderer.WriteLine();
 		if (!string.IsNullOrEmpty(description))
 		{

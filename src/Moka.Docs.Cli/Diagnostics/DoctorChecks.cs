@@ -195,10 +195,13 @@ internal static class DoctorChecks
 		return false;
 	}
 
-	private static string QuoteYamlScalar(string value)
+	/// <summary>Quotes a YAML scalar when leaving it bare would change or break its meaning.</summary>
+	internal static string QuoteYamlScalar(string value)
 	{
 		bool needsQuotes = value.Length == 0
 		                   || value != value.Trim()
+		                   || value.StartsWith('-')
+		                   || value is "~" || value.Equals("null", StringComparison.OrdinalIgnoreCase)
 		                   || value.IndexOfAny([':', '#', '{', '}', '[', ']', ',', '&', '*', '?', '|', '>', '!', '%', '@', '`', '"', '\'']) >= 0;
 
 		return needsQuotes
@@ -224,6 +227,33 @@ internal static class DoctorChecks
 			.Where(name => !string.IsNullOrWhiteSpace(name) && !known.Contains(name))
 			.Select(name => name!)
 			.ToList();
+	}
+
+	/// <summary>
+	///     Declarations the plugin host skips without reporting anything: entries that set
+	///     <c>path</c>, which no host reads, and entries with no name.
+	/// </summary>
+	internal static List<string> FindIgnoredPluginDeclarations(IEnumerable<PluginDeclaration> declared)
+	{
+		var problems = new List<string>();
+		int index = 0;
+
+		foreach (PluginDeclaration declaration in declared)
+		{
+			if (!string.IsNullOrWhiteSpace(declaration.Path))
+			{
+				problems.Add(
+					$"plugins[{index}]: path '{declaration.Path}' is ignored, the mokadocs CLI cannot load plugin assemblies");
+			}
+			else if (string.IsNullOrWhiteSpace(declaration.Name))
+			{
+				problems.Add($"plugins[{index}] has no name");
+			}
+
+			index++;
+		}
+
+		return problems;
 	}
 
 	#endregion

@@ -182,7 +182,7 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 			switch (node)
 			{
 				case XText text:
-					sb.Append(NormalizeWhitespace(text.Value));
+					sb.Append(EscapeText(NormalizeWhitespace(text.Value)));
 					break;
 
 				case XElement child:
@@ -198,15 +198,17 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 	{
 		switch (element.Name.LocalName)
 		{
+			// The XML reader has already decoded entities, so <c>List&lt;T&gt;</c> arrives as
+			// List<T> and has to be escaped again, or the browser reads <T> as a tag.
 			case "c":
 				sb.Append("<code>");
-				sb.Append(element.Value);
+				sb.Append(EscapeText(element.Value));
 				sb.Append("</code>");
 				break;
 
 			case "code":
 				sb.Append("<pre><code>");
-				sb.Append(element.Value);
+				sb.Append(EscapeText(element.Value));
 				sb.Append("</code></pre>");
 				break;
 
@@ -245,6 +247,11 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 					string escapedText = HttpUtility.HtmlEncode(string.IsNullOrEmpty(linkText) ? href : linkText);
 					sb.Append($"<a href=\"{escapedHref}\">{escapedText}</a>");
 				}
+				else if (element.Attribute("langword")?.Value is { Length: > 0 } langword)
+				{
+					// <see langword="null" /> used to render nothing, leaving "Returns  if not found."
+					sb.Append($"<code>{EscapeText(langword)}</code>");
+				}
 
 				break;
 
@@ -258,10 +265,13 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 
 			default:
 				// Unknown element - render its text content
-				sb.Append(element.Value);
+				sb.Append(EscapeText(element.Value));
 				break;
 		}
 	}
+
+	private static string EscapeText(string text) =>
+		text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
 	private static void RenderList(StringBuilder sb, XElement listElement)
 	{

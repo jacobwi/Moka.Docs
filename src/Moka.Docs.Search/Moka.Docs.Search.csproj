@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Moka.Docs.Search</RootNamespace>
-    <Description>Client-side search index generation for MokaDocs.</Description>
+    <Description>Reserved for MokaDocs search services. Contains no implementation yet; the search index is built by Moka.Docs.Engine.</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -98,6 +98,8 @@ public sealed class TabGroupParser : BlockParser
 
 		StringSlice line = processor.Line;
 		int start = line.Start;
+		StringSlice fenceProbe = line;
+		int fence = MarkdigHelpers.CountAndSkipChar(ref fenceProbe, '=');
 
 		string? title = TryReadTabTitle(ref line);
 		if (title is null)
@@ -114,6 +116,7 @@ public sealed class TabGroupParser : BlockParser
 
 		group.TabTitles.Add(title);
 		group.TabStartIndices.Add(0);
+		ContainerFence.Set(group, fence);
 
 		// Exactly one block is pushed. Pushing the group and a child tab together
 		// corrupts the block tree and sends the processor into an infinite loop.
@@ -137,7 +140,8 @@ public sealed class TabGroupParser : BlockParser
 
 		StringSlice saved = line;
 		int equals = MarkdigHelpers.CountAndSkipChar(ref line, '=');
-		if (equals >= 3)
+		// A shorter === belongs to a tab group nested inside this one.
+		if (equals >= 3 && ContainerFence.Reaches(block, equals))
 		{
 			string remaining = line.ToString().Trim();
 

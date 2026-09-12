@@ -2,7 +2,7 @@
 title: Diagrams
 description: Visual architecture and data-flow diagrams for SampleLibrary
 order: 4
-icon: diagram
+icon: git-branch
 tags: [mermaid, diagrams, visualization, architecture]
 ---
 

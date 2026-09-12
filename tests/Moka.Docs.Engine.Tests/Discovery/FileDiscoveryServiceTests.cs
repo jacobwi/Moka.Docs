@@ -201,4 +201,23 @@ public sealed class FileDiscoveryServiceTests
 
 		result.MarkdownFiles.Should().HaveCount(2);
 	}
+
+	[Fact]
+	public void Discover_HostFilesAtTheDocsRoot_AreCopiedButNotElsewhere()
+	{
+		// CNAME has no extension, so the GitHub Pages custom domain file was never copied.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/CNAME", new MockFileData("docs.example.com") },
+			{ "/project/docs/_redirects", new MockFileData("/old /new 301") },
+			{ "/project/docs/guide/CNAME", new MockFileData("not at the root") },
+			{ "/project/docs/notes", new MockFileData("extensionless, not a host file") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig());
+
+		result.AssetFiles.Should().BeEquivalentTo("CNAME", "_redirects");
+	}
 }

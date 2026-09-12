@@ -64,10 +64,11 @@ public sealed class FrontMatterExtractor
 			Core.Content.FrontMatter frontMatter = MapFromDto(dto);
 			return new FrontMatterResult(frontMatter, body);
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Malformed YAML - treat as no front matter
-			return new FrontMatterResult(DefaultFrontMatter("Untitled"), markdown);
+			// Malformed YAML, or a value of the wrong type (order: first). The page keeps
+			// building without front matter; the error is handed back so the build can say so.
+			return new FrontMatterResult(DefaultFrontMatter("Untitled"), markdown, ex.Message);
 		}
 	}
 
@@ -149,7 +150,10 @@ public sealed class FrontMatterExtractor
 /// </summary>
 /// <param name="FrontMatter">The parsed front matter metadata.</param>
 /// <param name="Body">The Markdown body content after the front matter block.</param>
-public sealed record FrontMatterResult(Core.Content.FrontMatter FrontMatter, string Body);
+/// <param name="FrontMatter">The parsed front matter, or defaults when there was none or it failed to parse.</param>
+/// <param name="Body">The Markdown after the front matter block.</param>
+/// <param name="Error">Why the front matter block could not be read, or <c>null</c>.</param>
+public sealed record FrontMatterResult(Core.Content.FrontMatter FrontMatter, string Body, string? Error = null);
 
 #region Front Matter DTO
 

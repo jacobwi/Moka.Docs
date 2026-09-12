@@ -66,8 +66,9 @@ internal sealed class MermaidCodeBlockRenderer(CodeBlockRenderer? defaultRendere
 		renderer.EnsureLine();
 		renderer.Write("<pre class=\"mermaid\">");
 
-		// Write the raw content of the code block without HTML encoding,
-		// as Mermaid.js needs the raw diagram syntax.
+		// HTML-encoded. Mermaid decodes entities before parsing, so the diagram still sees
+		// "-->" and "List<string>". Written raw, the browser parsed "<string>" as a tag
+		// before Mermaid ever saw it, which broke any diagram with generics or <<interface>>.
 		StringLineGroup lines = block.Lines;
 		for (int i = 0; i < lines.Count; i++)
 		{
@@ -78,7 +79,7 @@ internal sealed class MermaidCodeBlockRenderer(CodeBlockRenderer? defaultRendere
 				renderer.WriteLine();
 			}
 
-			renderer.Write(slice.AsSpan());
+			renderer.WriteEscape(slice.AsSpan());
 		}
 
 		renderer.Write("</pre>");

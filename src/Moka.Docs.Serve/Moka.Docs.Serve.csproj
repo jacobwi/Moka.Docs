@@ -22,4 +22,8 @@
     <PackageReference Include="Moka.Blazor.Repl.Compiler" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.Integration.Tests" />
+  </ItemGroup>
+
 </Project>

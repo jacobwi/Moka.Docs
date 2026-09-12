@@ -10,7 +10,7 @@ order: 1
 Documentation served straight out of the running application by
 `Moka.Docs.AspNetCore`. No static site, no build step, no separate host.
 
-[Get Started](/docs/guide/getting-started) [View API Reference](/docs/api)
+[Get Started](/guide/getting-started) [View API Reference](/api)
 
 ## How this page gets here
 

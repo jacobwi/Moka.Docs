@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.IO.Abstractions;
+using Moka.Docs.Cli.Diagnostics;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Diagnostics;
@@ -45,8 +46,7 @@ internal static class ValidateCommand
 
 			// Resolve against the yaml's own folder, as build does, so --config pointing
 			// elsewhere validates that project rather than the working directory.
-			string resolvedConfigPath = Path.GetFullPath(
-				configPath ?? Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml"));
+			string resolvedConfigPath = ConfigPath.Resolve(configPath);
 			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
 
 			AnsiConsole.MarkupLine("[bold blue]mokadocs validate[/] - dry run, nothing is written");
@@ -146,6 +146,16 @@ internal static class ValidateCommand
 
 		var registered = new HashSet<string>(outcome.RegisteredPluginIds, StringComparer.OrdinalIgnoreCase);
 		var loaded = new HashSet<string>(outcome.LoadedPluginIds, StringComparer.OrdinalIgnoreCase);
+
+		foreach (string problem in DoctorChecks.FindIgnoredPluginDeclarations(config.Plugins))
+		{
+			problems.Add(new Diagnostic
+			{
+				Severity = DiagnosticSeverity.Warning,
+				Message = problem,
+				Source = "Plugins"
+			});
+		}
 
 		foreach (PluginDeclaration declaration in config.Plugins)
 		{

@@ -61,6 +61,7 @@ public sealed class ChangelogBlock(BlockParser parser) : LeafBlock(parser)
 /// </summary>
 public sealed class ChangelogParser : BlockParser
 {
+	/// <summary>Creates a parser that opens on <c>:</c>.</summary>
 	public ChangelogParser()
 	{
 		OpeningCharacters = [':'];
@@ -102,6 +103,7 @@ public sealed class ChangelogParser : BlockParser
 			Column = processor.Column
 		};
 
+		ContainerFence.Set(block, colons);
 		processor.NewBlocks.Push(block);
 		return BlockState.ContinueDiscard;
 	}
@@ -121,7 +123,7 @@ public sealed class ChangelogParser : BlockParser
 		{
 			StringSlice saved = line;
 			int colons = MarkdigHelpers.CountAndSkipChar(ref line, ':');
-			if (colons >= 3)
+			if (colons >= 3 && ContainerFence.Reaches(block, colons))
 			{
 				string after = line.ToString().Trim();
 				if (string.IsNullOrEmpty(after))
@@ -174,8 +176,19 @@ internal sealed class ChangelogCategory
 /// </summary>
 public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 {
+	// Whitespace is required before the dash that starts the date. Without it, a prerelease
+	// such as "1.0.0-beta.2" split into version "1.0.0" and date "beta.2".
 	private static readonly Regex _versionHeaderRegex = new(
-		@"^##\s+v?(\S+?)(?:\s*(?:—|-)\s*(.+))?$",
+		@"^##\s+v?(\S+?)(?:\s+(?:—|-)\s*(.+))?$",
+		RegexOptions.Compiled);
+
+	// "{type: major}" at the end of a release heading.
+	private static readonly Regex _headingTypeRegex = new(
+		@"\s*\{\s*type:\s*(\w+)\s*\}\s*$",
+		RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+	private static readonly Regex _semverRegex = new(
+		@"^(\d+)\.(\d+)(?:\.(\d+))?",
 		RegexOptions.Compiled);
 
 	private static readonly Regex _typeLineRegex = new(
@@ -230,6 +243,16 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 		{
 			string line = rawLine.TrimEnd();
 
+			// A heading may end in "{type: major}". The version regex used to take that as part
+			// of the date, so the braces showed in the date and the badge stayed "patch".
+			string? headingType = null;
+			if (line.StartsWith("## ", StringComparison.Ordinal)
+			    && _headingTypeRegex.Match(line) is { Success: true } typeInHeading)
+			{
+				headingType = typeInHeading.Groups[1].Value.ToLowerInvariant();
+				line = line[..typeInHeading.Index];
+			}
+
 			// Check for version header: ## v2.1.0 - 2026-03-15
 			Match versionMatch = _versionHeaderRegex.Match(line);
 			if (versionMatch.Success)
@@ -237,7 +260,8 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 				current = new ChangelogEntry
 				{
 					Version = versionMatch.Groups[1].Value,
-					Date = versionMatch.Groups[2].Success ? versionMatch.Groups[2].Value.Trim() : null
+					Date = versionMatch.Groups[2].Success ? versionMatch.Groups[2].Value.Trim() : null,
+					Type = headingType ?? InferType(versionMatch.Groups[1].Value)
 				};
 				entries.Add(current);
 				currentCategory = null;
@@ -276,6 +300,25 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 		}
 
 		return entries;
+	}
+
+	/// <summary>
+	///     The release type implied by a version number when none is given: major for X.0.0,
+	///     minor for X.Y.0, patch otherwise. Prerelease and build suffixes are ignored, and a
+	///     version that is not numeric counts as a patch.
+	/// </summary>
+	internal static string InferType(string version)
+	{
+		Match m = _semverRegex.Match(version);
+		if (!m.Success)
+		{
+			return "patch";
+		}
+
+		bool minorIsZero = int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) == 0;
+		bool patchIsZero = !m.Groups[3].Success || int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture) == 0;
+
+		return minorIsZero && patchIsZero ? "major" : patchIsZero ? "minor" : "patch";
 	}
 
 	private static void WriteEntry(HtmlRenderer renderer, ChangelogEntry entry)

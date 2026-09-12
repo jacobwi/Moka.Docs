@@ -8,6 +8,7 @@ using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Diagnostics;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Parsing.Markdown;
 using Spectre.Console;
 
 namespace Moka.Docs.Cli.Commands;
@@ -59,8 +60,7 @@ internal static class DoctorCommand
 			// Every path in mokadocs.yaml is relative to the yaml file, not to wherever the
 			// command was run from. Using the working directory made --config point at one
 			// project while the checks inspected another.
-			string resolvedConfigPath = Path.GetFullPath(
-				configPath ?? Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml"));
+			string resolvedConfigPath = ConfigPath.Resolve(configPath);
 			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
 
 			AnsiConsole.MarkupLine("[bold blue]mokadocs doctor[/] - Diagnosing your documentation project...");
@@ -84,7 +84,7 @@ internal static class DoctorCommand
 				DryRunOutcome outcome = await DryRunBuild.RunAsync(config, rootDir, false, false, ct);
 				CheckBuild(outcome, report);
 
-				CheckBrokenLinks(markdownFiles, rootDir, outcome, report);
+				CheckBrokenLinks(markdownFiles, rootDir, docsDir, outcome, report);
 				CheckFrontMatter(markdownFiles, rootDir, docsDir, fix, verbose, report);
 				CheckOrphanImages(markdownFiles, docsDir, outputDir, rootDir, config, report);
 				CheckPlugins(config, outcome, report);
@@ -262,7 +262,8 @@ internal static class DoctorCommand
 		}
 	}
 
-	private static void CheckBrokenLinks(string[] markdownFiles, string rootDir, DryRunOutcome outcome, Report report)
+	private static void CheckBrokenLinks(string[] markdownFiles, string rootDir, string docsDir, DryRunOutcome outcome,
+		Report report)
 	{
 		if (markdownFiles.Length == 0)
 		{
@@ -306,14 +307,19 @@ internal static class DoctorCommand
 		foreach (string file in markdownFiles)
 		{
 			string relFile = Path.GetRelativePath(rootDir, file);
+			string pathInDocs = Path.GetRelativePath(docsDir, file);
 			foreach (MarkdownLink link in DoctorChecks.FindLinks(File.ReadAllText(file)))
 			{
-				if (!DoctorChecks.IsRootRelative(link.Url))
+				// Relative links are checked where the build sends them: it resolves them
+				// against the file, the same way RelativeLinks does here.
+				bool rootRelative = DoctorChecks.IsRootRelative(link.Url);
+				string? target = rootRelative ? link.Url : RelativeLinks.ToRootRelative(link.Url, pathInDocs);
+				if (target is null)
 				{
 					continue;
 				}
 
-				string route = DoctorChecks.NormalizeRoute(link.Url);
+				string route = DoctorChecks.NormalizeRoute(target);
 				if (targets.Contains(route))
 				{
 					continue;
@@ -322,7 +328,8 @@ internal static class DoctorCommand
 				string note = draftRoutes.Contains(route) ? ", links to a draft page"
 					: link.IsImage ? ", image"
 					: "";
-				broken.Add($"{route} ({relFile}:{link.Line}{note})");
+				string written = rootRelative ? "" : $", written as {link.Url}";
+				broken.Add($"{route} ({relFile}:{link.Line}{note}{written})");
 			}
 		}
 
@@ -466,16 +473,26 @@ internal static class DoctorCommand
 		// Ids come from the plugins the CLI actually registers. The hardcoded list this
 		// replaced used names like "repl", which PluginHost would never load, and rejected
 		// the real ids such as "mokadocs-repl".
+		List<string> ignored = DoctorChecks.FindIgnoredPluginDeclarations(config.Plugins);
 		List<string> unknown = DoctorChecks.FindUnknownPlugins(config.Plugins, outcome.RegisteredPluginIds);
-		if (unknown.Count > 0)
+		if (ignored.Count > 0 || unknown.Count > 0)
 		{
-			report.Warn("Plugins", $"{unknown.Count} declared plugin(s) not found");
-			foreach (string name in unknown)
+			report.Warn("Plugins", $"{ignored.Count + unknown.Count} plugin declaration(s) will not load");
+			foreach (string problem in ignored)
 			{
-				Report.Detail(name);
+				Report.Detail(problem);
 			}
 
-			Report.Detail($"available: {string.Join(", ", outcome.RegisteredPluginIds.Order())}");
+			foreach (string name in unknown)
+			{
+				Report.Detail($"{name}: no plugin has this id");
+			}
+
+			if (unknown.Count > 0)
+			{
+				Report.Detail($"available: {string.Join(", ", outcome.RegisteredPluginIds.Order())}");
+			}
+
 			return;
 		}
 

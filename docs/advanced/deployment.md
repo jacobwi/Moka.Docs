@@ -5,7 +5,9 @@ order: 5
 
 # Deployment
 
-MokaDocs generates a standard static site in the `_site/` directory (or your configured output path). The output is plain HTML, CSS, and JavaScript with no server-side runtime required. You can deploy it to any static hosting platform.
+`mokadocs build` writes a static site to `build.output` (`./_site` by default): the HTML pages, `404.html`, the theme's CSS and JavaScript under `_theme/`, `search-index.json` and `robots.txt`, plus `sitemap.xml` when `site.url` is set. Any static host can serve it.
+
+The dev server's `/api/*` endpoints don't exist on a static host. REPL blocks can't run there, and feedback votes are only stored in the reader's browser.
 
 ## Build for Production
 
@@ -13,17 +15,19 @@ MokaDocs generates a standard static site in the `_site/` directory (or your con
 mokadocs build
 ```
 
-The output directory contains everything needed for deployment. No additional processing or bundling is required.
+The build exits with code 1 when it fails or reports an error, so a CI job stops before deploying a broken site. See [CLI Commands](/advanced/cli-reference) for the options.
 
-For a clean production build:
+For a build from scratch:
 
 ```bash
-mokadocs clean && mokadocs build --no-cache
+mokadocs clean && mokadocs build
 ```
+
+`mokadocs clean` deletes the output directory and the `.mokadocs` cache folder, so the next build analyzes C# projects again.
 
 ## GitHub Pages
 
-GitHub Pages is a free hosting option for public repositories. You can deploy MokaDocs output using GitHub Actions.
+GitHub Pages hosts public repositories for free. You can deploy MokaDocs output with GitHub Actions.
 
 ### GitHub Actions Workflow
 
@@ -61,8 +65,10 @@ jobs:
       - name: Install MokaDocs
         run: dotnet tool install -g mokadocs
 
+      # A project site is served from https://<user>.github.io/<repo>/, so links need the
+      # repository name as a base path. Drop --base-path for a user site or a custom domain.
       - name: Build documentation
-        run: mokadocs build
+        run: mokadocs build --base-path /my-repo
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -81,30 +87,31 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
+Replace `/my-repo` with your repository name. See [Base Path](#base-path).
+
 ### Setup Steps
 
-1. Go to your repository Settings > Pages.
-2. Under "Source", select "GitHub Actions".
-3. Push the workflow file to your `main` branch.
-4. The documentation will build and deploy automatically on each push to `main`.
+1. Open your repository's **Settings > Pages**.
+2. Under **Source**, select **GitHub Actions**.
+3. Push the workflow file to `main`. Each push to `main` then builds and deploys the site.
 
 ### `.nojekyll` File
 
-MokaDocs writes an empty `.nojekyll` file to the site root on every build. GitHub Pages runs Jekyll on branch-based deployments, and Jekyll strips directories starting with `_`, which would remove `_theme/` and take all your CSS and JavaScript with it.
+MokaDocs writes an empty `.nojekyll` file to the site root on every build. When GitHub Pages publishes from a branch, it runs Jekyll first, and Jekyll drops folders whose names start with `_`. That would remove `_theme/` and all of the site's CSS and JavaScript.
 
-You do not need to create this file yourself. If you deploy with `actions/upload-pages-artifact` and `actions/deploy-pages`, Jekyll never runs at all, so the marker is harmless there.
+You don't need to create the file yourself. A workflow that uploads the site with `actions/upload-pages-artifact` and publishes it with `actions/deploy-pages`, like the one above, doesn't run Jekyll, so the file has no effect there.
 
-### Base Path for GitHub Pages Project Sites
+## Base Path
 
-If your site is hosted at `https://username.github.io/repo-name/` (not at the root of a custom domain), you need to set the base path so all links and assets include the correct prefix.
+A site served from a subfolder, such as a GitHub Pages project site at `https://<user>.github.io/<repo>/`, needs a base path so links and asset URLs include the prefix. A site at the root of its domain doesn't.
 
-**Option 1: CLI flag** (recommended for CI)
+Set it on the command line (convenient in CI):
 
 ```bash
 mokadocs build --base-path /repo-name
 ```
 
-**Option 2: Config file**
+Or in the configuration:
 
 ```yaml
 # mokadocs.yaml
@@ -112,69 +119,85 @@ build:
   basePath: /repo-name
 ```
 
-The `--base-path` CLI flag takes precedence over the config value. This prefixes all routes, CSS/JS paths, navigation links, search index entries, and the 404 page with the specified path.
+`--base-path` overrides `build.basePath`. The value gets a leading slash and loses any trailing slash, so `repo-name/` and `/repo-name` mean the same thing. The prefix is added to page and navigation links, theme CSS and JavaScript URLs, root-relative links in page content, search results, the links in `404.html`, and the canonical and sitemap URLs.
+
+| Hosting setup | `basePath` |
+|---------------|------------|
+| Custom domain root (`docs.example.com`) | `/` (the default) |
+| GitHub Pages user site (`username.github.io`) | `/` |
+| GitHub Pages project site (`username.github.io/repo`) | `/repo` |
+| Subfolder (`example.com/docs`) | `/docs` |
+
+Set `site.url` to the address the site is served from. Canonical links, Open Graph and Twitter tags and `sitemap.xml` are only written when it is set. It can include the base path or leave it out: with `basePath: /repo`, `url: https://username.github.io/repo` and `url: https://username.github.io` produce the same URLs.
+
+::: note Git Bash on Windows
+Git Bash converts arguments that start with `/` into Windows paths, so `--base-path /repo-name` reaches MokaDocs as something like `C:/Program Files/Git/repo-name`. Run the command as `MSYS_NO_PATHCONV=1 mokadocs build --base-path /repo-name`, or set `build.basePath` in `mokadocs.yaml` instead.
+:::
 
 ## Netlify
 
-Netlify provides continuous deployment from Git repositories with automatic builds on push.
+Netlify doesn't list the .NET SDK among the software in its build image, so the build has to install it first. One way is a script in your repository that installs the SDK with Microsoft's `dotnet-install.sh` and then runs MokaDocs:
+
+```bash
+#!/usr/bin/env bash
+# build-docs.sh
+set -euo pipefail
+
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0 --install-dir "$HOME/.dotnet"
+
+export DOTNET_ROOT="$HOME/.dotnet"
+export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
+
+dotnet tool install -g mokadocs
+mokadocs build
+```
+
+`dotnet-install.sh` runs in its own process, so any `PATH` change it makes doesn't reach the rest of the script. That's why the script sets `DOTNET_ROOT` and `PATH` itself; the `mokadocs` command needs both.
 
 ### netlify.toml
 
-Create a `netlify.toml` file in your repository root:
+Create `netlify.toml` in your repository root:
 
 ```toml
 [build]
-  command = "dotnet tool install -g mokadocs && mokadocs build"
+  command = "bash build-docs.sh"
   publish = "_site"
-
-[build.environment]
-  DOTNET_VERSION = "10.0"
-
-# Clean URL support
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-  conditions = {Role = ["admin"]}
-
-# Custom 404
-[[redirects]]
-  from = "/*"
-  to = "/404.html"
-  status = 404
 ```
+
+No redirect rules are needed. Pages are written as `<route>/index.html`, which Netlify serves at `/<route>`, and Netlify shows the generated `404.html` for missing pages. For your own redirects or headers, add `_redirects` or `_headers` files to the docs folder (see [Host Configuration Files](#host-configuration-files)).
 
 ### Setup Steps
 
 1. Connect your repository to Netlify.
-2. Netlify will detect the `netlify.toml` and configure the build automatically.
-3. Each push to your main branch triggers a new deployment.
+2. Netlify reads `netlify.toml` from the repository root.
+3. Each push to your production branch starts a deploy.
 
 ## Vercel
 
-Vercel supports static site deployment with zero configuration.
+Vercel's build image is based on Amazon Linux 2023 and doesn't list .NET among its runtimes either. Use the `build-docs.sh` script from the [Netlify section](#netlify).
 
 ### vercel.json
 
-Create a `vercel.json` file in your repository root:
+Create `vercel.json` in your repository root:
 
 ```json
 {
-  "buildCommand": "dotnet tool install -g mokadocs && mokadocs build",
-  "outputDirectory": "_site",
-  "cleanUrls": true
+  "buildCommand": "bash build-docs.sh",
+  "outputDirectory": "_site"
 }
 ```
+
+If .NET fails to start in the build because the ICU library is missing, add `dnf install -y libicu` to the start of the script, or set the `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` environment variable.
 
 ### Setup Steps
 
 1. Import your repository in the Vercel dashboard.
-2. Vercel reads the `vercel.json` configuration automatically.
-3. Deployments happen on each push with preview URLs for pull requests.
+2. Vercel reads `vercel.json` from the repository root.
+3. Each push deploys the site, and pull requests get preview URLs.
 
 ## Azure Static Web Apps
 
-Azure Static Web Apps provides free hosting with global distribution.
+The site is served from the root of its domain, so no base path is needed.
 
 ### GitHub Actions Workflow for Azure
 
@@ -184,9 +207,7 @@ name: Deploy to Azure Static Web Apps
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build_and_deploy:
@@ -218,7 +239,7 @@ jobs:
 
 ## Docker
 
-You can serve MokaDocs output with any static file server. Here is an example using nginx.
+Any static file server can serve the output. This example builds the site in the .NET SDK image and serves it with nginx.
 
 ### Dockerfile
 
@@ -246,21 +267,16 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # Clean URL support
+    # /guide/intro is written as /guide/intro/index.html
     location / {
-        try_files $uri $uri/index.html $uri.html =404;
+        try_files $uri $uri/index.html =404;
     }
 
-    # Custom 404 page
     error_page 404 /404.html;
-
-    # Cache static assets
-    location ~* \.(css|js|png|jpg|gif|svg|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
 }
 ```
+
+The theme's files keep the same names on every build (`/_theme/css/main.css`, `/_theme/js/main.js`), so don't serve them with long-lived `immutable` cache headers. Readers would keep the old CSS and JavaScript after a deploy.
 
 ### Build and Run
 
@@ -269,49 +285,60 @@ docker build -t my-docs .
 docker run -p 8080:80 my-docs
 ```
 
-## Custom Domain Setup
+## Custom Domains
 
-Most hosting platforms support custom domains. The general process is:
+The general steps:
 
-1. **Add a CNAME record** pointing your domain (e.g., `docs.example.com`) to your hosting provider.
-2. **Configure the domain** in your hosting provider's dashboard.
-3. **Update the base URL** in your MokaDocs configuration if needed:
+1. Add a DNS record for your domain (for example a `CNAME` record for `docs.example.com`) as your host's documentation describes.
+2. Add the domain in your host's settings.
+3. Build without a base path. Remove `build.basePath` or `--base-path` if you set them for a project site, and update `site.url`.
+4. Turn on HTTPS in your host's settings.
 
-```yaml
-build:
-  basePath: /
-  # No prefix needed when using a custom domain at the root
-```
+### GitHub Pages Custom Domains
 
-4. **Enable HTTPS** - most platforms provide free SSL certificates via Let's Encrypt.
+With a GitHub Actions workflow like the one above, set the custom domain in **Settings > Pages**. GitHub ignores any `CNAME` file in a site published from a custom workflow.
 
-### CNAME File
-
-For GitHub Pages with a custom domain, create a `CNAME` file in your docs directory so it gets copied to the output:
+If you publish from a branch instead, for example by pushing the build output to a `gh-pages` branch, GitHub keeps the domain in a `CNAME` file at the root of the published branch. Save the file as `CNAME` (no extension) in the root of your docs folder, so every build copies it to the output:
 
 ```
 docs.example.com
 ```
 
-Place this file at `docs/CNAME` (no file extension) and it will be included in the build output.
+### Host Configuration Files
+
+The build copies these files from the root of `content.docs` to the root of the output. Files with the same names in subfolders are not copied.
+
+| File | Used by |
+|------|---------|
+| `CNAME` | GitHub Pages custom domain, when publishing from a branch |
+| `_redirects` | Redirect rules on Netlify and Cloudflare Pages |
+| `_headers` | Response headers on Netlify and Cloudflare Pages |
 
 ## CI/CD Best Practices
 
-### Caching .NET Tools
+### Pinning and Caching MokaDocs
 
-Speed up CI builds by caching the .NET tool installation:
+A local tool manifest pins the MokaDocs version in your repository (see [Installation](/getting-started/installation#install-as-a-local-tool)). CI then restores that exact version, and the NuGet folder it restores into can be cached between runs:
 
 ```yaml
-# GitHub Actions example with caching
-- name: Cache .NET tools
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: '10.0.x'
+
+- name: Cache NuGet packages
   uses: actions/cache@v4
   with:
-    path: ~/.dotnet/tools
-    key: dotnet-tools-${{ runner.os }}-mokadocs
+    path: ~/.nuget/packages
+    key: nuget-${{ runner.os }}-${{ hashFiles('**/dotnet-tools.json') }}
 
-- name: Install MokaDocs
-  run: dotnet tool install -g mokadocs || true
+- name: Restore MokaDocs
+  run: dotnet tool restore
+
+- name: Build documentation
+  run: dotnet mokadocs build
 ```
+
+`dotnet new tool-manifest` creates `.config/dotnet-tools.json` with the .NET 9 SDK and `dotnet-tools.json` in the current folder with the .NET 10 SDK. The `**/dotnet-tools.json` pattern matches either.
 
 ### Build Validation on Pull Requests
 
@@ -357,37 +384,19 @@ To fail only on errors and let warnings through, accept exit code 1:
 
 ## Clean URLs and Trailing Slashes
 
-MokaDocs generates `index.html` files inside directories to support clean URLs:
+Every page is written to `<route>/index.html`:
 
 ```
-/guide/getting-started  →  /guide/getting-started/index.html
-/api/MyClass            →  /api/MyClass/index.html
+/guide/getting-started    ->  guide/getting-started/index.html
+/api/mylibrary/widget     ->  api/mylibrary/widget/index.html
 ```
 
-Most static hosting platforms handle this automatically. If your platform requires explicit configuration for clean URLs, refer to the platform-specific sections above.
+API routes are lowercase: the namespace becomes folders, followed by the type name. A folder that has pages under it but no page of its own gets an `index.html` that redirects to its first subfolder with a page, in alphabetical order.
 
-### Trailing Slash Behavior
+Hosts that serve a folder's `index.html` for the folder URL need no extra configuration. The nginx example above shows the equivalent rule for a server you configure yourself.
 
-- MokaDocs generates links without trailing slashes (e.g., `/guide` not `/guide/`).
-- Most platforms normalize these automatically.
-- If you encounter 404 errors on internal navigation, check your platform's trailing slash configuration.
+### Trailing Slashes
 
-## Base URL Configuration
-
-When deploying to a subdirectory (e.g., `https://example.com/docs/`), set the `basePath` in your configuration:
-
-```yaml
-build:
-  basePath: /docs/
-```
-
-This prefixes all internal links and asset paths with the specified base path. Without this setting, links will point to the domain root and break when served from a subdirectory.
-
-**Common scenarios:**
-
-| Hosting Setup | basePath |
-|--------------|----------|
-| Custom domain root (`docs.example.com`) | `/` |
-| GitHub Pages user site (`username.github.io`) | `/` |
-| GitHub Pages project site (`username.github.io/repo`) | `/repo/` |
-| Subdirectory (`example.com/docs`) | `/docs/` |
+- Sidebar, previous/next and search result links have no trailing slash (`/guide/intro`).
+- Some hosts, GitHub Pages among them, redirect `/guide/intro` to `/guide/intro/`. Relative Markdown links, including links to `.md` files, are resolved to root-relative links at build time, so they reach the same page either way.
+- Relative links in raw HTML, such as `<a href="../intro">`, are left as written, and the browser resolves them differently with and without the trailing slash. Use root-relative paths in raw HTML.

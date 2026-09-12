@@ -51,16 +51,19 @@ public sealed class ReplExecutionService
 	///     and root namespaces to the REPL script options. Each spec is either
 	///     "PackageName" or "PackageName@Version".
 	/// </summary>
-	public async Task LoadPackagesAsync(IReadOnlyList<string> packageSpecs, CancellationToken ct = default)
+	/// <returns>What was loaded; <see cref="NuGetPackageResolver.ResolvedPackages.Error" /> says why nothing was.</returns>
+	public async Task<NuGetPackageResolver.ResolvedPackages> LoadPackagesAsync(IReadOnlyList<string> packageSpecs,
+		CancellationToken ct = default)
 	{
 		if (packageSpecs.Count == 0)
 		{
-			return;
+			return new NuGetPackageResolver.ResolvedPackages();
 		}
 
 		var resolver = new NuGetPackageResolver(_logger);
 		NuGetPackageResolver.ResolvedPackages resolved = await resolver.ResolveAsync(packageSpecs, ct);
 		AddResolvedPackages(resolved);
+		return resolved;
 	}
 
 	/// <summary>

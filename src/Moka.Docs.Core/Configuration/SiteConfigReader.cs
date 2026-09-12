@@ -167,18 +167,18 @@ public sealed class SiteConfigReader
 		};
 	}
 
+	// Sections missing from the yaml are mapped from an empty DTO rather than skipped, so the
+	// MOKADOCS_* environment variables still apply. They used to be ignored unless the yaml
+	// already had the section, e.g. MOKADOCS_PRIMARY_COLOR without a theme.options block.
 	private static ThemeConfig MapThemeConfig(ThemeConfigDto? dto)
 	{
-		if (dto is null)
-		{
-			return new ThemeConfig();
-		}
+		dto ??= new ThemeConfigDto();
+		ThemeOptionsDto o = dto.Options ?? new ThemeOptionsDto();
 
 		return new ThemeConfig
 		{
 			Name = MokaDefaults.ResolveString("THEME_NAME", dto.Name, MokaDefaults.ThemeName),
-			Options = dto.Options is { } o
-				? new ThemeOptions
+			Options = new ThemeOptions
 				{
 					PrimaryColor = MokaDefaults.ResolveString(
 						"PRIMARY_COLOR", o.PrimaryColor, MokaDefaults.PrimaryColor),
@@ -230,7 +230,6 @@ public sealed class SiteConfigReader
 					}).ToList() ?? [],
 					DefaultColorTheme = o.DefaultColorTheme ?? "ocean"
 				}
-				: new ThemeOptions()
 		};
 	}
 
@@ -255,22 +254,18 @@ public sealed class SiteConfigReader
 
 	private static FeaturesConfig MapFeaturesConfig(FeaturesConfigDto? dto)
 	{
-		if (dto is null)
-		{
-			return new FeaturesConfig();
-		}
+		dto ??= new FeaturesConfigDto();
+		SearchFeatureConfigDto s = dto.Search ?? new SearchFeatureConfigDto();
 
 		return new FeaturesConfig
 		{
-			Search = dto.Search is { } s
-				? new SearchFeatureConfig
-				{
-					Enabled = MokaDefaults.ResolveBool(
-						"SEARCH_ENABLED", s.Enabled, MokaDefaults.SearchEnabled),
-					Provider = MokaDefaults.ResolveString(
-						"SEARCH_PROVIDER", s.Provider, MokaDefaults.SearchProvider)
-				}
-				: new SearchFeatureConfig(),
+			Search = new SearchFeatureConfig
+			{
+				Enabled = MokaDefaults.ResolveBool(
+					"SEARCH_ENABLED", s.Enabled, MokaDefaults.SearchEnabled),
+				Provider = MokaDefaults.ResolveString(
+					"SEARCH_PROVIDER", s.Provider, MokaDefaults.SearchProvider)
+			},
 			Versioning = dto.Versioning is { } v
 				? new VersioningFeatureConfig
 				{
@@ -313,18 +308,15 @@ public sealed class SiteConfigReader
 
 	private static CloudConfig MapCloudConfig(CloudConfigDto? dto)
 	{
-		if (dto is null)
-		{
-			return new CloudConfig();
-		}
+		dto ??= new CloudConfigDto();
+		CloudFeaturesDto f = dto.Features ?? new CloudFeaturesDto();
 
 		return new CloudConfig
 		{
 			Enabled = MokaDefaults.ResolveBool(
 				"ENABLE_CLOUD_FEATURES", dto.Enabled, MokaDefaults.EnableCloudFeatures),
 			ApiKey = dto.ApiKey,
-			Features = dto.Features is { } f
-				? new CloudFeatures
+			Features = new CloudFeatures
 				{
 					AiSummaries = MokaDefaults.ResolveBool(
 						"ENABLE_AI_SEARCH", f.AiSummaries, MokaDefaults.EnableAiSearch),
@@ -335,16 +327,12 @@ public sealed class SiteConfigReader
 					CustomDomain = MokaDefaults.ResolveBool(
 						"ENABLE_CUSTOM_DOMAIN", f.CustomDomain, MokaDefaults.EnableCustomDomain)
 				}
-				: new CloudFeatures()
 		};
 	}
 
 	private static BuildConfig MapBuildConfig(BuildConfigDto? dto)
 	{
-		if (dto is null)
-		{
-			return new BuildConfig();
-		}
+		dto ??= new BuildConfigDto();
 
 		return new BuildConfig
 		{

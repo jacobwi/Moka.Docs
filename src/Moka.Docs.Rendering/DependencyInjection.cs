@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Moka.Docs.Rendering.Scriban;
 
 namespace Moka.Docs.Rendering;
 
@@ -8,11 +10,11 @@ namespace Moka.Docs.Rendering;
 public static class RenderingServiceExtensions
 {
 	/// <summary>
-	///     Adds MokaDocs rendering services to the service collection.
+	///     Adds the <see cref="ScribanTemplateEngine" />. Requires logging to be registered.
 	/// </summary>
 	public static IServiceCollection AddMokaDocsRendering(this IServiceCollection services)
 	{
-		// Will be populated in Phase 6
+		services.TryAddSingleton<ScribanTemplateEngine>();
 		return services;
 	}
 }

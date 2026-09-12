@@ -96,9 +96,29 @@ public sealed class DevServer : IDisposable
 	{
 		_cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-		_listener = new HttpListener();
-		_listener.Prefixes.Add($"http://localhost:{_port}/");
-		_listener.Start();
+		var listener = new HttpListener();
+		listener.Prefixes.Add($"http://localhost:{_port}/");
+		try
+		{
+			listener.Start();
+		}
+		catch
+		{
+			// On Windows a failed Start leaves the listener disposed. It used to stay in _listener,
+			// so Dispose called Stop on it and an ObjectDisposedException replaced the port error.
+			try
+			{
+				listener.Close();
+			}
+			catch (ObjectDisposedException)
+			{
+				// Already closed by the failed Start; the port error below is what matters.
+			}
+
+			throw;
+		}
+
+		_listener = listener;
 
 		_logger.LogInformation("Dev server listening on http://localhost:{Port}/", _port);
 
@@ -147,7 +167,11 @@ public sealed class DevServer : IDisposable
 	public void Stop()
 	{
 		_cts?.Cancel();
-		_listener?.Stop();
+		if (_listener is { IsListening: true })
+		{
+			_listener.Stop();
+		}
+
 		_logger.LogInformation("Dev server stopped");
 	}
 
@@ -191,25 +215,32 @@ public sealed class DevServer : IDisposable
 				return;
 			}
 
-			// REPL execution endpoint
-			if (path == "/api/repl/execute" && request.HttpMethod == "POST")
+			// Pages built with a base path post to /Sub/api/..., so match the API routes
+			// with the prefix removed too. The feedback widget did that and always got a 404.
+			string apiPath = StripBasePath(path);
+			if (request.HttpMethod == "POST" && apiPath.StartsWith("/api/", StringComparison.Ordinal))
 			{
-				await HandleReplExecuteAsync(request, response, ct);
-				return;
-			}
+				if (!IsSameOriginApiRequest(request.Headers["Origin"], request.Headers["Sec-Fetch-Site"],
+					    request.ContentType, _port))
+				{
+					_logger.LogWarning("Rejected cross-origin POST to {Path} from {Origin}", apiPath,
+						request.Headers["Origin"] ?? "(no origin)");
+					response.StatusCode = 403;
+					return;
+				}
 
-			// Blazor preview rendering endpoint
-			if (path == "/api/blazor/preview" && request.HttpMethod == "POST")
-			{
-				await HandleBlazorPreviewAsync(request, response, ct);
-				return;
-			}
-
-			// Feedback endpoint
-			if (path == "/api/feedback" && request.HttpMethod == "POST")
-			{
-				await HandleFeedbackAsync(request, response, ct);
-				return;
+				switch (apiPath)
+				{
+					case "/api/repl/execute":
+						await HandleReplExecuteAsync(request, response, ct);
+						return;
+					case "/api/blazor/preview":
+						await HandleBlazorPreviewAsync(request, response, ct);
+						return;
+					case "/api/feedback":
+						await HandleFeedbackAsync(request, response, ct);
+						return;
+				}
 			}
 
 			// Resolve file path
@@ -271,7 +302,6 @@ public sealed class DevServer : IDisposable
 		CancellationToken ct)
 	{
 		response.ContentType = "application/json; charset=utf-8";
-		response.Headers.Set("Access-Control-Allow-Origin", "*");
 
 		if (_replService is null)
 		{
@@ -314,7 +344,6 @@ public sealed class DevServer : IDisposable
 		CancellationToken ct)
 	{
 		response.ContentType = "application/json; charset=utf-8";
-		response.Headers.Set("Access-Control-Allow-Origin", "*");
 
 		if (_blazorPreviewService is null)
 		{
@@ -357,7 +386,6 @@ public sealed class DevServer : IDisposable
 		CancellationToken ct)
 	{
 		response.ContentType = "application/json; charset=utf-8";
-		response.Headers.Set("Access-Control-Allow-Origin", "*");
 
 		try
 		{
@@ -385,6 +413,38 @@ public sealed class DevServer : IDisposable
 		}
 	}
 
+	/// <summary>
+	///     Whether a POST to an <c>/api/</c> endpoint may run. The REPL and Blazor preview
+	///     endpoints execute the code they receive, so any web page open in the developer's
+	///     browser must not be able to reach them.
+	/// </summary>
+	/// <remarks>
+	///     A cross-origin page can send a POST without a CORS preflight as long as the body is
+	///     text/plain. Requiring a JSON content type forces a preflight, which this server never
+	///     answers, and a browser request that does arrive must carry this server's own origin.
+	///     Requests with no Origin header do not come from a cross-origin page (browsers always
+	///     send one on POST), so tools like curl still work. The endpoints used to answer
+	///     every origin with <c>Access-Control-Allow-Origin: *</c>.
+	/// </remarks>
+	/// <param name="origin">The request's Origin header.</param>
+	/// <param name="secFetchSite">The request's Sec-Fetch-Site header.</param>
+	/// <param name="contentType">The request's Content-Type header.</param>
+	/// <param name="port">The port this server listens on.</param>
+	internal static bool IsSameOriginApiRequest(string? origin, string? secFetchSite, string? contentType, int port)
+	{
+		if (contentType is null || !contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		if (secFetchSite is not null && secFetchSite is not ("same-origin" or "none"))
+		{
+			return false;
+		}
+
+		return origin is null || origin.Equals($"http://localhost:{port}", StringComparison.OrdinalIgnoreCase);
+	}
+
 	private string? ResolveFilePath(string urlPath)
 	{
 		urlPath = StripBasePath(urlPath);
@@ -396,7 +456,16 @@ public sealed class DevServer : IDisposable
 			return null;
 		}
 
-		string filePath = Path.Combine(_rootPath, decoded.Replace('/', Path.DirectorySeparatorChar));
+		string filePath = Path.GetFullPath(Path.Combine(_rootPath, decoded.Replace('/', Path.DirectorySeparatorChar)));
+
+		// Path.Combine returns its second argument when that is rooted, so a request for
+		// /C:/Windows/win.ini resolved to the real file outside the site.
+		string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_rootPath)) + Path.DirectorySeparatorChar;
+		if (!filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+		    && !filePath.Equals(root.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+		{
+			return null;
+		}
 
 		// If path points to a directory, look for index.html
 		if (Directory.Exists(filePath))

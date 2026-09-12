@@ -5,11 +5,11 @@ order: 1
 
 # Markdown & Content
 
-MokaDocs uses [Markdig](https://github.com/xoofx/markdig) as its Markdown processing engine, providing full CommonMark support along with a rich set of extensions enabled by default. This page covers every Markdown feature available to you when writing documentation.
+MokaDocs parses pages with [Markdig](https://github.com/xoofx/markdig): CommonMark plus Markdig's advanced extensions and emoji shortcodes. On top of that it adds admonitions, tabbed content, [UI components](/guide/components) and [Mermaid diagrams](/guide/diagrams).
 
 ## Standard Markdown
 
-All standard CommonMark syntax is fully supported. This includes headings, paragraphs, bold, italic, inline code, blockquotes, ordered and unordered lists, links, images, horizontal rules, and fenced code blocks.
+CommonMark syntax works as written: headings, emphasis, inline code, blockquotes, lists, links, images, horizontal rules and fenced code blocks.
 
 ```markdown
 # Heading 1
@@ -35,46 +35,45 @@ This is a paragraph with **bold**, *italic*, and `inline code`.
 
 ## Advanced Extensions
 
-MokaDocs enables several Markdig extensions by default, giving you access to powerful formatting options without any additional configuration.
+These Markdig extensions are always on.
 
 ### Tables
 
-Create tables using the standard pipe syntax. Column alignment is controlled with colons in the separator row.
+Tables use the pipe syntax. Colons in the separator row set each column's alignment.
 
 ```markdown
-| Feature        | Status      | Notes                  |
-|:---------------|:-----------:|------------------------:|
-| Left-aligned   | Centered    | Right-aligned          |
-| CommonMark     | Supported   | Full compliance        |
-| Extensions     | Enabled     | Batteries included     |
+| Feature      | Status    | Notes         |
+|:-------------|:---------:|--------------:|
+| Left-aligned | Centered  | Right-aligned |
+| Tables       | Supported | Pipe syntax   |
 ```
 
-| Feature        | Status      | Notes                  |
-|:---------------|:-----------:|------------------------:|
-| Left-aligned   | Centered    | Right-aligned          |
-| CommonMark     | Supported   | Full compliance        |
-| Extensions     | Enabled     | Batteries included     |
+| Feature      | Status    | Notes         |
+|:-------------|:---------:|--------------:|
+| Left-aligned | Centered  | Right-aligned |
+| Tables       | Supported | Pipe syntax   |
 
 ### Footnotes
 
-Add footnotes to provide supplementary information without interrupting the flow of your text.
+A reference such as `[^1]` links to its definition. Definitions are collected into a numbered list at the bottom of the page, wherever you write them.
 
 ```markdown
-MokaDocs uses Markdig[^1] for Markdown processing, which supports
-CommonMark[^2] and many extensions.
+MokaDocs parses Markdown with Markdig[^1], which follows CommonMark[^2].
 
-[^1]: Markdig is a fast, powerful, and extensible Markdown processor for .NET.
-[^2]: CommonMark is a strongly defined, highly compatible specification of Markdown.
+[^1]: Markdig is a Markdown processor for .NET.
+[^2]: CommonMark is a specification of Markdown syntax.
 ```
 
-MokaDocs uses Markdig[^1] for Markdown processing, which supports CommonMark[^2] and many extensions.
+MokaDocs parses Markdown with Markdig[^1], which follows CommonMark[^2].
 
-[^1]: Markdig is a fast, powerful, and extensible Markdown processor for .NET.
-[^2]: CommonMark is a strongly defined, highly compatible specification of Markdown.
+[^1]: Markdig is a Markdown processor for .NET.
+[^2]: CommonMark is a specification of Markdown syntax.
+
+The footnotes for this example are at the bottom of this page.
 
 ### Task Lists
 
-Create interactive-style checklists using bracket syntax.
+`[x]` or `[ ]` at the start of a list item renders a checkbox. The checkboxes are read-only.
 
 ```markdown
 - [x] Set up MokaDocs project
@@ -90,32 +89,35 @@ Create interactive-style checklists using bracket syntax.
 
 ### Auto-Links
 
-URLs and email addresses are automatically converted into clickable links without needing explicit link syntax.
+Bare URLs starting with `https://`, `http://`, `ftp://` or `www.` become links. A bare email address stays plain text; put it in angle brackets to get a `mailto:` link.
 
 ```markdown
 Visit https://example.com for more information.
-Contact support@example.com for help.
+Contact <support@example.com> for help.
 ```
+
+Visit https://example.com for more information.
+Contact <support@example.com> for help.
 
 ### Emoji
 
-Use emoji shortcodes in your Markdown content. Shortcodes are surrounded by colons.
+Shortcodes between colons become emoji. Text smileys such as `:)` are converted too.
 
 ```markdown
-:rocket: Launch your docs in minutes
-:bulb: Pro tip for better documentation
-:warning: Be careful with this setting
+:rocket: Version 1.0 is out
+:bulb: A tip for this page
+:warning: Check this setting before you deploy
 :white_check_mark: All tests passing
 ```
 
-:rocket: Launch your docs in minutes
-:bulb: Pro tip for better documentation
-:warning: Be careful with this setting
+:rocket: Version 1.0 is out
+:bulb: A tip for this page
+:warning: Check this setting before you deploy
 :white_check_mark: All tests passing
 
 ## YAML Front Matter
 
-Every Markdown file can include YAML front matter at the top of the file, enclosed by triple dashes. Front matter is used to set page metadata such as the title, ordering, and other properties.
+A page can start with a YAML block between two `---` lines. It sets page metadata such as the title and sidebar order.
 
 ```markdown
 ---
@@ -129,43 +131,55 @@ tags:
 # Page content starts here
 ```
 
-Common front matter fields:
+The most common fields:
 
-| Field   | Type     | Description                                      |
-|---------|----------|--------------------------------------------------|
-| `title` | string   | The page title used in navigation and the browser tab |
-| `order` | number   | Controls the sort order in the sidebar           |
-| `tags`  | string[] | Tags for search categorization                   |
+| Field   | Type            | Description |
+|---------|-----------------|-------------|
+| `title` | string          | Used for the sidebar, the browser tab and search. A page without one is called "Untitled"; the first heading is not used instead. |
+| `order` | number          | Sort order in the sidebar |
+| `tags`  | list of strings | Extra search keywords. Search matches them; the default theme does not show them. |
 
-## Auto-Generated Heading IDs
+Write `tags` as a YAML list. If the block does not parse (`tags: setup, yaml` is enough to break it), MokaDocs ignores the whole block, so the page loses its title too. The build reports a warning that names the file. [Front Matter](/configuration/front-matter) lists every field.
 
-MokaDocs automatically generates GitHub-style anchor IDs for all headings. This enables deep linking to any section of your documentation.
+## Heading IDs
 
-The ID generation rules follow GitHub conventions:
+Every heading gets an `id`, including headings inside admonitions, cards, tabs and steps. The id is built from the heading text:
 
-- Text is converted to lowercase
-- Spaces are replaced with hyphens
-- Special characters are removed
-- Duplicate IDs are disambiguated with numeric suffixes
+- Letters are lowercased, and accented letters become plain ASCII (`Café` becomes `cafe`).
+- Spaces become hyphens.
+- Punctuation is removed, except `.`, `-` and `_`.
+- Anything before the first letter is removed, so a leading number disappears.
+- A repeated id gets a numeric suffix: `-1`, `-2` and so on.
 
 ```markdown
-## Getting Started        → #getting-started
-## API Reference          → #api-reference
-## What's New in v2.0?    → #whats-new-in-v20
-## FAQ                    → #faq
-## FAQ (duplicate)        → #faq-1
+## Getting Started       → #getting-started
+## What's New in v2.0?   → #whats-new-in-v2.0
+## C# Tips               → #c-tips
+## 2.0 Release           → #release
+## FAQ                   → #faq
+## FAQ                   → #faq-1
 ```
 
-You can link to any heading within a page or across pages:
+To pick the id yourself, put `{#your-id}` at the end of the heading:
+
+```markdown
+## 2.0 Release {#release-2-0}
+```
+
+### Linking to Headings
+
+Link to a heading on the same page with `#id`, or on another page with the page link plus `#id`:
 
 ```markdown
 See the [Getting Started](#getting-started) section.
 Check out the [API docs](./api-docs.md#configuration) for configuration options.
 ```
 
+Relative links and image paths are resolved at build time against the file that contains them, and written as links from the site root. In `docs/guide/markdown.md`, `./api-docs.md#configuration` becomes `/guide/api-docs#configuration`: the `.md` extension is dropped, and `index.md` stands for its folder. If the site has a `build.basePath`, it is added in front. Resolution works from file paths, so a link does not follow a `route:` override in the target page's front matter.
+
 ## Syntax Highlighting
 
-Fenced code blocks with a language identifier receive automatic syntax highlighting. MokaDocs supports a wide range of programming languages.
+The default theme highlights fenced code blocks in the browser, using the language named after the opening fence.
 
 ````markdown
 ```csharp
@@ -189,63 +203,27 @@ public class HelloWorld
 }
 ```
 
-Supported languages include (but are not limited to): `csharp`, `javascript`, `typescript`, `python`, `json`, `xml`, `html`, `css`, `bash`, `sql`, `yaml`, `markdown`, `fsharp`, `go`, `rust`, `java`, `kotlin`, `swift`, `ruby`, `php`, and many more.
+The highlighter knows these languages, with aliases in parentheses: `csharp` (`cs`), `fsharp` (`fs`), `javascript` (`js`, `jsx`), `typescript` (`ts`, `tsx`), `python` (`py`), `java`, `kotlin` (`kt`), `swift`, `go`, `rust`, `ruby` (`rb`), `php`, `razor` (`blazor`, `cshtml`), `html`, `xml`, `css`, `json`, `yaml` (`yml`), `toml`, `ini` (`cfg`, `conf`), `bash` (`sh`, `shell`), `powershell` (`ps1`, `pwsh`), `sql`, `graphql` (`gql`), `proto` (`protobuf`), `docker` (`dockerfile`), `markdown` (`md`) and `diff`. A block in any other language, or with no language, is shown as plain text.
+
+Every code block also gets a language label (when it names a language) and a copy button.
 
 ### Line Numbers
 
-Add the `has-line-numbers` class to a code block to display line numbers alongside the code. This is particularly useful for longer code samples where you need to reference specific lines.
+Code blocks with three or more lines get line numbers, like the example above. There is no per-block setting. To turn them off for the whole site:
 
-````markdown
-```csharp has-line-numbers
-using System;
-
-namespace MyApp
-{
-    public class Calculator
-    {
-        public int Add(int a, int b)
-        {
-            return a + b;
-        }
-
-        public int Subtract(int a, int b)
-        {
-            return a - b;
-        }
-    }
-}
-```
-````
-
-```csharp has-line-numbers
-using System;
-
-namespace MyApp
-{
-    public class Calculator
-    {
-        public int Add(int a, int b)
-        {
-            return a + b;
-        }
-
-        public int Subtract(int a, int b)
-        {
-            return a - b;
-        }
-    }
-}
+```yaml
+theme:
+  options:
+    showLineNumbers: false
 ```
 
 ### Copy Button
 
-Every code block includes a copy button in the top-right corner. Clicking it copies the code content to the clipboard.
-
-The copy button works in both HTTPS and HTTP environments (including the local dev server). It uses `navigator.clipboard` when available and automatically falls back to `document.execCommand('copy')` in contexts where the Clipboard API is not supported, ensuring reliable copy behavior everywhere.
+A **Copy** button appears in the top-right corner of a code block when you hover over it. It uses the Clipboard API on HTTPS pages and on `localhost`, and falls back to `document.execCommand('copy')` elsewhere. Set `showCopyButton: false` under `theme.options` to remove it.
 
 ## Admonitions / Callouts
 
-Admonitions (also called callouts) draw attention to important information using visually distinct blocks. MokaDocs uses the `:::` fenced container syntax.
+An admonition is a `:::` block with a type. It renders as a colored box with an icon and a title.
 
 ### Basic Syntax
 
@@ -259,9 +237,11 @@ This is a note admonition with the default title.
 This is a note admonition with the default title.
 :::
 
+The title defaults to the type name.
+
 ### Custom Titles
 
-Provide a custom title after the admonition type:
+Text after the type replaces the title:
 
 ```markdown
 ::: tip Hot Tip
@@ -275,109 +255,115 @@ You can customize the title of any admonition by adding text after the type.
 
 ### Admonition Types
 
-MokaDocs supports seven admonition types, each with its own icon and color scheme:
+There are seven types. `caution` uses the same icon and color as `warning`, and `important` uses the same color as `info`.
 
 ```markdown
 ::: note
-Highlights information that users should take into account, even when skimming.
+Something readers should know, even when skimming.
 :::
 
 ::: tip
-Optional information to help a user be more successful.
+An optional suggestion.
 :::
 
 ::: info
-General information that provides additional context.
+Background or extra context.
 :::
 
 ::: warning
-Critical content demanding immediate user attention due to potential risks.
+Something that goes wrong if ignored.
 :::
 
 ::: danger
-Negative potential consequences of an action. Use sparingly.
+An action that can lose data or break a build.
 :::
 
 ::: caution
-Advises about risks or negative outcomes of certain actions.
+A risk to weigh before you continue.
 :::
 
 ::: important
-Key information users need to know to achieve their goal.
+A step readers must not skip.
 :::
 ```
 
 ::: note
-Highlights information that users should take into account, even when skimming.
+Something readers should know, even when skimming.
 :::
 
 ::: tip
-Optional information to help a user be more successful.
+An optional suggestion.
 :::
 
 ::: info
-General information that provides additional context.
+Background or extra context.
 :::
 
 ::: warning
-Critical content demanding immediate user attention due to potential risks.
+Something that goes wrong if ignored.
 :::
 
 ::: danger
-Negative potential consequences of an action. Use sparingly.
+An action that can lose data or break a build.
 :::
 
 ::: caution
-Advises about risks or negative outcomes of certain actions.
+A risk to weigh before you continue.
 :::
 
 ::: important
-Key information users need to know to achieve their goal.
+A step readers must not skip.
 :::
+
+A word after `:::` that MokaDocs does not recognize gives a plain `<div>` with that word as its class, so a mistyped type such as `::: foo` renders `<div class="foo">`.
 
 ### Rich Content in Admonitions
 
-Admonitions can contain any Markdown content, including code blocks, lists, tables, and links.
+An admonition can hold any Markdown, such as a numbered list and a code block:
 
-```markdown
+````markdown
 ::: tip Using Dependency Injection
-You can register MokaDocs services in your DI container:
+To host the docs inside an ASP.NET Core app:
 
-1. Add the NuGet package
-2. Call the registration method:
+1. Add the `Moka.Docs.AspNetCore` package.
+2. Register the services:
 
-\`\`\`csharp
+```csharp
 services.AddMokaDocs(options =>
 {
     options.Title = "My Docs";
 });
-\`\`\`
-
-See the [configuration guide](./configuration.md) for more details.
-:::
 ```
+
+See the [ASP.NET Core guide](/guide/aspnetcore) for more details.
+:::
+````
+
+To put an admonition inside another `:::` block, see [Nesting Blocks](#nesting-blocks).
 
 ## Tabbed Content
 
-Use tabbed content blocks to present alternative versions of information side by side. This is ideal for showing the same concept in different languages, platforms, or configurations.
+Tabs show alternative versions of the same content, such as one command for several package managers.
 
 ### Basic Syntax
 
-```markdown
+A tab group starts with `=== "Title"`. Each further `=== "Title"` line starts a new tab, and a bare `===` line ends the group. Titles go in double or single quotes.
+
+````markdown
 === "npm"
-\`\`\`bash
+```bash
 npm install my-package
-\`\`\`
-=== "yarn"
-\`\`\`bash
-yarn add my-package
-\`\`\`
-=== "pnpm"
-\`\`\`bash
-pnpm add my-package
-\`\`\`
-===
 ```
+=== "yarn"
+```bash
+yarn add my-package
+```
+=== "pnpm"
+```bash
+pnpm add my-package
+```
+===
+````
 
 === "npm"
 ```bash
@@ -392,46 +378,92 @@ yarn add my-package
 pnpm add my-package
 ```
 ===
+
+Don't leave out the closing `===`. Without it, the rest of the page ends up in the last tab.
 
 ### Tabs with Mixed Content
 
-Tabs are not limited to code blocks. Each tab can contain any Markdown content.
+A tab can hold any Markdown, not only code blocks.
 
-```markdown
-=== "Windows"
-1. Download the installer from the releases page
-2. Run `setup.exe`
-3. Follow the installation wizard
+````markdown
+=== "Steps"
+1. Install the tool with `dotnet tool install -g mokadocs`.
+2. Run `mokadocs init` in an empty folder.
+3. Run `mokadocs serve`.
 
-=== "macOS"
-Install via Homebrew:
-\`\`\`bash
-brew install mokadocs
-\`\`\`
-
-=== "Linux"
-Install via the package manager for your distribution:
-\`\`\`bash
-# Debian/Ubuntu
-sudo apt install mokadocs
-
-# Fedora
-sudo dnf install mokadocs
-\`\`\`
-===
+=== "Commands"
+```bash
+dotnet tool install -g mokadocs
+mkdir my-docs
+cd my-docs
+mokadocs init
+mokadocs serve
 ```
+===
+````
 
-::: tip Tab Synchronization
-When multiple tabbed content blocks on the same page share identical tab labels, selecting a tab in one block automatically selects the matching tab in all other blocks. This provides a consistent experience when a page shows multiple examples for different platforms.
-:::
+=== "Steps"
+1. Install the tool with `dotnet tool install -g mokadocs`.
+2. Run `mokadocs init` in an empty folder.
+3. Run `mokadocs serve`.
+
+=== "Commands"
+```bash
+dotnet tool install -g mokadocs
+mkdir my-docs
+cd my-docs
+mokadocs init
+mokadocs serve
+```
+===
+
+Each group switches on its own. The selected tab is not remembered when the page reloads, and groups with the same tab titles do not switch together.
+
+### Nested Tabs
+
+To put a tab group inside a tab, write the outer group with more `=` signs. A tab line or closing line belongs to a group only if it is at least as long as that group's opening line, so the inner `===` lines leave the outer `====` group alone.
+
+````markdown
+==== "Windows"
+=== "PowerShell"
+```powershell
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+```
+=== "cmd"
+```bat
+set DOTNET_CLI_TELEMETRY_OPTOUT=1
+```
+===
+==== "Linux"
+```bash
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+```
+====
+````
+
+==== "Windows"
+=== "PowerShell"
+```powershell
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+```
+=== "cmd"
+```bat
+set DOTNET_CLI_TELEMETRY_OPTOUT=1
+```
+===
+==== "Linux"
+```bash
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+```
+====
 
 ## Additional Extensions
 
-Beyond the features documented above, MokaDocs also supports the following special Markdown extensions through its plugin and extension system:
+MokaDocs also renders these blocks. Three of them get their interactive parts from a plugin, which you enable under `plugins:` in `mokadocs.yaml`.
 
 ### Mermaid Diagrams
 
-Use the `mermaid` info string on fenced code blocks to render diagrams using Mermaid:
+A code block with the `mermaid` language becomes a diagram. See [Mermaid Diagrams](/guide/diagrams).
 
 ````markdown
 ```mermaid
@@ -443,7 +475,7 @@ graph LR
 
 ### Interactive REPL Code Blocks
 
-Use the `csharp-repl` (or `cs-repl`) info string to create interactive, runnable C# code blocks. Requires the REPL plugin to be enabled.
+A `csharp-repl` (or `cs-repl`) block gets a **Run** button when the `mokadocs-repl` plugin is enabled. The code runs on the `mokadocs serve` dev server; on a static host the button shows a "server unavailable" message instead of output. Without the plugin the block is an ordinary C# code block. See the [REPL plugin](/plugins/repl).
 
 ````markdown
 ```csharp-repl
@@ -453,7 +485,7 @@ Console.WriteLine("Hello from the REPL!");
 
 ### Blazor Preview Blocks
 
-Use the `blazor-preview` (or `razor-preview`) info string to create live-rendered Blazor component previews. Requires the Blazor Preview plugin to be enabled.
+A `blazor-preview` (or `razor-preview`) block renders a Blazor component, with Preview and Source tabs, when the `mokadocs-blazor-preview` plugin is enabled. Without the plugin only the source is shown. See the [Blazor Preview plugin](/plugins/blazor-preview).
 
 ````markdown
 ```blazor-preview
@@ -466,7 +498,7 @@ Use the `blazor-preview` (or `razor-preview`) info string to create live-rendere
 
 ### Changelog Containers
 
-Use the `:::changelog` fenced container to render rich release timeline UI. Requires the Changelog plugin to be enabled.
+A `:::changelog` block turns release headings (`## v1.0.0 - 2025-01-01`) and their `###` category lists into a release timeline. The `mokadocs-changelog` plugin adds the timeline styling and the category filters. See the [Changelog plugin](/plugins/changelog).
 
 ````markdown
 :::changelog
@@ -477,28 +509,58 @@ Use the `:::changelog` fenced container to render rich release timeline UI. Requ
 :::
 ````
 
-## Combining Features
+## Nesting Blocks
 
-All of these features can be combined freely. Here is an example using admonitions inside tabs:
+Blocks with different fence characters nest as written. An admonition (`:::`) inside a tab (`===`) needs nothing special:
 
-```markdown
+````markdown
 === "Development"
 
 ::: tip
-Run the dev server with hot reload:
-\`\`\`bash
-mokadocs serve --watch
-\`\`\`
+Run the dev server. It rebuilds the site and reloads the browser when you save a file:
+```bash
+mokadocs serve
+```
 :::
 
 === "Production"
 
 ::: warning
 Always build before deploying:
-\`\`\`bash
+```bash
 mokadocs build --output ./dist
-\`\`\`
+```
 :::
 
 ===
+````
+
+A `:::` block inside another `:::` block needs a longer fence on the outside. A line of colons closes a block only if it has at least as many colons as that block's opening line, so write the outer block with four colons and close it with `::::`:
+
+```markdown
+::::note Before you deploy
+Build the site locally first.
+
+:::warning
+With `build.clean: true`, the build deletes the output folder before writing to it.
+:::
+
+Then upload the output folder to your host.
+::::
 ```
+
+::::note Before you deploy
+Build the site locally first.
+
+:::warning
+With `build.clean: true`, the build deletes the output folder before writing to it.
+:::
+
+Then upload the output folder to your host.
+::::
+
+Add a colon for each level: `:::::` outside `::::` outside `:::`. The rule also applies to `:::` lines inside a fenced code block, so a container whose code sample shows `:::` syntax needs the longer fence too.
+
+With equal fences, the inner block's closing `:::` closes the outer block as well. The leftover `:::` then wraps the content after it in a plain `<div>`, up to the next bare `:::` line.
+
+Tab groups follow the same rule with `=` signs (see [Nested Tabs](#nested-tabs)), and so do the [UI components](/guide/components#combining-components).

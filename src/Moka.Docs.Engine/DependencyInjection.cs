@@ -6,9 +6,8 @@ using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Engine.Caching;
 using Moka.Docs.Engine.Discovery;
 using Moka.Docs.Engine.Phases;
-using Moka.Docs.Rendering.Scriban;
+using Moka.Docs.Rendering;
 using Moka.Docs.Themes;
-using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Engine;
 
@@ -42,9 +41,8 @@ public static class EngineServiceExtensions
 		// default and a theme directory named by theme.name in mokadocs.yaml; it needs the
 		// build's root directory and file system, so the choice is made per build rather
 		// than baked into a DI registration.
-		services.AddSingleton<ScribanTemplateEngine>();
-		services.AddSingleton<ThemeLoader>();
-		services.AddSingleton<ThemeResolver>();
+		services.AddMokaDocsRendering();
+		services.AddMokaDocsThemes();
 
 		// Register build phases
 		services.AddSingleton<IBuildPhase, DiscoveryPhase>();

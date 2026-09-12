@@ -92,6 +92,50 @@ public sealed class XmlDocParserTests
 	}
 
 	[Fact]
+	public void ParseXml_EscapedAngleBrackets_StayEscapedInTheHtml()
+	{
+		// The reader decodes &lt;T&gt; to <T>, which went into the page as a tag, so
+		// <c>List&lt;T&gt;</c> rendered as "List".
+		const string xml = """
+		                   <?xml version="1.0"?>
+		                   <doc>
+		                       <assembly><name>TestLib</name></assembly>
+		                       <members>
+		                           <member name="M:MyApp.Foo.Bar">
+		                               <summary>Returns a <c>List&lt;T&gt;</c> when a &lt; b &amp;&amp; b &gt; c.</summary>
+		                               <example><code>var x = new List&lt;int&gt;();</code></example>
+		                           </member>
+		                       </members>
+		                   </doc>
+		                   """;
+
+		XmlDocBlock doc = _parser.ParseXml(xml).Members["M:MyApp.Foo.Bar"];
+
+		doc.Summary.Should().Be("Returns a <code>List&lt;T&gt;</code> when a &lt; b &amp;&amp; b &gt; c.");
+		doc.Examples.Should().ContainSingle().Which.Should().Be("<pre><code>var x = new List&lt;int&gt;();</code></pre>");
+	}
+
+	[Fact]
+	public void ParseXml_SeeLangword_RendersTheKeyword()
+	{
+		// <see langword="null" /> has no cref or href and used to render nothing at all.
+		const string xml = """
+		                   <?xml version="1.0"?>
+		                   <doc>
+		                       <assembly><name>TestLib</name></assembly>
+		                       <members>
+		                           <member name="M:MyApp.Foo.Find">
+		                               <returns>The item, or <see langword="null" /> when missing.</returns>
+		                           </member>
+		                       </members>
+		                   </doc>
+		                   """;
+
+		_parser.ParseXml(xml).Members["M:MyApp.Foo.Find"].Returns
+			.Should().Be("The item, or <code>null</code> when missing.");
+	}
+
+	[Fact]
 	public void ParseXml_ParamrefAndTypeparamref_Rendered()
 	{
 		const string xml = """

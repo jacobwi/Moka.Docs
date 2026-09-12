@@ -1,6 +1,7 @@
 using System.IO.Abstractions;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 
@@ -43,8 +44,8 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 
 	private void WriteSitemap(BuildContext context, IFileSystem fs, string outputDir)
 	{
-		string baseUrl = context.Config.Site.Url.TrimEnd('/');
-		if (string.IsNullOrEmpty(baseUrl))
+		SiteConfig config = context.Config;
+		if (string.IsNullOrWhiteSpace(config.Site.Url))
 		{
 			logger.LogDebug("No site URL configured, skipping sitemap generation");
 			return;
@@ -61,7 +62,7 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 				continue;
 			}
 
-			string url = baseUrl + page.Route;
+			string url = SiteUrls.Absolute(config.Site.Url, config.Build.BasePath, page.Route);
 			string lastmod = page.LastModified?.ToString("yyyy-MM-dd") ?? "";
 
 			sb.AppendLine("  <url>");
@@ -84,14 +85,15 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 
 	private void WriteRobotsTxt(BuildContext context, IFileSystem fs, string outputDir)
 	{
-		string baseUrl = context.Config.Site.Url.TrimEnd('/');
+		SiteConfig config = context.Config;
 		var sb = new StringBuilder();
 		sb.AppendLine("User-agent: *");
 		sb.AppendLine("Allow: /");
 
-		if (!string.IsNullOrEmpty(baseUrl))
+		// Only point at a sitemap this build actually writes.
+		if (config.Build.Sitemap && !string.IsNullOrWhiteSpace(config.Site.Url))
 		{
-			sb.AppendLine($"Sitemap: {baseUrl}/sitemap.xml");
+			sb.AppendLine($"Sitemap: {SiteUrls.Absolute(config.Site.Url, config.Build.BasePath, "/sitemap.xml")}");
 		}
 
 		string path = fs.Path.Combine(outputDir, "robots.txt");

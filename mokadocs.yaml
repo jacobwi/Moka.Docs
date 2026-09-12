@@ -47,13 +47,10 @@ theme:
 features:
   search:
     enabled: true
-    provider: pagefind
   versioning:
     enabled: true
-    strategy: dropdown-only
     versions:
       - label: "v1.6"
-        branch: main
         default: true
 
 plugins:
@@ -79,7 +76,7 @@ nav:
     expanded: true
   - label: "Themes"
     path: /themes
-    icon: palette
+    icon: layers
   - label: "Advanced"
     path: /advanced
     icon: code
@@ -87,7 +84,6 @@ nav:
   - label: "API Reference"
     path: /api
     icon: code
-    autoGenerate: true
 
 build:
   output: ./docs/_site

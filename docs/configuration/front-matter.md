@@ -5,11 +5,11 @@ order: 2
 
 # Front Matter
 
-Every Markdown documentation page in MokaDocs can include a YAML front matter block at the top of the file. Front matter is enclosed between triple-dash delimiters (`---`) and defines metadata that controls how the page is rendered, organized, and discovered.
+Every Markdown documentation page in MokaDocs can start with a YAML front matter block, enclosed between triple-dash delimiters (`---`). It sets the page's title and controls where and how the page appears.
 
 ## Syntax
 
-Front matter must appear at the very beginning of the file, before any other content:
+Front matter goes at the top of the file, before any other content:
 
 ```markdown
 ---
@@ -21,7 +21,9 @@ order: 3
 Your page content starts here.
 ```
 
-The front matter block is parsed as standard YAML. String values containing special characters should be quoted.
+The block is parsed as YAML. Quote string values that contain special characters. Keys MokaDocs doesn't know are ignored.
+
+If the block isn't valid YAML, or a value has the wrong type (such as `order: first`, or `tags: api` where a list is expected), MokaDocs ignores the whole block and reports a warning that names the file. The page gets the defaults listed below, including the title "Untitled".
 
 ---
 
@@ -30,14 +32,16 @@ The front matter block is parsed as standard YAML. String values containing spec
 ### `title`
 
 - **Type:** `string`
-- **Required:** Yes
+- **Default:** `"Untitled"`
 
-The page title. This value is used in multiple places:
+The page title. This value is used in several places:
 
-- The `<title>` tag in the browser tab (combined with the site title)
-- The `<h1>` heading rendered at the top of the page (unless the page content already begins with an `# H1` heading)
-- The sidebar navigation label (unless overridden by the `nav` config)
-- The `og:title` and `twitter:title` meta tags
+- The `<title>` tag in the browser tab. The default layout writes `Page Title - Site Title`.
+- The sidebar label, unless a `nav` item's `label` replaces it.
+- Search results, breadcrumbs and the previous/next links.
+- The `og:title` and `twitter:title` meta tags, which the default layout writes when `site.url` is set.
+
+The default layout doesn't render the title as a heading. Start the content with a `#` heading if the page needs one.
 
 ```yaml
 ---
@@ -45,14 +49,16 @@ title: "Getting Started with MokaDocs"
 ---
 ```
 
-If a page does not have a `title` in its front matter and does not start with an H1 heading, the filename (converted from kebab-case or snake_case to title case) is used as a fallback.
+A page without a `title` is called "Untitled" everywhere, and the build doesn't warn about it. `mokadocs doctor` lists pages that have no title, and `mokadocs doctor --fix` adds one based on the file name (the folder name, for `index.md`).
 
 ### `description`
 
 - **Type:** `string`
 - **Default:** `""`
 
-A brief description of the page content. This is used for the `<meta name="description">` tag (important for SEO), the `og:description` meta tag, and as the snippet text in search results.
+A short summary of the page. It fills the `<meta name="description">` tag, and the default layout also writes it to `og:description` and `twitter:description` when `site.url` is set. A page without a description uses `site.description` in those tags instead. The `landing` layout also shows the description under the site title and appends it to the `<title>` tag.
+
+Search results don't use it. The snippet under a result comes from the page text.
 
 ```yaml
 ---
@@ -66,7 +72,7 @@ description: "How to install MokaDocs via the .NET CLI, NuGet, or from source."
 - **Type:** `int`
 - **Default:** `0`
 
-Controls the sort position of this page within its section in the sidebar navigation. Pages are sorted by `order` in ascending order, with lower numbers appearing first. Pages with the same `order` value are sorted alphabetically by title.
+Sort position of the page among its siblings in the sidebar. Lower numbers come first, and pages with the same `order` are sorted by title. It applies to auto-generated navigation and to the pages a `nav` item lists from its `path`. Items written in the `nav` section use their own `order` field.
 
 ```yaml
 ---
@@ -95,18 +101,22 @@ In this example, the sidebar within the section would display: Installation, Qui
 
 | Scenario | Result |
 |---|---|
-| All pages have `order` | Sorted by `order` ascending |
-| No pages have `order` | Sorted alphabetically by title |
-| Some pages have `order`, some do not | Pages with `order` appear first (sorted by value), then pages without `order` (sorted alphabetically) |
-| Multiple pages share the same `order` | Ties are broken alphabetically by title |
-| Negative values | Allowed; pages with negative order appear before pages with order `0` |
+| All pages have `order` | Sorted by `order`, ascending |
+| No pages have `order` | All count as `0`, so they're sorted by title |
+| Some pages have `order`, some do not | Pages without `order` count as `0`. They sort after negative values and before `order: 1` and up |
+| Multiple pages share the same `order` | Sorted by title, ignoring case |
+| Negative values | Allowed; they sort before `0` |
+
+The previous/next links at the bottom of a page follow `order` too. They step through the site's public pages whose `layout` is `default`, sorted by `order` and then by route.
+
+See [Navigation & Sidebar](/configuration/navigation) for how sections are ordered.
 
 ### `icon`
 
 - **Type:** `string` (nullable)
 - **Default:** `null`
 
-A Lucide icon name to display next to the page title in the sidebar navigation. Icons provide visual cues that help users scan the navigation quickly.
+An icon shown next to the page's link in the sidebar. Only the names bundled with the default theme render; the list is in [Navigation & Sidebar](/configuration/navigation#icon-support). An unknown name shows nothing.
 
 ```yaml
 ---
@@ -122,22 +132,21 @@ icon: "code"
 ---
 ```
 
-See the [Navigation & Sidebar](./navigation) page for a list of commonly used icon names.
+In auto-generated navigation, every page shows its icon, and a top-level section shows the icon from its folder's `index.md`. With a `nav` section, the pages an item lists from its `path` show their icons, but an item that links to the page directly uses its own `icon` instead. The default theme never draws an icon on a second-level item that has children, or on a third-level item.
 
 ### `layout`
 
 - **Type:** `string`
 - **Default:** `"default"`
 
-The layout template to use when rendering this page. MokaDocs ships with several built-in layouts:
+The layout template to use when rendering this page. The default theme has two:
 
 | Layout | Description |
 |---|---|
-| `default` | Standard documentation page with sidebar, table of contents, and content area. |
-| `wide` | Full-width content area without the table of contents sidebar. Useful for pages with wide tables or diagrams. |
-| `landing` | A landing/home page layout without the sidebar. Designed for the site's index page. |
-| `raw` | Minimal layout with no navigation chrome. Only the page content and basic site styles are applied. |
-| `api` | Specialized layout for API reference pages. Automatically applied to generated API docs. |
+| `default` | Documentation page with the sidebar, content area and table of contents. |
+| `landing` | Home page layout with no sidebar or table of contents. It shows the site title and the page `description` at the top, then a feature grid and a sample configuration block that are built into the theme, then the page content. |
+
+`api-type` is also accepted and renders the same template as `default`. Any other name, such as `wide`, falls back to `default`, and the build warns once for each unknown name.
 
 ```yaml
 ---
@@ -146,14 +155,16 @@ layout: "landing"
 ---
 ```
 
-Custom themes and plugins can register additional layout names.
+A custom theme replaces these with the files in its `layouts/` folder: `layouts/docs.html` is the layout `docs`. Unknown names fall back to the theme's `default.html`. Plugins have no way to add layouts.
 
 ### `tags`
 
 - **Type:** `list` of `string`
 - **Default:** `[]`
 
-A list of tags associated with this page. Tags are used for categorization and can improve search relevance. Some themes display tags on the page or provide tag-based filtering.
+Keywords for the page. They go into the search index, and the search box matches them: a tag match ranks below a match in a title or heading, and above a match in the page text. Tags are stored as written, and the search box ignores case when matching.
+
+The default theme doesn't display tags. A custom theme's templates can read them as `page.tags`.
 
 ```yaml
 ---
@@ -165,18 +176,18 @@ tags:
 ---
 ```
 
-Tags are normalized to lowercase and can contain letters, numbers, and hyphens.
+`tags` must be a YAML list, either as above or as `tags: [advanced, patterns]`. A single string such as `tags: advanced` invalidates the whole front matter block.
 
 ### `visibility`
 
 - **Type:** `string`
 - **Default:** `"public"`
 
-Controls the visibility and discoverability of the page. Three modes are available:
+One of `public`, `hidden` or `draft`, in any letter case. Any other value counts as `public`.
 
 #### `public`
 
-The page is fully visible. It appears in the sidebar navigation, is indexed by search, and is included in the sitemap.
+The page appears in the sidebar and in search, and it's listed in the sitemap. MokaDocs writes `sitemap.xml` only when `site.url` is set and `build.sitemap` is on (the default).
 
 ```yaml
 ---
@@ -187,7 +198,7 @@ visibility: "public"
 
 #### `hidden`
 
-The page is built and accessible by its URL, but it does not appear in the sidebar navigation or the sitemap. It is still indexed by search unless the page also opts out of search. This is useful for pages you want to link to directly without cluttering the sidebar.
+The page is built and reachable by its URL, and search still finds it. It's left out of the sidebar and the sitemap. A `nav` item can still link to a hidden page through its `path`.
 
 ```yaml
 ---
@@ -200,12 +211,11 @@ visibility: "hidden"
 
 - Supplementary content linked from other pages
 - Legacy pages that should remain accessible but not prominently listed
-- Special pages (e.g., a custom 404 page)
 - Content that is contextually linked but does not belong in navigation
 
 #### `draft`
 
-The page is excluded from the build entirely unless MokaDocs is run with the `--draft` flag. Draft pages do not appear in navigation, search, or the sitemap during normal builds. This is ideal for work-in-progress content.
+Draft pages are skipped unless the command runs with `--draft`. With the flag, they're written and indexed by search, but they still don't appear in the sidebar or the sitemap.
 
 ```yaml
 ---
@@ -226,17 +236,16 @@ mokadocs serve --draft
 | Behavior | `public` | `hidden` | `draft` |
 |---|---|---|---|
 | Appears in sidebar | Yes | No | No |
-| Accessible by URL | Yes | Yes | Only with `--draft` |
-| Included in search index | Yes | Yes | No |
+| Written to the output | Yes | Yes | Only with `--draft` |
+| Included in search index | Yes | Yes | Only with `--draft` |
 | Included in sitemap | Yes | No | No |
-| Built by default | Yes | Yes | No |
 
 ### `toc`
 
 - **Type:** `bool`
 - **Default:** `true`
 
-Controls whether the table of contents sidebar is displayed on this page. The table of contents is automatically generated from the H2 and H3 headings in the page content.
+Controls whether the "On this page" table of contents is displayed. It lists the page's headings, H1 included, down to the level set by `theme.options.tocDepth` (default `3`). The default theme nests entries three levels deep at most, so on a page that starts with an H1, headings below H3 don't appear even with a higher `tocDepth`. The table is also hidden when the page has no headings or `theme.options.showTableOfContents` is `false`.
 
 ```yaml
 ---
@@ -245,14 +254,17 @@ toc: false
 ---
 ```
 
-Set to `false` for pages that have few or no headings, or for pages where the right-side table of contents would be distracting (e.g., changelog pages, landing pages).
+Set it to `false` for pages with few headings, or where a table of contents would get in the way (changelog pages, for example).
 
 ### `expanded`
 
 - **Type:** `bool`
 - **Default:** `true`
 
-Controls whether this section is expanded or collapsed by default in the sidebar navigation. This only applies to section index pages (`index.md` files within a directory) that serve as parents for other pages.
+Whether a sidebar section starts expanded. It's read in two places:
+
+- The `index.md` of a top-level folder in auto-generated navigation. `expanded: false` starts that section collapsed.
+- A page that a `nav` item lists from its `path`, when that page has pages below it.
 
 ```yaml
 ---
@@ -261,14 +273,14 @@ expanded: false
 ---
 ```
 
-When set to `false`, the section appears collapsed in the sidebar and the user must click to expand it. This is useful for sections that contain many pages and would otherwise make the sidebar too long.
+Items written in the `nav` section ignore it and use their own `expanded` field, which defaults to `false`. A section that contains the current page is always expanded when the page loads.
 
 ### `route`
 
 - **Type:** `string` (nullable)
-- **Default:** `null` (auto-generated from file path)
+- **Default:** `null` (generated from the file path)
 
-Overrides the URL path for this page. By default, routes are generated from the file path relative to the docs directory (see the [Navigation & Sidebar](./navigation) page for route generation rules). Setting `route` allows you to define a custom URL.
+Overrides the URL path for this page. By default, routes are generated from the file path relative to the docs directory (see [Navigation & Sidebar](/configuration/navigation) for the rules).
 
 ```yaml
 ---
@@ -282,82 +294,71 @@ route: "/faq"
 | File Path | Default Route | Custom Route |
 |---|---|---|
 | `docs/guides/faq.md` | `/guides/faq` | `/faq` |
-| `docs/reference/api-v2.md` | `/reference/api-v2` | `/api` |
+| `docs/reference/api-v2.md` | `/reference/api-v2` | `/api-v2` |
 | `docs/about/team.md` | `/about/team` | `/team` |
 
-Custom routes must:
-- Start with a forward slash (`/`)
-- Contain only lowercase letters, numbers, hyphens, and forward slashes
-- Not conflict with another page's route (conflicts produce a build error)
+**Notes:**
+
+- A missing leading slash is added and a trailing slash is removed, so `help/faq/` becomes `/help/faq`.
+- A `nav` item that links to the page needs the new route as its `path`.
+- Relative Markdown links to the file, such as `[FAQ](../guides/faq.md)`, resolve to the file's location (`/guides/faq`), not to the override. Link to `/faq` instead.
+- If another page has the same route (ignoring case), the build warns that the pages share the route and writes only the last one.
 
 ### `version`
 
 - **Type:** `string` (nullable)
 - **Default:** `null`
 
-A version range constraint that limits which documentation versions this page appears in. This is only relevant when versioning is enabled in the site configuration. The value uses semver-style range syntax.
-
-```yaml
----
-title: "New Authentication API"
-version: ">=2.0"
----
-```
-
-**Supported range expressions:**
-
-| Expression | Meaning |
-|---|---|
-| `">=2.0"` | Included in version 2.0 and above |
-| `"<3.0"` | Included in versions before 3.0 |
-| `">=1.5 <2.0"` | Included in versions 1.5 through 1.x |
-| `"2.0"` | Included only in version 2.0 |
-
-Pages without a `version` constraint appear in all versions.
+MokaDocs reads this key but doesn't act on it. A page with `version` is built and listed like any other page, whether or not versioning is enabled.
 
 ### `requires`
 
 - **Type:** `string` (nullable)
 - **Default:** `null`
 
-Use `requires` to conditionally include a page based on a named feature. If the feature is disabled, the page is excluded from the build entirely -- it will not appear in navigation, search, or the sitemap.
+The name of a feature flag the page depends on. When the flag is off, the page is removed before navigation, search and the sitemap are built, and it isn't written to the output.
 
 ```yaml
 ---
-title: "Cloud Deployment Guide"
-requires: Cloud
+title: "Beta Features"
+requires: ShowBetaDocs
 ---
 ```
 
-```yaml
----
-title: "Interactive REPL Tutorial"
-requires: Repl
----
+Flag values come from built-in defaults and from environment variables named `MOKADOCS_FeatureManagement__<Flag>`. They can't be set in `mokadocs.yaml`. To turn a flag on for a build:
+
+```bash
+MOKADOCS_FeatureManagement__ShowBetaDocs=true mokadocs build
 ```
 
-If the `requires` field is omitted or set to `null`, the page is always included (subject to other visibility rules).
+```powershell
+$env:MOKADOCS_FeatureManagement__ShowBetaDocs = "true"
+mokadocs build
+```
 
-**Behavior summary:**
+Flag names ignore case. A name with no built-in default and no environment variable counts as off, so the page is left out. You can gate pages on a name of your own this way: `requires: PartnerDocs` hides the page until `MOKADOCS_FeatureManagement__PartnerDocs=true` is set.
 
-| Feature State | Page Included? |
+Flags only decide which pages are built. Turning one on doesn't switch on the feature it's named after, and the built-in defaults don't follow `mokadocs.yaml`: `requires: SearchBar` keeps the page even when `theme.options.showSearch` is `false`.
+
+**Built-in flags:**
+
+| Default | Flags |
 |---|---|
-| Enabled | Yes |
-| Disabled | No -- page is excluded from the build |
-| Feature not recognized | Page is excluded (treated as disabled) |
+| On | `BackToTop`, `Breadcrumbs`, `CodeLanguageBadge`, `ColorThemeSelector`, `CopyButton`, `DarkModeToggle`, `FeedbackWidget`, `InheritDocResolution`, `InstallWidget`, `LastUpdated`, `LineNumbers`, `MinifyOutput`, `PrevNextNavigation`, `RobotsTxt`, `SearchBar`, `SearchIndex`, `Sitemap`, `TableOfContents`, `TypeDependencyGraph`, `VersionSelector`, `ViewSource` |
+| Off | `ShowBetaDocs`, `ShowCloudDocs`, `ShowInternalDocs`, `ShowPremiumDocs`, `AiSearch`, `Analytics`, `ApiAccess`, `AuditLog`, `BlazorPreview`, `ChangelogPlugin`, `Cloud`, `CodeStyleSelector`, `CodeThemeSelector`, `Contributors`, `CustomBranding`, `CustomDomain`, `EditLink`, `OpenApiPlugin`, `PageAnimations`, `PdfExport`, `PrivateRepo`, `ReplPlugin`, `SSOAuth`, `TeamCollaboration`, `WhiteLabel` |
 
 ---
 
 ## Complete Example
 
-A page using all available front matter properties:
+A page using most of the properties. `requires` is left out because it hides the page unless its flag is on, and `version` has no effect.
 
 ```yaml
 ---
 title: "Dependency Injection Guide"
 description: "Learn how to configure and use dependency injection with the Contoso SDK."
 order: 5
-icon: "syringe"
+icon: "puzzle"
 layout: "default"
 tags:
   - dependency-injection
@@ -367,8 +368,6 @@ visibility: "public"
 toc: true
 expanded: true
 route: "/guides/di"
-version: ">=2.0"
-requires: Cloud
 ---
 
 # Dependency Injection Guide
@@ -382,8 +381,8 @@ When front matter properties are omitted, the following defaults apply:
 
 | Property | Default Value |
 |---|---|
-| `title` | Derived from filename or first H1 heading |
-| `description` | `""` |
+| `title` | `"Untitled"` |
+| `description` | `""` (meta tags use `site.description`) |
 | `order` | `0` |
 | `icon` | `null` (no icon) |
 | `layout` | `"default"` |
@@ -391,14 +390,14 @@ When front matter properties are omitted, the following defaults apply:
 | `visibility` | `"public"` |
 | `toc` | `true` |
 | `expanded` | `true` |
-| `route` | Auto-generated from file path |
-| `version` | `null` (all versions) |
+| `route` | Generated from the file path |
+| `version` | `null` (not used) |
 | `requires` | `null` (no feature gate) |
 
 ## Tips
 
-- Always provide a `title` explicitly. Relying on filename-derived titles can produce unexpected results with abbreviations or unconventional filenames.
-- Use `description` on every page. Search results and social sharing previews look much better with a well-written description.
-- Use `order` consistently within a section. If you order some pages but not others, the unordered pages may appear in unexpected positions.
+- Always set `title`. Without one, the page is called "Untitled" in the sidebar, the browser tab and search results.
+- Set `description` on every page. Otherwise the page's meta description and link previews fall back to `site.description`.
+- Give every page in a section an `order`, or none of them. Pages without `order` count as `0` and sort before pages with `order: 1`.
 - Prefer `visibility: "hidden"` over deleting pages when you want to remove something from the sidebar but keep the URL working (to avoid broken links).
 - Use `visibility: "draft"` for work in progress rather than keeping draft files outside the docs directory.

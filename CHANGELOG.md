@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔒 Security
+
+- **`mokadocs serve` ran code sent by any website open in the same browser.** The
+  REPL and Blazor preview endpoints accepted a plain-text POST, which browsers
+  send cross-origin without a CORS preflight, and answered every origin with
+  `Access-Control-Allow-Origin: *`. A page could run C# on the developer's
+  machine while the dev server was up. The `/api/` endpoints now require JSON and,
+  from a browser, the dev server's own origin (other origins get 403), send no
+  CORS headers, and only exist when their plugin is declared. Static file
+  requests can no longer read outside the site: a drive-letter path such as
+  `/C:/Windows/win.ini` escaped the output folder.
+
+### ⚠️ Behavior changes
+
+- **`mokadocs build` exits 1 when the build reports errors.** It exited 0 unless
+  the pipeline threw, so CI published broken sites. Errors are always printed.
+- **Plugin warnings and errors reach the build.** `LogWarning` and `LogError`
+  calls made while a plugin runs are recorded as diagnostics with the plugin id
+  as the source. They used to reach only a logger that `build` and `serve` leave
+  silent, so a missing OpenAPI spec or a failed preview-host publish ended in a
+  clean summary. Combined with the exit code change, those failures now fail the
+  build.
+- **Internal members are no longer part of the public API reference.** Only
+  private members were filtered, so internal and `private protected` members of
+  public types were listed, along with public types nested inside internal ones.
+  `includeInternals: true` still includes them.
+- **Nav items with the same `order` keep their mokadocs.yaml order.** Ties were
+  sorted by label, so a nav config without `order` values came out alphabetical.
+  This site's own sidebar started with Advanced instead of Getting Started.
+- **An output directory that contains the project or the docs folder stops the
+  build.** The output phase deletes the output directory first, so a typo such as
+  `output: ./docs` deleted the Markdown sources. `validate` reports it and
+  `clean` refuses it.
+- **A layout that fails to render is a build error.** The template engine caught
+  the error and wrote each page's bare content with an HTML comment, so a custom
+  layout using `{{ include }}` produced a site without its layout and a build that
+  passed. The error is reported once per distinct message, with a page count.
+- **The ASP.NET Core host initializes plugins once.** It initialized them again
+  before every in-memory build, so with `CacheOutput = false` each rebuild ran
+  them one more time and injected the REPL assets again.
+
 ### ✨ New
 
 - **`mokadocs validate` runs a dry-run build.** It used to print "not yet
@@ -15,6 +56,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every warning and error the build reports, prefixed with the phase that raised
   it. Exits 0, 1 or 2 like `doctor`. Supports `--config`/`-c`, `--draft` and
   `--verbose`/`-v`. Useful in CI, where it replaces parsing build output.
+- **Containers nest.** A closing fence now closes a container only when it is at
+  least as long as the one that opened it, so `::::steps` can hold `:::card` and
+  `:::code-group`, and `==== "Tab"` groups can hold `=== "Tab"` groups. Every
+  container used to close on the first bare `:::`, spilling the rest of the outer
+  block onto the page. The tab script only switches a group's own tabs.
+- **Relative links work on every host.** Links such as `./intro` or
+  `../guide/setup.md#install` are resolved against the file that contains them at
+  build time. They were emitted as written: `.md` links always 404ed, and on
+  GitHub Pages, which adds a trailing slash, relative links pointed one folder too
+  deep. `doctor` now checks relative links too.
+- **A warning when pages share a route.** Two `route:` overrides, routes that
+  differ only by case, or a plugin page on `/api` next to the C# API index were
+  written to the same file, and the first silently disappeared.
+- **Warnings for other silent failures:** front matter that fails to parse (the
+  page became "Untitled" and showed its YAML as content), a `layout` the theme does
+  not have, a sidebar icon that does not exist, and a custom theme folder that is
+  missing or has no layouts. `route:` overrides and nav `path` values now get a
+  leading slash when missing and lose a trailing one; `route: faq` produced relative
+  sidebar links and `path: /guide/` matched nothing.
+- **Search matches front matter tags.** Tags were collected and never written to
+  the index.
+- **Changelog release types in the heading.** `## v2.0.0 - 2025-05-01 {type: major}`
+  sets the badge; without a type it is inferred from the version (X.0.0 major,
+  X.Y.0 minor, otherwise patch). The suffix used to land in the date, and every
+  release showed as a patch. Prerelease versions such as `1.0.0-beta.2` no longer
+  split into a version and a date.
+- `mokadocs stats` reads a dry-run build: generated pages, API types, members,
+  namespaces, coverage, loaded plugins and search entries now match what `build`
+  produces. It counted compiled `.xml` doc files under `bin/`, which the CLI never
+  uses, so most projects showed no API and zero generated pages, and it counted a
+  built site inside the docs folder as source. JSON keys are unchanged, plus
+  `Search Entries`.
+- `mokadocs clean` also deletes the `.mokadocs` cache, takes `--config`/`-c`, and
+  no longer deletes `./_site` when the configuration fails to parse.
+- `mokadocs info` takes `--config`/`-c` and shows the docs and output paths from
+  the configuration. It looked for `./docs` and `./_site`, so this site reported
+  "Not built yet".
+- Short aliases: `-c`, `-o` and `-v` on `build` and `serve`, `-p` for the `serve`
+  port, `-t` and `-p` on `new page`, `-p` on `new plugin` and `new component`.
+- `mokadocs.yml` is used when `mokadocs.yaml` does not exist.
+- `mokadocs serve` prints the warning and error counts after every build and lists
+  the errors (warnings with `--verbose`). It printed nothing about diagnostics.
+- The NuGet install widget reads the version from `Directory.Build.props` when the
+  project file has none, and understands `VersionPrefix` with `VersionSuffix`. This
+  site's API page showed `Moka.Docs.Core 1.0.0`.
+- `<see langword="null"/>` renders as code. It rendered nothing, leaving
+  "Returns  when missing."
+- A warning for social link icons that are not in the icon set. The footer prints
+  the name as text.
+- `CNAME`, `_redirects` and `_headers` in the docs folder root are copied, as are
+  `.txt`, `.webmanifest` and `.avif` files. A GitHub Pages custom domain file was
+  dropped because it has no extension.
 
 ### 🐛 Fixed
 
@@ -59,17 +152,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI's test-results artifact contained one project's results: all five test
   projects wrote to the same file name. Each now gets its own.
 - `scripts/RunSamples.bat` still built this repo's site into the root `_site`.
+- **Theme options that did nothing.** `showSearch`, `showDarkModeToggle`,
+  `showPrevNext`, `showBreadcrumbs`, `showBackToTop`, `showVersionSelector`,
+  `showCopyButton`, `showLineNumbers` and `accentColor` reached the templates but
+  nothing read them. Turning search off also left the search button, dialog and
+  shortcut in place.
+- **`primaryColor` had no visible effect.** Every page started on a color preset,
+  and presets override `--color-primary` with `!important`. A site that changes
+  `primaryColor` now starts with no preset until the reader picks one.
+- **Canonical links doubled the base path** (`/Repo/Repo/page`) when `site.url`
+  already ended in it, while the sitemap left it out. Both now accept `site.url`
+  with or without the base path. `robots.txt` pointed at a sitemap even with
+  `build.sitemap: false`.
+- **The code highlighter swallowed code.** Text between highlighted tokens was
+  inserted as HTML, so `if (a<b)` lost everything after `<` and `<br/>` became a
+  real line break.
+- **Mermaid diagrams with generics or `<<interface>>` broke**, and broke again
+  after a light/dark switch, because the source was written unencoded. Diagrams
+  did not render at all on the landing layout, and the Mermaid script loaded on
+  every page.
+- `{year}` in `site.copyright` was printed literally; pages without a description
+  had an empty meta description instead of `site.description`.
+- A nested sidebar section's chevron collapsed its parent's list.
+- `:::steps` headings had no ids, so table of contents and search links to them
+  went nowhere. Card icons only knew ten names.
+- The NuGet install widget never appeared on sites built with a base path.
+- Exception `cref`s lost a leading `T` from names such as `TimeoutError`, and
+  unresolved ones kept a `!:` prefix.
+- `MOKADOCS_*` environment variables were ignored unless the yaml already had the
+  matching section.
+- `expanded: false` in a section's `index.md` was ignored by the generated nav.
+- `serve` ignored `build.cache: false`, and never loaded a `net10.0` project
+  assembly for REPL blocks.
+- `new page` wrote titles unquoted, so `--title "Api: v2"` produced a page titled
+  "Untitled". `new plugin` referenced MokaDocs projects by paths that only exist
+  inside this repository, and used the typed name as the plugin id.
+- `plugins[].path` and entries without a name were skipped without a word;
+  `validate` and `doctor` now warn.
+- The Blazor preview plugin failed every build of a site that declared it without
+  any preview blocks, and counted documentation that mentions the
+  `data-blazor-preview` attribute as a block. Scaffolded preview hosts referenced
+  Moka.Blazor.Repl.Host 1.3.0, which was never published.
+- Python API reference: a module's functions page overwrote a class with the same
+  name (`calculator.py` defining `Calculator`), an entry inherited options from the
+  entry before it, and the analyzer failed on Python 3.9. The analyzer script was
+  extracted to one shared temp file and deleted after each run, so two builds at
+  the same time could delete it from under each other.
+- Link card descriptions kept only their last plain-text run, so a description with
+  inline code was cut short. Sections in the generated sidebar ignored the icon set
+  in their `index.md`.
+- Open Graph and Twitter tags were written with an empty `og:url` when `site.url`
+  was not set. Edit links built on Windows contained backslashes.
+- The landing layout's feature cards and the `mokadocs init` starter page claimed
+  multi-version docs, offline search and custom plugins. They now describe what
+  exists.
+- ASP.NET Core host: search fetched its index from the host root and linked
+  results without the base path, `MapMokaDocs("/path")` changed the route but not
+  the links, a root-relative `LogoUrl` was rewritten into a 404, canonical links
+  doubled the base path, and section folders had no redirect on Windows. The site
+  is now built with the base path instead of patching the HTML afterwards.
+- The dev server's feedback endpoint returned 404 under a base path.
+- `AddMokaDocsThemes()` and `AddMokaDocsRendering()` were empty. The CLI
+  registered feature management twice.
+- 50 public symbols had no XML documentation, including every `MokaFeatureFlags`
+  constant. `doctor` reports 100% API coverage for this repository.
+- **API reference text lost everything in angle brackets.** XML doc text and
+  `<c>`/`<code>` contents were written to the page unescaped after the XML reader
+  had decoded them, so `<c>List&lt;T&gt;</c>` rendered as "List". Python
+  docstrings had the same problem. Meta descriptions and search snippets of API
+  pages now get the summary as plain text instead of HTML.
+- **Types in the global namespace failed the build on Windows.** Their route
+  contained `<global namespace>`; they are now listed under `(global)`.
+- **Code indentation inside `<pre>` blocks.** Scriban's auto-indent shifted every
+  line of the page content, and a pass that stripped the common indent afterwards
+  also stripped real indentation: Python "View Source" panels lost a level, and
+  Mermaid sources kept the layout's indentation. Auto-indent is now off and the
+  stripping pass is gone.
+- Section redirects (a folder without an `index.md`) used a relative URL, so a host
+  that serves `/docs/guide` without a trailing slash, such as the ASP.NET Core
+  integration, sent readers to `/docs/getting-started/`. They are now root-relative
+  and include the base path.
+- A title or description containing `"` ended the `<meta>` attribute early. Head
+  tags are now escaped.
+- Code blocks showed one line number more than they had lines.
+- Generated pages (API, OpenAPI, Python) got an "Edit this page" link to the docs
+  folder itself. They now have none.
+- `new component card` used variants and icons that do not exist.
+- `serve`:
+  - A busy port crashed with an `ObjectDisposedException` that hid the port error.
+    It now prints the reason and exits 1.
+  - The file watcher ignored any path containing `_site` or a folder starting with
+    `.`, so a project stored under a folder like `~/.projects` never rebuilt, and
+    output inside the docs folder under any other name rebuilt in a loop. It now
+    ignores the output folder and dot-names below the docs folder.
+  - REPL packages whose assembly names start with `System.`, such as
+    `System.Reactive`, were skipped, and "Packages loaded" printed even when the
+    restore failed.
+- The Blazor preview plugin sorted `bin/Release` framework folders by name, picking
+  `net9.0` over `net10.0`.
+- Python API examples collapsed onto one line and kept their docstring indent after
+  the first line. They are now code blocks.
 
 ### 🧪 Tests
 
-- 556 tests, up from 466. New: `DoctorChecksTests`, `DryRunBuildTests`,
-  `BuildCacheTests`, cross-project cases in `InheritDocResolverTests`, and
-  analyzer cases for `<inheritdoc/>` tags and delegate docs. The dry-run guard,
-  the resolver fallback and the cache identity check were each confirmed by
-  disabling the fix and watching the tests fail.
+- 960 tests, up from 466. New: `DoctorChecksTests`, `DryRunBuildTests`,
+  `BuildCacheTests`, `DevServerTests`, `OutputDirectoryGuardTests`,
+  `NavigationBuildPhaseTests`, `ProjectStatsTests`, `CleanCommandTests`,
+  `ConfigPathTests`, `NewCommandTests`, `ServeCommandTests`,
+  `PluginDiagnosticsTests`, `PythonApiPluginTests` (skipped without Python),
+  `NestedContainerTests`, `RelativeLinksTests`, `ChangelogExtensionTests`,
+  `SiteUrlsTests`, `SiteConfigEnvironmentTests`, `ApiGenerationTests`,
+  `FileWatcherTests`, `NuGetPackageResolverTests`, `ApiDocTextTests`,
+  `TargetFrameworksTests`, rendering checks in `BuildPipelineIntegrationTests`,
+  and analyzer and XML doc cases for accessibility, `<inheritdoc/>` tags,
+  exception crefs, delegate docs, escaping and the global namespace. Each fix was
+  confirmed by reverting it and watching its tests fail.
 
 ### 📚 Docs
 
+- Every page was checked against the code. Pages described features that do not
+  exist (the `wide` and `raw` layouts, `plugins[].path`, `autoGenerate`, version
+  ranges, multi-version builds, the blog, minification, contributors, search
+  providers), wrong option names and defaults, and examples that did not compile
+  or parse. Those pages now describe what the code does, and say plainly what is
+  not implemented.
 - `cli-reference.md` documents `validate`, and describes what each `doctor` check
   actually does. The deployment guide's pull request example used
   `grep "WARNING"`, a string MokaDocs never prints; it now uses `validate` and

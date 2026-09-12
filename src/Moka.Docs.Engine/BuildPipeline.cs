@@ -11,8 +11,8 @@ public sealed class BuildPipeline(
 	ILogger<BuildPipeline> logger)
 {
 	/// <summary>
-	///     Optional hook that runs after content phases (order &lt; 50) and before
-	///     rendering phases (order &gt;= 50). Used for plugin execution.
+	///     Optional hook that runs once, just before the first phase with order 500 or above
+	///     (FeatureGatePhase). Used for plugin execution.
 	/// </summary>
 	public Func<BuildContext, CancellationToken, Task>? PluginHook { get; set; }
 

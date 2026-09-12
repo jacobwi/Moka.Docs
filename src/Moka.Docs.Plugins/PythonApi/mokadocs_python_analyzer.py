@@ -6,11 +6,15 @@ Reads Python source files from a directory, parses them via the `ast` module,
 extracts classes/functions/docstrings, and outputs JSON matching the mokadocs
 ApiModels.cs schema so the C# PythonApiPlugin can generate API reference pages.
 
-Zero external dependencies — uses only the Python standard library.
+Zero external dependencies: uses only the Python standard library.
 
 Usage:
     python mokadocs_python_analyzer.py <source_dir> [--output <path>] [--format google]
 """
+
+# Keeps "str | None" annotations from being evaluated at import time, which raises
+# TypeError on Python 3.9, the oldest version the plugin supports.
+from __future__ import annotations
 
 import ast
 import json
@@ -190,7 +194,8 @@ def parse_google_docstring(docstring: str | None) -> DocBlock:
     # Parse Examples
     examples: list[str] = []
     if "example" in sections:
-        example_text = "\n".join(sections["example"]).strip()
+        # Dedent the section as a whole: strip() alone only unindented its first line.
+        example_text = textwrap.dedent("\n".join(sections["example"])).strip()
         if example_text:
             examples.append(example_text)
 

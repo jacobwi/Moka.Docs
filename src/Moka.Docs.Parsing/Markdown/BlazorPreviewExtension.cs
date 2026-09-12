@@ -20,6 +20,12 @@ namespace Moka.Docs.Parsing.Markdown;
 /// </remarks>
 public sealed class BlazorPreviewExtension : IMarkdownExtension
 {
+	/// <summary>
+	///     The opening tag written for every preview block. Plugins look for this exact tag;
+	///     the attribute alone also appears as plain text in documentation that mentions it.
+	/// </summary>
+	public const string ContainerOpenTag = "<div class=\"blazor-preview-container\" data-blazor-preview=\"true\">";
+
 	/// <inheritdoc />
 	public void Setup(MarkdownPipelineBuilder pipeline)
 	{
@@ -88,7 +94,7 @@ internal sealed class BlazorPreviewCodeBlockRenderer(HtmlObjectRenderer<CodeBloc
 	private static void WriteBlazorPreviewBlock(HtmlRenderer renderer, FencedCodeBlock block)
 	{
 		renderer.EnsureLine();
-		renderer.Write("<div class=\"blazor-preview-container\" data-blazor-preview=\"true\">");
+		renderer.Write(BlazorPreviewExtension.ContainerOpenTag);
 
 		// Source code section
 		renderer.Write("<div class=\"blazor-preview-source\">");

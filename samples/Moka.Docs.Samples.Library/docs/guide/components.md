@@ -2,7 +2,7 @@
 title: UI Components
 description: Rich reusable components for your documentation
 order: 3
-icon: layout
+icon: box
 tags: [components, cards, steps, code-group]
 ---
 

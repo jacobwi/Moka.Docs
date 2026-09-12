@@ -32,15 +32,38 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 	/// <inheritdoc />
 	public Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
 	{
+		IFileSystem fs = context.FileSystem;
+		string outputDir = context.OutputDirectory;
+
+		// Checked before the dry-run exit so validate and doctor report it too. All three
+		// paths go through the context's file system first: a mock file system roots
+		// "/project" on a different drive than System.IO does, and comparing one of each
+		// would never match.
+		string? conflict = OutputDirectoryGuard.FindConflict(
+			fs.Path.GetFullPath(context.RootDirectory),
+			fs.Path.GetFullPath(fs.Path.Combine(context.RootDirectory, context.Config.Content.Docs)),
+			fs.Path.GetFullPath(outputDir));
+		if (conflict is not null)
+		{
+			if (context.DryRun)
+			{
+				context.Diagnostics.Error(conflict, Name);
+				return Task.CompletedTask;
+			}
+
+			// Phases normally record a diagnostic and carry on. Carrying on here means
+			// deleting the user's sources, so the build has to stop.
+			throw new InvalidOperationException(conflict);
+		}
+
+		ReportDuplicateRoutes(context);
+
 		if (context.DryRun)
 		{
 			// Most important of the three guards: this phase deletes the output directory.
 			logger.LogInformation("Dry run: skipping output (no clean, no files written)");
 			return Task.CompletedTask;
 		}
-
-		IFileSystem fs = context.FileSystem;
-		string outputDir = context.OutputDirectory;
 
 		// Clean output directory if configured
 		if (context.Config.Build.Clean && fs.Directory.Exists(outputDir))
@@ -240,7 +263,10 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 			s = e.Section ?? "",
 			r = bp == "/" ? e.Route : bp + e.Route,
 			c = e.Content.Length > 300 ? e.Content[..300] : e.Content,
-			g = e.Category
+			g = e.Category,
+			// Front matter tags. They were collected but never written, so tags did not help
+			// anyone find a page. Null is omitted from the JSON.
+			k = e.Tags.Count > 0 ? string.Join(' ', e.Tags) : null
 		});
 
 		string json = JsonSerializer.Serialize(entries, _searchJsonOptions);
@@ -332,7 +358,12 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 	private int GenerateSectionIndexPages(BuildContext context)
 	{
 		IFileSystem fs = context.FileSystem;
-		string outputDir = context.OutputDirectory;
+		// Normalized like the directory names compared against it below. A mock file system
+		// returns "C:\site\guide" for "/site/guide" on Windows, so the raw "/site" never
+		// matched and the in-memory ASP.NET Core host got no section redirects there.
+		string outputDir = fs.Path.GetFullPath(context.OutputDirectory);
+		string basePath = context.Config.Build.BasePath;
+		string basePrefix = string.IsNullOrEmpty(basePath) || basePath == "/" ? "" : "/" + basePath.Trim('/');
 		int count = 0;
 
 		// Collect all directories under the output that contain at least one
@@ -401,7 +432,13 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 					continue;
 				}
 
-				string redirectUrl = $"./{targetSubDir}/";
+				// Root-relative, like every other link on the site. "./child/" resolved against the
+				// parent when a host served /docs/guide without a trailing slash, sending the
+				// browser to /docs/child/ instead of /docs/guide/child/.
+				string relativeDir = parent[outputDir.Length..]
+					.Trim(fs.Path.DirectorySeparatorChar, fs.Path.AltDirectorySeparatorChar)
+					.Replace('\\', '/');
+				string redirectUrl = $"{basePrefix}/{relativeDir}/{targetSubDir}/";
 				string redirectHtml = $"""
 				                       <!DOCTYPE html>
 				                       <html>
@@ -427,6 +464,32 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		}
 
 		return count;
+	}
+
+	/// <summary>
+	///     Warns about pages that would be written to the same file.
+	/// </summary>
+	/// <remarks>
+	///     Each page is written to <c>{route}/index.html</c>, so pages sharing a route overwrite
+	///     each other and only the last survives, with nothing reported. It happens with two
+	///     <c>route:</c> overrides, or a plugin whose <c>routePrefix</c> is <c>/api</c> on a site
+	///     that also documents C# projects. Routes that differ only by case are included because
+	///     they collide on Windows and macOS.
+	/// </remarks>
+	private void ReportDuplicateRoutes(BuildContext context)
+	{
+		IEnumerable<IGrouping<string, DocPage>> duplicates = context.Pages
+			.Where(p => context.IncludeDrafts || p.FrontMatter.Visibility != PageVisibility.Draft)
+			.GroupBy(p => "/" + p.Route.Trim('/'), StringComparer.OrdinalIgnoreCase)
+			.Where(g => g.Count() > 1);
+
+		foreach (IGrouping<string, DocPage> group in duplicates)
+		{
+			string pages = string.Join(", ", group.Select(p =>
+				string.IsNullOrEmpty(p.SourcePath) ? $"generated page '{p.FrontMatter.Title}'" : p.SourcePath));
+			context.Diagnostics.Warning(
+				$"{group.Count()} pages share the route '{group.Key}' ({pages}); only the last one is written", Name);
+		}
 	}
 
 	private static string RouteToFilePath(string route)

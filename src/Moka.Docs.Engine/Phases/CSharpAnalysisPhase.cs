@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Text;
 using System.Web;
 using System.Xml.Linq;
@@ -147,9 +148,10 @@ public sealed class CSharpAnalysisPhase(
 			                   ?? doc.Descendants("AssemblyName").FirstOrDefault()?.Value
 			                   ?? context.FileSystem.Path.GetFileNameWithoutExtension(projectPath);
 
-			// Look for PackageVersion, then Version, then fall back to "1.0.0"
-			string version = doc.Descendants("PackageVersion").FirstOrDefault()?.Value
-			                 ?? doc.Descendants("Version").FirstOrDefault()?.Value
+			// The project file first, then Directory.Build.props files above it. Projects that set
+			// the version once in Directory.Build.props, as this repo does, used to show 1.0.0.
+			// That stays the fallback, since it's what MSBuild packs when nothing sets a version.
+			string version = ReadVersion(doc) ?? ReadDirectoryBuildPropsVersion(context.FileSystem, projectPath)
 			                 ?? "1.0.0";
 
 			logger.LogInformation("Extracted package metadata: {Name} v{Version}", packageId, version);
@@ -161,6 +163,53 @@ public sealed class CSharpAnalysisPhase(
 			logger.LogWarning(ex, "Failed to extract package metadata from {Path}", projectPath);
 			return null;
 		}
+	}
+
+	/// <summary>
+	///     Walks up from the project's folder and returns the version from the nearest
+	///     <c>Directory.Build.props</c> that sets one.
+	/// </summary>
+	private static string? ReadDirectoryBuildPropsVersion(IFileSystem fs, string projectPath)
+	{
+		for (string? dir = fs.Path.GetDirectoryName(projectPath); dir is not null; dir = fs.Path.GetDirectoryName(dir))
+		{
+			string props = fs.Path.Combine(dir, "Directory.Build.props");
+			if (fs.File.Exists(props) && ReadVersion(XDocument.Parse(fs.File.ReadAllText(props))) is { } version)
+			{
+				return version;
+			}
+		}
+
+		return null;
+	}
+
+	/// <summary>
+	///     Reads PackageVersion, Version or VersionPrefix (plus VersionSuffix) from unconditional
+	///     property groups. Values built from other properties, such as <c>$(Major).1</c>, are skipped
+	///     because nothing here evaluates MSBuild.
+	/// </summary>
+	private static string? ReadVersion(XDocument doc)
+	{
+		string? Property(string name)
+		{
+			string? value = doc.Root?.Elements()
+				.Where(e => e.Name.LocalName == "PropertyGroup" && e.Attribute("Condition") is null)
+				.Elements()
+				.LastOrDefault(e => e.Name.LocalName == name && e.Attribute("Condition") is null)
+				?.Value.Trim();
+
+			return string.IsNullOrEmpty(value) || value.Contains("$(") ? null : value;
+		}
+
+		string? version = Property("PackageVersion") ?? Property("Version");
+		if (version is not null)
+		{
+			return version;
+		}
+
+		string? prefix = Property("VersionPrefix");
+		string? suffix = Property("VersionSuffix");
+		return prefix is null ? null : suffix is null ? prefix : $"{prefix}-{suffix}";
 	}
 
 	private static void GenerateApiPages(BuildContext context)
@@ -226,13 +275,15 @@ public sealed class CSharpAnalysisPhase(
 				FrontMatter = new FrontMatter
 				{
 					Title = type.Name,
-					Description = type.Documentation?.Summary ?? $"API documentation for {type.FullName}",
+					Description = ApiDocText.ToPlainText(type.Documentation?.Summary) is { Length: > 0 } description
+						? description
+						: $"API documentation for {type.FullName}",
 					Layout = "default"
 				},
 				Content = new PageContent
 				{
 					Html = apiHtml,
-					PlainText = type.Documentation?.Summary ?? ""
+					PlainText = ApiDocText.ToPlainText(type.Documentation?.Summary)
 				},
 				TableOfContents = toc,
 				Route = route,

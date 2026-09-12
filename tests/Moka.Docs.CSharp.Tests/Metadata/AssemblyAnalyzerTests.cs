@@ -227,6 +227,75 @@ public sealed class AssemblyAnalyzerTests
 		members.Should().Contain(m => m.Name == "Visible");
 	}
 
+	private const string _accessibilitySource = """
+	                                           namespace TestNs
+	                                           {
+	                                               public class Widget
+	                                               {
+	                                                   public void PublicMethod() { }
+	                                                   protected void ProtectedMethod() { }
+	                                                   protected internal void ProtectedInternalMethod() { }
+	                                                   internal void InternalMethod() { }
+	                                                   private protected void PrivateProtectedMethod() { }
+	                                               }
+
+	                                               internal class Hidden
+	                                               {
+	                                                   public class NestedInHidden { }
+	                                               }
+	                                           }
+	                                           """;
+
+	[Fact]
+	public void Analyze_InternalMembersOfPublicTypes_ExcludedByDefault()
+	{
+		// Only private members used to be filtered, so internal members of public types
+		// appeared in the public API reference.
+		ApiReference result = AnalyzeSource(_accessibilitySource);
+
+		ApiType widget = result.Namespaces[0].Types.Single(t => t.Name == "Widget");
+		widget.Members.Select(m => m.Name).Should().BeEquivalentTo(
+			"PublicMethod", "ProtectedMethod", "ProtectedInternalMethod");
+		result.Namespaces[0].Types.Should().NotContain(t => t.Name == "NestedInHidden");
+	}
+
+	[Fact]
+	public void Analyze_IncludeInternals_AddsInternalMembersAndTypes()
+	{
+		ApiReference result = _analyzer.AnalyzeSyntaxTrees(
+			[CSharpSyntaxTree.ParseText(_accessibilitySource)], "TestAssembly", includeInternals: true);
+
+		ApiType widget = result.Namespaces[0].Types.Single(t => t.Name == "Widget");
+		widget.Members.Should().Contain(m => m.Name == "InternalMethod")
+			.And.Contain(m => m.Name == "PrivateProtectedMethod");
+		result.Namespaces[0].Types.Should().Contain(t => t.Name == "NestedInHidden");
+	}
+
+	[Fact]
+	public void Analyze_ExceptionCrefs_KeepTheWholeTypeName()
+	{
+		// TrimStart('T', ':') turned "T:TimeoutError" into "imeoutError".
+		ApiReference result = AnalyzeSource("""
+		                                    public class TimeoutError : System.Exception { }
+
+		                                    namespace TestNs
+		                                    {
+		                                        public class Client
+		                                        {
+		                                            /// <summary>Connects.</summary>
+		                                            /// <exception cref="TimeoutError">Too slow.</exception>
+		                                            /// <exception cref="TypoedMissingType">Never resolves.</exception>
+		                                            public void Connect() { }
+		                                        }
+		                                    }
+		                                    """);
+
+		ApiMember connect = result.Namespaces.SelectMany(n => n.Types)
+			.Single(t => t.Name == "Client").Members.Single(m => m.Name == "Connect");
+		connect.Documentation!.Exceptions.Select(e => e.Type)
+			.Should().Equal("TimeoutError", "TypoedMissingType");
+	}
+
 	[Fact]
 	public void Analyze_InternalTypes_ExcludedByDefault()
 	{
@@ -371,5 +440,23 @@ public sealed class AssemblyAnalyzerTests
 
 		invoke.Documentation!.Summary.Should().Contain("Raised when a value changes.");
 		invoke.Documentation.Parameters.Should().ContainKey("oldValue");
+	}
+
+	[Fact]
+	public void Analyze_GlobalNamespaceTypes_GroupUnderGlobalWithoutANamespace()
+	{
+		// Roslyn displays the global namespace as "<global namespace>". That name went into the
+		// page route, and writing the page failed on Windows.
+		ApiReference result = AnalyzeSource("""
+		                                    /// <summary>No namespace.</summary>
+		                                    public class Helper { }
+
+		                                    public enum Mode { On, Off }
+
+		                                    public delegate void Callback();
+		                                    """);
+
+		result.Namespaces.Should().ContainSingle().Which.Name.Should().Be("(global)");
+		result.Namespaces[0].Types.Should().HaveCount(3).And.OnlyContain(t => t.Namespace == null);
 	}
 }

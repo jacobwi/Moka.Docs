@@ -5,9 +5,9 @@ order: 3
 
 # Versioning
 
-MokaDocs supports documentation versioning, allowing you to publish and maintain docs for multiple releases of your library or framework. Readers can switch between versions using a dropdown selector in the site header.
+Versioning in MokaDocs is a version dropdown in the site header. It lists the versions you configure, and each entry links to a fixed path on the same site. A build runs once and writes one site: MokaDocs doesn't check out branches or build several versions for you. You build each version yourself and deploy it at the path its entry links to.
 
-## Enabling Versioning
+## Enabling the Dropdown
 
 Add a `versioning` section under `features` in your `mokadocs.yaml`:
 
@@ -15,183 +15,77 @@ Add a `versioning` section under `features` in your `mokadocs.yaml`:
 features:
   versioning:
     enabled: true
-    strategy: dropdown-only
     versions:
       - label: "v2.0"
-        branch: main
         default: true
       - label: "v1.0"
-        branch: release/1.0
       - label: "v3.0-beta"
-        branch: dev
         prerelease: true
 ```
+
+The dropdown appears on pages that use the `default` layout when versioning is enabled and at least one version is listed. The `landing` layout has no dropdown. To hide it, set `theme.options.showVersionSelector: false`.
 
 ### Configuration Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `enabled` | boolean | Yes | Set to `true` to activate versioning |
-| `strategy` | string | Yes | Either `dropdown-only` or `directory` |
-| `versions` | list | Yes | List of version definitions |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `false` | Turns the dropdown on |
+| `versions` | list | empty | The versions to list, in dropdown order |
+| `strategy` | string | `directory` | Parsed but never used. Every value behaves the same |
 
 ### Version Entry Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `label` | string | Yes | Display label shown in the version selector (e.g., `"v2.0"`, `"v1.0-beta"`) |
-| `branch` | string | Yes | Git branch that contains the documentation source for this version |
-| `default` | boolean | No | Set to `true` for the version served at the root URL. Exactly one version should be marked as default |
-| `prerelease` | boolean | No | Set to `true` to mark this version as a prerelease. Prerelease versions are displayed with distinct styling in the selector |
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string | Text shown in the dropdown. The URL slug is derived from it |
+| `default` | boolean | Marks the version deployed at the site root. Set it on exactly one entry |
+| `prerelease` | boolean | Adds a "pre" badge to the entry |
+| `branch` | string | Optional. Parsed but never used; MokaDocs has no git integration |
 
-## Strategies
+## How the Dropdown Works
 
-MokaDocs offers two versioning strategies that control how versioned content is organized and served.
+- The button shows the default version's label on every page of the build. The default version is the first entry with `default: true`, else the first entry that isn't a prerelease, else the first entry.
+- An entry with `default: true` links to the site root (`<base path>/`) and gets a "latest" badge.
+- Every other entry links to `<base path>/<slug>/`.
+- The links are plain same-site links to each version's home page. They don't map the current page to its counterpart in another version, and a version that isn't deployed at its path returns a 404.
 
-### dropdown-only
+If no entry sets `default: true`, the button still shows the fallback label, but no entry links to the site root or gets the "latest" badge.
 
-```yaml
-strategy: dropdown-only
-```
+The slug is the label trimmed and lowercased, with spaces turned into hyphens and every character other than letters, digits, dots and hyphens removed. `v2.0` stays `v2.0`, and `Version 1 (LTS)` becomes `version-1-lts`.
 
-The `dropdown-only` strategy adds a version selector dropdown to the site header without changing the output directory structure. This is the simpler approach and works well when you build and deploy each version independently.
+## Deploying Several Versions
 
-**How it works:**
-- The version selector appears in the header bar, listing all configured versions.
-- Selecting a different version navigates to that version's deployed URL.
-- Each version is built and deployed as a separate site (or subdomain).
-- The output directory structure is flat - no version-specific subdirectories.
+1. Build the default version and deploy its output at the site root.
+2. For every other version, check out that version's docs yourself, build them with `--base-path /<slug>` so their links and assets resolve under that path, and deploy the output to `/<slug>/`. If the site itself has a base path, put it first, as in `--base-path /MyRepo/v1.0`.
 
-**Best for:**
-- Projects that deploy each version to a separate subdomain (e.g., `v1.docs.example.com`, `v2.docs.example.com`).
-- CI/CD pipelines that build each branch independently.
+::: warning
+The dropdown's links include the build's base path. In a build made with `--base-path /v1.0`, the default entry links to `/v1.0/` (that build's own home page) and the other entries link to `/v1.0/<slug>/`, which doesn't exist. Only the build deployed at the site root gets working dropdown links. In the other builds, turn the dropdown off with `theme.options.showVersionSelector: false`.
+:::
 
-### directory
+The label on the button is whatever the config says. Nothing reads it from your package version, so update it by hand when you release.
 
-```yaml
-strategy: directory
-```
+## Not Implemented
 
-The `directory` strategy generates a separate output subdirectory for each version within a single build. All versions are deployed together as one site.
+These settings are parsed but have no effect:
 
-**How it works:**
-- Each version is output to its own subdirectory: `_site/v1.0/`, `_site/v2.0/`, etc.
-- The default version is also served at the root (`_site/`).
-- The version selector dropdown links between version subdirectories on the same domain.
-- A single build produces documentation for all versions.
+- `strategy`. There is no `directory` or `dropdown-only` mode, and a build never writes per-version subfolders.
+- `branch`. MokaDocs never runs git.
+- `version` in page front matter, such as `version: ">=2.0"`. The page is built either way.
 
-**Output structure example:**
-```
-_site/
-  index.html              # Default version (v2.0)
-  guide/
-    getting-started/
-      index.html
-  v1.0/
-    index.html
-    guide/
-      getting-started/
-        index.html
-  v2.0/
-    index.html
-    guide/
-      getting-started/
-        index.html
-  v3.0-beta/
-    index.html
-    guide/
-      getting-started/
-        index.html
-```
+## Internals
 
-**Best for:**
-- Projects that want a single deployment containing all versions.
-- Static hosting platforms where subdomain routing is not available.
+`VersionManager` in `Moka.Docs.Versioning` maps `features.versioning` to a list of `DocVersion` records and picks the default version. The list is empty when versioning is disabled. `mokadocs build` and `mokadocs serve` copy the list into the build context and set the current version to the default version.
 
-## Version Selector UI
-
-The version selector appears as a dropdown in the site header bar. It displays the currently active version and lists all available versions when clicked.
-
-**Default versions** are shown normally with their label text.
-
-**Prerelease versions** are displayed with distinct visual styling - typically a badge or italic text - to indicate they are not yet stable. This helps readers understand they are viewing documentation for an unreleased version.
-
-When a reader selects a version, the browser navigates to the equivalent page in the selected version. If the equivalent page does not exist in the target version, the reader is directed to that version's homepage.
-
-## Page-Level Version Constraints
-
-You can restrict individual pages to specific versions using the `version` field in front matter:
-
-```yaml
----
-title: New Feature Guide
-version: ">=2.0"
----
-```
-
-### Supported Constraints
-
-| Constraint | Meaning |
-|------------|---------|
-| `">=2.0"` | Include this page only in version 2.0 and later |
-| `"<2.0"` | Include this page only in versions before 2.0 |
-| `"1.0"` | Include this page only in version 1.0 |
-| `">=1.0 <3.0"` | Include this page in versions 1.0 through 2.x |
-
-Pages that do not match the current version's constraint are excluded from that version's build output, navigation, and search index.
-
-## Internal Architecture
-
-### DocVersion Model
-
-Each configured version is represented by a `DocVersion` object:
+`DocVersion` lives in `Moka.Docs.Core.Content`:
 
 ```csharp
-public class DocVersion
+public sealed record DocVersion
 {
-    public string Label { get; set; }        // Display label (e.g., "v2.0")
-    public string Slug { get; set; }         // URL-safe identifier (e.g., "v2.0")
-    public string Branch { get; set; }       // Git branch name
-    public bool IsDefault { get; set; }      // Whether this is the root version
-    public bool IsPrerelease { get; set; }   // Whether to show prerelease styling
+    public required string Label { get; init; }  // Display label, e.g. "v2.0"
+    public required string Slug { get; init; }   // URL path segment derived from Label
+    public bool IsDefault { get; init; }         // Set by default: true
+    public bool IsPrerelease { get; init; }      // Set by prerelease: true
 }
 ```
 
-The `Slug` is automatically derived from the `Label` by converting it to a URL-safe format (lowercased, special characters removed).
-
-### VersionManager
-
-The `VersionManager` class handles version-related logic during the build:
-
-- **Resolving the active version** based on the current branch or explicit selection.
-- **Computing output paths** for the `directory` strategy (prepending the version slug to all routes).
-- **Filtering pages** based on `version` front matter constraints.
-- **Generating version selector data** for the template engine.
-- **Branch mapping** to associate Git branches with version labels.
-
-## Example: Full Versioned Configuration
-
-```yaml
-site:
-  title: MyLibrary Docs
-  description: Documentation for MyLibrary
-
-features:
-  versioning:
-    enabled: true
-    strategy: directory
-    versions:
-      - label: "v3.0-beta"
-        branch: dev
-        prerelease: true
-      - label: "v2.0"
-        branch: main
-        default: true
-      - label: "v1.0"
-        branch: release/1.0
-
-build:
-  output: _site
-```
-
-With this configuration, running `mokadocs build` produces a `_site/` directory containing documentation for all three versions, with v2.0 as the default at the root URL.
+`ScribanTemplateEngine` passes the list to templates as `versions`, where each item has `label`, `slug`, `is_default` and `is_prerelease`, and the default version's label as `current_version`. `VersionManager` also has `GetOutputPath`, `GetBranch` and `FindByLabel`, but nothing in the build calls them.

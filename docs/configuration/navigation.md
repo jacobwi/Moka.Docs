@@ -5,127 +5,171 @@ order: 3
 
 # Navigation & Sidebar
 
-MokaDocs provides a sidebar navigation system that can be auto-generated from your directory structure, manually defined in the configuration file, or a combination of both. This page covers all aspects of how navigation is built, ordered, and displayed.
+MokaDocs generates the sidebar from your page routes, unless `mokadocs.yaml` has a `nav` section. Then the sidebar follows that section instead.
 
 ---
 
 ## Auto-Generated Navigation
 
-By default, when no `nav` section is present in `mokadocs.yaml`, MokaDocs automatically generates the sidebar navigation from the `content.docs` directory structure.
-
 ### How It Works
 
-1. MokaDocs scans the documentation directory recursively.
-2. Each subdirectory becomes a collapsible section in the sidebar.
-3. Each `.md` file becomes a navigation item (page link).
-4. The hierarchy of directories maps directly to nested navigation groups.
-5. Files and directories are sorted according to the `order` front matter value, then alphabetically by title.
+1. Each public page goes into a group named after the first segment of its route. `/guides/theming` and `/guides/advanced/plugins` both belong to `guides`.
+2. Each group becomes a top-level sidebar item. When a page exists at the group's own route (a folder's `index.md`, or a top-level file such as `changelog.md`), the item links to that page and takes its `title`, `icon`, `order` and `expanded` values.
+3. The rest of the group's pages are listed under the item as one flat list, however deeply their files are nested. Subfolders don't create nested sections.
+4. The root `index.md` (route `/`) is a top-level item like any other.
+5. Top-level items, and the pages under each one, are sorted by `order` and then by title.
 
-### Example Directory Structure
+Groups follow routes, not folders, so a page with a `route` override is grouped by its new route. Hidden and draft pages are left out; see `visibility` in [Front Matter](/configuration/front-matter).
+
+### Example
 
 Given this directory layout:
 
 ```
 docs/
-  index.md
+  index.md              # title: Home, order: -1
+  changelog.md          # title: Changelog, order: 3
   getting-started/
-    index.md
-    installation.md
-    quick-start.md
+    index.md            # title: Getting Started, order: 1
+    installation.md     # title: Installation, order: 1
+    quick-start.md      # title: Quick Start, order: 2
   guides/
-    index.md
-    writing-content.md
-    theming.md
-    deployment.md
-  configuration/
-    index.md
-    site-config.md
-    front-matter.md
-    navigation.md
+    index.md            # title: Guides, order: 2
+    writing-content.md  # title: Writing Content
+    theming.md          # title: Theming
+    advanced/
+      index.md          # title: Advanced
+      plugins.md        # title: Plugins
+  reference/
+    cli.md              # title: CLI
 ```
 
 MokaDocs generates this sidebar:
 
 ```
+Home
+Reference
+  CLI
+Getting Started
+  Installation
+  Quick Start
+Guides
+  Advanced
+  Plugins
+  Theming
+  Writing Content
+Changelog
+```
+
+- `Home` comes first because the root `index.md` has `order: -1`.
+- `reference/` has no `index.md`, so its label comes from the folder name and its header doesn't link anywhere. With no `order` it counts as `0`, which puts it between `Home` and `Getting Started`.
+- `advanced/index.md` and `advanced/plugins.md` are listed flat under `Guides`, sorted by title with the other pages.
+
+---
+
+## Manual Navigation via `nav` Config
+
+A `nav` section in `mokadocs.yaml` replaces auto-generated navigation. The sidebar then contains only the items you list and the pages they pull in through `path`.
+
+```yaml
+nav:
+  - label: "Home"
+    path: /
+    icon: home
+    order: -1
+
+  - label: "Getting Started"
+    path: /getting-started
+    icon: rocket
+    expanded: true
+
+  - label: "Guides"
+    icon: book-open
+    children:
+      - label: "Writing Content"
+        path: /guides/writing-content
+      - label: "Theming"
+        path: /guides/theming
+
+  - label: "Reference"
+    path: /reference
+
+  - label: "Changelog"
+    path: /changelog
+    icon: scroll-text
+    order: 10
+```
+
+With the directory layout above, this gives:
+
+```
+Home
 Getting Started
   Installation
   Quick Start
 Guides
   Writing Content
   Theming
-  Deployment
-Configuration
-  Site Config
-  Front Matter
-  Navigation
+Reference
+  CLI
+Changelog
 ```
 
-The top-level `index.md` is treated as the home page and does not appear in the sidebar.
-
----
-
-## Manual Navigation via `nav` Config
-
-For full control over the sidebar structure, define a `nav` section in `mokadocs.yaml`. When present, the `nav` configuration takes precedence over auto-generated navigation.
-
-```yaml
-nav:
-  - label: "Getting Started"
-    icon: "rocket"
-    expanded: true
-    children:
-      - label: "Installation"
-        path: "/getting-started/installation"
-      - label: "Quick Start"
-        path: "/getting-started/quick-start"
-
-  - label: "Guides"
-    icon: "book-open"
-    expanded: true
-    children:
-      - label: "Writing Content"
-        path: "/guides/writing-content"
-      - label: "Theming"
-        path: "/guides/theming"
-
-  - label: "API Reference"
-    icon: "code"
-    autoGenerate: true
-
-  - label: "Changelog"
-    path: "/changelog"
-    icon: "history"
-```
+`Getting Started` gets its children from its `path`. `Guides` shows exactly the two children listed. There is no page at `/reference`, so the `Reference` header links to its first child, `/reference/cli`.
 
 ### NavItem Properties
 
 Each item in the `nav` list supports the following properties:
 
-| Property | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `label` | `string` | Yes | - | Display text in the sidebar |
-| `path` | `string` | No | `null` | URL path this item links to |
-| `icon` | `string` | No | `null` | Lucide icon name |
-| `expanded` | `bool` | No | `false` | Whether section is expanded by default |
-| `autoGenerate` | `bool` | No | `false` | Auto-populate children from API analysis |
-| `children` | `list` | No | `[]` | Nested child items |
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `label` | `string` | `""` | Text shown in the sidebar. It's used even when `path` points at a page with a different title. |
+| `path` | `string` | none | Route the item links to. A missing leading `/` is added. |
+| `icon` | `string` | none | Icon name from the list in [Icon Support](#icon-support). |
+| `order` | `int` | `0` | Position among sibling items. Lower values come first. Items with the same value keep their order from `mokadocs.yaml`. |
+| `expanded` | `bool` | `false` | Whether the item's children start expanded. |
+| `children` | `list` | `[]` | Child items. |
 
-Items with `children` act as section headers. Items with `path` act as page links. An item can have both a `path` (making the section header clickable) and `children`.
+MokaDocs also accepts an `autoGenerate` key on nav items, but nothing reads it.
+
+### How Items Are Built
+
+- **With `children`**: the listed children are used and nothing is generated.
+- **With `path` and no `children`**: public pages exactly one route segment below `path` become the children, sorted by front matter `order` and then title. Each of those pages gets its own children the same way, so a subfolder with an `index.md` becomes a nested section. Pages in a subfolder without an `index.md` don't appear, because there is no page at the subfolder's route to list them under.
+- **Link target**: the item links to `path`. When no page exists there and the item has children, it links to its first child instead.
+- **Without `path`**: the header is a plain label. An item with neither `path` nor `children` renders as a link with an empty `href`.
+
+A few details about `path`:
+
+- `guides` and `/guides` are the same.
+- A trailing slash is removed, so `path: /guides/` works the same as `path: /guides`.
+- Matching a page ignores case, but the link uses `path` exactly as written, and the current-page highlight compares case. Write it in the same case as the route.
+
+### API Reference Items
+
+Generated API pages have routes like `/api/contoso/sdk/contosoclient`: the namespace with its dots turned into slashes, then the type name, all lowercase. None of them sit one segment below `/api`, so a `path: /api` item gets no children. It links to the API index page at `/api`, which lists every namespace and type.
+
+```yaml
+nav:
+  - label: "API Reference"
+    path: /api
+    icon: code
+```
+
+Without a `nav` section, the type pages are listed flat under an `API Reference` item.
 
 ---
 
-## How `order` Front Matter Affects Sorting
+## How `order` Affects Sorting
 
-The `order` front matter property is the primary mechanism for controlling the display order of pages within a section in auto-generated navigation.
+Front matter `order` sorts pages in auto-generated navigation and among the children a nav item generates from `path`. Items you write in the `nav` section use their own `order` field instead.
 
-### Sorting Algorithm
+### Sorting Rules
 
-For each directory (section), MokaDocs sorts its children using this algorithm:
-
-1. **Pages with `order` defined** are placed first, sorted by `order` in ascending order.
-2. **Pages without `order`** are placed after ordered pages, sorted alphabetically by `title`.
-3. **Ties** (pages with the same `order` value) are broken alphabetically by `title`.
-4. **Subdirectories** follow the same rules. A directory's sort order is determined by the `order` value in its `index.md` front matter.
+1. Pages are sorted by `order`, lowest first.
+2. A page without `order` counts as `0`, so it sorts before pages with `order: 1` or higher.
+3. Pages with the same `order` are sorted by title, ignoring case.
+4. In auto-generated navigation, a top-level section's position comes from the `order` in its folder's `index.md`. A folder without an `index.md` counts as `0`.
 
 ### Example
 
@@ -141,15 +185,17 @@ Given these files and their front matter:
 
 The resulting sidebar order is:
 
-1. Installation (order: 1)
-2. Quick Start (order: 2)
-3. Configuration (order: 3)
-4. Advanced Usage (alphabetical, no order)
-5. Troubleshooting (alphabetical, no order)
+1. Advanced Usage (no order, counts as 0)
+2. Troubleshooting (no order, counts as 0)
+3. Installation (order: 1)
+4. Quick Start (order: 2)
+5. Configuration (order: 3)
+
+To move Advanced Usage and Troubleshooting to the end, give them an `order` higher than `3`.
 
 ### Negative Order Values
 
-Negative `order` values are allowed and place pages before those with `order: 0` or higher. This can be useful for pinning an "Overview" or "Introduction" page at the very top:
+Negative `order` values are allowed and sort before `0`. Use one to pin an "Overview" or "Introduction" page to the top:
 
 ```yaml
 ---
@@ -160,7 +206,7 @@ order: -1
 
 ### Section (Directory) Ordering
 
-To control the order of entire sections (directories), set the `order` property in the section's `index.md` file:
+To order the top-level sections of auto-generated navigation, set `order` in each section's `index.md`:
 
 ```
 docs/
@@ -174,51 +220,31 @@ docs/
     index.md         # order: 4
 ```
 
+Top-level pages such as `docs/changelog.md` and the root `index.md` are sorted in the same list, so give them an `order` too.
+
 ---
 
 ## Icon Support
 
-Both manual `nav` items and front matter support icons via the `icon` property. Icons are rendered from the Lucide icon set, an open-source icon library with consistent, clean designs.
+Nav items and front matter both take an `icon` name. The default theme bundles a fixed set of Lucide icons, and only these names render:
 
-### Commonly Used Icons
-
-The following icons are frequently used in documentation sidebars:
-
-| Icon Name | Visual Use |
+| Group | Names |
 |---|---|
-| `rocket` | Getting started, launch |
-| `book-open` | Guides, documentation |
-| `code` | API reference, code |
-| `settings` | Configuration, settings |
-| `download` | Installation, downloads |
-| `zap` | Quick start, performance |
-| `puzzle` | Plugins, extensions |
-| `palette` | Theming, design |
-| `search` | Search |
-| `shield` | Security, authentication |
-| `database` | Data, storage |
-| `globe` | Deployment, web |
-| `terminal` | CLI, commands |
-| `file-text` | Content, files |
-| `folder` | Directories, organization |
-| `layers` | Architecture, layers |
-| `git-branch` | Versioning, branches |
-| `history` | Changelog, history |
-| `help-circle` | FAQ, help |
-| `alert-triangle` | Warnings, troubleshooting |
-| `check-circle` | Testing, validation |
-| `users` | Community, contributors |
-| `package` | Packages, NuGet |
-| `cpu` | Performance, system |
-| `key` | Authentication, keys |
-| `link` | Links, references |
-| `list` | Lists, navigation |
-| `map` | Roadmap, overview |
-| `message-circle` | Feedback, discussion |
-| `tag` | Tags, labels |
-| `tool` | Utilities, tools |
-| `trending-up` | Migration, upgrades |
-| `eye` | Visibility, preview |
+| Navigation | `home`, `menu`, `search`, `settings`, `arrow-left`, `arrow-right`, `chevron-right`, `chevron-down`, `external-link` |
+| Content | `book`, `book-open`, `file`, `file-text`, `file-code`, `folder`, `newspaper`, `scroll-text` |
+| Development | `code`, `code-2`, `terminal`, `braces`, `cpu`, `database`, `git-branch`, `package`, `puzzle` |
+| Actions and status | `rocket`, `zap`, `check`, `x`, `alert-triangle`, `info`, `lightbulb`, `star`, `heart`, `download`, `upload` |
+| Communication | `mail`, `message-circle`, `globe`, `users`, `link`, `github`, `twitter`, `nuget`, `discord` |
+| Objects | `shield`, `key`, `lock`, `clock`, `calendar`, `image`, `play`, `list`, `layers`, `tag`, `wrench`, `box`, `compass`, `map` |
+
+Names ignore case. Any other name renders nothing, and the build warns once for each unknown name.
+
+### Where Icons Appear
+
+- **`nav` items** show their own `icon`. They don't fall back to the front matter `icon` of the page at `path`.
+- **Pages a nav item pulls in through `path`** show their front matter `icon`.
+- **Auto-generated navigation** shows the front matter `icon` of every page in the sidebar. A top-level section takes its icon from its folder's `index.md`, so a folder without one has no icon.
+- **Depth:** the default theme draws icons on top-level items and on second-level items without children. Second-level section headers and third-level items don't get one.
 
 ### Using Icons in Front Matter
 
@@ -234,19 +260,15 @@ icon: "shield"
 ```yaml
 nav:
   - label: "Deployment"
-    icon: "globe"
+    icon: "upload"
     children:
       - label: "Azure"
         path: "/deployment/azure"
-        icon: "cloud"
+        icon: "globe"
       - label: "Docker"
         path: "/deployment/docker"
-        icon: "container"
+        icon: "box"
 ```
-
-Icons specified in the `nav` config take precedence over icons defined in front matter for the same page.
-
-The full list of available icons can be found at [lucide.dev/icons](https://lucide.dev/icons).
 
 ---
 
@@ -254,7 +276,11 @@ The full list of available icons can be found at [lucide.dev/icons](https://luci
 
 ### Creating Nested Sections
 
-Nested sections are created through subdirectories in auto-generated navigation, or through the `children` property in manual navigation. There is no hard limit on nesting depth, but more than three levels deep is generally discouraged for usability.
+Auto-generated navigation has one level of sections. Pages in subfolders are listed under their top-level section without further nesting. To nest sections, use a `nav` section: nest items with `children`, or point `path` at a folder whose subfolders have an `index.md`.
+
+The default theme renders three levels at most: top-level items, their children and their grandchildren. Deeper items are not shown.
+
+Given this layout, where each page's `title` matches its name and no page sets `order`:
 
 ```
 docs/
@@ -270,21 +296,45 @@ docs/
       plugins.md
 ```
 
-This creates:
+Auto-generated navigation lists every page under `Guides`:
 
 ```
 Guides
+  Advanced
   Basics
-    Markdown Syntax
-    Front Matter
+  Custom Components
+  Front Matter
+  Markdown Syntax
+  Plugins
+```
+
+A nav item with `path: /guides` nests the subfolders:
+
+```yaml
+nav:
+  - label: "Guides"
+    path: /guides
+```
+
+```
+Guides
   Advanced
     Custom Components
     Plugins
+  Basics
+    Front Matter
+    Markdown Syntax
 ```
 
 ### Controlling Expansion
 
-By default, sections are expanded (`expanded: true`). You can collapse a section by default using the `expanded` property in either front matter or nav config.
+| Section | Starts | Change it with |
+|---|---|---|
+| Auto-generated section | Expanded | `expanded: false` in the folder's `index.md` |
+| `nav` item | Collapsed | `expanded: true` on the item |
+| Page pulled in by a nav `path` that has pages below it | Expanded | `expanded: false` in that page's front matter |
+
+A section that contains the current page is always expanded when the page loads.
 
 **In front matter** (for the section's `index.md`):
 
@@ -300,7 +350,7 @@ expanded: false
 ```yaml
 nav:
   - label: "Advanced Topics"
-    expanded: false
+    expanded: true
     children:
       - label: "Custom Components"
         path: "/advanced/custom-components"
@@ -310,104 +360,33 @@ nav:
 
 **Expansion behavior:**
 
-- Collapsed sections show only their section header with a chevron indicator.
-- Clicking the section header toggles expansion.
-- When a user navigates to a page inside a collapsed section, that section is automatically expanded to show the active page.
-- Expansion state is preserved during the session using the browser's session storage.
-
----
-
-## `autoGenerate` for API Reference Sections
-
-The `autoGenerate` property on a nav item tells MokaDocs to automatically populate that section's children from the API analysis of configured C# projects.
-
-```yaml
-nav:
-  - label: "API Reference"
-    icon: "code"
-    autoGenerate: true
-```
-
-When `autoGenerate` is `true`:
-
-1. MokaDocs analyzes all projects listed in `content.projects`.
-2. Namespaces become nested sections.
-3. Types (classes, interfaces, structs, enums, delegates) become page links within their namespace section.
-4. The structure mirrors the namespace hierarchy of the analyzed projects.
-
-### Example Generated Structure
-
-For a project with these namespaces and types:
-
-```
-Contoso.Sdk
-  ContosoClient
-  ContosoOptions
-Contoso.Sdk.Auth
-  AuthProvider
-  TokenManager
-Contoso.Sdk.Http
-  HttpClientFactory
-```
-
-The generated sidebar section looks like:
-
-```
-API Reference
-  Contoso.Sdk
-    ContosoClient
-    ContosoOptions
-  Contoso.Sdk.Auth
-    AuthProvider
-    TokenManager
-  Contoso.Sdk.Http
-    HttpClientFactory
-```
-
-### Combining Manual and Auto-Generated Items
-
-You can mix manual children with `autoGenerate`:
-
-```yaml
-nav:
-  - label: "API Reference"
-    icon: "code"
-    children:
-      - label: "Overview"
-        path: "/api/overview"
-      - label: "Generated API"
-        autoGenerate: true
-```
+- Only the chevron button next to a section header expands or collapses it. The header text is a link when a page exists at the section's route.
+- Expansion isn't remembered. Each page load starts from the defaults above.
 
 ---
 
 ## Active State Highlighting
 
-MokaDocs applies visual highlighting to indicate the user's current position in the navigation.
-
 ### Current Page
 
-The navigation item corresponding to the current page receives an `active` CSS class. This is styled with a distinct background color and bold text in the default theme, using the configured `primaryColor`.
+The sidebar link for the current page gets the `current` CSS class. The default theme draws it in the primary color with a tinted background, bold text and a left border.
 
 ### Parent Active State
 
-All ancestor sections of the current page receive a `parent-active` CSS class. This provides a subtle visual indication of the current section hierarchy without the full emphasis of the active page highlight.
+A top-level item that contains the current page gets `parent-active` on its header. The default theme shows that header in bolder text, with no background tint. Second-level section headers don't get the class.
 
-**Example:** When viewing the page at `/guides/advanced/plugins`:
+The wrapper element also gets an `active` class when it is or contains the current page: `nav-section` for top-level items, `nav-sub-section` for second-level sections. The default theme doesn't style it.
 
-| Nav Item | State |
+**Example:** viewing `/guides/basics/markdown-syntax` with the `path: /guides` nav item from the previous section:
+
+| Element | Class added |
 |---|---|
-| Guides | `parent-active` |
-| Advanced | `parent-active` |
-| Plugins | `active` |
-| Basics | (no state) |
-
-### Styling
-
-In the default theme:
-- `active` items have a highlighted background using the primary color at reduced opacity, bold font weight, and a left border accent.
-- `parent-active` items have a subtle background tint to indicate they are on the path to the active page.
-- All other items have no special styling.
+| `Guides` wrapper (`nav-section`) | `active` |
+| `Guides` header link | `parent-active` |
+| `Basics` wrapper (`nav-sub-section`) | `active` |
+| `Basics` header link | (none) |
+| `Markdown Syntax` link | `current` |
+| `Advanced` and its links | (none) |
 
 ---
 
@@ -415,63 +394,49 @@ In the default theme:
 
 ### `index.md` Behavior
 
-An `index.md` file inside a directory serves a dual purpose:
+In auto-generated navigation, a top-level folder's `index.md` is the page for its section:
 
-1. **Section metadata** - Its front matter (`title`, `order`, `icon`, `expanded`) defines how the section appears in the sidebar.
-2. **Section landing page** - Its content is rendered when the user clicks the section header (if the section header is clickable).
+- Its `title` is the section label. Without a `title`, the label is "Untitled".
+- Its `icon` is shown next to the label.
+- Its `order` sets the section's position.
+- Its `expanded` sets whether the section starts expanded.
+- The section header links to it.
+
+An `index.md` with only front matter still produces a page, so the header links to it. An `index.md` in a nested folder is an ordinary page in its section's flat list.
 
 ### How Section Headers Behave
 
 | Scenario | Section Header Behavior |
 |---|---|
-| Directory has `index.md` with content | Section header is clickable and navigates to the index page |
-| Directory has `index.md` with only front matter (no content) | Section header toggles expansion only (not clickable as a link) |
-| Directory has no `index.md` | Section header toggles expansion only; section title is derived from the directory name |
+| Folder has an `index.md` | Links to the index page. The label comes from its `title`. |
+| Folder has no `index.md` | Plain label from the folder name, with the first letter uppercased and hyphens turned into spaces (`getting-started` becomes "Getting started"). The section counts as `order: 0`. |
 
-### Example
+When a folder has no index page, the build writes a redirect at the folder's URL to the alphabetically first page inside it.
 
-```
-docs/
-  guides/
-    index.md       # Has content -> "Guides" header links to /guides/
-    writing.md
-    theming.md
-  reference/
-    index.md       # Front matter only -> "Reference" header just toggles
-    classes.md
-    interfaces.md
-```
+### Section Labels in Nav Config
 
-### Section Title Resolution
-
-The section title (displayed in the sidebar) is determined by this priority:
-
-1. The `title` from the section's `index.md` front matter
-2. The `label` from the `nav` config (if manually defined)
-3. The directory name converted to title case (e.g., `getting-started` becomes "Getting Started")
+In a `nav` section, an item's `label` is always the text shown, whatever the page's `title` says. Children generated from `path` use their page's `title`.
 
 ---
 
 ## Route Generation from File Paths
 
-MokaDocs generates URL routes from the file system path of each Markdown file, relative to the `content.docs` directory.
+Every `.md` file under `content.docs` becomes a page, except files inside the build output folder. The route is the file's path relative to `content.docs`.
 
 ### Route Generation Rules
 
 | Rule | Example Path | Generated Route |
 |---|---|---|
 | Extension is removed | `installation.md` | `/installation` |
-| `index.md` maps to parent directory | `guides/index.md` | `/guides` |
 | Directory separators become path segments | `guides/theming.md` | `/guides/theming` |
+| `index.md` maps to its directory | `guides/index.md` | `/guides` |
 | Root `index.md` maps to `/` | `index.md` | `/` |
-| Filenames are lowercased | `QuickStart.md` | `/quickstart` |
-| Spaces and underscores become hyphens | `quick_start.md` | `/quick-start` |
-| Multiple hyphens are collapsed | `my--page.md` | `/my-page` |
-| Leading/trailing hyphens are trimmed | `-about-.md` | `/about` |
+
+Nothing else changes. Case and underscores are kept, so `QuickStart_Guide.md` becomes `/QuickStart_Guide`.
 
 ### Route Override
 
-Any page can override its generated route using the `route` front matter property:
+Any page can replace its generated route with the `route` front matter property:
 
 ```yaml
 ---
@@ -482,9 +447,19 @@ route: "/faq"
 
 The file `docs/support/frequently-asked-questions.md` would normally produce the route `/support/frequently-asked-questions`, but the override changes it to `/faq`.
 
+- A missing leading slash is added and a trailing slash is removed.
+- A nav item that links to the page needs `path: /faq`.
+- Relative Markdown links to the file, such as `[FAQ](../support/frequently-asked-questions.md)`, still resolve to `/support/frequently-asked-questions`, where there is no page. Link to `/faq` instead.
+
 ### Route Conflicts
 
-If two pages resolve to the same route (whether through auto-generation, override, or a combination), MokaDocs produces a build error identifying both files. Resolve the conflict by renaming one file or using a `route` override.
+When two pages end up with the same route, the build writes only the last one and warns:
+
+```
+2 pages share the route '/faq' (faq.md, help.md); only the last one is written
+```
+
+Routes that differ only by case count as the same route. This happens when a `route` override matches another page's route, or when a Markdown page sits at the route of a generated page such as `/api`. `mokadocs validate` lists the warning; `mokadocs build` counts it in its summary and lists it with `--verbose`.
 
 ---
 
@@ -492,13 +467,11 @@ If two pages resolve to the same route (whether through auto-generation, overrid
 
 ### Recommended Approach
 
-For most projects, a hybrid approach works best:
+1. Start with auto-generated navigation. Give each top-level folder an `index.md` with a `title` and an `order`, and order the pages inside with front matter.
+2. Add a `nav` section when you need nested sections or labels that differ from page titles.
+3. Inside `nav`, use `path` without `children` to list a folder's pages without naming each one. Use `children` when you want to choose and order them by hand.
 
-1. Let auto-generation handle the majority of your documentation pages using directory structure and `order` front matter.
-2. Use the `nav` config only when you need precise control over grouping, ordering, or labeling that cannot be achieved through file organization alone.
-3. Use `autoGenerate: true` for API reference sections to keep them in sync with your codebase.
-
-### Example: Hybrid Navigation
+### Example: Mixed Navigation
 
 ```yaml
 # mokadocs.yaml
@@ -514,35 +487,28 @@ nav:
       - label: "Configuration"
         path: "/getting-started/configuration"
 
-  # This section auto-generates from the /guides directory
-  # but with a custom icon and label
+  # Children come from the public pages under /guides
   - label: "Developer Guides"
+    path: "/guides"
     icon: "book-open"
     expanded: true
-    children:
-      - label: "Writing Content"
-        path: "/guides/writing-content"
-      - label: "Themes & Styling"
-        path: "/guides/theming"
-      - label: "Deploying Your Site"
-        path: "/guides/deployment"
 
   - label: "API Reference"
+    path: "/api"
     icon: "code"
-    autoGenerate: true
 
   - label: "Resources"
     icon: "link"
     children:
       - label: "FAQ"
         path: "/faq"
-        icon: "help-circle"
+        icon: "info"
       - label: "Changelog"
         path: "/changelog"
-        icon: "history"
+        icon: "scroll-text"
       - label: "Contributing"
         path: "/contributing"
         icon: "users"
 ```
 
-This gives you full control over the top-level structure and ordering, while API reference pages are automatically kept in sync with your source code.
+`Getting Started` and `Resources` show exactly the pages listed. `Developer Guides` picks up new pages under `/guides` without a config change. `API Reference` links to the API index page.

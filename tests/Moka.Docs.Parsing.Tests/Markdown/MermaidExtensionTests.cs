@@ -26,7 +26,7 @@ public sealed class MermaidExtensionTests
 
 		html.Should().Contain("<pre class=\"mermaid\">");
 		html.Should().Contain("graph TD");
-		html.Should().Contain("A --> B");
+		html.Should().Contain("A --&gt; B");
 		html.Should().NotContain("<code");
 	}
 
@@ -76,7 +76,7 @@ public sealed class MermaidExtensionTests
 	}
 
 	[Fact]
-	public void MermaidBlock_PreservesRawContent()
+	public void MermaidBlock_EncodesContentForMermaidToDecode()
 	{
 		const string md = """
 		                  ```mermaid
@@ -89,7 +89,27 @@ public sealed class MermaidExtensionTests
 		string html = Render(md);
 
 		html.Should().Contain("sequenceDiagram");
-		html.Should().Contain("Alice->>Bob");
+		html.Should().Contain("Alice-&gt;&gt;Bob");
+	}
+
+	[Fact]
+	public void MermaidBlock_GenericsAreNotEmittedAsHtmlTags()
+	{
+		// Written raw, the browser parsed <string> and <<interface>> as tags and Mermaid
+		// received a diagram with them missing.
+		const string md = """
+		                  ```mermaid
+		                  classDiagram
+		                      class Repo~T~
+		                      <<interface>> Repo
+		                      A["List<string>"] --> B
+		                  ```
+		                  """;
+
+		string html = Render(md);
+
+		html.Should().Contain("List&lt;string&gt;").And.Contain("&lt;&lt;interface&gt;&gt;");
+		html.Should().NotContain("<string>").And.NotContain("<interface>");
 	}
 
 	[Fact]

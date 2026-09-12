@@ -33,7 +33,14 @@ public sealed class MarkdownParsePhase(
 			try
 			{
 				string markdown = context.FileSystem.File.ReadAllText(fullPath);
-				MarkdownParseResult result = markdownParser.Parse(markdown);
+				MarkdownParseResult result = markdownParser.Parse(markdown, relativePath);
+				if (result.FrontMatterError is { } frontMatterError)
+				{
+					// The page used to become "Untitled" with its front matter printed as
+					// content, and nothing said why.
+					context.Diagnostics.Warning(
+						$"{relativePath}: front matter could not be read and was ignored ({frontMatterError})", Name);
+				}
 
 				string route = BuildRoute(relativePath, result.FrontMatter);
 
@@ -74,10 +81,12 @@ public sealed class MarkdownParsePhase(
 	/// <returns>The root-relative route, e.g. <c>/guide/markdown</c>.</returns>
 	public static string BuildRoute(string relativePath, FrontMatter frontMatter)
 	{
-		// Use custom route from front matter if specified
-		if (!string.IsNullOrEmpty(frontMatter.Route))
+		// Use custom route from front matter if specified. A route without a leading slash
+		// produced relative sidebar links, and a trailing slash matched no nav path.
+		if (!string.IsNullOrWhiteSpace(frontMatter.Route))
 		{
-			return frontMatter.Route;
+			string custom = "/" + frontMatter.Route.Trim().Trim('/');
+			return custom;
 		}
 
 		// Convert file path to URL route

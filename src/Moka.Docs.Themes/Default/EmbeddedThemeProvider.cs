@@ -2610,8 +2610,10 @@ public static class EmbeddedThemeProvider
 
 	                                       // Color theme selector
 	                                       (function() {
-	                                           var colorTheme = localStorage.getItem('mokadocs-color-theme') || html.getAttribute('data-color-theme') || 'ocean';
-	                                           html.setAttribute('data-color-theme', colorTheme);
+	                                           // No preset when the site sets its own primaryColor and the reader has not
+	                                           // picked one: the presets use !important and would hide the configured color.
+	                                           var colorTheme = localStorage.getItem('mokadocs-color-theme') || html.getAttribute('data-color-theme');
+	                                           if (colorTheme) html.setAttribute('data-color-theme', colorTheme);
 
 	                                           var trigger = document.querySelector('.color-theme-trigger');
 	                                           var dropdown = document.querySelector('.color-theme-dropdown');
@@ -2836,7 +2838,6 @@ public static class EmbeddedThemeProvider
 	                                       function highlight(code, lang) {
 	                                           const rules = langRules[lang];
 	                                           if (!rules) return escapeHtml(code);
-	                                           let html = escapeHtml(code);
 	                                           // Apply rules in order: comments first (highest priority), then strings, keywords, etc.
 	                                           const replacements = [];
 	                                           const processRule = (regex, cls) => {
@@ -2862,16 +2863,17 @@ public static class EmbeddedThemeProvider
 	                                           for (const r of replacements) {
 	                                               if (r.start >= lastEnd) { filtered.push(r); lastEnd = r.end; }
 	                                           }
-	                                           // Build result from back to front
-	                                           let result = code;
-	                                           for (let i = filtered.length - 1; i >= 0; i--) {
-	                                               const r = filtered[i];
-	                                               const before = result.substring(0, r.start);
-	                                               const token = escapeHtml(r.text);
-	                                               const after = result.substring(r.end);
-	                                               result = before + '<span class="token ' + r.cls + '">' + token + '</span>' + after;
+	                                           // Escape the text between tokens as well. Only tokens used to be escaped, so
+	                                           // a "<" outside one (if (a<b), <br/>) opened a real HTML tag and the rest of
+	                                           // the block vanished.
+	                                           let result = '';
+	                                           let pos = 0;
+	                                           for (const r of filtered) {
+	                                               result += escapeHtml(code.substring(pos, r.start));
+	                                               result += '<span class="token ' + r.cls + '">' + escapeHtml(r.text) + '</span>';
+	                                               pos = r.end;
 	                                           }
-	                                           return result;
+	                                           return result + escapeHtml(code.substring(pos));
 	                                       }
 
 	                                       function escapeHtml(s) {
@@ -2897,7 +2899,8 @@ public static class EmbeddedThemeProvider
 	                                               block.parentElement.appendChild(label);
 	                                           }
 
-	                                           // Add copy button
+	                                           // Add copy button (theme.options.showCopyButton)
+	                                           if (!html.hasAttribute('data-no-copy-button')) {
 	                                           const btn = document.createElement('button');
 	                                           btn.className = 'copy-btn';
 	                                           btn.textContent = 'Copy';
@@ -2918,10 +2921,12 @@ public static class EmbeddedThemeProvider
 	                                               }
 	                                           });
 	                                           block.parentElement.appendChild(btn);
+	                                           }
 
-	                                           // Add line numbers for multi-line code
-	                                           const lines = block.textContent.split('\n');
-	                                           if (lines.length > 3) {
+	                                           // Add line numbers for multi-line code (theme.options.showLineNumbers).
+	                                           // The trailing newline is dropped first: it counted as a line, numbering one past the end.
+	                                           const lines = block.textContent.replace(/\n$/, '').split('\n');
+	                                           if (lines.length >= 3 && !html.hasAttribute('data-no-line-numbers')) {
 	                                               const lineNums = document.createElement('span');
 	                                               lineNums.className = 'line-numbers';
 	                                               lineNums.innerHTML = lines.map((_, i) => '<span>' + (i + 1) + '</span>').join('');
@@ -2995,8 +3000,8 @@ public static class EmbeddedThemeProvider
 
 	                                       // Tab switching
 	                                       document.querySelectorAll('.tabs').forEach(tabGroup => {
-	                                           const headers = tabGroup.querySelectorAll('.tab-header');
-	                                           const contents = tabGroup.querySelectorAll('.tab-content');
+	                                           const headers = tabGroup.querySelectorAll(':scope > .tab-headers > .tab-header');
+	                                           const contents = tabGroup.querySelectorAll(':scope > .tab-content');
 	                                           headers.forEach((header, i) => {
 	                                               header.addEventListener('click', () => {
 	                                                   headers.forEach(h => { h.classList.remove('active'); h.setAttribute('aria-selected', 'false'); });
@@ -3115,15 +3120,18 @@ public static class EmbeddedThemeProvider
 	                                               const title = (entry.t || '').toLowerCase();
 	                                               const section = (entry.s || '').toLowerCase();
 	                                               const content = (entry.c || '').toLowerCase();
+	                                               const tags = (entry.k || '').toLowerCase();
 	                                               let score = 0;
 	                                               let matched = true;
 	                                               for (const term of terms) {
 	                                                   const inTitle = title.includes(term);
 	                                                   const inSection = section.includes(term);
 	                                                   const inContent = content.includes(term);
-	                                                   if (!inTitle && !inSection && !inContent) { matched = false; break; }
+	                                                   const inTags = tags.includes(term);
+	                                                   if (!inTitle && !inSection && !inContent && !inTags) { matched = false; break; }
 	                                                   if (inTitle) score += 10;
 	                                                   if (inSection) score += 5;
+	                                                   if (inTags) score += 3;
 	                                                   if (inContent) score += 1;
 	                                               }
 	                                               if (matched) scored.push({ entry, score });
@@ -3177,18 +3185,22 @@ public static class EmbeddedThemeProvider
 	                                       const searchTrigger = document.querySelector('.search-trigger');
 	                                       if (searchTrigger) searchTrigger.addEventListener('click', openSearch);
 
-	                                       document.addEventListener('keydown', (e) => {
-	                                           if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-	                                               e.preventDefault();
-	                                               searchModal && !searchModal.hidden ? closeSearch() : openSearch();
-	                                           }
-	                                       });
+	                                       // Only claim Ctrl/Cmd+K when the page has search.
+	                                       if (searchModal) {
+	                                           document.addEventListener('keydown', (e) => {
+	                                               if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+	                                                   e.preventDefault();
+	                                                   !searchModal.hidden ? closeSearch() : openSearch();
+	                                               }
+	                                           });
+	                                       }
 
 	                                       // Sidebar nav expand/collapse - toggle sections
 	                                       document.querySelectorAll('.nav-toggle').forEach(toggle => {
-	                                           // Find the nav-children list - it's a sibling of the toggle or its parent (.nav-header)
-	                                           const section = toggle.closest('.nav-section');
-	                                           const children = section?.querySelector('.nav-children');
+	                                           // The list belongs to the nearest section. Looking only for .nav-section made a
+	                                           // nested section's chevron collapse its parent's list instead of its own.
+	                                           const section = toggle.closest('.nav-sub-section, .nav-section');
+	                                           const children = section?.querySelector(':scope > .nav-children');
 	                                           if (children) {
 	                                               const chevron = toggle.querySelector('.nav-chevron');
 	                                               toggle.addEventListener('click', (e) => {
@@ -3266,6 +3278,35 @@ public static class EmbeddedThemeProvider
 	                                               }
 	                                           });
 	                                       }
+
+	                                       // Mermaid diagrams. The script is only fetched on pages that have a diagram, and
+	                                       // runs on every layout; it used to be inlined in the default layout only.
+	                                       (function() {
+	                                           var diagrams = document.querySelectorAll('pre.mermaid');
+	                                           if (diagrams.length === 0) return;
+	                                           // Keep each diagram's source, since Mermaid replaces the element's content with
+	                                           // SVG. textContent decodes the entities the build wrote; writing it back with
+	                                           // textContent keeps a "<" in the source from turning into markup on re-render.
+	                                           diagrams.forEach(function(el) { el.setAttribute('data-mermaid-src', el.textContent); });
+	                                           var script = document.createElement('script');
+	                                           script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+	                                           script.onload = function() {
+	                                               function render() {
+	                                                   var dark = html.getAttribute('data-theme') === 'dark';
+	                                                   mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
+	                                                   diagrams.forEach(function(el) {
+	                                                       el.removeAttribute('data-processed');
+	                                                       el.textContent = el.getAttribute('data-mermaid-src');
+	                                                   });
+	                                                   mermaid.run({ nodes: diagrams });
+	                                               }
+	                                               render();
+	                                               new MutationObserver(function(mutations) {
+	                                                   if (mutations.some(function(m) { return m.attributeName === 'data-theme'; })) render();
+	                                               }).observe(html, { attributes: true, attributeFilter: ['data-theme'] });
+	                                           };
+	                                           document.head.appendChild(script);
+	                                       })();
 
 	                                       // Feedback widget
 	                                       const feedbackWidget = document.getElementById('feedbackWidget');
@@ -3350,25 +3391,26 @@ public static class EmbeddedThemeProvider
 
 	private const string _defaultLayout = """
 	                                      <!DOCTYPE html>
-	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}>
+	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
 	                                      <head>
-	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.default_color_theme ?? "ocean" }}';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
+	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
 	                                          <meta name="viewport" content="width=device-width, initial-scale=1" />
-	                                          <title>{{ page.title }} - {{ site.title }}</title>
-	                                          <meta name="description" content="{{ page.description }}" />
-	                                          {{ if site.url }}<link rel="canonical" href="{{ site.url }}{{ page.route }}" />{{ end }}
-	                                          {{ if site.url }}<meta property="og:title" content="{{ page.title }}" />
-	                                          <meta property="og:description" content="{{ page.description }}" />
-	                                          <meta property="og:url" content="{{ site.url }}{{ page.route }}" />
-	                                          <meta property="og:site_name" content="{{ site.title }}" />
+	                                          <title>{{ page.title | html.escape }} - {{ site.title | html.escape }}</title>
+	                                          <meta name="description" content="{{ page.meta_description | html.escape }}" />
+	                                          {{ if page.canonical_url != "" }}<link rel="canonical" href="{{ page.canonical_url }}" />{{ end }}
+	                                          {{ if page.canonical_url != "" }}<meta property="og:title" content="{{ page.title | html.escape }}" />
+	                                          <meta property="og:description" content="{{ page.meta_description | html.escape }}" />
+	                                          <meta property="og:url" content="{{ page.canonical_url }}" />
+	                                          <meta property="og:site_name" content="{{ site.title | html.escape }}" />
 	                                          <meta property="og:type" content="article" />
 	                                          <meta name="twitter:card" content="summary" />
-	                                          <meta name="twitter:title" content="{{ page.title }}" />
-	                                          <meta name="twitter:description" content="{{ page.description }}" />{{ end }}
+	                                          <meta name="twitter:title" content="{{ page.title | html.escape }}" />
+	                                          <meta name="twitter:description" content="{{ page.meta_description | html.escape }}" />{{ end }}
 	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
 	                                          {{ end }}
 	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
+	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color }}}</style>{{ end }}
 	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
 	                                      </head>
 	                                      <body>
@@ -3379,7 +3421,7 @@ public static class EmbeddedThemeProvider
 	                                                      <span class="site-name">{{ site.title }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
-	                                                      {{ if versions.size > 0 }}
+	                                                      {{ if versions.size > 0 && theme.show_version_selector }}
 	                                                      <div class="version-selector">
 	                                                          <button class="version-trigger" aria-label="Select version" aria-expanded="false" aria-haspopup="listbox">
 	                                                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -3399,11 +3441,13 @@ public static class EmbeddedThemeProvider
 	                                                          </ul>
 	                                                      </div>
 	                                                      {{ end }}
+	                                                      {{ if search_enabled }}
 	                                                      <button class="search-trigger" aria-label="Search" data-shortcut="Ctrl+K">
 	                                                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
 	                                                          <span class="search-label">Search</span>
 	                                                          <kbd>⌘K</kbd>
 	                                                      </button>
+	                                                      {{ end }}
 	                                                      <div class="appearance-group">
 	                                                      {{ if theme.color_themes != false }}
 	                                                      <div class="color-theme-selector">
@@ -3450,10 +3494,12 @@ public static class EmbeddedThemeProvider
 	                                                      </div>
 	                                                      {{ end }}
 	                                                      </div>
+	                                                      {{ if theme.show_dark_mode_toggle }}
 	                                                      <button class="theme-toggle" aria-label="Toggle dark mode">
 	                                                          <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
 	                                                          <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 	                                                      </button>
+	                                                      {{ end }}
 	                                                      <button class="mobile-nav-toggle" aria-label="Toggle navigation">
 	                                                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
 	                                                      </button>
@@ -3530,7 +3576,7 @@ public static class EmbeddedThemeProvider
 
 	                                              <main class="content">
 	                                                  <article class="page-content">
-	                                                      {{ if breadcrumbs.size > 1 }}
+	                                                      {{ if theme.show_breadcrumbs && breadcrumbs.size > 1 }}
 	                                                      <nav class="breadcrumbs" aria-label="Breadcrumb">
 	                                                          <ol>
 	                                                          {{ for crumb in breadcrumbs }}
@@ -3548,7 +3594,7 @@ public static class EmbeddedThemeProvider
 	                                                      </nav>
 	                                                      {{ end }}
 
-	                                                      {{ if package && page.route == "/api" }}
+	                                                      {{ if package && page.is_api_index }}
 	                                                      <div class="package-install-widget">
 	                                                          <div class="install-header"><span class="install-package-name">{{ package.name }}</span><a href="https://www.nuget.org/packages/{{ package.name }}" target="_blank" rel="noopener noreferrer" class="install-nuget-link" aria-label="View on NuGet.org"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 17.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M14 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><circle cx="7" cy="7" r="2"/></svg><span>NuGet</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
 	                                                          <div class="install-tabs" role="tablist">
@@ -3651,6 +3697,7 @@ public static class EmbeddedThemeProvider
 	                                          </div>
 	                                          {{ end }}
 
+	                                          {{ if theme.show_prev_next }}
 	                                          <nav class="page-nav">
 	                                            {{ if prev_page }}
 	                                            <a class="page-nav-link page-nav-prev" href="{{ prev_page.route }}">
@@ -3675,6 +3722,7 @@ public static class EmbeddedThemeProvider
 	                                            <span class="page-nav-spacer"></span>
 	                                            {{ end }}
 	                                          </nav>
+	                                          {{ end }}
 
 	                                          <footer class="site-footer">
 	                                              <div class="footer-inner">
@@ -3684,6 +3732,7 @@ public static class EmbeddedThemeProvider
 	                                              </div>
 	                                          </footer>
 
+	                                          {{ if search_enabled }}
 	                                          <div class="search-modal" id="searchModal" hidden>
 	                                              <div class="search-backdrop"></div>
 	                                              <div class="search-dialog" role="dialog" aria-label="Search documentation">
@@ -3695,6 +3744,7 @@ public static class EmbeddedThemeProvider
 	                                                  <div class="search-results" id="searchResults"></div>
 	                                              </div>
 	                                          </div>
+	                                          {{ end }}
 
 	                                          {{ if page.show_toc }}
 	                                         <button class="toc-toggle-btn" id="tocToggle" aria-label="Toggle table of contents">
@@ -3708,58 +3758,30 @@ public static class EmbeddedThemeProvider
 	                                             </svg>
 	                                         </button>
 	                                         {{ end }}
+	                                         {{ if theme.show_back_to_top }}
 	                                         <button class="back-to-top" id="backToTop" aria-label="Back to top">&#8593;</button>
+	                                         {{ end }}
 
 	                                          {{ for js in js_files }}<script src="{{ js }}"></script>
 	                                          {{ end }}
-	                                          <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-	                                          <script>
-	                                          (function() {
-	                                              if (!document.querySelector('.mermaid')) return;
-	                                              var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-	                                              mermaid.initialize({ startOnLoad: true, theme: isDark ? 'dark' : 'default' });
-
-	                                              // Re-render diagrams when theme toggles
-	                                              var observer = new MutationObserver(function(mutations) {
-	                                                  mutations.forEach(function(m) {
-	                                                      if (m.attributeName === 'data-theme') {
-	                                                          var nowDark = document.documentElement.getAttribute('data-theme') === 'dark';
-	                                                          mermaid.initialize({ startOnLoad: false, theme: nowDark ? 'dark' : 'default' });
-	                                                          document.querySelectorAll('.mermaid').forEach(function(el) {
-	                                                              var orig = el.getAttribute('data-mermaid-src');
-	                                                              if (orig) {
-	                                                                  el.removeAttribute('data-processed');
-	                                                                  el.innerHTML = orig;
-	                                                              }
-	                                                          });
-	                                                          mermaid.run();
-	                                                      }
-	                                                  });
-	                                              });
-	                                              // Store original source before Mermaid replaces it with SVG
-	                                              document.querySelectorAll('.mermaid').forEach(function(el) {
-	                                                  el.setAttribute('data-mermaid-src', el.textContent);
-	                                              });
-	                                              observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-	                                          })();
-	                                          </script>
 	                                      </body>
 	                                      </html>
 	                                      """;
 
 	private const string _landingLayout = """
 	                                      <!DOCTYPE html>
-	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}>
+	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
 	                                      <head>
-	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.default_color_theme ?? "ocean" }}';document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
+	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
 	                                          <meta name="viewport" content="width=device-width, initial-scale=1" />
-	                                          <title>{{ site.title }}{{ if page.description != "" }} - {{ page.description }}{{ end }}</title>
-	                                          <meta name="description" content="{{ page.description }}" />
-	                                          {{ if site.url != "" }}<link rel="canonical" href="{{ site.url }}{{ page.route }}" />{{ end }}
+	                                          <title>{{ site.title | html.escape }}{{ if page.description != "" }} - {{ page.description | html.escape }}{{ end }}</title>
+	                                          <meta name="description" content="{{ page.meta_description | html.escape }}" />
+	                                          {{ if page.canonical_url != "" }}<link rel="canonical" href="{{ page.canonical_url }}" />{{ end }}
 	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
 	                                          {{ end }}
 	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
+	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color }}}</style>{{ end }}
 	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
 	                                      </head>
 	                                      <body class="landing">
@@ -3770,11 +3792,13 @@ public static class EmbeddedThemeProvider
 	                                                      <span class="site-name">{{ site.title }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
+	                                                      {{ if search_enabled }}
 	                                                      <button class="search-trigger" aria-label="Search">
 	                                                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
 	                                                          <span class="search-label">Search</span>
 	                                                          <kbd>⌘K</kbd>
 	                                                      </button>
+	                                                      {{ end }}
 	                                                      {{ if theme.color_themes != false }}
 	                                                      <div class="color-theme-selector">
 	                                                          <button class="color-theme-trigger" aria-label="Change color theme" aria-expanded="false">
@@ -3819,10 +3843,12 @@ public static class EmbeddedThemeProvider
 	                                                          </div>
 	                                                      </div>
 	                                                      {{ end }}
+	                                                      {{ if theme.show_dark_mode_toggle }}
 	                                                      <button class="theme-toggle" aria-label="Toggle dark mode">
 	                                                          <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
 	                                                          <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 	                                                      </button>
+	                                                      {{ end }}
 	                                                  </div>
 	                                              </div>
 	                                          </header>
@@ -3852,22 +3878,22 @@ public static class EmbeddedThemeProvider
 	                                          <!-- Features Grid -->
 	                                          <section class="landing-features">
 	                                              <h2 class="landing-features-title">Everything you need</h2>
-	                                              <p class="landing-features-subtitle">A modern documentation toolkit built for .NET developers</p>
+	                                              <p class="landing-features-subtitle">Documentation sites for .NET libraries</p>
 	                                              <div class="landing-features-grid">
 	                                                  <div class="landing-feature-card">
 	                                                      <div class="landing-feature-icon">C#</div>
 	                                                      <div class="landing-feature-name">C# API Reference</div>
-	                                                      <p class="landing-feature-desc">Auto-generate API docs from your .NET assemblies with full type information and XML doc comments.</p>
+	                                                      <p class="landing-feature-desc">Reference pages generated from the doc comments in your C# source.</p>
 	                                                  </div>
 	                                                  <div class="landing-feature-card">
 	                                                      <div class="landing-feature-icon">&lt;/&gt;</div>
-	                                                      <div class="landing-feature-name">Beautiful Themes</div>
-	                                                      <p class="landing-feature-desc">Ship with a polished default theme or build your own with Scriban templates and CSS variables.</p>
+	                                                      <div class="landing-feature-name">Themes</div>
+	                                                      <p class="landing-feature-desc">A default theme with color presets, or your own Scriban layouts.</p>
 	                                                  </div>
 	                                                  <div class="landing-feature-card">
 	                                                      <div class="landing-feature-icon">&#x26A1;</div>
 	                                                      <div class="landing-feature-name">Instant Search</div>
-	                                                      <p class="landing-feature-desc">Client-side full-text search with zero external dependencies. Works offline and loads instantly.</p>
+	                                                      <p class="landing-feature-desc">Client-side search over titles, headings, tags and page text. No external service.</p>
 	                                                  </div>
 	                                                  <div class="landing-feature-card">
 	                                                      <div class="landing-feature-icon">&#x263D;</div>
@@ -3877,12 +3903,12 @@ public static class EmbeddedThemeProvider
 	                                                  <div class="landing-feature-card">
 	                                                      <div class="landing-feature-icon">v2</div>
 	                                                      <div class="landing-feature-name">Versioning</div>
-	                                                      <p class="landing-feature-desc">Maintain docs for multiple versions side by side. Readers can switch between releases seamlessly.</p>
+	                                                      <p class="landing-feature-desc">A version dropdown linking to the docs you publish for each release.</p>
 	                                                  </div>
 	                                                  <div class="landing-feature-card">
 	                                                      <div class="landing-feature-icon">&#x2699;</div>
-	                                                      <div class="landing-feature-name">Plugin System</div>
-	                                                      <p class="landing-feature-desc">Extend the build pipeline with custom plugins for content transforms, assets, and more.</p>
+	                                                      <div class="landing-feature-name">Plugins</div>
+	                                                      <p class="landing-feature-desc">Built-in plugins for runnable C#, Blazor previews, changelogs, OpenAPI specs and Python APIs.</p>
 	                                                  </div>
 	                                              </div>
 	                                          </section>
@@ -3890,10 +3916,10 @@ public static class EmbeddedThemeProvider
 	                                          <!-- Code Preview -->
 	                                          <section class="landing-code-section">
 	                                              <h2 class="landing-code-title">Simple configuration</h2>
-	                                              <p class="landing-code-subtitle">Get a docs site running in under a minute</p>
+	                                              <p class="landing-code-subtitle">A minimal mokadocs.yaml</p>
 	                                              <div class="landing-code-block">
 	                                                  <span class="code-lang-badge">yaml</span>
-	                                                  <pre style="margin:0;padding:0;background:none;border:none"><code><span class="code-comment"># mokadocs.yaml</span>&#10;<span class="code-key">title:</span> <span class="code-string">My Project</span>&#10;<span class="code-key">description:</span> <span class="code-string">Docs for my .NET library</span>&#10;<span class="code-key">theme:</span> <span class="code-string">default</span>&#10;<span class="code-key">nav:</span>&#10;  - <span class="code-key">label:</span> <span class="code-string">Getting Started</span>&#10;    <span class="code-key">path:</span> <span class="code-string">docs/getting-started.md</span>&#10;  - <span class="code-key">label:</span> <span class="code-string">API Reference</span>&#10;    <span class="code-key">path:</span> <span class="code-string">api/</span></code></pre>
+	                                                  <pre style="margin:0;padding:0;background:none;border:none"><code><span class="code-comment"># mokadocs.yaml</span>&#10;<span class="code-key">site:</span>&#10;  <span class="code-key">title:</span> <span class="code-string">My Project</span>&#10;  <span class="code-key">description:</span> <span class="code-string">Docs for my .NET library</span>&#10;<span class="code-key">content:</span>&#10;  <span class="code-key">docs:</span> <span class="code-string">./docs</span>&#10;  <span class="code-key">projects:</span>&#10;    - <span class="code-key">path:</span> <span class="code-string">./src/MyLib/MyLib.csproj</span></code></pre>
 	                                              </div>
 	                                          </section>
 
@@ -3912,6 +3938,7 @@ public static class EmbeddedThemeProvider
 	                                              {{ if site.copyright }}<p style="margin-top:0.5rem;">{{ site.copyright }}</p>{{ end }}
 	                                          </footer>
 
+	                                          {{ if search_enabled }}
 	                                          <div id="searchModal" class="search-modal" hidden>
 	                                              <div class="search-backdrop"></div>
 	                                              <div class="search-dialog">
@@ -3923,6 +3950,7 @@ public static class EmbeddedThemeProvider
 	                                                  <div class="search-results" id="searchResults"></div>
 	                                              </div>
 	                                          </div>
+	                                          {{ end }}
 
 	                                          {{ for js in js_files }}<script src="{{ js }}"></script>
 	                                          {{ end }}

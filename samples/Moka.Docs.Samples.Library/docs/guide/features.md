@@ -2,7 +2,7 @@
 title: Features Overview
 description: A comprehensive showcase of every MokaDocs documentation feature
 order: 2
-icon: sparkles
+icon: star
 tags: [features, cards, steps, admonitions, tables, diagrams]
 ---
 
@@ -14,7 +14,7 @@ This page demonstrates every rich content feature available in MokaDocs. Use it 
 
 Cards draw attention to key information. They support `title`, `icon`, and `variant` attributes.
 
-:::card{title="Calculator" icon="calculator"}
+:::card{title="Calculator" icon="cpu"}
 Perform arithmetic operations with full error handling. Supports addition, division, and generic functional transformations via `Process<T>`.
 :::
 
@@ -22,7 +22,7 @@ Perform arithmetic operations with full error handling. Supports addition, divis
 `ObservableList<T>` fires `ItemAdded` events whenever elements are inserted, making it easy to build reactive data pipelines.
 :::
 
-:::card{title="Shape Abstractions" icon="hexagon" variant="success"}
+:::card{title="Shape Abstractions" icon="layers" variant="success"}
 The `IShape` interface and its implementations (`Circle`, `Rectangle`) provide a polymorphic area-calculation API.
 :::
 

@@ -38,7 +38,7 @@ public sealed class NuGetPackageResolver(ILogger logger)
 			string publishDir = Path.Combine(tempDir, "publish");
 
 			// Run dotnet publish to get all DLLs in one folder
-			int exitCode = await RunDotnetAsync(
+			(int exitCode, string output) = await RunDotnetAsync(
 				$"publish \"{projectPath}\" -c Release -o \"{publishDir}\" --nologo -v quiet",
 				tempDir, ct);
 
@@ -46,24 +46,22 @@ public sealed class NuGetPackageResolver(ILogger logger)
 			{
 				logger.LogError("dotnet publish failed with exit code {ExitCode} while resolving REPL packages",
 					exitCode);
-				return new ResolvedPackages();
+				return new ResolvedPackages
+				{
+					Error = $"dotnet publish exited with code {exitCode}"
+					        + (string.IsNullOrWhiteSpace(output) ? "" : $": {output.Trim()}")
+				};
 			}
 
-			// Load all DLLs from publish output (skip well-known framework assemblies)
 			var assemblies = new List<Assembly>();
 			var namespaces = new HashSet<string>();
-			string[] frameworkPrefixes = new[]
-			{
-				"System.", "Microsoft.NETCore", "Microsoft.CSharp",
-				"mscorlib", "netstandard", "WindowsBase"
-			};
 
 			foreach (string dll in Directory.EnumerateFiles(publishDir, "*.dll"))
 			{
 				string fileName = Path.GetFileNameWithoutExtension(dll);
 
-				// Skip framework assemblies that are already loaded
-				if (frameworkPrefixes.Any(p => fileName.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+				// ReplPackages is the temporary project itself, not one of the packages.
+				if (IsSharedFrameworkAssembly(fileName) || fileName == "ReplPackages")
 				{
 					continue;
 				}
@@ -181,7 +179,21 @@ public sealed class NuGetPackageResolver(ILogger logger)
 		return (spec.Trim(), null);
 	}
 
-	private async Task<int> RunDotnetAsync(string arguments, string workingDir, CancellationToken ct)
+	/// <summary>
+	///     Whether an assembly ships with the running .NET runtime, which has already loaded it.
+	/// </summary>
+	/// <remarks>
+	///     This used to skip every file starting with "System.", which dropped packages such as
+	///     System.Reactive and System.IO.Abstractions from the REPL.
+	/// </remarks>
+	internal static bool IsSharedFrameworkAssembly(string assemblyName)
+	{
+		string? frameworkDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+		return frameworkDir is not null && File.Exists(Path.Combine(frameworkDir, assemblyName + ".dll"));
+	}
+
+	private async Task<(int ExitCode, string Output)> RunDotnetAsync(string arguments, string workingDir,
+		CancellationToken ct)
 	{
 		var psi = new ProcessStartInfo
 		{
@@ -216,7 +228,8 @@ public sealed class NuGetPackageResolver(ILogger logger)
 			logger.LogDebug("dotnet stdout: {Stdout}", stdout.Trim());
 		}
 
-		return process.ExitCode;
+		// Both streams: restore errors such as NU1101 (package not found) are written to stdout.
+		return (process.ExitCode, $"{stdout}\n{stderr}".Trim());
 	}
 
 	private static IEnumerable<string> GetRootNamespaces(Assembly assembly)
@@ -263,5 +276,8 @@ public sealed class NuGetPackageResolver(ILogger logger)
 
 		/// <summary>Root namespaces discovered from the loaded assemblies.</summary>
 		public IReadOnlyList<string> Namespaces { get; init; } = [];
+
+		/// <summary>Why resolving failed, or <c>null</c> when it didn't.</summary>
+		public string? Error { get; init; }
 	}
 }

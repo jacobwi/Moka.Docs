@@ -1,6 +1,7 @@
 using System.CommandLine;
-using System.Reflection;
+using System.IO.Abstractions;
 using System.Runtime.InteropServices;
+using Moka.Docs.Core.Configuration;
 using Spectre.Console;
 
 namespace Moka.Docs.Cli.Commands;
@@ -13,11 +14,18 @@ internal static class InfoCommand
 	/// <summary>Creates the info command.</summary>
 	public static Command Create()
 	{
-		var command = new Command("info", "Show environment and configuration information");
+		var configOption = new Option<string?>("--config", "-c")
+			{ Description = "Path to configuration file (default: mokadocs.yaml)" };
 
-		command.SetAction(_ =>
+		var command = new Command("info", "Show environment and configuration information")
 		{
-			string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.1";
+			configOption
+		};
+
+		command.SetAction(parseResult =>
+		{
+			string configPath = ConfigPath.Resolve(parseResult.GetValue(configOption));
+			string rootDir = Path.GetDirectoryName(configPath)!;
 
 			Table table = new Table()
 				.Border(TableBorder.Rounded)
@@ -26,20 +34,33 @@ internal static class InfoCommand
 			table.AddColumn("Property");
 			table.AddColumn("Value");
 
-			table.AddRow("Version", version);
-			table.AddRow("Runtime", RuntimeInformation.FrameworkDescription);
-			table.AddRow("OS", RuntimeInformation.OSDescription);
-			table.AddRow("Working Directory", Directory.GetCurrentDirectory());
+			table.AddRow("Version", Markup.Escape(CliVersion.Current));
+			table.AddRow("Runtime", Markup.Escape(RuntimeInformation.FrameworkDescription));
+			table.AddRow("OS", Markup.Escape(RuntimeInformation.OSDescription));
+			table.AddRow("Working Directory", Markup.Escape(Directory.GetCurrentDirectory()));
 
-			string configPath = Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
-			table.AddRow("Config File", File.Exists(configPath) ? "[green]Found[/]" : "[dim]Not found[/]");
+			if (!File.Exists(configPath))
+			{
+				table.AddRow("Config File", $"{Markup.Escape(configPath)} [dim](not found)[/]");
+				AnsiConsole.Write(table);
+				return 0;
+			}
 
-			string docsDir = Path.Combine(Directory.GetCurrentDirectory(), "docs");
-			table.AddRow("Docs Directory", Directory.Exists(docsDir) ? "[green]Found[/]" : "[dim]Not found[/]");
-
-			string outputDir = Path.Combine(Directory.GetCurrentDirectory(), "_site");
-			table.AddRow("Output Directory",
-				Directory.Exists(outputDir) ? "[green]Exists[/]" : "[dim]Not built yet[/]");
+			// Docs and output paths come from the config. The previous version always looked
+			// for ./docs and ./_site, so a project building to docs/_site read "Not built yet".
+			try
+			{
+				SiteConfig config = new SiteConfigReader(new FileSystem()).Read(configPath);
+				table.AddRow("Config File", Markup.Escape(configPath));
+				table.AddRow("Docs Directory",
+					PathWithStatus(Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs)), "not found"));
+				table.AddRow("Output Directory",
+					PathWithStatus(Path.GetFullPath(Path.Combine(rootDir, config.Build.Output)), "not built yet"));
+			}
+			catch (SiteConfigException ex)
+			{
+				table.AddRow("Config File", $"{Markup.Escape(configPath)} [red](invalid: {Markup.Escape(ex.Message)})[/]");
+			}
 
 			AnsiConsole.Write(table);
 			return 0;
@@ -47,4 +68,7 @@ internal static class InfoCommand
 
 		return command;
 	}
+
+	private static string PathWithStatus(string path, string missingLabel) =>
+		Directory.Exists(path) ? Markup.Escape(path) : $"{Markup.Escape(path)} [dim]({missingLabel})[/]";
 }

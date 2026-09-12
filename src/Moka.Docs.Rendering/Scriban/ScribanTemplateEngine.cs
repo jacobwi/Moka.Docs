@@ -1,6 +1,8 @@
-using System.Text;
+using System.Globalization;
+using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Moka.Docs.Core;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Navigation;
@@ -34,22 +36,26 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		Template template = GetOrParseTemplate(layoutName, templateContent);
 
+		// Errors propagate so RenderPhase can report them. This method used to catch them and
+		// return the bare page content with an HTML comment, so a layout using {{ include }}
+		// produced a site with no layout and a build that reported success.
+		if (template.HasErrors)
+		{
+			throw new InvalidOperationException(
+				$"Layout '{layoutName}' has errors: {string.Join("; ", template.Messages.Select(m => m.ToString()))}");
+		}
+
 		ScriptObject scriptObject = BuildScriptObject(page, themeContext);
-		var context = new TemplateContext();
+
+		// AutoIndent prefixed every line of {{ content }} with the template's indentation, which
+		// shifted code inside <pre>. A pass that stripped the common indent of <pre> blocks
+		// afterwards also stripped the code's own indent (Python method bodies ended up at
+		// column 0) and missed <pre class="..."> blocks such as Mermaid diagrams.
+		var context = new TemplateContext { AutoIndent = false };
 		context.PushGlobal(scriptObject);
 		context.MemberRenamer = member => member.Name;
 
-		try
-		{
-			string html = template.Render(context);
-			return FixPreBlockIndentation(html);
-		}
-		catch (Exception ex)
-		{
-			logger.LogWarning(ex, "Failed to render template '{Layout}' for page '{Route}'",
-				layoutName, page.Route);
-			return $"<!-- Template rendering error: {ex.Message} -->\n{page.Content.Html}";
-		}
+		return template.Render(context);
 	}
 
 	private Template GetOrParseTemplate(string name, string content)
@@ -60,12 +66,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		}
 
 		var template = Template.Parse(content);
-		if (template.HasErrors)
-		{
-			string errors = string.Join("; ", template.Messages.Select(m => m.Message));
-			logger.LogWarning("Template '{Name}' has errors: {Errors}", name, errors);
-		}
-
+		logger.LogDebug("Parsed layout template '{Name}' ({Count} parser messages)", name, template.Messages.Count);
 		_templateCache[name] = template;
 		return template;
 	}
@@ -143,6 +144,18 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		{
 			{ "title", page.FrontMatter.Title },
 			{ "description", page.FrontMatter.Description },
+			// The site description stands in for pages that have none, so search engines and
+			// link previews never get an empty description.
+			{
+				"meta_description",
+				string.IsNullOrWhiteSpace(page.FrontMatter.Description)
+					? ctx.Config.Site.Description
+					: page.FrontMatter.Description
+			},
+			{ "canonical_url", SiteUrls.Absolute(ctx.Config.Site.Url, bp, page.Route) },
+			// Compared before the base path is added: page.route is prefixed, so the NuGet
+			// widget's route check never matched on a site built with --base-path.
+			{ "is_api_index", page.Route == "/api" },
 			{ "content", RewriteContentLinks(page.Content.Html, bp) },
 			{ "route", PrefixRoute(page.Route, bp) },
 			{ "toc", BuildTocObject(page.TableOfContents) },
@@ -153,7 +166,9 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			},
 			{ "tags", page.FrontMatter.Tags },
 			{ "layout", page.FrontMatter.Layout },
-			{ "source_path", page.SourcePath ?? "" },
+			// Forward slashes on every OS: the source path comes from the file system and is
+			// used in URLs (edit links), where Windows backslashes do not belong.
+			{ "source_path", page.SourcePath?.Replace('\\', '/') ?? "" },
 			{ "last_modified", page.LastModified?.ToString("yyyy-MM-dd") ?? "" },
 			{ "is_api", page.Origin == PageOrigin.ApiGenerated }
 		}, false);
@@ -177,7 +192,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "title", ctx.Config.Site.Title },
 			{ "description", ctx.Config.Site.Description },
 			{ "url", ctx.Config.Site.Url },
-			{ "copyright", ctx.Config.Site.Copyright ?? "" },
+			{ "copyright", ExpandYear(ctx.Config.Site.Copyright) },
 			{ "logo", ctx.Config.Site.Logo?.RawValue ?? "" },
 			{ "favicon", ctx.Config.Site.Favicon?.RawValue ?? "" },
 			{ "logo_url", ResolveBrandUrl(ctx.Config.Site.Logo, bp) },
@@ -217,8 +232,13 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "show_version_selector", ctx.Config.Theme.Options.ShowVersionSelector },
 			{ "show_built_with", ctx.Config.Theme.Options.ShowBuiltWith },
 			{ "social_links", BuildSocialLinks(ctx.Config.Theme.Options.SocialLinks) },
-			{ "default_color_theme", ctx.Config.Theme.Options.DefaultColorTheme }
+			{ "default_color_theme", ctx.Config.Theme.Options.DefaultColorTheme },
+			{ "initial_color_theme", InitialColorTheme(ctx.Config.Theme.Options) }
 		}, false);
+
+		// The search button, dialog and shortcut need both an index and the option on.
+		so.SetValue("search_enabled",
+			ctx.Config.Features.Search.Enabled && ctx.Config.Theme.Options.ShowSearch, false);
 
 		#endregion
 
@@ -238,9 +258,13 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		so.SetValue("mokadocs_version", mokaVersion, false);
 
 		// Edit link
-		if (ctx.Config.Site.EditLink is { } el && ctx.Config.Theme.Options.ShowEditLink)
+		// Generated pages (API, OpenAPI, Python) have no source file. They used to get an edit
+		// link to the docs folder itself.
+		if (ctx.Config.Site.EditLink is { } el && ctx.Config.Theme.Options.ShowEditLink
+		                                       && !string.IsNullOrEmpty(page.SourcePath))
 		{
-			string editUrl = $"{el.Repo.TrimEnd('/')}/edit/{el.Branch}/{el.Path.TrimEnd('/')}/{page.SourcePath}";
+			string editUrl =
+				$"{el.Repo.TrimEnd('/')}/edit/{el.Branch}/{el.Path.TrimEnd('/')}/{page.SourcePath.Replace('\\', '/')}";
 			so.SetValue("edit_url", editUrl, false);
 		}
 
@@ -333,6 +357,31 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		#endregion
 
 		return so;
+	}
+
+	/// <summary>Replaces <c>{year}</c> in the copyright notice with the current year.</summary>
+	private static string ExpandYear(string? copyright) =>
+		string.IsNullOrEmpty(copyright)
+			? ""
+			: copyright.Replace("{year}", DateTime.UtcNow.Year.ToString(CultureInfo.InvariantCulture),
+				StringComparison.Ordinal);
+
+	/// <summary>
+	///     The color preset applied before the reader picks one, or an empty string for none.
+	/// </summary>
+	/// <remarks>
+	///     Presets set <c>--color-primary</c> with <c>!important</c>, so while one is applied
+	///     <c>primaryColor</c> has no visible effect. Every page used to start on a preset, which
+	///     made <c>primaryColor</c> do nothing at all. A site that changes <c>primaryColor</c>
+	///     and leaves <c>defaultColorTheme</c> at its default now starts with no preset.
+	/// </remarks>
+	private static string InitialColorTheme(ThemeOptions options)
+	{
+		bool customPrimary = !string.IsNullOrWhiteSpace(options.PrimaryColor)
+		                     && !options.PrimaryColor.Equals(MokaDefaults.PrimaryColor, StringComparison.OrdinalIgnoreCase);
+		bool defaultPreset = options.DefaultColorTheme.Equals("ocean", StringComparison.OrdinalIgnoreCase);
+
+		return customPrimary && defaultPreset ? "" : options.DefaultColorTheme;
 	}
 
 	private static ScriptArray BuildTocObject(TableOfContents toc)
@@ -441,7 +490,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		var arr = new ScriptArray();
 		foreach (SocialLink link in links)
 		{
-			string iconSvg = LucideIcons.Get(link.Icon) ?? link.Icon;
+			string iconSvg = LucideIcons.Get(link.Icon) ?? WebUtility.HtmlEncode(link.Icon);
 			arr.Add(new ScriptObject { { "icon", link.Icon }, { "url", link.Url }, { "icon_svg", iconSvg } });
 		}
 
@@ -553,117 +602,6 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		}
 
 		return obj;
-	}
-
-	/// <summary>
-	///     Fixes whitespace inside <c>&lt;pre&gt;</c> blocks that gets added by Scriban template indentation.
-	///     Finds the common leading whitespace on lines within each pre block and strips it.
-	/// </summary>
-	private static string FixPreBlockIndentation(string html)
-	{
-		const string preOpen = "<pre>";
-		const string preClose = "</pre>";
-
-		var result = new StringBuilder(html.Length);
-		int pos = 0;
-
-		while (pos < html.Length)
-		{
-			int preStart = html.IndexOf(preOpen, pos, StringComparison.OrdinalIgnoreCase);
-			if (preStart < 0)
-			{
-				result.Append(html, pos, html.Length - pos);
-				break;
-			}
-
-			// Copy everything before <pre>
-			result.Append(html, pos, preStart - pos);
-
-			int contentStart = preStart + preOpen.Length;
-			// Find matching </pre> - handle <pre ...> with attributes too
-			int actualPreEnd = html.IndexOf('>', preStart);
-			if (actualPreEnd < 0)
-			{
-				result.Append(html, preStart, html.Length - preStart);
-				break;
-			}
-
-			contentStart = actualPreEnd + 1;
-
-			int preEnd = html.IndexOf(preClose, contentStart, StringComparison.OrdinalIgnoreCase);
-			if (preEnd < 0)
-			{
-				result.Append(html, preStart, html.Length - preStart);
-				break;
-			}
-
-			// Extract pre content and strip common leading whitespace
-			string preTag = html[preStart..contentStart];
-			string content = html[contentStart..preEnd];
-			string stripped = StripCommonIndent(content);
-
-			result.Append(preTag);
-			result.Append(stripped);
-			result.Append(preClose);
-
-			pos = preEnd + preClose.Length;
-		}
-
-		return result.ToString();
-	}
-
-	private static string StripCommonIndent(string text)
-	{
-		string[] lines = text.Split('\n');
-		if (lines.Length <= 1)
-		{
-			return text;
-		}
-
-		// Find minimum indentation across non-empty lines (skip first line which is on the <pre> line)
-		int minIndent = int.MaxValue;
-		for (int i = 1; i < lines.Length; i++)
-		{
-			string line = lines[i];
-			if (string.IsNullOrWhiteSpace(line))
-			{
-				continue;
-			}
-
-			int indent = 0;
-			while (indent < line.Length && line[indent] == ' ')
-			{
-				indent++;
-			}
-
-			if (indent < minIndent)
-			{
-				minIndent = indent;
-			}
-		}
-
-		if (minIndent == 0 || minIndent == int.MaxValue)
-		{
-			return text;
-		}
-
-		// Strip the common indent from all lines except the first
-		var sb = new StringBuilder();
-		sb.Append(lines[0]);
-		for (int i = 1; i < lines.Length; i++)
-		{
-			sb.Append('\n');
-			if (lines[i].Length > minIndent)
-			{
-				sb.Append(lines[i][minIndent..]);
-			}
-			else
-			{
-				sb.Append(lines[i].TrimStart());
-			}
-		}
-
-		return sb.ToString();
 	}
 }
 

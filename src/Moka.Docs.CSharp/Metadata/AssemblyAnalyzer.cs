@@ -103,7 +103,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 					continue;
 				}
 
-				ApiType? apiType = ExtractType(symbol);
+				ApiType? apiType = ExtractType(symbol, includeInternals);
 				if (apiType is null)
 				{
 					continue;
@@ -112,7 +112,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				// Capture the source code from the syntax node
 				apiType = apiType with { SourceCode = typeDecl.NormalizeWhitespace().ToFullString() };
 
-				string ns = symbol.ContainingNamespace?.ToDisplayString() ?? "(global)";
+				string ns = NamespaceOf(symbol) ?? "(global)";
 				if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
 				{
 					types = [];
@@ -141,7 +141,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				// Capture the source code from the syntax node
 				apiType = apiType with { SourceCode = enumDecl.NormalizeWhitespace().ToFullString() };
 
-				string ns = symbol.ContainingNamespace?.ToDisplayString() ?? "(global)";
+				string ns = NamespaceOf(symbol) ?? "(global)";
 				if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
 				{
 					types = [];
@@ -171,7 +171,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				// Capture the source code from the syntax node
 				apiType = apiType with { SourceCode = delegateDecl.NormalizeWhitespace().ToFullString() };
 
-				string ns = symbol.ContainingNamespace?.ToDisplayString() ?? "(global)";
+				string ns = NamespaceOf(symbol) ?? "(global)";
 				if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
 				{
 					types = [];
@@ -203,7 +203,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 
 	#region Type Extraction
 
-	private static ApiType? ExtractType(INamedTypeSymbol symbol)
+	private static ApiType? ExtractType(INamedTypeSymbol symbol, bool includeInternals)
 	{
 		ApiTypeKind? kind = symbol.TypeKind switch
 		{
@@ -234,8 +234,8 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				.OrderBy(i => i)
 				.ToList(),
 			TypeParameters = ExtractTypeParameters(symbol.TypeParameters),
-			Members = ExtractMembers(symbol),
-			Namespace = symbol.ContainingNamespace?.ToDisplayString(),
+			Members = ExtractMembers(symbol, includeInternals),
+			Namespace = NamespaceOf(symbol),
 			Assembly = symbol.ContainingAssembly?.Name,
 			IsObsolete = HasAttribute(symbol, "ObsoleteAttribute"),
 			ObsoleteMessage = GetObsoleteMessage(symbol),
@@ -266,7 +266,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 			Kind = ApiTypeKind.Enum,
 			Accessibility = MapAccessibility(symbol.DeclaredAccessibility),
 			Members = members,
-			Namespace = symbol.ContainingNamespace?.ToDisplayString(),
+			Namespace = NamespaceOf(symbol),
 			Assembly = symbol.ContainingAssembly?.Name,
 			IsObsolete = HasAttribute(symbol, "ObsoleteAttribute"),
 			ObsoleteMessage = GetObsoleteMessage(symbol),
@@ -294,7 +294,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 			Kind = ApiTypeKind.Delegate,
 			Accessibility = MapAccessibility(symbol.DeclaredAccessibility),
 			TypeParameters = ExtractTypeParameters(symbol.TypeParameters),
-			Namespace = symbol.ContainingNamespace?.ToDisplayString(),
+			Namespace = NamespaceOf(symbol),
 			Assembly = symbol.ContainingAssembly?.Name,
 			Members =
 			[
@@ -317,7 +317,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 
 	#region Member Extraction
 
-	private static List<ApiMember> ExtractMembers(INamedTypeSymbol typeSymbol)
+	private static List<ApiMember> ExtractMembers(INamedTypeSymbol typeSymbol, bool includeInternals)
 	{
 		var members = new List<ApiMember>();
 
@@ -329,8 +329,9 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				continue;
 			}
 
-			// Skip private members
-			if (member.DeclaredAccessibility == Accessibility.Private)
+			// Only private members used to be skipped, so internal and private protected
+			// members of public types showed up in the public API reference.
+			if (!IsDocumentedAccessibility(member.DeclaredAccessibility, includeInternals))
 			{
 				continue;
 			}
@@ -591,7 +592,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				TypeParameters = ParseDocParams(root, "typeparam"),
 				Exceptions = root.Elements("exception").Select(e => new ExceptionDoc
 				{
-					Type = (e.Attribute("cref")?.Value ?? "").TrimStart('T', ':'),
+					Type = StripDocIdPrefix(e.Attribute("cref")?.Value ?? ""),
 					Description = XmlDocParser.RenderInnerXml(e)
 				}).ToList(),
 				Examples = root.Elements("example")
@@ -627,30 +628,53 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		return result;
 	}
 
+	/// <summary>
+	///     Whether a type belongs in the reference. Containing types count too: a public class
+	///     nested in an internal one is not part of the public API.
+	/// </summary>
 	private static bool ShouldInclude(INamedTypeSymbol symbol, bool includeInternals)
 	{
-		if (symbol.DeclaredAccessibility == Accessibility.Public)
+		for (INamedTypeSymbol? current = symbol; current is not null; current = current.ContainingType)
 		{
-			return true;
+			if (!IsDocumentedAccessibility(current.DeclaredAccessibility, includeInternals))
+			{
+				return false;
+			}
 		}
 
-		if (includeInternals && symbol.DeclaredAccessibility == Accessibility.Internal)
-		{
-			return true;
-		}
-
-		if (symbol.DeclaredAccessibility == Accessibility.Protected)
-		{
-			return true;
-		}
-
-		if (symbol.DeclaredAccessibility == Accessibility.ProtectedOrInternal)
-		{
-			return true;
-		}
-
-		return false;
+		return true;
 	}
+
+	/// <summary>
+	///     The containing namespace, or null for the global namespace. Roslyn displays that one as
+	///     <c>&lt;global namespace&gt;</c>, which ended up in page routes and failed the build on
+	///     Windows, where <c>&lt;</c> and <c>&gt;</c> can't appear in a path.
+	/// </summary>
+	private static string? NamespaceOf(ISymbol symbol) =>
+		symbol.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() : null;
+
+	/// <summary>
+	///     Public and protected symbols are visible to library consumers (protected ones through
+	///     inheritance). Internal and private protected ones only with <c>includeInternals</c>.
+	/// </summary>
+	private static bool IsDocumentedAccessibility(Accessibility accessibility, bool includeInternals) =>
+		accessibility switch
+		{
+			Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal => true,
+			Accessibility.Internal or Accessibility.ProtectedAndInternal => includeInternals,
+			_ => false
+		};
+
+	/// <summary>
+	///     Removes a documentation ID prefix: <c>T:</c> for a resolved type, <c>!:</c> for a name
+	///     the compiler could not resolve.
+	/// </summary>
+	/// <remarks>
+	///     This used <c>TrimStart('T', ':')</c>, which also removed the first letter of any type
+	///     name starting with T, so <c>T:TimeoutException</c> became "imeoutException".
+	/// </remarks>
+	private static string StripDocIdPrefix(string cref) =>
+		cref.Length > 2 && cref[1] == ':' ? cref[2..] : cref;
 
 	private static ApiAccessibility MapAccessibility(Accessibility a)
 	{

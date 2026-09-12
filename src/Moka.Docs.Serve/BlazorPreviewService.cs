@@ -23,6 +23,15 @@ public sealed class BlazorPreviewService
 	private readonly ILoggerFactory _loggerFactory;
 	private readonly IServiceProvider _serviceProvider;
 
+	/// <summary>
+	///     Creates the service and loads <paramref name="runtimeAssemblyPaths" /> into the
+	///     process, so components defined in them can be rendered and not just compiled.
+	/// </summary>
+	/// <param name="compilationService">Compiles the component source.</param>
+	/// <param name="loggerFactory">Logger factory handed to the Blazor renderer.</param>
+	/// <param name="logger">Logger for this service.</param>
+	/// <param name="extraUsings">Namespaces imported into every preview.</param>
+	/// <param name="runtimeAssemblyPaths">Assemblies to load before rendering. A file that fails to load is logged and skipped.</param>
 	public BlazorPreviewService(
 		ICompilationService compilationService,
 		ILoggerFactory loggerFactory,

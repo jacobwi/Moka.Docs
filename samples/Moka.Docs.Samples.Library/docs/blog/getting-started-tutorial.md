@@ -4,7 +4,7 @@ description: "A step-by-step tutorial for building a shape area calculator with 
 date: 2026-03-10
 author: MokaDocs Team
 tags: [tutorial, beginner, shapes]
-icon: graduation-cap
+icon: book-open
 ---
 
 # Tutorial: Building a Shape Calculator
@@ -153,7 +153,7 @@ Total shapes registered: 4
 `TryDivide` returns an `OperationResult<double>` instead of throwing. This is safer in loops and user-facing code.
 :::
 
-:::card{title="Observable Collections" icon="bell" variant="info"}
+:::card{title="Observable Collections" icon="list" variant="info"}
 `ObservableList<T>` fires events automatically. No manual notification code required.
 :::
 

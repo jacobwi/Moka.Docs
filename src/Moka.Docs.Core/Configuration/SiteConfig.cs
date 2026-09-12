@@ -203,7 +203,7 @@ public sealed record ThemeOptions
 }
 
 /// <summary>
-///     A social link displayed in the site header.
+///     A social link displayed in the site footer.
 /// </summary>
 public sealed record SocialLink
 {

@@ -15,6 +15,7 @@ public sealed class PluginHost
 	private readonly ILogger<PluginHost> _logger;
 	private readonly IServiceProvider _serviceProvider;
 	private readonly SiteConfig _siteConfig;
+	private bool _initialized;
 
 	/// <summary>
 	///     Creates a new plugin host.
@@ -38,10 +39,20 @@ public sealed class PluginHost
 	///     Discovers and initializes all plugins declared in the site configuration.
 	///     Plugins registered in the DI container via <see cref="IMokaPlugin" /> are matched
 	///     by their <see cref="IMokaPlugin.Id" /> against <see cref="PluginDeclaration.Name" />.
+	///     Only the first call does anything.
 	/// </summary>
 	/// <param name="ct">Cancellation token.</param>
 	public async Task DiscoverAndInitializeAsync(CancellationToken ct = default)
 	{
+		// The ASP.NET Core host calls this before every in-memory build. Each call used to add
+		// the plugins again, so they ran once more per rebuild and injected their assets twice.
+		if (_initialized)
+		{
+			return;
+		}
+
+		_initialized = true;
+
 		List<PluginDeclaration> declarations = _siteConfig.Plugins;
 		if (declarations.Count == 0)
 		{
@@ -81,7 +92,7 @@ public sealed class PluginHost
 				_siteConfig,
 				declaration.Options.AsReadOnly(),
 				_serviceProvider,
-				pluginLogger);
+				pluginLogger) { PluginId = plugin.Id };
 
 			try
 			{
@@ -108,6 +119,7 @@ public sealed class PluginHost
 			try
 			{
 				_logger.LogDebug("Executing plugin '{PluginName}'", loaded.Plugin.Name);
+				loaded.Context.BuildDiagnostics = buildContext.Diagnostics;
 				await loaded.Plugin.ExecuteAsync(loaded.Context, buildContext, ct);
 			}
 			catch (Exception ex)
@@ -117,6 +129,10 @@ public sealed class PluginHost
 				buildContext.Diagnostics.Error(
 					$"Plugin '{loaded.Plugin.Id}' failed: {ex.Message}", "Plugins");
 				_logger.LogError(ex, "Plugin '{PluginName}' failed during execution", loaded.Plugin.Name);
+			}
+			finally
+			{
+				loaded.Context.BuildDiagnostics = null;
 			}
 		}
 	}

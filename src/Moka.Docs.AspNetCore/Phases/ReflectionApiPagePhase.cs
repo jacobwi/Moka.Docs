@@ -106,13 +106,15 @@ public sealed class ReflectionApiPagePhase(
 				FrontMatter = new FrontMatter
 				{
 					Title = type.Name,
-					Description = type.Documentation?.Summary ?? $"API documentation for {type.FullName}",
+					Description = ApiDocText.ToPlainText(type.Documentation?.Summary) is { Length: > 0 } description
+						? description
+						: $"API documentation for {type.FullName}",
 					Layout = "default"
 				},
 				Content = new PageContent
 				{
 					Html = apiHtml,
-					PlainText = type.Documentation?.Summary ?? ""
+					PlainText = ApiDocText.ToPlainText(type.Documentation?.Summary)
 				},
 				TableOfContents = toc,
 				Route = route,

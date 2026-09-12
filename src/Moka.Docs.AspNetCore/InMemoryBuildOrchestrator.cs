@@ -1,6 +1,4 @@
 using System.IO.Abstractions.TestingHelpers;
-using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Api;
@@ -89,7 +87,7 @@ public sealed class InMemoryBuildOrchestrator(
 		await pipeline.ExecuteAsync(context, ct);
 
 		// Harvest all generated files from the virtual filesystem
-		InMemorySite site = HarvestSite(fs, _virtualOutput, options.BasePath);
+		InMemorySite site = HarvestSite(fs, _virtualOutput);
 
 		logger.LogInformation("In-memory build complete: {FileCount} files, {PageCount} pages",
 			site.Files.Count, context.Pages.Count);
@@ -131,12 +129,11 @@ public sealed class InMemoryBuildOrchestrator(
 
 	/// <summary>
 	///     Reads all files from the virtual output directory and creates an InMemorySite.
-	///     Rewrites paths to include the basePath prefix for correct URL routing.
+	///     Links already carry the base path: the site is built with <c>build.basePath</c> set.
 	/// </summary>
-	private static InMemorySite HarvestSite(MockFileSystem fs, string outputDir, string basePath)
+	private static InMemorySite HarvestSite(MockFileSystem fs, string outputDir)
 	{
 		var files = new Dictionary<string, SiteFile>(StringComparer.OrdinalIgnoreCase);
-		string normalizedBase = basePath.Trim('/');
 
 		foreach (string filePath in fs.Directory.EnumerateFiles(outputDir, "*.*", SearchOption.AllDirectories))
 		{
@@ -148,38 +145,9 @@ public sealed class InMemoryBuildOrchestrator(
 			string contentType = SiteFile.GetContentType(extension);
 			byte[] content = fs.File.ReadAllBytes(filePath);
 
-			// For HTML files, rewrite internal links to include basePath
-			if (extension.Equals(".html", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(normalizedBase))
-			{
-				string html = Encoding.UTF8.GetString(content);
-				html = RewriteLinks(html, normalizedBase);
-				content = Encoding.UTF8.GetBytes(html);
-			}
-
 			files[relativePath] = new SiteFile(content, contentType);
 		}
 
 		return new InMemorySite { Files = files };
-	}
-
-	/// <summary>
-	///     Rewrites internal links (href="/..." and src="/...") to include the basePath prefix.
-	/// </summary>
-	private static string RewriteLinks(string html, string basePath)
-	{
-		// Rewrite href="/" links (but not external http:// or #anchors)
-		html = Regex.Replace(html,
-			@"(href|src|action)=""(/(?!/))",
-			$"$1=\"/{basePath}/");
-
-		// Rewrite url(/) in inline CSS
-		html = Regex.Replace(html,
-			@"url\((/(?!/))",
-			$"url(/{basePath}/");
-
-		// Clean up any double slashes from joining
-		html = html.Replace($"/{basePath}//", $"/{basePath}/");
-
-		return html;
 	}
 }

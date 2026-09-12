@@ -27,6 +27,14 @@ public static class MokaDocsEndpointExtensions
 		MokaDocsOptions options = endpoints.ServiceProvider.GetRequiredService<MokaDocsOptions>();
 		string effectiveBase = (basePath ?? options.BasePath).Trim('/');
 
+		// The site is built with its base path in every link, so an override has to reach the
+		// build too. Mapping it here alone served pages whose styles and links pointed at the
+		// old path.
+		if (basePath is not null)
+		{
+			options.BasePath = "/" + effectiveBase;
+		}
+
 		// Shared handler for serving docs pages
 		async Task ServeDocs(HttpContext context, string? path)
 		{

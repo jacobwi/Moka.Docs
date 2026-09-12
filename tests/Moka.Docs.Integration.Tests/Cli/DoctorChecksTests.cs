@@ -144,6 +144,15 @@ public sealed class DoctorChecksTests
 		result.Should().StartWith("---\ntitle: \"Api: v2\"\n");
 	}
 
+	[Theory]
+	[InlineData("Plain Title", "Plain Title")]
+	[InlineData("- starts with a dash", "\"- starts with a dash\"")]
+	[InlineData("null", "\"null\"")]
+	[InlineData("~", "\"~\"")]
+	[InlineData("say \"hi\"", "\"say \\\"hi\\\"\"")]
+	public void QuoteYamlScalar_QuotesOnlyWhenBareYamlWouldChangeTheValue(string value, string expected) =>
+		DoctorChecks.QuoteYamlScalar(value).Should().Be(expected);
+
 	[Fact]
 	public void TitleFromPath_UsesTheFolderNameForIndexPages()
 	{
@@ -174,6 +183,23 @@ public sealed class DoctorChecksTests
 		];
 
 		DoctorChecks.FindUnknownPlugins(declared, registered).Should().Equal("repl");
+	}
+
+	[Fact]
+	public void FindIgnoredPluginDeclarations_ReportsPathsAndNamelessEntries()
+	{
+		// The plugin host skips both without a trace, so doctor and validate used to pass
+		// a config whose plugin never loaded.
+		PluginDeclaration[] declared =
+		[
+			new() { Name = "mokadocs-repl" },
+			new() { Path = "./plugins/Footer.dll" },
+			new() { Options = new Dictionary<string, object> { ["x"] = 1 } }
+		];
+
+		DoctorChecks.FindIgnoredPluginDeclarations(declared).Should().Equal(
+			"plugins[1]: path './plugins/Footer.dll' is ignored, the mokadocs CLI cannot load plugin assemblies",
+			"plugins[2] has no name");
 	}
 
 	#endregion

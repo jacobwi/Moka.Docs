@@ -5,7 +5,7 @@ order: 3
 
 # Mermaid Diagrams
 
-MokaDocs has built-in support for [Mermaid](https://mermaid.js.org/) diagrams. Mermaid lets you create diagrams and visualizations using a text-based syntax directly in your Markdown files. Diagrams are rendered client-side using the Mermaid.js library loaded from a CDN.
+MokaDocs renders [Mermaid](https://mermaid.js.org/) diagrams written in fenced code blocks. The build puts the diagram source in the page, and the default theme draws it in the browser with Mermaid 11. The theme loads the Mermaid script from cdn.jsdelivr.net, and only on pages that contain a diagram. A reader who can't reach the CDN sees the diagram source as text.
 
 ## Basic Usage
 
@@ -27,15 +27,15 @@ flowchart LR
     B -->|No| D[End]
 ```
 
-MokaDocs automatically detects `mermaid` code blocks and renders them as interactive SVG diagrams instead of displaying the raw syntax.
+Mermaid replaces the code block with a static SVG drawing of the diagram.
 
 ## Theme Support
 
-Mermaid diagrams automatically adapt to the current color scheme of your documentation site. When a user switches between light and dark mode, diagrams re-render with appropriate colors and contrast levels. No additional configuration is needed.
+Diagrams use Mermaid's `default` theme in light mode and its `dark` theme in dark mode. When a reader switches modes, every diagram on the page is drawn again with the matching theme.
 
 ## Diagram Types
 
-Mermaid supports a wide variety of diagram types. Below are examples of the most commonly used types in technical documentation.
+Mermaid supports many diagram types. These are the ones most often used in technical documentation.
 
 ### Flowchart
 
@@ -86,7 +86,7 @@ Node shapes:
 
 ### Sequence Diagram
 
-Sequence diagrams show interactions between participants over time. They are excellent for documenting API flows, service communication, and protocol exchanges.
+Sequence diagrams show messages between participants over time, such as API calls between services.
 
 ````markdown
 ```mermaid
@@ -135,14 +135,16 @@ sequenceDiagram
 ```
 
 Arrow types:
-- `->>` - Solid line with arrowhead (synchronous)
-- `-->>` - Dashed line with arrowhead (response)
-- `--)` - Solid line with open arrow (asynchronous)
-- `--x` - Dashed line with cross (lost message)
+- `->>` - Solid line with an arrowhead
+- `-->>` - Dotted line with an arrowhead
+- `-)` - Solid line with an open arrow (async)
+- `--)` - Dotted line with an open arrow
+- `-x` - Solid line with a cross at the end
+- `--x` - Dotted line with a cross at the end
 
 ### Class Diagram
 
-Class diagrams represent the structure of a system by showing classes, their attributes, methods, and relationships. These are particularly useful for .NET API documentation.
+Class diagrams show classes with their members, and how the classes relate. Stereotypes such as `<<interface>>` and generics written with tildes (`Task~Result~`) work as written.
 
 ````markdown
 ```mermaid
@@ -323,7 +325,7 @@ Gantt charts are useful for project timelines and scheduling.
 ````markdown
 ```mermaid
 gantt
-    title MokaDocs v2.0 Release Plan
+    title Example Release Plan
     dateFormat YYYY-MM-DD
     section Core
         Markdown engine upgrade  :done, core1, 2025-01-01, 30d
@@ -342,7 +344,7 @@ gantt
 
 ```mermaid
 gantt
-    title MokaDocs v2.0 Release Plan
+    title Example Release Plan
     dateFormat YYYY-MM-DD
     section Core
         Markdown engine upgrade  :done, core1, 2025-01-01, 30d
@@ -384,7 +386,7 @@ pie title Documentation Pages by Category
 
 ### Keep It Readable
 
-Diagrams are most effective when they communicate a concept clearly. If a diagram becomes too complex, consider splitting it into multiple smaller diagrams with explanatory text between them.
+If a diagram gets hard to follow, split it into smaller diagrams with text between them.
 
 ### Use Subgraphs for Grouping
 
@@ -438,14 +440,30 @@ sequenceDiagram
     Note right of Client: Cache for 5 minutes
 ```
 
-### Escape Special Characters
+### Special Characters
 
-If your diagram labels contain special characters, wrap them in quotes:
+Write the diagram source the way Mermaid expects it. The build HTML-encodes the source and Mermaid decodes it before parsing, so `-->`, `<<interface>>` and `List~string~` need no escaping, including after a light/dark switch.
+
+Put a node label in quotes when it contains parentheses or braces:
 
 ```
 A["Node with (parentheses)"] --> B["Node with {braces}"]
 ```
 
+Mermaid removes angle brackets from flowchart node labels, so `A["List<string>"]` shows only "List". Use Mermaid's entity codes `#60;` for `<` and `#62;` for `>` instead:
+
+````markdown
+```mermaid
+flowchart LR
+    A["List#60;string#62;"] --> B["Dictionary#60;string, int#62;"]
+```
+````
+
+```mermaid
+flowchart LR
+    A["List#60;string#62;"] --> B["Dictionary#60;string, int#62;"]
+```
+
 ### Test Incrementally
 
-When building complex diagrams, add elements one at a time and preview after each addition. A single syntax error can prevent the entire diagram from rendering. The Mermaid Live Editor at [mermaid.live](https://mermaid.live) is a useful tool for testing diagram syntax independently.
+A syntax error replaces that diagram with Mermaid's "Syntax error in text" message; the other diagrams on the page still render. For a complex diagram, add a few lines at a time and check the result, or try the syntax first in the [Mermaid Live Editor](https://mermaid.live).

@@ -5,39 +5,15 @@ order: 6
 
 # Blog
 
-MokaDocs includes an optional blog feature that lets you publish posts alongside your documentation. This is useful for release announcements, tutorials, changelogs, and other long-form content related to your project.
+MokaDocs has no blog feature. The config reader accepts a `features.blog` section with `enabled`, `postsPerPage` and `showAuthors`, but nothing reads those values, so setting them changes nothing.
 
-> **Note:** The blog feature is currently upcoming and may not yet be available. Check the MokaDocs release notes for current status.
+## Posts in a Blog Folder
 
-## Configuration
+A `docs/blog/` folder builds like any other section:
 
-Enable the blog in your `mokadocs.yaml`:
+- Each file becomes an ordinary page at `/blog/<file-name>`.
+- Front matter such as `date`, `author` and `summary` is ignored. Only the standard [front matter](/configuration/front-matter) fields apply.
+- The sidebar sorts the pages by `order`, then by title. There is no date sorting, post index or pagination.
+- Without a `docs/blog/index.md`, `/blog/` redirects to the page whose file name sorts first alphabetically.
 
-```yaml
-features:
-  blog:
-    enabled: true
-    postsPerPage: 10
-    showAuthors: true
-```
-
-- `enabled` -- Set to `true` to activate the blog section on your site.
-- `postsPerPage` -- Number of posts displayed per page on the blog index. Defaults to `10`.
-- `showAuthors` -- When `true`, author names and avatars are displayed on each blog post.
-
-## Writing Posts
-
-Blog posts are Markdown files placed in a designated blog directory. Each post uses frontmatter to define its title, date, author, and other metadata:
-
-```markdown
----
-title: Announcing v2.0
-date: 2025-06-15
-author: Your Name
-summary: A quick look at what's new in version 2.0.
----
-
-Your post content here.
-```
-
-Posts are listed in reverse chronological order on the blog index page, with pagination controlled by the `postsPerPage` setting.
+To show the newest posts first, give newer posts a lower `order`, or write your own list of posts in `docs/blog/index.md`.

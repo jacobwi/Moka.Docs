@@ -133,6 +133,7 @@ public sealed class AdmonitionParser : BlockParser
 			Column = processor.Column
 		};
 
+		ContainerFence.Set(block, colons);
 		processor.NewBlocks.Push(block);
 		return BlockState.ContinueDiscard;
 	}
@@ -147,7 +148,7 @@ public sealed class AdmonitionParser : BlockParser
 		{
 			StringSlice saved = line;
 			int colons = MarkdigHelpers.CountAndSkipChar(ref line, ':');
-			if (colons >= 3)
+			if (colons >= 3 && ContainerFence.Reaches(block, colons))
 			{
 				string after = line.ToString().Trim();
 				if (string.IsNullOrEmpty(after))

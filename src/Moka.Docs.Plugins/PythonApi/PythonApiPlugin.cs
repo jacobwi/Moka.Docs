@@ -54,6 +54,15 @@ public sealed class PythonApiPlugin : IMokaPlugin
 	/// <inheritdoc />
 	public async Task ExecuteAsync(IPluginContext context, BuildContext buildContext, CancellationToken ct = default)
 	{
+		// Each plugins[] entry runs on this same instance with its own options. Without a reset,
+		// an entry that omitted label, routePrefix, docstringFormat or pythonPath inherited the
+		// value from the entry before it.
+		_sourceDir = null;
+		_label = _defaultLabel;
+		_routePrefix = _defaultRoutePrefix;
+		_docstringFormat = _defaultDocstringFormat;
+		_pythonPath = "python3";
+
 		// ── Parse options ──────────────────────────────────────────────────
 		if (context.Options.TryGetValue("source", out object? srcObj)
 		    && srcObj is string srcStr
@@ -183,7 +192,10 @@ public sealed class PythonApiPlugin : IMokaPlugin
 		                      ?? throw new InvalidOperationException(
 			                      $"mokadocs-python-api: could not open embedded resource stream for '{resourceName}'.");
 
-		string tempPath = Path.Combine(Path.GetTempPath(), $"mokadocs_{_pythonScriptResourceName}");
+		// A fresh name per run: the file is deleted afterwards, and with one shared name a
+		// build running at the same time (another site, or the other target framework's
+		// test run) deleted the script out from under this one.
+		string tempPath = Path.Combine(Path.GetTempPath(), $"mokadocs-python-analyzer-{Guid.NewGuid():N}.py");
 		using FileStream fs = File.Create(tempPath);
 		stream.CopyTo(fs);
 		return tempPath;
@@ -292,7 +304,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 			foreach (ApiType type in ns.Types)
 			{
-				string route = BuildTypeRoute(ns.Name, type.Name);
+				string route = BuildTypeRoute(ns.Name, type);
 				string kindBadge = type.Kind.ToString().ToLowerInvariant();
 				string summary = type.Documentation?.Summary ?? "";
 				indexHtml.AppendLine("<tr>");
@@ -330,7 +342,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 		foreach (ApiNamespace ns in apiRef.Namespaces)
 		foreach (ApiType type in ns.Types)
 		{
-			string route = BuildTypeRoute(ns.Name, type.Name);
+			string route = BuildTypeRoute(ns.Name, type);
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
 			TableOfContents toc = ApiPageRenderer.BuildTocForType(type);
 
@@ -339,13 +351,15 @@ public sealed class PythonApiPlugin : IMokaPlugin
 				FrontMatter = new FrontMatter
 				{
 					Title = type.Name,
-					Description = type.Documentation?.Summary ?? $"API documentation for {type.FullName}",
+					Description = ApiDocText.ToPlainText(type.Documentation?.Summary) is { Length: > 0 } description
+						? description
+						: $"API documentation for {type.FullName}",
 					Layout = "default"
 				},
 				Content = new PageContent
 				{
 					Html = apiHtml,
-					PlainText = type.Documentation?.Summary ?? ""
+					PlainText = ApiDocText.ToPlainText(type.Documentation?.Summary)
 				},
 				TableOfContents = toc,
 				Route = route,
@@ -358,10 +372,20 @@ public sealed class PythonApiPlugin : IMokaPlugin
 			$"{apiRef.Namespaces.Count} module(s) at {_routePrefix}");
 	}
 
-	private string BuildTypeRoute(string namespaceName, string typeName)
+	private string BuildTypeRoute(string namespaceName, ApiType type)
 	{
 		string nsPath = namespaceName.Replace('.', '/');
-		string safeName = typeName.Replace('<', '-').Replace('>', '-');
+
+		// The analyzer puts a module's functions on a synthetic type named after the module
+		// and marked with a "module" attribute. At {module}/{name} it collided with a class of
+		// the same name (calculator.py defining Calculator), and one of the two pages was lost.
+		// The module's own path is free, so the functions page lives there.
+		if (type.Attributes.Any(a => a.Name == "module"))
+		{
+			return $"{_routePrefix}/{nsPath}".ToLowerInvariant();
+		}
+
+		string safeName = type.Name.Replace('<', '-').Replace('>', '-');
 		return $"{_routePrefix}/{nsPath}/{safeName}".ToLowerInvariant();
 	}
 }

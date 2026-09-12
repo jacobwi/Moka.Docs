@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Themes;
 
@@ -8,11 +10,13 @@ namespace Moka.Docs.Themes;
 public static class ThemeServiceExtensions
 {
 	/// <summary>
-	///     Adds MokaDocs theme services to the service collection.
+	///     Adds <see cref="ThemeLoader" /> and <see cref="ThemeResolver" />. Requires an
+	///     <c>IFileSystem</c> and logging to be registered.
 	/// </summary>
 	public static IServiceCollection AddMokaDocsThemes(this IServiceCollection services)
 	{
-		// Will be populated in Phase 6
+		services.TryAddSingleton<ThemeLoader>();
+		services.TryAddSingleton<ThemeResolver>();
 		return services;
 	}
 }

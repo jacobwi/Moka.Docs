@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text;
+using Moka.Docs.Cli.Diagnostics;
 using Spectre.Console;
 
 namespace Moka.Docs.Cli.Commands;
@@ -26,12 +27,12 @@ internal static class NewCommand
 		           Describe a key feature or concept here.
 		           :::
 
-		           :::card{title="Outlined Card" icon="square" variant="outlined"}
-		           This card uses a border-only style.
+		           :::card{title="Info Card" icon="info" variant="info"}
+		           The info variant adds a blue left border.
 		           :::
 
-		           :::card{title="Filled Card" icon="palette" variant="filled"}
-		           This card has a solid background for emphasis.
+		           :::card{title="Success Card" icon="check" variant="success"}
+		           Other variants are success and warning.
 		           :::
 		           """,
 
@@ -124,6 +125,9 @@ internal static class NewCommand
 		                """
 	};
 
+	/// <summary>The component example pages, keyed by component name.</summary>
+	internal static IReadOnlyDictionary<string, string> ComponentTemplates => _componentTemplates;
+
 	/// <summary>Creates the <c>new</c> command with its subcommands.</summary>
 	public static Command Create()
 	{
@@ -151,6 +155,27 @@ internal static class NewCommand
 				.Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
 	}
 
+	/// <summary>
+	///     <c>MyCustomPlugin</c> and <c>my-custom-plugin</c> both become
+	///     <c>my-custom-plugin</c>, so the plugin id does not depend on how the name was typed.
+	/// </summary>
+	internal static string ToKebabCase(string name)
+	{
+		var sb = new StringBuilder(name.Length + 4);
+		for (int i = 0; i < name.Length; i++)
+		{
+			char c = name[i];
+			if (char.IsUpper(c) && i > 0 && (char.IsLower(name[i - 1]) || char.IsDigit(name[i - 1])))
+			{
+				sb.Append('-');
+			}
+
+			sb.Append(char.ToLowerInvariant(c));
+		}
+
+		return sb.ToString();
+	}
+
 	private static void EnsureDirectoryAndWrite(string filePath, string content)
 	{
 		string dir = Path.GetDirectoryName(filePath)!;
@@ -164,13 +189,14 @@ internal static class NewCommand
 	{
 		var nameArg = new Argument<string>("name") { Description = "Page name (e.g. getting-started, api-overview)" };
 
-		var titleOpt = new Option<string?>("--title") { Description = "Page title (defaults to name in Title Case)" };
+		var titleOpt = new Option<string?>("--title", "-t")
+			{ Description = "Page title (defaults to name in Title Case)" };
 
-		var pathOpt = new Option<string>("--path")
+		var pathOpt = new Option<string>("--path", "-p")
 			{ Description = "Output directory", DefaultValueFactory = _ => "./docs" };
 
 		var layoutOpt = new Option<string>("--layout")
-			{ Description = "Layout template (default, landing, api-type)", DefaultValueFactory = _ => "default" };
+			{ Description = "Layout template (default or landing)", DefaultValueFactory = _ => "default" };
 
 		var orderOpt = new Option<int?>("--order") { Description = "Sort order number" };
 
@@ -182,43 +208,51 @@ internal static class NewCommand
 		command.SetAction(parseResult =>
 		{
 			string name = parseResult.GetValue(nameArg)!;
-			string title = parseResult.GetValue(titleOpt) ?? ToTitleCase(name);
+			// A name such as guides/overview creates a subfolder; the title comes from the page.
+			string title = parseResult.GetValue(titleOpt) ?? ToTitleCase(Path.GetFileName(name));
 			string outputDir = parseResult.GetValue(pathOpt)!;
 			string layout = parseResult.GetValue(layoutOpt)!;
 			int? order = parseResult.GetValue(orderOpt);
 
 			AnsiConsole.MarkupLine("[bold green]mokadocs new page[/] - Scaffolding new page...");
 
-			var sb = new StringBuilder();
-			sb.AppendLine("---");
-			sb.AppendLine($"title: {title}");
-			if (order.HasValue)
-			{
-				sb.AppendLine($"order: {order.Value}");
-			}
-
-			sb.AppendLine($"layout: {layout}");
-			sb.AppendLine("---");
-			sb.AppendLine();
-			sb.AppendLine($"# {title}");
-			sb.AppendLine();
-			sb.AppendLine("Write your content here.");
-			sb.AppendLine();
-
 			string filePath = Path.GetFullPath(Path.Combine(outputDir, $"{name}.md"));
 			if (File.Exists(filePath))
 			{
-				AnsiConsole.MarkupLine($"[yellow]{filePath} already exists. Skipping.[/]");
+				AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(filePath)} already exists. Skipping.[/]");
 				return 0;
 			}
 
-			EnsureDirectoryAndWrite(filePath, sb.ToString());
+			EnsureDirectoryAndWrite(filePath, BuildPageMarkdown(title, layout, order));
 
-			AnsiConsole.MarkupLine($"[green]Created:[/] {filePath}");
+			AnsiConsole.MarkupLine($"[green]Created:[/] {Markup.Escape(filePath)}");
 			return 0;
 		});
 
 		return command;
+	}
+
+	/// <summary>
+	///     The Markdown for a new page. The title is quoted when YAML needs it: written raw, a
+	///     title such as <c>Api: v2</c> produced front matter that failed to parse.
+	/// </summary>
+	internal static string BuildPageMarkdown(string title, string layout, int? order)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine("---");
+		sb.AppendLine($"title: {DoctorChecks.QuoteYamlScalar(title)}");
+		if (order.HasValue)
+		{
+			sb.AppendLine($"order: {order.Value}");
+		}
+
+		sb.AppendLine($"layout: {DoctorChecks.QuoteYamlScalar(layout)}");
+		sb.AppendLine("---");
+		sb.AppendLine();
+		sb.AppendLine($"# {title}");
+		sb.AppendLine();
+		sb.AppendLine("Write your content here.");
+		return sb.ToString();
 	}
 
 	// ──────────────────────────── mokadocs new plugin ────────────────────────────
@@ -228,7 +262,8 @@ internal static class NewCommand
 		var nameArg = new Argument<string>("name")
 			{ Description = "Plugin name in kebab-case (e.g. my-custom-plugin)" };
 
-		var pathOpt = new Option<string>("--path") { Description = "Output directory", DefaultValueFactory = _ => "." };
+		var pathOpt = new Option<string>("--path", "-p")
+			{ Description = "Output directory", DefaultValueFactory = _ => "." };
 
 		var command = new Command("plugin", "Scaffold a new MokaDocs plugin project")
 		{
@@ -240,6 +275,7 @@ internal static class NewCommand
 			string name = parseResult.GetValue(nameArg)!;
 			string outputDir = parseResult.GetValue(pathOpt)!;
 			string pascal = ToPascalCase(name);
+			string pluginId = $"mokadocs-{ToKebabCase(name)}";
 
 			AnsiConsole.MarkupLine("[bold green]mokadocs new plugin[/] - Scaffolding new plugin...");
 
@@ -248,11 +284,14 @@ internal static class NewCommand
 
 			if (Directory.Exists(projectDir))
 			{
-				AnsiConsole.MarkupLine($"[yellow]{projectDir} already exists. Skipping.[/]");
+				AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(projectDir)} already exists. Skipping.[/]");
 				return 0;
 			}
 
 			// ── .csproj ──
+			// A package reference at the tool's own version. The project references this
+			// used to write were relative to the MokaDocs source tree, so the scaffold only
+			// built when generated inside a clone of this repository.
 			string csproj = $"""
 			                 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -264,8 +303,7 @@ internal static class NewCommand
 			                   </PropertyGroup>
 
 			                   <ItemGroup>
-			                     <ProjectReference Include="..\..\Moka.Docs.Core\Moka.Docs.Core.csproj" />
-			                     <ProjectReference Include="..\..\Moka.Docs.Plugins\Moka.Docs.Plugins.csproj" />
+			                     <PackageReference Include="Moka.Docs.Plugins" Version="{CliVersion.Current}" />
 			                   </ItemGroup>
 
 			                 </Project>
@@ -287,7 +325,7 @@ internal static class NewCommand
 			                       /// </summary>
 			                       public sealed class {{pascal}}Plugin : IMokaPlugin
 			                       {
-			                           public string Id => "mokadocs-{{name}}";
+			                           public string Id => "{{pluginId}}";
 			                           public string Name => "{{pascal}}";
 			                           public string Version => "1.0.0";
 
@@ -309,11 +347,14 @@ internal static class NewCommand
 				Path.Combine(projectDir, $"{pascal}Plugin.cs"),
 				pluginClass);
 
-			AnsiConsole.MarkupLine($"[green]Created:[/] {Path.Combine(projectDir, $"{projectName}.csproj")}");
-			AnsiConsole.MarkupLine($"[green]Created:[/] {Path.Combine(projectDir, $"{pascal}Plugin.cs")}");
-			AnsiConsole.MarkupLine("");
 			AnsiConsole.MarkupLine(
-				$"Add a reference in your solution to start developing the [bold]{pascal}[/] plugin.");
+				$"[green]Created:[/] {Markup.Escape(Path.Combine(projectDir, $"{projectName}.csproj"))}");
+			AnsiConsole.MarkupLine($"[green]Created:[/] {Markup.Escape(Path.Combine(projectDir, $"{pascal}Plugin.cs"))}");
+			AnsiConsole.WriteLine();
+			AnsiConsole.MarkupLine($"Plugin id: [bold]{Markup.Escape(pluginId)}[/]");
+			AnsiConsole.MarkupLine(
+				"[dim]The mokadocs CLI loads only its built-in plugins. Run this one from a host that " +
+				"registers it as an IMokaPlugin and declares its id under plugins.[/]");
 			return 0;
 		});
 
@@ -327,7 +368,7 @@ internal static class NewCommand
 		var nameArg = new Argument<string>("name")
 			{ Description = "Component type (card, steps, link-cards, code-group, changelog)" };
 
-		var pathOpt = new Option<string>("--path")
+		var pathOpt = new Option<string>("--path", "-p")
 			{ Description = "Output directory", DefaultValueFactory = _ => "./docs" };
 
 		var command = new Command("component", "Scaffold a Markdown page showcasing a component")
@@ -345,7 +386,7 @@ internal static class NewCommand
 			if (!_componentTemplates.TryGetValue(name, out string? template))
 			{
 				AnsiConsole.MarkupLine(
-					$"[red]Unknown component type:[/] {name}. " +
+					$"[red]Unknown component type:[/] {Markup.Escape(name)}. " +
 					$"Available: {string.Join(", ", _componentTemplates.Keys.Order())}");
 				return 1;
 			}
@@ -353,13 +394,13 @@ internal static class NewCommand
 			string filePath = Path.GetFullPath(Path.Combine(outputDir, $"{name}-example.md"));
 			if (File.Exists(filePath))
 			{
-				AnsiConsole.MarkupLine($"[yellow]{filePath} already exists. Skipping.[/]");
+				AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(filePath)} already exists. Skipping.[/]");
 				return 0;
 			}
 
 			EnsureDirectoryAndWrite(filePath, template);
 
-			AnsiConsole.MarkupLine($"[green]Created:[/] {filePath}");
+			AnsiConsole.MarkupLine($"[green]Created:[/] {Markup.Escape(filePath)}");
 			return 0;
 		});
 

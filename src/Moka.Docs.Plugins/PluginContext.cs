@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Core.Diagnostics;
 
 namespace Moka.Docs.Plugins;
 
@@ -40,12 +41,35 @@ public sealed class PluginContext : IPluginContext
 	/// <inheritdoc />
 	public T? GetService<T>() where T : class => _serviceProvider.GetService(typeof(T)) as T;
 
+	/// <summary>The id of the plugin this context belongs to, used as the diagnostic source.</summary>
+	internal string? PluginId { get; init; }
+
+	/// <summary>
+	///     The running build's diagnostics while the plugin executes, otherwise <c>null</c>.
+	///     Set by <see cref="PluginHost" />.
+	/// </summary>
+	internal DiagnosticBag? BuildDiagnostics { get; set; }
+
 	/// <inheritdoc />
 	public void LogInfo(string message) => _logger.LogInformation("[Plugin] {Message}", message);
 
 	/// <inheritdoc />
-	public void LogWarning(string message) => _logger.LogWarning("[Plugin] {Message}", message);
+	/// <remarks>
+	///     During a build the warning is also recorded as a build diagnostic. Logging alone hid
+	///     it: build and serve print no log output without --verbose, so a missing OpenAPI spec
+	///     or a failed preview-host publish ended in a clean build summary.
+	/// </remarks>
+	public void LogWarning(string message)
+	{
+		_logger.LogWarning("[Plugin] {Message}", message);
+		BuildDiagnostics?.Warning(message, PluginId);
+	}
 
 	/// <inheritdoc />
-	public void LogError(string message) => _logger.LogError("[Plugin] {Message}", message);
+	/// <remarks>During a build the error is also recorded as a build diagnostic.</remarks>
+	public void LogError(string message)
+	{
+		_logger.LogError("[Plugin] {Message}", message);
+		BuildDiagnostics?.Error(message, PluginId);
+	}
 }

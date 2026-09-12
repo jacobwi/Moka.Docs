@@ -1,17 +1,13 @@
 using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Abstractions;
-using System.Reflection;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.FeatureManagement;
 using Moka.Blazor.Repl.Abstractions.Interfaces;
 using Moka.Blazor.Repl.Compiler;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Diagnostics;
-using Moka.Docs.Core.Features;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.CSharp;
 using Moka.Docs.Engine;
@@ -37,10 +33,11 @@ internal static class BuildCommand
 	public static Command Create()
 	{
 		var watchOption = new Option<bool>("--watch") { Description = "Watch for changes and rebuild automatically" };
-		var configOption = new Option<string?>("--config")
+		var configOption = new Option<string?>("--config", "-c")
 			{ Description = "Path to configuration file (default: mokadocs.yaml)" };
-		var outputOption = new Option<string?>("--output") { Description = "Output directory (default: _site/)" };
-		var verboseOption = new Option<bool>("--verbose") { Description = "Enable verbose logging" };
+		var outputOption = new Option<string?>("--output", "-o")
+			{ Description = "Output directory (default: build.output from the config)" };
+		var verboseOption = new Option<bool>("--verbose", "-v") { Description = "Enable verbose logging" };
 		var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
 		var noCacheOption = new Option<bool>("--no-cache") { Description = "Force full rebuild without caching" };
 		var basePathOption = new Option<string?>("--base-path")
@@ -69,21 +66,10 @@ internal static class BuildCommand
 
 			var sw = Stopwatch.StartNew();
 
-			string version = Assembly.GetExecutingAssembly()
-				                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-			                 ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
-			int plusIdx = version.IndexOf('+');
-			if (plusIdx >= 0)
-			{
-				version = version[..plusIdx];
-			}
-
-			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] - Building documentation site...");
+			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{CliVersion.Current}[/] - Building documentation site...");
 			AnsiConsole.WriteLine();
 
-			string resolvedConfigPath = configPath != null
-				? Path.GetFullPath(configPath)
-				: Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
+			string resolvedConfigPath = ConfigPath.Resolve(configPath);
 			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
 
 			// Load config
@@ -223,7 +209,7 @@ internal static class BuildCommand
 	/// <summary>
 	///     Runs the pipeline once and prints the build summary.
 	/// </summary>
-	/// <returns>0 on success, 1 when the pipeline threw.</returns>
+	/// <returns>0 on success, 1 when the pipeline threw or reported an error.</returns>
 	private static async Task<int> RunBuildAsync(
 		BuildPipeline pipeline, VersionManager versionManager, BuildRunOptions options, Stopwatch sw)
 	{
@@ -269,7 +255,9 @@ internal static class BuildCommand
 		int searchEntries = context.SearchIndex?.Entries.Count ?? 0;
 
 		AnsiConsole.WriteLine();
-		AnsiConsole.MarkupLine($"[green bold]✅ MokaDocs build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
+		AnsiConsole.MarkupLine(context.Diagnostics.HasErrors
+			? $"[red bold]❌ MokaDocs build finished with errors in {sw.Elapsed.TotalSeconds:F2}s[/]"
+			: $"[green bold]✅ MokaDocs build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
 		AnsiConsole.MarkupLine($"📄 Pages:        {mdPages + apiPages} ({mdPages} markdown, {apiPages} generated)");
 
 		if (apiTypes > 0)
@@ -285,29 +273,42 @@ internal static class BuildCommand
 
 		AnsiConsole.MarkupLine($"📦 Output:       {options.Config.Build.Output}");
 
-		if (context.Diagnostics.HasWarnings || context.Diagnostics.HasErrors)
-		{
-			int warnings = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
-			int errors = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
-			AnsiConsole.MarkupLine($"⚠️  Diagnostics:  {warnings} warnings, {errors} errors");
-
-			if (options.Verbose)
-			{
-				foreach (Diagnostic diag in context.Diagnostics.All)
-				{
-					string color = diag.Severity == DiagnosticSeverity.Error ? "red" : "yellow";
-					AnsiConsole.MarkupLine($"  [{color}]{Markup.Escape(diag.ToString())}[/]");
-				}
-			}
-			else
-			{
-				AnsiConsole.MarkupLine("    [dim]Run with --verbose to see details[/]");
-			}
-		}
+		PrintDiagnostics(context.Diagnostics, options.Verbose);
 
 		#endregion
 
-		return 0;
+		// A build that reported errors has missing or broken output. Exiting 0 let CI publish it.
+		return context.Diagnostics.HasErrors ? 1 : 0;
+	}
+
+	/// <summary>
+	///     Prints the warning and error counts, every error, and the warnings when verbose.
+	///     <c>serve</c> uses it too; it used to print nothing about a build's diagnostics.
+	/// </summary>
+	internal static void PrintDiagnostics(DiagnosticBag diagnostics, bool verbose)
+	{
+		if (!diagnostics.HasWarnings && !diagnostics.HasErrors)
+		{
+			return;
+		}
+
+		int warnings = diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
+		int errors = diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
+		AnsiConsole.MarkupLine($"⚠️  Diagnostics:  {warnings} warnings, {errors} errors");
+
+		// Errors are always listed, since they fail the build. Warnings only with --verbose.
+		foreach (Diagnostic diag in diagnostics.All.Where(d =>
+			         d.Severity == DiagnosticSeverity.Error
+			         || (verbose && d.Severity == DiagnosticSeverity.Warning)))
+		{
+			string color = diag.Severity == DiagnosticSeverity.Error ? "red" : "yellow";
+			AnsiConsole.MarkupLine($"  [{color}]{Markup.Escape(diag.ToString())}[/]");
+		}
+
+		if (!verbose && warnings > 0)
+		{
+			AnsiConsole.MarkupLine("    [dim]Run with --verbose to see warnings[/]");
+		}
 	}
 
 	/// <summary>
@@ -337,19 +338,8 @@ internal static class BuildCommand
 			}
 		});
 
-		// Feature management: MokaDefaults -> in-memory config, overridable via MOKADOCS_ env vars
-		IConfigurationRoot featureConfig = new ConfigurationBuilder()
-			.AddInMemoryCollection(
-				MokaFeatureConfiguration.GetDefaults()
-					.ToDictionary(
-						kv => $"FeatureManagement:{kv.Key}",
-						kv => (string?)kv.Value.ToString()))
-			.AddEnvironmentVariables("MOKADOCS_")
-			.Build();
-
-		services.AddSingleton<IConfiguration>(featureConfig);
-		services.AddFeatureManagement(featureConfig.GetSection("FeatureManagement"));
-
+		// AddMokaDocsEngine registers feature management, including MOKADOCS_ environment
+		// variable overrides. This used to be registered here a second time.
 		services.AddSingleton<IFileSystem>(new FileSystem());
 		services.AddSingleton(config);
 		services.AddMokaDocsParsing();

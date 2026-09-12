@@ -14,8 +14,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using Moka.Blazor.Repl.Abstractions.Models;
 using Moka.Blazor.Repl.Compiler;
+using Moka.Docs.Core;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Parsing.Markdown;
 
 namespace Moka.Docs.Plugins.BlazorPreview;
 
@@ -246,9 +248,15 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	/// <summary>
 	///     Pinned version of <c>Moka.Blazor.Repl.Host</c> that the scaffold template references.
-	///     Update this whenever a new compatible host RCL is published to NuGet.
+	///     Keep it equal to the <c>Moka.Blazor.Repl.Compiler</c> version in
+	///     Directory.Packages.props: previews compile with that compiler and run in this host.
 	/// </summary>
-	private const string _hostPackageVersion = "1.3.0";
+	/// <remarks>
+	///     This was 1.3.0, which was never published to nuget.org (the feed starts at 1.3.2), so
+	///     a scaffolded host restored 1.3.2 with a warning instead of the version the compiler
+	///     here is built against.
+	/// </remarks>
+	private const string _hostPackageVersion = "1.3.5";
 
 	// ── Instance state ─────────────────────────────────────────────────────────
 
@@ -282,6 +290,14 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	{
 		if (!_servicesInitialized)
 		{
+			// No preview blocks, no preview host needed. Setting one up regardless made every
+			// site that declared the plugin but had no blocks report a missing preview host.
+			if (!buildContext.Pages.Any(p =>
+				    p.Content.Html?.Contains(BlazorPreviewExtension.ContainerOpenTag, StringComparison.Ordinal) == true))
+			{
+				return;
+			}
+
 			if (!InitializeFromOptions(context, buildContext))
 			{
 				return; // Hard failure already logged.
@@ -329,7 +345,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		{
 			string html = page.Content.Html;
 			if (string.IsNullOrEmpty(html) ||
-			    !html.Contains("data-blazor-preview=\"true\"", StringComparison.Ordinal))
+			    !html.Contains(BlazorPreviewExtension.ContainerOpenTag, StringComparison.Ordinal))
 			{
 				continue;
 			}
@@ -958,12 +974,16 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			return null;
 		}
 
-		string? best = Directory.GetDirectories(releaseDir)
-			.Where(d => Path.GetFileName(d).StartsWith("net", StringComparison.OrdinalIgnoreCase))
-			.OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
-			.FirstOrDefault(d => Directory.GetFiles(d, "*.dll").Length > 0);
+		var candidates = Directory.GetDirectories(releaseDir)
+			.Select(d => (Dir: d, Version: TargetFrameworks.LoadableVersion(Path.GetFileName(d), int.MaxValue)))
+			.Where(x => x.Version is not null && Directory.GetFiles(x.Dir, "*.dll").Length > 0)
+			.OrderByDescending(x => x.Version)
+			.ToList();
 
-		return best;
+		// The highest framework this runtime runs, else the highest there is. Sorted by name,
+		// net9.0 won over net10.0 even when mokadocs ran on .NET 10.
+		return candidates.Where(x => x.Version!.Major <= Environment.Version.Major).Select(x => x.Dir).FirstOrDefault()
+		       ?? candidates.Select(x => x.Dir).FirstOrDefault();
 	}
 
 	// ── HtmlRenderer (for SSR fallback) ────────────────────────────────────────

@@ -1,11 +1,12 @@
 using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Abstractions;
-using System.Reflection;
+using System.Net;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moka.Blazor.Repl.Compiler;
+using Moka.Docs.Core;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Engine;
@@ -24,12 +25,13 @@ internal static class ServeCommand
 	/// <summary>Creates the serve command.</summary>
 	public static Command Create()
 	{
-		var portOption = new Option<int>("--port")
+		var portOption = new Option<int>("--port", "-p")
 			{ Description = "Port to serve on", DefaultValueFactory = _ => 5080 };
-		var verboseOption = new Option<bool>("--verbose") { Description = "Enable verbose logging" };
-		var configOption = new Option<string?>("--config")
+		var verboseOption = new Option<bool>("--verbose", "-v") { Description = "Enable verbose logging" };
+		var configOption = new Option<string?>("--config", "-c")
 			{ Description = "Path to configuration file (default: mokadocs.yaml)" };
-		var outputOption = new Option<string?>("--output") { Description = "Output directory (default: _site/)" };
+		var outputOption = new Option<string?>("--output", "-o")
+			{ Description = "Output directory (default: build.output from the config)" };
 		var openOption = new Option<bool>("--open")
 			{ Description = "Open browser automatically", DefaultValueFactory = _ => true };
 		var noOpenOption = new Option<bool>("--no-open") { Description = "Don't open browser automatically" };
@@ -59,22 +61,10 @@ internal static class ServeCommand
 			bool draft = parseResult.GetValue(draftOption);
 			string? basePath = parseResult.GetValue(basePathOption);
 
-			string version = Assembly.GetExecutingAssembly()
-				                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-			                 ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
-			// Strip build metadata (e.g. "+sha.abc123") if present
-			int plusIdx = version.IndexOf('+');
-			if (plusIdx >= 0)
-			{
-				version = version[..plusIdx];
-			}
-
-			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{version}[/] - Dev server starting...");
+			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{CliVersion.Current}[/] - Dev server starting...");
 			AnsiConsole.WriteLine();
 
-			string resolvedConfigPath = configPath != null
-				? Path.GetFullPath(configPath)
-				: Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml");
+			string resolvedConfigPath = ConfigPath.Resolve(configPath);
 			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
 
 			// Load config
@@ -128,60 +118,25 @@ internal static class ServeCommand
 			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
 
 			// Run initial build
-			if (!await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft))
+			if (!await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft, verbose))
 			{
 				return 1;
 			}
 
-			// Start dev server with REPL support
 			ILogger<DevServer> serverLogger = loggerFactory.CreateLogger<DevServer>();
-			ILogger<ReplExecutionService> replLogger = loggerFactory.CreateLogger<ReplExecutionService>();
-			var replService = new ReplExecutionService(replLogger);
 
-			// Load NuGet packages configured in the REPL plugin options
+			// The REPL and Blazor preview endpoints run code sent to them, so they only exist
+			// when the site declares the plugin that uses them. They used to be started for
+			// every site.
 			PluginDeclaration? replPlugin = config.Plugins.FirstOrDefault(p =>
 				string.Equals(p.Name, "mokadocs-repl", StringComparison.OrdinalIgnoreCase));
+			ReplExecutionService? replService = replPlugin is null
+				? null
+				: new ReplExecutionService(loggerFactory.CreateLogger<ReplExecutionService>());
 
-			if (replPlugin?.Options.TryGetValue("packages", out object? packagesObj) == true
-			    && packagesObj is IEnumerable<object> packageList)
+			if (replService is not null)
 			{
-				var specs = packageList
-					.Select(o => o.ToString()!)
-					.Where(s => !string.IsNullOrWhiteSpace(s))
-					.ToList();
-				if (specs.Count > 0)
-				{
-					AnsiConsole.MarkupLine($"[blue]REPL:[/] Loading {specs.Count} NuGet package(s)...");
-					await replService.LoadPackagesAsync(specs);
-					AnsiConsole.MarkupLine("[green]REPL:[/] Packages loaded");
-				}
-			}
-
-			// Auto-load documented project assemblies so REPL blocks can use them
-			foreach (ProjectSource project in config.Content.Projects)
-			{
-				string projectPath = Path.GetFullPath(Path.Combine(rootDir, project.Path));
-				if (File.Exists(projectPath))
-				{
-					string projectDir = Path.GetDirectoryName(projectPath)!;
-					string projectName = Path.GetFileNameWithoutExtension(projectPath);
-					// Look for the built DLL in standard output locations
-					string[] candidatePaths = new[]
-					{
-						Path.Combine(projectDir, "bin", "Release", "net9.0", $"{projectName}.dll"),
-						Path.Combine(projectDir, "bin", "Debug", "net9.0", $"{projectName}.dll"),
-						Path.Combine(projectDir, "bin", "Release", "net8.0", $"{projectName}.dll"),
-						Path.Combine(projectDir, "bin", "Debug", "net8.0", $"{projectName}.dll")
-					};
-
-					string? dllPath = candidatePaths.FirstOrDefault(File.Exists);
-					if (dllPath is not null)
-					{
-						AnsiConsole.MarkupLine(
-							$"[blue]REPL:[/] Loading project assembly [bold]{Markup.Escape(projectName)}[/]");
-						replService.LoadProjectAssembly(dllPath);
-					}
-				}
+				await LoadReplReferencesAsync(replService, replPlugin!, config, rootDir);
 			}
 
 			ILogger<BlazorPreviewService> blazorLogger = loggerFactory.CreateLogger<BlazorPreviewService>();
@@ -251,14 +206,25 @@ internal static class ServeCommand
 				}
 			}
 
-			var blazorPreviewService = new BlazorPreviewService(
-				compilationService, loggerFactory, blazorLogger,
-				blazorExtraUsings.Count > 0 ? blazorExtraUsings : null,
-				blazorRuntimeDlls.Count > 0 ? blazorRuntimeDlls : null);
+			BlazorPreviewService? blazorPreviewService = blazorPlugin is null
+				? null
+				: new BlazorPreviewService(
+					compilationService, loggerFactory, blazorLogger,
+					blazorExtraUsings.Count > 0 ? blazorExtraUsings : null,
+					blazorRuntimeDlls.Count > 0 ? blazorRuntimeDlls : null);
 
 			using var server = new DevServer(serverLogger, outputDir, port, replService, blazorPreviewService,
 				config.Build.BasePath);
-			await server.StartAsync();
+			try
+			{
+				await server.StartAsync();
+			}
+			catch (HttpListenerException ex)
+			{
+				AnsiConsole.MarkupLine(
+					$"[red]Error:[/] Can't listen on port {port} ({Markup.Escape(ex.Message.TrimEnd('.'))}). Use [bold]--port[/] to pick another.");
+				return 1;
+			}
 
 			AnsiConsole.WriteLine();
 			AnsiConsole.MarkupLine($"[bold green]Dev server running:[/] [link]http://localhost:{port}/[/]");
@@ -297,14 +263,14 @@ internal static class ServeCommand
 			watcher.OnChanged += async () =>
 			{
 				AnsiConsole.MarkupLine("[yellow]Changes detected, rebuilding...[/]");
-				if (await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft))
+				if (await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft, verbose))
 				{
 					await server.NotifyReloadAsync();
 					AnsiConsole.MarkupLine("[green]Rebuild complete - browser reloaded[/]");
 				}
 			};
 
-			watcher.Start(docsDir, resolvedConfigPath);
+			watcher.Start(docsDir, resolvedConfigPath, [outputDir]);
 
 			// Wait for Ctrl+C
 			using var cts = new CancellationTokenSource();
@@ -333,7 +299,7 @@ internal static class ServeCommand
 
 	private static async Task<bool> RunBuildAsync(
 		BuildPipeline pipeline, SiteConfig config, string rootDir, string outputDir, VersionManager versionManager,
-		bool includeDrafts)
+		bool includeDrafts, bool verbose)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -343,7 +309,8 @@ internal static class ServeCommand
 			FileSystem = new FileSystem(),
 			RootDirectory = rootDir,
 			OutputDirectory = outputDir,
-			IncludeDrafts = includeDrafts
+			IncludeDrafts = includeDrafts,
+			UseCache = config.Build.Cache
 		};
 
 		// Wire version data
@@ -357,7 +324,12 @@ internal static class ServeCommand
 		{
 			await pipeline.ExecuteAsync(context);
 			sw.Stop();
-			AnsiConsole.MarkupLine($"[green]Build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
+			AnsiConsole.MarkupLine(context.Diagnostics.HasErrors
+				? $"[red]Build finished with errors in {sw.Elapsed.TotalSeconds:F2}s[/]"
+				: $"[green]Build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
+			BuildCommand.PrintDiagnostics(context.Diagnostics, verbose);
+
+			// Still serve the site: the errors are listed, and the next save may fix them.
 			return true;
 		}
 		catch (Exception ex)
@@ -366,5 +338,81 @@ internal static class ServeCommand
 			AnsiConsole.MarkupLine($"[red]Build failed:[/] {Markup.Escape(ex.Message)}");
 			return false;
 		}
+	}
+
+	/// <summary>
+	///     Loads the NuGet packages listed in the REPL plugin's options and the compiled
+	///     assemblies of the documented projects, so REPL blocks can use their types.
+	/// </summary>
+	private static async Task LoadReplReferencesAsync(ReplExecutionService replService,
+		PluginDeclaration replPlugin, SiteConfig config, string rootDir)
+	{
+		if (replPlugin.Options.TryGetValue("packages", out object? packagesObj)
+		    && packagesObj is IEnumerable<object> packageList)
+		{
+			var specs = packageList
+				.Select(o => o.ToString()!)
+				.Where(s => !string.IsNullOrWhiteSpace(s))
+				.ToList();
+			if (specs.Count > 0)
+			{
+				AnsiConsole.MarkupLine($"[blue]REPL:[/] Loading {specs.Count} NuGet package(s)...");
+				NuGetPackageResolver.ResolvedPackages resolved = await replService.LoadPackagesAsync(specs);
+
+				// "Packages loaded" used to print even when the restore failed.
+				AnsiConsole.MarkupLine(resolved.Error is null
+					? $"[green]REPL:[/] Loaded {resolved.Assemblies.Count} package assemblies"
+					: $"[red]REPL:[/] Packages not loaded: {Markup.Escape(resolved.Error)}");
+			}
+		}
+
+		foreach (ProjectSource project in config.Content.Projects)
+		{
+			string projectPath = Path.GetFullPath(Path.Combine(rootDir, project.Path));
+			if (!File.Exists(projectPath))
+			{
+				continue;
+			}
+
+			string projectName = Path.GetFileNameWithoutExtension(projectPath);
+			string? dllPath = FindProjectAssembly(Path.GetDirectoryName(projectPath)!, projectName,
+				Environment.Version.Major);
+			if (dllPath is not null)
+			{
+				AnsiConsole.MarkupLine($"[blue]REPL:[/] Loading project assembly [bold]{Markup.Escape(projectName)}[/]");
+				replService.LoadProjectAssembly(dllPath);
+			}
+		}
+	}
+
+	/// <summary>
+	///     Finds the documented project's compiled assembly so REPL blocks can use its types.
+	///     Picks the highest target framework the running runtime can load, Release before
+	///     Debug.
+	/// </summary>
+	/// <remarks>
+	///     The list this replaced named net9.0 and net8.0 folders only, so a project
+	///     targeting net10.0 never had its assembly loaded.
+	/// </remarks>
+	/// <param name="projectDir">The directory containing the .csproj.</param>
+	/// <param name="projectName">The .csproj file name without extension.</param>
+	/// <param name="runtimeMajor">Major version of the running .NET runtime.</param>
+	/// <returns>The assembly path, or <c>null</c> when no loadable build exists.</returns>
+	internal static string? FindProjectAssembly(string projectDir, string projectName, int runtimeMajor)
+	{
+		string[] configurations = ["Release", "Debug"];
+
+		return configurations
+			.Select((configuration, rank) => (Dir: Path.Combine(projectDir, "bin", configuration), Rank: rank))
+			.Where(c => Directory.Exists(c.Dir))
+			.SelectMany(c => Directory.GetDirectories(c.Dir).Select(tfmDir => (
+				Path: Path.Combine(tfmDir, projectName + ".dll"),
+				Version: TargetFrameworks.LoadableVersion(Path.GetFileName(tfmDir), runtimeMajor),
+				c.Rank)))
+			.Where(candidate => candidate.Version is not null && File.Exists(candidate.Path))
+			.OrderByDescending(candidate => candidate.Version)
+			.ThenBy(candidate => candidate.Rank)
+			.Select(candidate => candidate.Path)
+			.FirstOrDefault();
 	}
 }

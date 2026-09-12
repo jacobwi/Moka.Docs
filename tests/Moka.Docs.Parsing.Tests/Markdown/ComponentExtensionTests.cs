@@ -133,6 +133,23 @@ public sealed class ComponentExtensionTests
 		html.Should().Contain("<svg");
 	}
 
+	[Fact]
+	public void Card_WithAnIconOnlyInTheSharedSet_StillRendersIt()
+	{
+		// "box" and "info" are Lucide names the theme knows; cards used to drop them.
+		string html = Render("::: card{title=\"Test\" icon=\"info\"}\nContent\n:::");
+
+		html.Should().Contain("component-card-icon").And.Contain("<svg");
+	}
+
+	[Fact]
+	public void Card_WithAnUnknownIcon_RendersNoIconSpan()
+	{
+		string html = Render("::: card{title=\"Test\" icon=\"not-an-icon\"}\nContent\n:::");
+
+		html.Should().NotContain("component-card-icon");
+	}
+
 	#endregion
 
 	#region Steps Component
@@ -200,6 +217,21 @@ public sealed class ComponentExtensionTests
 		html.Should().Contain("Some introductory content.");
 	}
 
+	[Fact]
+	public void Steps_HeadingsKeepTheirGeneratedIds()
+	{
+		// The table of contents and search index link to #install-the-tool, which the step
+		// title used to be written without.
+		MarkdownPipeline pipeline = new MarkdownPipelineBuilder()
+			.Use<ComponentExtension>()
+			.UseAutoIdentifiers(Markdig.Extensions.AutoIdentifiers.AutoIdentifierOptions.GitHub)
+			.Build();
+
+		string html = Markdig.Markdown.ToHtml("::: steps\n### Install the tool\nRun it.\n:::", pipeline);
+
+		html.Should().Contain("<h3 id=\"install-the-tool\" class=\"component-step-title\">");
+	}
+
 	#endregion
 
 	#region Link Cards Component
@@ -255,6 +287,18 @@ public sealed class ComponentExtensionTests
 		html.Should().Contain("component-link-card-desc");
 		html.Should().Contain(">Complete documentation<");
 		html.Should().NotContain("— Complete documentation");
+	}
+
+	[Fact]
+	public void LinkCards_DescriptionWithInlineCode_KeepsTheWholeDescription()
+	{
+		// Only the last plain-text run was kept, so this rendered as "everywhere".
+		const string md = "::: link-cards\n- [Files](/files) - Uses `IFileSystem` & mocks everywhere\n:::";
+
+		string html = Render(md);
+
+		html.Should().Contain(
+			"<span class=\"component-link-card-desc\">Uses <code>IFileSystem</code> &amp; mocks everywhere</span>");
 	}
 
 	[Fact]

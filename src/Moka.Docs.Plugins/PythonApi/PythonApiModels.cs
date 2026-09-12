@@ -1,4 +1,6 @@
+using System.Net;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Moka.Docs.Core.Api;
 
 namespace Moka.Docs.Plugins.PythonApi;
@@ -13,7 +15,7 @@ namespace Moka.Docs.Plugins.PythonApi;
 ///         <see cref="JsonPropertyNameAttribute" /> to match.
 ///     </para>
 /// </summary>
-internal static class PythonApiMapper
+internal static partial class PythonApiMapper
 {
 	/// <summary>
 	///     Deserializes the Python analyzer's JSON output and maps it to the mokadocs-native
@@ -114,24 +116,38 @@ internal static class PythonApiMapper
 			return null;
 		}
 
+		// Docstrings are plain text, but the page renderer inserts these fields as HTML, which
+		// is what the C# XML doc parser produces. Unescaped, "a < b" in a docstring became a tag.
 		return new XmlDocBlock
 		{
-			Summary = d.Summary ?? "",
-			Remarks = d.Remarks ?? "",
-			Parameters = d.Parameters ?? new Dictionary<string, string>(),
-			TypeParameters = d.TypeParameters ?? new Dictionary<string, string>(),
-			Returns = d.Returns ?? "",
+			Summary = DocText(d.Summary),
+			Remarks = DocText(d.Remarks),
+			Parameters = (d.Parameters ?? []).ToDictionary(p => p.Key, p => DocText(p.Value)),
+			TypeParameters = (d.TypeParameters ?? []).ToDictionary(p => p.Key, p => DocText(p.Value)),
+			Returns = DocText(d.Returns),
 			Exceptions = (d.Exceptions ?? [])
 				.Select(e => new ExceptionDoc
 				{
 					Type = e.Type ?? "",
-					Description = e.Description ?? ""
+					Description = DocText(e.Description)
 				})
 				.ToList(),
-			Examples = d.Examples ?? [],
+			// Kept as code: the renderer's <div> collapsed the lines of a >>> session into one.
+			Examples = (d.Examples ?? [])
+				.Select(e => $"<pre><code class=\"language-python\">{WebUtility.HtmlEncode(e)}</code></pre>")
+				.ToList(),
 			SeeAlso = d.SeeAlso ?? []
 		};
 	}
+
+	/// <summary>
+	///     Escapes docstring text and turns the analyzer's <c>**Note:**</c> labels into bold text.
+	/// </summary>
+	private static string DocText(string? text) =>
+		string.IsNullOrEmpty(text) ? "" : BoldRegex().Replace(WebUtility.HtmlEncode(text), "<strong>$1</strong>");
+
+	[GeneratedRegex(@"\*\*(.+?)\*\*")]
+	private static partial Regex BoldRegex();
 
 	private static T ParseEnum<T>(string? value, T defaultValue) where T : struct, Enum
 	{

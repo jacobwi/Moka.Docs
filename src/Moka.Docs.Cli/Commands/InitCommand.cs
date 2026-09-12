@@ -49,11 +49,10 @@ internal static class InitCommand
 
 		## Features
 
-		- **Markdown-first** - Write docs in Markdown with YAML front matter
-		- **API Reference** - Auto-generated from your C# XML documentation
-		- **Beautiful Themes** - Clean, modern design with dark mode
-		- **Instant Search** - Find anything with Cmd/Ctrl+K
-		- **Versioning** - Multi-version documentation support
+		- **Markdown** - Pages with YAML front matter
+		- **API reference** - Generated from the doc comments in your C# source
+		- **Components** - Cards, steps, tabs and admonitions
+		- **Search** - Titles, headings and page text, opened with Ctrl/Cmd+K
 		""";
 
 	/// <summary>Creates the init command.</summary>

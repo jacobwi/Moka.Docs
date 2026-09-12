@@ -14,7 +14,16 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 		".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
 		".pdf", ".zip", ".mp4", ".webm",
 		".css", ".js", ".json", ".xml",
-		".woff", ".woff2", ".ttf", ".eot"
+		".woff", ".woff2", ".ttf", ".eot",
+		".txt", ".webmanifest", ".avif"
+	};
+
+	// Files static hosts read from the site root, which have no extension: CNAME sets a GitHub
+	// Pages custom domain, _redirects and _headers configure Netlify and Cloudflare Pages.
+	// They were never copied, so a documented custom-domain setup silently did nothing.
+	private static readonly HashSet<string> _rootHostFiles = new(StringComparer.Ordinal)
+	{
+		"CNAME", "_redirects", "_headers"
 	};
 
 	/// <summary>
@@ -75,8 +84,10 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 		if (fs.Directory.Exists(docsPath))
 		{
 			var assetFiles = fs.Directory
-				.GetFiles(docsPath, "*.*", SearchOption.AllDirectories)
-				.Where(f => _assetExtensions.Contains(fs.Path.GetExtension(f)))
+				.GetFiles(docsPath, "*", SearchOption.AllDirectories)
+				.Where(f => _assetExtensions.Contains(fs.Path.GetExtension(f))
+				            || (_rootHostFiles.Contains(fs.Path.GetFileName(f))
+				                && string.Equals(fs.Path.GetDirectoryName(f), docsPath, StringComparison.OrdinalIgnoreCase)))
 				.Where(f => !IsUnder(fs, f, outputPath))
 				.Select(f => fs.Path.GetRelativePath(docsPath, f))
 				.Order(StringComparer.OrdinalIgnoreCase)
