@@ -293,4 +293,38 @@ public sealed class BuildPipelineIntegrationTests
 
 		context.Diagnostics.HasErrors.Should().BeFalse();
 	}
+
+	[Fact]
+	public async Task FullPipeline_AlwaysWritesNoJekyllMarker()
+	{
+		// GitHub Pages runs Jekyll on branch-based deployments and strips directories
+		// starting with an underscore, which would take _theme/ and all styling with it.
+		// The marker used to come from the Blazor preview plugin, so any site without a
+		// published preview host shipped without it.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{
+				"/project/docs/index.md", new MockFileData("""
+				                                           ---
+				                                           title: Home
+				                                           ---
+				                                           Body
+				                                           """)
+			}
+		});
+
+		(BuildPipeline pipeline, _) = CreatePipeline(fs);
+		var context = new BuildContext
+		{
+			Config = MinimalConfig(),
+			FileSystem = fs,
+			RootDirectory = "/project",
+			OutputDirectory = "/project/_site"
+		};
+
+		await pipeline.ExecuteAsync(context);
+
+		fs.File.Exists("/project/_site/.nojekyll").Should().BeTrue();
+		fs.Directory.Exists("/project/_site/_theme").Should().BeTrue();
+	}
 }

@@ -90,7 +90,7 @@ nav:
     autoGenerate: true
 
 build:
-  output: ./_site
+  output: ./docs/_site
   clean: true
   sitemap: true
   robots: true

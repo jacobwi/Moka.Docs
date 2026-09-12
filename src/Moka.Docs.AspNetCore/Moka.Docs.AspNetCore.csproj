@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <RootNamespace>Moka.Docs.AspNetCore</RootNamespace>
-    <Description>ASP.NET Core integration for MokaDocs — embed documentation in your web app with two lines of code.</Description>
+    <Description>ASP.NET Core integration for MokaDocs - embed documentation in your web app with two lines of code.</Description>
   </PropertyGroup>
 
   <ItemGroup>

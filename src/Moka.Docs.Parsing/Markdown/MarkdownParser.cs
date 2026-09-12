@@ -76,9 +76,20 @@ public sealed class MarkdownParser
 			.UseYamlFrontMatter()
 			.UseEmojiAndSmiley();
 
-		// Admonitions use Markdig's built-in CustomContainers extension
-		// (included via UseAdvancedExtensions) which renders ::: note → <div class="note">
-		// Our CSS styles .note, .tip, .warning, .danger, .info, .caution, .important
+		// Admonitions (::: note, ::: tip Custom Title, ...). This must be registered
+		// rather than left to Markdig's built-in CustomContainers, which renders
+		// ::: tip Hot Tip as a bare <div class="tip"> and silently drops the title.
+		if (options.EnableAdmonitions)
+		{
+			builder.Extensions.Add(new AdmonitionExtension());
+		}
+
+		// Tabbed content (=== "Tab title"). Without this, the === lines fall through
+		// to CommonMark and render as literal paragraph text.
+		if (options.EnableTabs)
+		{
+			builder.Extensions.Add(new TabbedContentExtension());
+		}
 
 		// UI Components (card, steps, link-cards, code-group)
 		builder.Extensions.Add(new ComponentExtension());

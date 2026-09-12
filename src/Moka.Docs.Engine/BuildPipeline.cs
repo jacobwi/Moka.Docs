@@ -30,7 +30,9 @@ public sealed class BuildPipeline(
 		{
 			ct.ThrowIfCancellationRequested();
 
-			// Run plugin hook after content phases (<=400) and before nav/render phases (>=600)
+			// Run the plugin hook once, immediately before the first phase at order 500 or
+			// above. That is FeatureGatePhase, so plugin-injected pages are still feature
+			// gated, navigable, searchable and rendered.
 			if (!pluginHookExecuted && phase.Order >= 500 && PluginHook is not null)
 			{
 				logger.LogInformation("Executing plugin hook");

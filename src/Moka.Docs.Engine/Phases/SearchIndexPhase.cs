@@ -29,7 +29,7 @@ public sealed class SearchIndexPhase(ILogger<SearchIndexPhase> logger) : IBuildP
 
 		foreach (DocPage page in context.Pages)
 		{
-			if (page.FrontMatter.Visibility == PageVisibility.Draft)
+			if (!context.IncludeDrafts && page.FrontMatter.Visibility == PageVisibility.Draft)
 			{
 				continue;
 			}

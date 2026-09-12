@@ -1,6 +1,7 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Themes;
 using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Engine.Phases;
@@ -8,7 +9,10 @@ namespace Moka.Docs.Engine.Phases;
 /// <summary>
 ///     Writes theme CSS and JS assets to the output directory.
 /// </summary>
-public sealed class ThemeAssetPhase(ILogger<ThemeAssetPhase> logger) : IBuildPhase
+public sealed class ThemeAssetPhase(
+	ThemeResolver themeResolver,
+	ThemeLoader themeLoader,
+	ILogger<ThemeAssetPhase> logger) : IBuildPhase
 {
 	/// <inheritdoc />
 	public string Name => "ThemeAssets";
@@ -21,6 +25,18 @@ public sealed class ThemeAssetPhase(ILogger<ThemeAssetPhase> logger) : IBuildPha
 	{
 		IFileSystem fs = context.FileSystem;
 		string themeDir = fs.Path.Combine(context.OutputDirectory, "_theme");
+
+		ResolvedTheme theme = themeResolver.Resolve(context.Config, context.RootDirectory, fs);
+
+		if (!theme.IsEmbedded)
+		{
+			// Custom theme: ship its own css/, js/ and assets/ directories instead of
+			// the compiled-in stylesheet, which would not match its templates.
+			themeLoader.CopyAssets(theme.ThemeDirectory!, context.OutputDirectory, fs);
+			logger.LogInformation("Copied custom theme assets from {Source} to {Path}",
+				theme.ThemeDirectory, themeDir);
+			return Task.CompletedTask;
+		}
 
 		// Write embedded CSS
 		string cssDir = fs.Path.Combine(themeDir, "css");

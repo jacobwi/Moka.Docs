@@ -33,10 +33,17 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 
 		// Discover Markdown files
 		string docsPath = ResolvePath(fs, rootDirectory, config.Content.Docs);
+
+		// Nothing under the build output may be discovered. Users reasonably point
+		// build.output at a path inside content.docs (./docs/_site), and without this
+		// every build would ingest the previous build's assets and nest a copy of the
+		// site inside itself, growing on each run.
+		string outputPath = ResolvePath(fs, rootDirectory, config.Build.Output);
 		if (fs.Directory.Exists(docsPath))
 		{
 			var mdFiles = fs.Directory
 				.GetFiles(docsPath, "*.md", SearchOption.AllDirectories)
+				.Where(f => !IsUnder(fs, f, outputPath))
 				.Select(f => fs.Path.GetRelativePath(docsPath, f))
 				.Order(StringComparer.OrdinalIgnoreCase)
 				.ToList();
@@ -70,6 +77,7 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 			var assetFiles = fs.Directory
 				.GetFiles(docsPath, "*.*", SearchOption.AllDirectories)
 				.Where(f => _assetExtensions.Contains(fs.Path.GetExtension(f)))
+				.Where(f => !IsUnder(fs, f, outputPath))
 				.Select(f => fs.Path.GetRelativePath(docsPath, f))
 				.Order(StringComparer.OrdinalIgnoreCase)
 				.ToList();
@@ -79,6 +87,27 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	///     Whether a discovered file sits inside the given directory.
+	/// </summary>
+	private static bool IsUnder(IFileSystem fs, string filePath, string directory)
+	{
+		if (string.IsNullOrEmpty(directory))
+		{
+			return false;
+		}
+
+		string full = fs.Path.GetFullPath(filePath);
+		string dir = fs.Path.GetFullPath(directory);
+
+		if (!dir.EndsWith(fs.Path.DirectorySeparatorChar))
+		{
+			dir += fs.Path.DirectorySeparatorChar;
+		}
+
+		return full.StartsWith(dir, StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static string ResolvePath(IFileSystem fs, string rootDirectory, string relativePath)

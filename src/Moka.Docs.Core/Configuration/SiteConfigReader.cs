@@ -357,11 +357,19 @@ public sealed class SiteConfigReader
 			Robots = MokaDefaults.ResolveBool(
 				"GENERATE_ROBOTS", dto.Robots, MokaDefaults.GenerateRobots),
 			Cache = dto.Cache ?? true,
-			BasePath = NormalizBasePath(dto.BasePath)
+			BasePath = NormalizeBasePath(dto.BasePath)
 		};
 	}
 
-	private static string NormalizBasePath(string? basePath)
+	/// <summary>
+	///     Normalizes a build base path to a leading slash with no trailing slash
+	///     ("/" stays "/"). Public because the CLI applies --base-path after the config
+	///     is read and has to produce exactly the same shape; a trailing slash here
+	///     yields "//" in rendered links.
+	/// </summary>
+	/// <param name="basePath">Raw base path, or null.</param>
+	/// <returns>The normalized base path.</returns>
+	public static string NormalizeBasePath(string? basePath)
 	{
 		if (string.IsNullOrWhiteSpace(basePath))
 		{

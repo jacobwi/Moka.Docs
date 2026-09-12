@@ -43,6 +43,7 @@ public sealed class DevServer : IDisposable
 	private readonly ILogger<DevServer> _logger;
 	private readonly int _port;
 	private readonly ReplExecutionService? _replService;
+	private readonly string _basePath;
 	private readonly string _rootPath;
 	private readonly ConcurrentBag<WebSocket> _webSockets = [];
 	private CancellationTokenSource? _cts;
@@ -54,15 +55,31 @@ public sealed class DevServer : IDisposable
 	/// <param name="logger">Logger instance.</param>
 	/// <param name="rootPath">Directory containing the static site files.</param>
 	/// <param name="port">Port to listen on.</param>
+	/// <param name="replService">Optional REPL execution service.</param>
+	/// <param name="blazorPreviewService">Optional Blazor preview renderer.</param>
+	/// <param name="basePath">
+	///     Base path the site was built for, e.g. <c>/Sub</c>. Pages built with a base path
+	///     emit links like <c>/Sub/_theme/css/main.css</c>, so the server has to strip that
+	///     prefix before looking the file up on disk. Defaults to <c>/</c> (site root).
+	/// </param>
 	public DevServer(ILogger<DevServer> logger, string rootPath, int port, ReplExecutionService? replService = null,
-		BlazorPreviewService? blazorPreviewService = null)
+		BlazorPreviewService? blazorPreviewService = null, string basePath = "/")
 	{
 		_logger = logger;
 		_rootPath = rootPath;
 		_port = port;
 		_replService = replService;
 		_blazorPreviewService = blazorPreviewService;
+		_basePath = string.IsNullOrWhiteSpace(basePath) || basePath == "/"
+			? ""
+			: "/" + basePath.Trim('/');
 	}
+
+	/// <summary>
+	///     The base path prefix this server strips from incoming requests, or an empty
+	///     string when the site is served from the root.
+	/// </summary>
+	public string BasePath => _basePath;
 
 	/// <inheritdoc />
 	public void Dispose()
@@ -370,6 +387,8 @@ public sealed class DevServer : IDisposable
 
 	private string? ResolveFilePath(string urlPath)
 	{
+		urlPath = StripBasePath(urlPath);
+
 		// Decode and sanitize path
 		string decoded = Uri.UnescapeDataString(urlPath).TrimStart('/');
 		if (decoded.Contains(".."))
@@ -392,6 +411,30 @@ public sealed class DevServer : IDisposable
 		}
 
 		return filePath;
+	}
+
+	/// <summary>
+	///     Removes the configured base path from a request path so it can be resolved
+	///     against the output directory, which has no such prefix on disk.
+	/// </summary>
+	private string StripBasePath(string urlPath)
+	{
+		if (_basePath.Length == 0)
+		{
+			return urlPath;
+		}
+
+		if (urlPath.Equals(_basePath, StringComparison.OrdinalIgnoreCase))
+		{
+			return "/";
+		}
+
+		if (urlPath.StartsWith(_basePath + "/", StringComparison.OrdinalIgnoreCase))
+		{
+			return urlPath[_basePath.Length..];
+		}
+
+		return urlPath;
 	}
 
 	private async Task ServeFileAsync(HttpListenerResponse response, string filePath, bool injectScript)

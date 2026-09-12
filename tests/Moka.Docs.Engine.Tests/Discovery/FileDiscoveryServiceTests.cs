@@ -10,7 +10,8 @@ public sealed class FileDiscoveryServiceTests
 {
 	private static SiteConfig CreateConfig(
 		string docs = "./docs",
-		List<ProjectSource>? projects = null)
+		List<ProjectSource>? projects = null,
+		string output = "./_site")
 	{
 		return new SiteConfig
 		{
@@ -19,7 +20,8 @@ public sealed class FileDiscoveryServiceTests
 			{
 				Docs = docs,
 				Projects = projects ?? []
-			}
+			},
+			Build = new BuildConfig { Output = output }
 		};
 	}
 
@@ -143,5 +145,60 @@ public sealed class FileDiscoveryServiceTests
 		DiscoveryResult result = service.Discover("/project", CreateConfig());
 
 		result.MarkdownFiles.Should().BeInAscendingOrder(StringComparer.OrdinalIgnoreCase);
+	}
+
+	[Fact]
+	public void Discover_OutputInsideDocs_SkipsPreviousBuildOutput()
+	{
+		// build.output pointing inside content.docs is a reasonable setup. Without an
+		// exclusion, each build ingests the last build's assets and nests a copy of the
+		// site inside itself.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/logo.png", new MockFileData("img") },
+			{ "/project/docs/_site/index.html", new MockFileData("<html></html>") },
+			{ "/project/docs/_site/search-index.json", new MockFileData("[]") },
+			{ "/project/docs/_site/_theme/css/main.css", new MockFileData("body{}") },
+			{ "/project/docs/_site/stale.md", new MockFileData("# Stale") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig(output: "./docs/_site"));
+
+		result.MarkdownFiles.Should().ContainSingle().Which.Should().Be("index.md");
+		result.AssetFiles.Should().ContainSingle().Which.Should().Be("logo.png");
+	}
+
+	[Fact]
+	public void Discover_OutputOutsideDocs_StillFindsEverything()
+	{
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/logo.png", new MockFileData("img") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig(output: "./_site"));
+
+		result.MarkdownFiles.Should().ContainSingle();
+		result.AssetFiles.Should().ContainSingle();
+	}
+
+	[Fact]
+	public void Discover_DirectoryMerelyStartingWithOutputName_IsNotExcluded()
+	{
+		// "_sitemap" must not be swallowed by a prefix match on "_site".
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/_sitemap/notes.md", new MockFileData("# Notes") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig(output: "./docs/_site"));
+
+		result.MarkdownFiles.Should().HaveCount(2);
 	}
 }

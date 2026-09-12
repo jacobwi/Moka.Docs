@@ -137,6 +137,8 @@ Starts a local development server with hot reload support. This is the recommend
 | `--output <path>` | Output directory | Value from config |
 | `--open` | Automatically open the site in the default browser when the server starts | On |
 | `--no-open` | Disable automatic browser opening | Off |
+| `--draft` | Include pages that have `visibility: draft` in their front matter | Off |
+| `--base-path <path>` | Path prefix the site is served under, matching `build.basePath` | Value from config |
 | `--verbose` | Enable verbose logging | Off |
 
 ### Features
@@ -145,6 +147,7 @@ Starts a local development server with hot reload support. This is the recommend
 - **File Watching**: Monitors the `docs/` directory and `mokadocs.yaml` for changes. Any modification triggers an incremental rebuild followed by a browser refresh.
 - **Clean URL Support**: Serves clean URLs automatically. A request to `/guide` resolves to `/guide/index.html`, so your local preview matches production behavior.
 - **Custom 404 Page**: Displays a styled 404 page (with dark/light theme support) when a route is not found.
+- **Base Path Aware**: If the site is built for a subdirectory (`build.basePath` or `--base-path`), the server strips that prefix from incoming requests, so `http://localhost:5080/my-repo/` serves the same pages the deployed site will.
 - **REPL Execution Endpoint**: When the REPL plugin is active, exposes `POST /api/repl/execute` for running C# code snippets interactively.
 - **Blazor Preview Endpoint**: When the Blazor plugin is active, exposes `POST /api/blazor/preview` for rendering Blazor component previews.
 

@@ -8,6 +8,7 @@ using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.CSharp.Metadata;
 using Moka.Docs.CSharp.XmlDoc;
+using Moka.Docs.Engine.Caching;
 
 namespace Moka.Docs.Engine.Phases;
 
@@ -17,6 +18,7 @@ namespace Moka.Docs.Engine.Phases;
 public sealed class CSharpAnalysisPhase(
 	AssemblyAnalyzer analyzer,
 	InheritDocResolver inheritDocResolver,
+	BuildCache cache,
 	ILogger<CSharpAnalysisPhase> logger) : IBuildPhase
 {
 	/// <inheritdoc />
@@ -55,9 +57,26 @@ public sealed class CSharpAnalysisPhase(
 
 			try
 			{
-				logger.LogInformation("Analyzing project: {Name} ({Path})", assemblyName, project.Path);
+				// Roslyn analysis dominates build time, so a cache hit here is most of the
+				// difference between a warm and a cold build.
+				string fingerprint = context.UseCache
+					? BuildCache.ComputeFingerprint(projectDir, project.IncludeInternals)
+					: "";
 
-				ApiReference apiRef = analyzer.AnalyzeDirectory(projectDir, assemblyName, project.IncludeInternals);
+				ApiReference? apiRef = context.UseCache && fingerprint.Length > 0
+					? cache.TryGet(context.RootDirectory, projectPath, fingerprint)
+					: null;
+
+				if (apiRef is null)
+				{
+					logger.LogInformation("Analyzing project: {Name} ({Path})", assemblyName, project.Path);
+					apiRef = analyzer.AnalyzeDirectory(projectDir, assemblyName, project.IncludeInternals);
+
+					if (context.UseCache && fingerprint.Length > 0)
+					{
+						cache.Set(context.RootDirectory, projectPath, fingerprint, apiRef);
+					}
+				}
 
 				allNamespaces.AddRange(apiRef.Namespaces);
 				allAssemblies.AddRange(apiRef.Assemblies);

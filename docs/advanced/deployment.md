@@ -90,7 +90,9 @@ jobs:
 
 ### `.nojekyll` File
 
-Add an empty `.nojekyll` file to the site root to prevent Jekyll from stripping directories starting with `_` (like `_theme/`). The `mokadocs-blazor-preview` plugin emits this automatically, but other sites need it too. You can create this file in your `docs/` directory so it is copied to the output during build.
+MokaDocs writes an empty `.nojekyll` file to the site root on every build. GitHub Pages runs Jekyll on branch-based deployments, and Jekyll strips directories starting with `_`, which would remove `_theme/` and take all your CSS and JavaScript with it.
+
+You do not need to create this file yourself. If you deploy with `actions/upload-pages-artifact` and `actions/deploy-pages`, Jekyll never runs at all, so the marker is harmless there.
 
 ### Base Path for GitHub Pages Project Sites
 

@@ -3,9 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FeatureManagement;
 using Moka.Docs.Core.Features;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Engine.Caching;
 using Moka.Docs.Engine.Discovery;
 using Moka.Docs.Engine.Phases;
 using Moka.Docs.Rendering.Scriban;
+using Moka.Docs.Themes;
 using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Engine;
@@ -34,11 +36,15 @@ public static class EngineServiceExtensions
 		services.AddSingleton<BuildPipeline>();
 		services.AddSingleton<FileDiscoveryService>();
 		services.AddSingleton<BrandAssetResolver>();
+		services.AddSingleton<BuildCache>();
 
-		// Template engine and default theme
+		// Template engine and theme resolution. ThemeResolver picks between the embedded
+		// default and a theme directory named by theme.name in mokadocs.yaml; it needs the
+		// build's root directory and file system, so the choice is made per build rather
+		// than baked into a DI registration.
 		services.AddSingleton<ScribanTemplateEngine>();
-		services.AddSingleton(_ => EmbeddedThemeProvider.CreateDefault());
 		services.AddSingleton<ThemeLoader>();
+		services.AddSingleton<ThemeResolver>();
 
 		// Register build phases
 		services.AddSingleton<IBuildPhase, DiscoveryPhase>();

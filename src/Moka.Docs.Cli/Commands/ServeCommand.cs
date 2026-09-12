@@ -33,6 +33,9 @@ internal static class ServeCommand
 		var openOption = new Option<bool>("--open")
 			{ Description = "Open browser automatically", DefaultValueFactory = _ => true };
 		var noOpenOption = new Option<bool>("--no-open") { Description = "Don't open browser automatically" };
+		var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
+		var basePathOption = new Option<string?>("--base-path")
+			{ Description = "Base path the site is served under (e.g. /Sub)" };
 
 		var command = new Command("serve", "Build and serve the site locally with hot reload")
 		{
@@ -41,7 +44,9 @@ internal static class ServeCommand
 			configOption,
 			outputOption,
 			openOption,
-			noOpenOption
+			noOpenOption,
+			draftOption,
+			basePathOption
 		};
 
 		command.SetAction(async (parseResult, _) =>
@@ -51,6 +56,8 @@ internal static class ServeCommand
 			string? configPath = parseResult.GetValue(configOption);
 			string? output = parseResult.GetValue(outputOption);
 			bool open = parseResult.GetValue(openOption) && !parseResult.GetValue(noOpenOption);
+			bool draft = parseResult.GetValue(draftOption);
+			string? basePath = parseResult.GetValue(basePathOption);
 
 			string version = Assembly.GetExecutingAssembly()
 				                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
@@ -98,6 +105,14 @@ internal static class ServeCommand
 				config = config with { Build = config.Build with { Output = output } };
 			}
 
+			if (basePath is not null)
+			{
+				config = config with
+				{
+					Build = config.Build with { BasePath = SiteConfigReader.NormalizeBasePath(basePath) }
+				};
+			}
+
 			string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
 			string docsDir = Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs));
 
@@ -121,7 +136,7 @@ internal static class ServeCommand
 			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
 
 			// Run initial build
-			if (!await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager))
+			if (!await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft))
 			{
 				return 1;
 			}
@@ -249,7 +264,8 @@ internal static class ServeCommand
 				blazorExtraUsings.Count > 0 ? blazorExtraUsings : null,
 				blazorRuntimeDlls.Count > 0 ? blazorRuntimeDlls : null);
 
-			using var server = new DevServer(serverLogger, outputDir, port, replService, blazorPreviewService);
+			using var server = new DevServer(serverLogger, outputDir, port, replService, blazorPreviewService,
+				config.Build.BasePath);
 			await server.StartAsync();
 
 			AnsiConsole.WriteLine();
@@ -289,7 +305,7 @@ internal static class ServeCommand
 			watcher.OnChanged += async () =>
 			{
 				AnsiConsole.MarkupLine("[yellow]Changes detected, rebuilding...[/]");
-				if (await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager))
+				if (await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft))
 				{
 					await server.NotifyReloadAsync();
 					AnsiConsole.MarkupLine("[green]Rebuild complete - browser reloaded[/]");
@@ -324,7 +340,8 @@ internal static class ServeCommand
 	}
 
 	private static async Task<bool> RunBuildAsync(
-		BuildPipeline pipeline, SiteConfig config, string rootDir, string outputDir, VersionManager versionManager)
+		BuildPipeline pipeline, SiteConfig config, string rootDir, string outputDir, VersionManager versionManager,
+		bool includeDrafts)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -333,7 +350,8 @@ internal static class ServeCommand
 			Config = config,
 			FileSystem = new FileSystem(),
 			RootDirectory = rootDir,
-			OutputDirectory = outputDir
+			OutputDirectory = outputDir,
+			IncludeDrafts = includeDrafts
 		};
 
 		// Wire version data

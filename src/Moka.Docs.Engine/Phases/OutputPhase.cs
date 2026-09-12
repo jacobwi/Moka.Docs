@@ -50,7 +50,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		{
 			ct.ThrowIfCancellationRequested();
 
-			if (page.FrontMatter.Visibility == PageVisibility.Draft)
+			if (!context.IncludeDrafts && page.FrontMatter.Visibility == PageVisibility.Draft)
 			{
 				continue;
 			}
@@ -71,6 +71,9 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 
 		// Write 404 page
 		Write404Page(context);
+
+		// Write .nojekyll
+		WriteNoJekyll(context);
 
 		// Write search index JSON
 		WriteSearchIndex(context);
@@ -240,6 +243,34 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 			searchIndex.Count, json.Length);
 	}
 
+	/// <summary>
+	///     Writes an empty <c>.nojekyll</c> marker at the site root.
+	/// </summary>
+	/// <remarks>
+	///     GitHub Pages runs Jekyll on branch-based deployments, and Jekyll strips every
+	///     directory whose name starts with an underscore. Every site emits <c>_theme/</c>,
+	///     and some also emit <c>_media/</c> or the Blazor preview's <c>_preview-wasm/</c>,
+	///     so without this marker a deployed site loses its CSS and JS entirely.
+	///     <para>
+	///         This used to be emitted by the Blazor preview plugin, which meant it only
+	///         appeared when that plugin was enabled AND had a published preview host to
+	///         copy. Any other site shipped without it.
+	///     </para>
+	/// </remarks>
+	private void WriteNoJekyll(BuildContext context)
+	{
+		IFileSystem fs = context.FileSystem;
+		string path = fs.Path.Combine(context.OutputDirectory, ".nojekyll");
+
+		if (fs.File.Exists(path))
+		{
+			return;
+		}
+
+		fs.File.WriteAllText(path, "");
+		logger.LogDebug("Wrote .nojekyll marker");
+	}
+
 	private void Write404Page(BuildContext context)
 	{
 		IFileSystem fs = context.FileSystem;
@@ -304,7 +335,7 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 		// Walk all written page routes to find directories that have an index.html
 		foreach (DocPage page in context.Pages)
 		{
-			if (page.FrontMatter.Visibility == PageVisibility.Draft)
+			if (!context.IncludeDrafts && page.FrontMatter.Visibility == PageVisibility.Draft)
 			{
 				continue;
 			}

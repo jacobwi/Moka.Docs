@@ -299,15 +299,11 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// /_preview-wasm/ even if no pages on this build currently contain preview blocks.
 		buildContext.DeferredOutputDirectories.Add((_previewHostWwwroot, "_preview-wasm"));
 
-		// GitHub Pages runs Jekyll by default, which STRIPS directories starting with an
-		// underscore - which is exactly every directory this plugin writes (_preview-wasm,
-		// _preview-assemblies, _framework, _content). Without a .nojekyll marker at the site
-		// root, the entire preview runtime is missing from the deployed site. Emit an empty
-		// .nojekyll file so Jekyll is bypassed and every directory ships verbatim.
-		if (!buildContext.DeferredOutputFiles.ContainsKey(".nojekyll"))
-		{
-			buildContext.DeferredOutputFiles[".nojekyll"] = [];
-		}
+		// The .nojekyll marker this plugin's underscore-prefixed output depends on
+		// (_preview-wasm, _preview-assemblies, _framework, _content) is written by
+		// OutputPhase for every build. It used to be emitted here, which meant sites
+		// without a published preview host shipped without it and lost _theme/ on
+		// branch-based GitHub Pages deployments.
 
 		// Resolve base path for the `?assembly=...` iframe query parameter. The Scriban
 		// template engine's RewriteContentLinks regex only matches `href="/..."` and

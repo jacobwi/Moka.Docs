@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Rendering.Scriban;
+using Moka.Docs.Themes;
 
 namespace Moka.Docs.Engine.Phases;
 
@@ -10,7 +11,7 @@ namespace Moka.Docs.Engine.Phases;
 /// </summary>
 public sealed class RenderPhase(
 	ScribanTemplateEngine templateEngine,
-	ThemeRenderContext themeContext,
+	ThemeResolver themeResolver,
 	ILogger<RenderPhase> logger) : IBuildPhase
 {
 	/// <inheritdoc />
@@ -22,6 +23,9 @@ public sealed class RenderPhase(
 	/// <inheritdoc />
 	public Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
 	{
+		ThemeRenderContext themeContext =
+			themeResolver.Resolve(context.Config, context.RootDirectory, context.FileSystem).Context;
+
 		// Update the theme context with the current config, navigation, and version data
 		var renderContext = new ThemeRenderContext
 		{
@@ -43,7 +47,7 @@ public sealed class RenderPhase(
 			ct.ThrowIfCancellationRequested();
 
 			DocPage page = context.Pages[i];
-			if (page.FrontMatter.Visibility == PageVisibility.Draft)
+			if (!context.IncludeDrafts && page.FrontMatter.Visibility == PageVisibility.Draft)
 			{
 				continue;
 			}

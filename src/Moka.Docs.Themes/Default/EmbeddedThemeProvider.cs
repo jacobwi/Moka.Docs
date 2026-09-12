@@ -1085,24 +1085,41 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text-secondary);
 	                                    }
 
-	                                    /* Admonitions - Markdig renders ::: type as <div class="type"> */
-	                                    .page-content > .note,
-	                                    .page-content > .tip,
-	                                    .page-content > .warning,
-	                                    .page-content > .caution,
-	                                    .page-content > .danger,
-	                                    .page-content > .info,
-	                                    .page-content > .important {
+	                                    /* Admonitions - AdmonitionExtension renders ::: type [title] as
+	                                       <div class="admonition admonition-{type}"> with a title row and content body.
+	                                       Descendant selectors, not direct children, so admonitions nested in tabs
+	                                       or components still pick up the styling. */
+	                                    .page-content .admonition {
 	                                        margin: 1.5rem 0;
 	                                        padding: 1rem 1.25rem;
 	                                        border-radius: var(--radius);
 	                                        border-left: 4px solid;
 	                                    }
-	                                    .page-content > .note { border-color: #3b82f6; background: color-mix(in srgb, #3b82f6 8%, var(--color-bg)); }
-	                                    .page-content > .tip { border-color: #22c55e; background: color-mix(in srgb, #22c55e 8%, var(--color-bg)); }
-	                                    .page-content > .warning, .page-content > .caution { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 8%, var(--color-bg)); }
-	                                    .page-content > .danger { border-color: #ef4444; background: color-mix(in srgb, #ef4444 8%, var(--color-bg)); }
-	                                    .page-content > .info, .page-content > .important { border-color: #8b5cf6; background: color-mix(in srgb, #8b5cf6 8%, var(--color-bg)); }
+	                                    .page-content .admonition-title {
+	                                        display: flex;
+	                                        align-items: center;
+	                                        gap: 0.5rem;
+	                                        font-weight: 600;
+	                                        font-size: 0.9375rem;
+	                                        margin-bottom: 0.5rem;
+	                                    }
+	                                    .page-content .admonition-icon { font-size: 1rem; line-height: 1; }
+	                                    .page-content .admonition-content > :first-child { margin-top: 0; }
+	                                    .page-content .admonition-content > :last-child { margin-bottom: 0; }
+	                                    .page-content .admonition-note { border-color: #3b82f6; background: color-mix(in srgb, #3b82f6 8%, var(--color-bg)); }
+	                                    .page-content .admonition-note .admonition-title { color: #3b82f6; }
+	                                    .page-content .admonition-tip { border-color: #22c55e; background: color-mix(in srgb, #22c55e 8%, var(--color-bg)); }
+	                                    .page-content .admonition-tip .admonition-title { color: #22c55e; }
+	                                    .page-content .admonition-warning { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 8%, var(--color-bg)); }
+	                                    .page-content .admonition-warning .admonition-title { color: #f59e0b; }
+	                                    .page-content .admonition-caution { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 8%, var(--color-bg)); }
+	                                    .page-content .admonition-caution .admonition-title { color: #f59e0b; }
+	                                    .page-content .admonition-danger { border-color: #ef4444; background: color-mix(in srgb, #ef4444 8%, var(--color-bg)); }
+	                                    .page-content .admonition-danger .admonition-title { color: #ef4444; }
+	                                    .page-content .admonition-info { border-color: #8b5cf6; background: color-mix(in srgb, #8b5cf6 8%, var(--color-bg)); }
+	                                    .page-content .admonition-info .admonition-title { color: #8b5cf6; }
+	                                    .page-content .admonition-important { border-color: #8b5cf6; background: color-mix(in srgb, #8b5cf6 8%, var(--color-bg)); }
+	                                    .page-content .admonition-important .admonition-title { color: #8b5cf6; }
 
 	                                    /* Tabs */
 	                                    .tabs { margin: 1.5rem 0; border: 1px solid var(--color-border); border-radius: var(--radius); }
@@ -3349,7 +3366,6 @@ public static class EmbeddedThemeProvider
 	                                          <meta name="twitter:card" content="summary" />
 	                                          <meta name="twitter:title" content="{{ page.title }}" />
 	                                          <meta name="twitter:description" content="{{ page.description }}" />{{ end }}
-	                                          <style>{{ css_inline }}</style>
 	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
 	                                          {{ end }}
 	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
@@ -3743,7 +3759,6 @@ public static class EmbeddedThemeProvider
 	                                          {{ if site.url != "" }}<link rel="canonical" href="{{ site.url }}{{ page.route }}" />{{ end }}
 	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
 	                                          {{ end }}
-	                                          <style>{{ css_inline }}</style>
 	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
 	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
 	                                      </head>

@@ -792,6 +792,7 @@ docs/api/*.yml
 docs/api/.manifest
 
 ### MokaDocs ###
+.mokadocs/
 _site/
 .DS_Store
 .idea/

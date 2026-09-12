@@ -5,6 +5,100 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-11
+
+### 🐛 Fixed
+
+- **Tabbed content (`=== "Title"`) never worked and hung the build.** The
+  `TabGroupParser` pushed two blocks from `TryOpen` and parented one to the
+  other, corrupting the block tree and sending Markdig into an infinite loop.
+  Because the extension was never registered in the pipeline, no build ever hit
+  it, and it had no test file at all. The parser is rewritten to push a single
+  container and record tab boundaries as child indices, which the renderer slices
+  apart, the same approach `::: steps` and `::: code-group` already used.
+  `docs/guide/markdown.md` documented the syntax and rendered it as literal
+  `=== "npm"` paragraphs.
+
+- **Admonition titles were silently dropped.** `::: tip Hot Tip` rendered as a
+  bare `<div class="tip">` with no title, despite being documented. The
+  `AdmonitionExtension`, which implements titles and icons, existed and was
+  tested but was never registered, so Markdig's built-in container parser
+  handled `:::` instead. It is now registered ahead of the built-in parser, and
+  the theme CSS moves from `.note` / `.tip` to `.admonition-{type}` with title
+  and content rows. Selectors are descendant rather than direct-child, so
+  admonitions nested inside tabs are styled too.
+
+- **Custom themes did not work.** `theme.name` was read from mokadocs.yaml and
+  round-tripped but never used, and `ThemeLoader` was registered in DI and never
+  resolved, so every build used the embedded theme. A new `ThemeResolver` picks
+  between the embedded theme and a theme directory, and `ThemeAssetPhase` now
+  ships a custom theme's own css/js/assets instead of the compiled-in stylesheet.
+  Falls back to the embedded theme, with a warning, when the directory is missing
+  or has no layouts.
+
+- **No logging provider was registered, so every `ILogger` call was discarded.**
+  `--verbose` set the minimum level but nothing was listening, which made it
+  affect only the diagnostics summary. It now registers a console provider;
+  quiet builds are unchanged.
+
+- **`mokadocs serve` ignored `build.basePath`.** A site built for a subdirectory
+  emits links like `/Sub/_theme/css/main.css`, but the dev server resolved paths
+  from the output root, so every asset 404'd locally. `DevServer` now strips the
+  configured base path, and `serve` gained a `--base-path` option to match
+  `build`.
+
+- **`build --draft` was parsed and ignored.** Draft pages were excluded
+  unconditionally. The flag now flows through `BuildContext.IncludeDrafts` to the
+  render, output and search-index phases. `serve` gained the same option.
+
+- `MarkdownParserOptions.EnableAdmonitions` and `EnableTabs` were never read.
+  They now gate their extensions.
+
+- Removed a dead `css_inline` template variable that emitted an empty `<style>`
+  element on every page.
+
+- Fixed a typo in `SiteConfigReader.NormalizeBasePath` and made it public, so the
+  CLI stops hand-duplicating base-path normalization.
+
+- Corrected the `BuildPipeline` comment describing when the plugin hook fires.
+
+- **No `.nojekyll` marker was written unless the Blazor preview plugin ran.**
+  Every site emits `_theme/`, and GitHub Pages runs Jekyll on branch-based
+  deployments, which strips directories starting with an underscore. The marker
+  was emitted by the Blazor preview plugin, and only once it had resolved a
+  published preview host, so most sites deployed without CSS or JS.
+  `OutputPhase` now writes it on every build.
+
+- **Discovery ingested its own build output.** Pointing `build.output` at a path
+  inside `content.docs` (`./docs/_site`) made every build pick up the previous
+  build's assets and nest a copy of the site inside itself, growing on each run.
+  `FileDiscoveryService` now excludes anything under the resolved output
+  directory. This repo's own site is built to `docs/_site` as a result.
+
+### ✨ New
+
+- **Build cache.** Roslyn C# analysis is roughly three quarters of a build, and
+  it is now cached in `.mokadocs/cache/` next to mokadocs.yaml, keyed per project
+  by a fingerprint of every source file the analyzer reads. A warm build of this
+  repo drops from 2.6s to 0.87s. Adding, editing or deleting any source file
+  invalidates only the affected project. `--no-cache` and `build.cache: false`
+  bypass it; a corrupt or unwritable cache degrades to a normal build rather than
+  failing it.
+
+- **`build --watch`.** Rebuilds on changes to the docs directory or mokadocs.yaml
+  without starting a server. The option existed but did nothing.
+
+### 🧪 Tests
+
+- `TabbedContentExtensionTests` (9 cases, including a hang guard and a check that
+  a bare `===` is still a setext heading) and `ThemeResolverTests` (8 cases).
+  Total is now 458, up from 424.
+
+### 🔄 Changed
+
+- Replaced em dashes with hyphens in project descriptions and the Python sample
+  fixture, finishing the earlier sweep.
+
 ## [1.5.0] - 2026-09-11
 
 ### 🔄 Changed

@@ -116,30 +116,10 @@ internal static class BuildCommand
 
 			if (basePath is not null)
 			{
-				// Normalize the same way SiteConfigReader.NormalizBasePath does so the
-				// value in BuildContext matches what YAML-provided paths look like: leading
-				// slash, NO trailing slash (except when the value is literally "/"). This
-				// prevents downstream "/basepath//subpath" double-slash bugs in the Scriban
-				// RewriteContentLinks regex and elsewhere.
-				string normalized = basePath.Trim();
-				if (normalized.Length == 0)
+				config = config with
 				{
-					normalized = "/";
-				}
-				else
-				{
-					if (!normalized.StartsWith('/'))
-					{
-						normalized = "/" + normalized;
-					}
-
-					if (normalized.Length > 1 && normalized.EndsWith('/'))
-					{
-						normalized = normalized.TrimEnd('/');
-					}
-				}
-
-				config = config with { Build = config.Build with { BasePath = normalized } };
+					Build = config.Build with { BasePath = SiteConfigReader.NormalizeBasePath(basePath) }
+				};
 			}
 
 			string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
@@ -147,102 +127,173 @@ internal static class BuildCommand
 			// Set up DI
 			await using ServiceProvider provider = BuildServices(config, verbose);
 			BuildPipeline pipeline = provider.GetRequiredService<BuildPipeline>();
+			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
 
-			// Build context
-			var context = new BuildContext
+			// Initialize plugins once; they inject pages on every pipeline run.
+			PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
+			await pluginHost.DiscoverAndInitializeAsync();
+			pipeline.PluginHook = async (ctx, ct) =>
 			{
-				Config = config,
-				FileSystem = new FileSystem(),
-				RootDirectory = rootDir,
-				OutputDirectory = outputDir
+				if (pluginHost.LoadedPlugins.Count > 0)
+				{
+					await pluginHost.ExecuteAllAsync(ctx, ct);
+				}
 			};
 
-			// Wire version data from VersionManager into the build context
-			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
-			if (versionManager.IsEnabled)
+			var options = new BuildRunOptions(
+				config, rootDir, outputDir, draft, !noCache && config.Build.Cache, verbose);
+
+			int exitCode = await RunBuildAsync(pipeline, versionManager, options, sw);
+
+			if (!watch)
 			{
-				context.Versions.AddRange(versionManager.Versions);
-				context.CurrentVersion = versionManager.DefaultVersion;
+				return exitCode;
 			}
 
-			// Execute pipeline
-			try
+			#region Watch Loop
+
+			string docsDir = Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs));
+			ILoggerFactory loggerFactory = provider.GetRequiredService<ILoggerFactory>();
+			using var watcher = new FileWatcher(loggerFactory.CreateLogger<FileWatcher>());
+
+			watcher.OnChanged += async () =>
 			{
-				// Initialize plugins before pipeline so they can inject pages
-				PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
-				await pluginHost.DiscoverAndInitializeAsync();
+				AnsiConsole.WriteLine();
+				AnsiConsole.MarkupLine("[yellow]Changes detected, rebuilding...[/]");
+				await RunBuildAsync(pipeline, versionManager, options, Stopwatch.StartNew());
+			};
 
-				// Run main pipeline - plugins execute as a hook after content phases
-				pipeline.PluginHook = async (ctx, ct) =>
-				{
-					if (pluginHost.LoadedPlugins.Count > 0)
-					{
-						await pluginHost.ExecuteAllAsync(ctx, ct);
-					}
-				};
-
-				await pipeline.ExecuteAsync(context);
-			}
-			catch (Exception ex)
-			{
-				AnsiConsole.MarkupLine($"[red]Build failed:[/] {Markup.Escape(ex.Message)}");
-				if (verbose)
-				{
-					AnsiConsole.WriteException(ex);
-				}
-
-				return 1;
-			}
-
-			sw.Stop();
-
-			// Build summary
-			int mdPages = context.Pages.Count(p => p.Origin == PageOrigin.Markdown);
-			int apiPages = context.Pages.Count(p => p.Origin == PageOrigin.ApiGenerated);
-			int apiTypes = context.ApiModel?.Namespaces.Sum(n => n.Types.Count) ?? 0;
-			int searchEntries = context.SearchIndex?.Entries.Count ?? 0;
+			watcher.Start(docsDir, resolvedConfigPath);
 
 			AnsiConsole.WriteLine();
-			AnsiConsole.MarkupLine($"[green bold]✅ MokaDocs build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
-			AnsiConsole.MarkupLine($"📄 Pages:        {mdPages + apiPages} ({mdPages} markdown, {apiPages} generated)");
+			AnsiConsole.MarkupLine($"[bold green]Watching[/] [dim]{Markup.Escape(docsDir)}[/]");
+			AnsiConsole.MarkupLine("[dim]Press Ctrl+C to stop[/]");
 
-			if (apiTypes > 0)
+			using var cts = new CancellationTokenSource();
+			Console.CancelKeyPress += (_, e) =>
 			{
-				AnsiConsole.MarkupLine(
-					$"🔧 API Types:    {apiTypes} across {context.ApiModel!.Assemblies.Count} assemblies");
+				e.Cancel = true;
+				cts.Cancel();
+			};
+
+			try
+			{
+				await Task.Delay(Timeout.Infinite, cts.Token);
+			}
+			catch (OperationCanceledException)
+			{
+				// Ctrl+C is the normal way out of watch mode.
 			}
 
-			if (searchEntries > 0)
-			{
-				AnsiConsole.MarkupLine($"🔍 Search Index: {searchEntries} entries");
-			}
+			AnsiConsole.MarkupLine("[dim]Stopped watching[/]");
+			return exitCode;
 
-			AnsiConsole.MarkupLine($"📦 Output:       {config.Build.Output}");
-
-			if (context.Diagnostics.HasWarnings || context.Diagnostics.HasErrors)
-			{
-				int warnings = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
-				int errors = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
-				AnsiConsole.MarkupLine($"⚠️  Diagnostics:  {warnings} warnings, {errors} errors");
-
-				if (verbose)
-				{
-					foreach (Diagnostic diag in context.Diagnostics.All)
-					{
-						string color = diag.Severity == DiagnosticSeverity.Error ? "red" : "yellow";
-						AnsiConsole.MarkupLine($"  [{color}]{Markup.Escape(diag.ToString())}[/]");
-					}
-				}
-				else
-				{
-					AnsiConsole.MarkupLine("    [dim]Run with --verbose to see details[/]");
-				}
-			}
-
-			return 0;
+			#endregion
 		});
 
 		return command;
+	}
+
+	/// <summary>
+	///     Inputs for a single build run, so watch mode can repeat it without rebuilding
+	///     the DI container or re-reading the config.
+	/// </summary>
+	private sealed record BuildRunOptions(
+		SiteConfig Config,
+		string RootDirectory,
+		string OutputDirectory,
+		bool IncludeDrafts,
+		bool UseCache,
+		bool Verbose);
+
+	/// <summary>
+	///     Runs the pipeline once and prints the build summary.
+	/// </summary>
+	/// <returns>0 on success, 1 when the pipeline threw.</returns>
+	private static async Task<int> RunBuildAsync(
+		BuildPipeline pipeline, VersionManager versionManager, BuildRunOptions options, Stopwatch sw)
+	{
+		var context = new BuildContext
+		{
+			Config = options.Config,
+			FileSystem = new FileSystem(),
+			RootDirectory = options.RootDirectory,
+			OutputDirectory = options.OutputDirectory,
+			IncludeDrafts = options.IncludeDrafts,
+			UseCache = options.UseCache
+		};
+
+		// Wire version data from VersionManager into the build context
+		if (versionManager.IsEnabled)
+		{
+			context.Versions.AddRange(versionManager.Versions);
+			context.CurrentVersion = versionManager.DefaultVersion;
+		}
+
+		try
+		{
+			await pipeline.ExecuteAsync(context);
+		}
+		catch (Exception ex)
+		{
+			AnsiConsole.MarkupLine($"[red]Build failed:[/] {Markup.Escape(ex.Message)}");
+			if (options.Verbose)
+			{
+				AnsiConsole.WriteException(ex);
+			}
+
+			return 1;
+		}
+
+		sw.Stop();
+
+		#region Build Summary
+
+		int mdPages = context.Pages.Count(p => p.Origin == PageOrigin.Markdown);
+		int apiPages = context.Pages.Count(p => p.Origin == PageOrigin.ApiGenerated);
+		int apiTypes = context.ApiModel?.Namespaces.Sum(n => n.Types.Count) ?? 0;
+		int searchEntries = context.SearchIndex?.Entries.Count ?? 0;
+
+		AnsiConsole.WriteLine();
+		AnsiConsole.MarkupLine($"[green bold]✅ MokaDocs build complete in {sw.Elapsed.TotalSeconds:F2}s[/]");
+		AnsiConsole.MarkupLine($"📄 Pages:        {mdPages + apiPages} ({mdPages} markdown, {apiPages} generated)");
+
+		if (apiTypes > 0)
+		{
+			AnsiConsole.MarkupLine(
+				$"🔧 API Types:    {apiTypes} across {context.ApiModel!.Assemblies.Count} assemblies");
+		}
+
+		if (searchEntries > 0)
+		{
+			AnsiConsole.MarkupLine($"🔍 Search Index: {searchEntries} entries");
+		}
+
+		AnsiConsole.MarkupLine($"📦 Output:       {options.Config.Build.Output}");
+
+		if (context.Diagnostics.HasWarnings || context.Diagnostics.HasErrors)
+		{
+			int warnings = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
+			int errors = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
+			AnsiConsole.MarkupLine($"⚠️  Diagnostics:  {warnings} warnings, {errors} errors");
+
+			if (options.Verbose)
+			{
+				foreach (Diagnostic diag in context.Diagnostics.All)
+				{
+					string color = diag.Severity == DiagnosticSeverity.Error ? "red" : "yellow";
+					AnsiConsole.MarkupLine($"  [{color}]{Markup.Escape(diag.ToString())}[/]");
+				}
+			}
+			else
+			{
+				AnsiConsole.MarkupLine("    [dim]Run with --verbose to see details[/]");
+			}
+		}
+
+		#endregion
+
+		return 0;
 	}
 
 	/// <summary>
@@ -255,7 +306,16 @@ internal static class BuildCommand
 		{
 			if (verbose)
 			{
+				// Without a provider every ILogger call in the pipeline is discarded, which
+				// made --verbose affect only the diagnostics summary printed below. Quiet
+				// builds stay provider-free so the Spectre output is the only thing on
+				// stdout; DiagnosticBag still reports warnings in the build summary.
 				b.SetMinimumLevel(LogLevel.Debug);
+				b.AddSimpleConsole(o =>
+				{
+					o.SingleLine = true;
+					o.TimestampFormat = null;
+				});
 			}
 			else
 			{

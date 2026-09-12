@@ -61,6 +61,19 @@ public sealed class BuildContext
 	/// <summary>The output directory for generated files.</summary>
 	public required string OutputDirectory { get; init; }
 
+	/// <summary>
+	///     Whether the build may reuse cached results from a previous run. Set false by
+	///     the CLI's <c>--no-cache</c> flag or <c>build.cache: false</c> in mokadocs.yaml.
+	/// </summary>
+	public bool UseCache { get; init; } = true;
+
+	/// <summary>
+	///     Whether pages marked <c>visibility: draft</c> are included in the build.
+	///     Set by the CLI's <c>--draft</c> flag. Draft pages are skipped by the render,
+	///     output and search-index phases when this is false.
+	/// </summary>
+	public bool IncludeDrafts { get; init; }
+
 	/// <summary>Discovered Markdown file paths (relative to docs root).</summary>
 	public List<string> DiscoveredMarkdownFiles { get; } = [];
 

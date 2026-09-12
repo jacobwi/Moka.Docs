@@ -1,3 +1,4 @@
+using System.Text;
 using Markdig;
 using Markdig.Helpers;
 using Markdig.Parsers;
@@ -9,7 +10,7 @@ namespace Moka.Docs.Parsing.Markdown;
 
 /// <summary>
 ///     Markdig extension for tabbed content blocks.
-///     Uses the <c>=== "Tab Title"</c> syntax.
+///     Uses the <c>=== "Tab Title"</c> syntax, closed by a bare <c>===</c> line.
 /// </summary>
 public sealed class TabbedContentExtension : IMarkdownExtension
 {
@@ -17,8 +18,10 @@ public sealed class TabbedContentExtension : IMarkdownExtension
 	public void Setup(MarkdownPipelineBuilder pipeline)
 	{
 		if (!pipeline.BlockParsers.Contains<TabGroupParser>())
+			// Position 0: a bare === line is a setext h1 underline in CommonMark, so this
+			// has to win against the paragraph parser as well as ThematicBreakParser.
 		{
-			pipeline.BlockParsers.InsertBefore<ThematicBreakParser>(new TabGroupParser());
+			pipeline.BlockParsers.Insert(0, new TabGroupParser());
 		}
 	}
 
@@ -31,53 +34,54 @@ public sealed class TabbedContentExtension : IMarkdownExtension
 			{
 				htmlRenderer.ObjectRenderers.Add(new TabGroupRenderer());
 			}
-
-			if (!htmlRenderer.ObjectRenderers.Contains<TabItemRenderer>())
-			{
-				htmlRenderer.ObjectRenderers.Add(new TabItemRenderer());
-			}
 		}
 	}
 }
 
+#region Blocks
+
 /// <summary>
-///     Represents a group of tabs in the AST.
+///     A group of tabs in the AST.
 /// </summary>
+/// <remarks>
+///     Tabs are not separate container blocks. All tab content lands directly in this
+///     container, and <see cref="TabStartIndices" /> records where each tab's content
+///     begins. <see cref="TabGroupRenderer" /> slices the children back apart at render
+///     time. This mirrors how <c>::: steps</c> and <c>::: code-group</c> work, and avoids
+///     pushing sibling containers from a block parser, which Markdig does not support.
+/// </remarks>
 public sealed class TabGroupBlock : ContainerBlock
 {
+	private static int _counter;
+
 	/// <summary>Creates a new tab group block.</summary>
 	public TabGroupBlock(BlockParser parser) : base(parser)
 	{
+		GroupId = $"tabs-{Interlocked.Increment(ref _counter)}";
 	}
 
-	/// <summary>Unique ID for this tab group (for linking tab headers to content).</summary>
-	public string GroupId { get; set; } = "";
+	/// <summary>Unique ID for this tab group (links tab headers to content panels).</summary>
+	public string GroupId { get; set; }
+
+	/// <summary>Tab titles, in document order.</summary>
+	public List<string> TabTitles { get; } = [];
+
+	/// <summary>
+	///     Index into this container's children where each tab's content starts.
+	///     Always the same length as <see cref="TabTitles" />.
+	/// </summary>
+	public List<int> TabStartIndices { get; } = [];
 }
 
-/// <summary>
-///     Represents a single tab within a tab group.
-/// </summary>
-public sealed class TabItemBlock : ContainerBlock
-{
-	/// <summary>Creates a new tab item block.</summary>
-	public TabItemBlock(BlockParser parser) : base(parser)
-	{
-	}
+#endregion
 
-	/// <summary>The tab title.</summary>
-	public string Title { get; set; } = "";
-
-	/// <summary>Whether this is the first (default active) tab.</summary>
-	public bool IsFirst { get; set; }
-}
+#region Parser
 
 /// <summary>
-///     Parses <c>=== "Title"</c> tab blocks.
+///     Parses <c>=== "Title"</c> tab blocks, closed by a bare <c>===</c>.
 /// </summary>
 public sealed class TabGroupParser : BlockParser
 {
-	private static int _groupCounter;
-
 	/// <summary>Creates a new tab group parser.</summary>
 	public TabGroupParser()
 	{
@@ -95,121 +99,89 @@ public sealed class TabGroupParser : BlockParser
 		StringSlice line = processor.Line;
 		int start = line.Start;
 
-		// Must start with ===
-		if (line.CurrentChar != '=')
-		{
-			return BlockState.None;
-		}
-
-		int equals = MarkdigHelpers.CountAndSkipChar(ref line, '=');
-		if (equals < 3)
-		{
-			return BlockState.None;
-		}
-
-		line.TrimStart();
-		string remaining = line.ToString().Trim();
-
-		// Must have a quoted title: === "Tab Title"
-		string? title = ExtractQuotedTitle(remaining);
+		string? title = TryReadTabTitle(ref line);
 		if (title is null)
 		{
+			// A bare === is a setext heading underline, not a tab. Leave it alone.
 			return BlockState.None;
 		}
-
-		string groupId = $"tabs-{Interlocked.Increment(ref _groupCounter)}";
 
 		var group = new TabGroupBlock(this)
 		{
-			GroupId = groupId,
 			Span = new SourceSpan(start, line.End),
 			Column = processor.Column
 		};
 
-		var firstTab = new TabItemBlock(this)
-		{
-			Title = title,
-			IsFirst = true,
-			Span = new SourceSpan(start, line.End),
-			Column = processor.Column
-		};
+		group.TabTitles.Add(title);
+		group.TabStartIndices.Add(0);
 
-		group.Add(firstTab);
+		// Exactly one block is pushed. Pushing the group and a child tab together
+		// corrupts the block tree and sends the processor into an infinite loop.
 		processor.NewBlocks.Push(group);
-		processor.NewBlocks.Push(firstTab);
-
 		return BlockState.ContinueDiscard;
 	}
 
 	/// <inheritdoc />
 	public override BlockState TryContinue(BlockProcessor processor, Block block)
 	{
-		// We handle continuation for both TabGroupBlock and TabItemBlock
-		if (block is TabItemBlock)
+		if (block is not TabGroupBlock group)
 		{
-			return TryContinueTabItem(processor, block);
+			return BlockState.Continue;
 		}
 
-		if (block is TabGroupBlock)
-		{
-			return TryContinueTabGroup(processor, block);
-		}
-
-		return BlockState.Continue;
-	}
-
-	private BlockState TryContinueTabItem(BlockProcessor processor, Block block)
-	{
 		StringSlice line = processor.Line;
-
-		// Check for closing === (no title - end of tab group)
-		if (line.CurrentChar == '=')
+		if (line.CurrentChar != '=')
 		{
-			StringSlice saved = line;
-			int equals = MarkdigHelpers.CountAndSkipChar(ref line, '=');
-			if (equals >= 3)
+			return BlockState.Continue;
+		}
+
+		StringSlice saved = line;
+		int equals = MarkdigHelpers.CountAndSkipChar(ref line, '=');
+		if (equals >= 3)
+		{
+			string remaining = line.ToString().Trim();
+
+			// Bare === closes the group.
+			if (string.IsNullOrEmpty(remaining))
 			{
-				string remaining = line.ToString().Trim();
-
-				// Closing === (no title)
-				if (string.IsNullOrEmpty(remaining))
-				{
-					block.UpdateSpanEnd(line.End);
-					return BlockState.BreakDiscard;
-				}
-
-				// New tab === "Title"
-				string? title = ExtractQuotedTitle(remaining);
-				if (title is not null)
-				{
-					// Close current tab, open new one
-					var tabGroup = block.Parent as TabGroupBlock;
-					var newTab = new TabItemBlock(this)
-					{
-						Title = title,
-						IsFirst = false,
-						Span = new SourceSpan(line.Start, line.End),
-						Column = processor.Column
-					};
-
-					tabGroup?.Add(newTab);
-					processor.Close(block);
-					processor.NewBlocks.Push(newTab);
-
-					return BlockState.ContinueDiscard;
-				}
+				block.UpdateSpanEnd(line.End);
+				return BlockState.BreakDiscard;
 			}
 
-			processor.Line = saved;
+			// === "Title" starts the next tab. Record where its content begins.
+			string? title = ExtractQuotedTitle(remaining);
+			if (title is not null)
+			{
+				group.TabTitles.Add(title);
+				group.TabStartIndices.Add(group.Count);
+				block.UpdateSpanEnd(line.End);
+				return BlockState.ContinueDiscard;
+			}
 		}
 
+		processor.Line = saved;
 		return BlockState.Continue;
 	}
 
-	private static BlockState TryContinueTabGroup(BlockProcessor processor, Block block)
+	/// <summary>
+	///     Reads <c>=== "Title"</c> from the start of a line, advancing past it.
+	///     Returns <c>null</c> when the line is not a tab opener.
+	/// </summary>
+	private static string? TryReadTabTitle(ref StringSlice line)
 	{
-		// The tab group continues as long as its child tabs continue
-		return BlockState.Continue;
+		if (line.CurrentChar != '=')
+		{
+			return null;
+		}
+
+		int equals = MarkdigHelpers.CountAndSkipChar(ref line, '=');
+		if (equals < 3)
+		{
+			return null;
+		}
+
+		line.TrimStart();
+		return ExtractQuotedTitle(line.ToString().Trim());
 	}
 
 	private static string? ExtractQuotedTitle(string text)
@@ -236,67 +208,93 @@ public sealed class TabGroupParser : BlockParser
 	}
 }
 
+#endregion
+
+#region Renderer
+
 /// <summary>
-///     Renders a tab group as HTML.
+///     Renders a tab group as a header row plus one content panel per tab.
 /// </summary>
 public sealed class TabGroupRenderer : HtmlObjectRenderer<TabGroupBlock>
 {
 	/// <inheritdoc />
 	protected override void Write(HtmlRenderer renderer, TabGroupBlock block)
 	{
-		string groupId = block.GroupId;
+		if (block.TabTitles.Count == 0)
+		{
+			return;
+		}
 
 		renderer.EnsureLine();
-		renderer.Write($"<div class=\"tabs\" data-tab-group=\"{groupId}\">");
+		renderer.Write("<div class=\"tabs\" data-tab-group=\"").Write(block.GroupId).Write("\">");
 		renderer.WriteLine();
 
-		// Tab headers
+		#region Headers
+
 		renderer.Write("<div class=\"tab-headers\" role=\"tablist\">");
 		renderer.WriteLine();
 
-		int index = 0;
-		foreach (Block child in block)
+		for (int i = 0; i < block.TabTitles.Count; i++)
 		{
-			if (child is TabItemBlock tab)
+			bool first = i == 0;
+			renderer.Write("<button class=\"tab-header");
+			if (first)
 			{
-				string active = index == 0 ? " active" : "";
-				string selected = index == 0 ? "true" : "false";
-				renderer.Write(
-					$"<button class=\"tab-header{active}\" role=\"tab\" aria-selected=\"{selected}\" data-tab-index=\"{index}\">{tab.Title}</button>");
-				renderer.WriteLine();
-				index++;
+				renderer.Write(" active");
 			}
+
+			renderer.Write("\" role=\"tab\" aria-selected=\"")
+				.Write(first ? "true" : "false")
+				.Write("\" data-tab-index=\"")
+				.Write(i.ToString())
+				.Write("\">");
+			renderer.WriteEscape(block.TabTitles[i]);
+			renderer.Write("</button>");
+			renderer.WriteLine();
 		}
 
 		renderer.Write("</div>");
 		renderer.WriteLine();
 
-		// Tab content panels
-		renderer.WriteChildren(block);
+		#endregion
+
+		#region Panels
+
+		for (int i = 0; i < block.TabTitles.Count; i++)
+		{
+			int from = block.TabStartIndices[i];
+			int to = i + 1 < block.TabStartIndices.Count ? block.TabStartIndices[i + 1] : block.Count;
+			bool first = i == 0;
+
+			renderer.Write("<div class=\"tab-content");
+			if (first)
+			{
+				renderer.Write(" active");
+			}
+
+			renderer.Write("\" role=\"tabpanel\"");
+			if (!first)
+			{
+				renderer.Write(" hidden");
+			}
+
+			renderer.Write(">");
+			renderer.WriteLine();
+
+			for (int c = from; c < to && c < block.Count; c++)
+			{
+				renderer.Write(block[c]);
+			}
+
+			renderer.Write("</div>");
+			renderer.WriteLine();
+		}
 
 		renderer.Write("</div>");
 		renderer.WriteLine();
+
+		#endregion
 	}
 }
 
-/// <summary>
-///     Renders a tab item as an HTML panel.
-/// </summary>
-public sealed class TabItemRenderer : HtmlObjectRenderer<TabItemBlock>
-{
-	/// <inheritdoc />
-	protected override void Write(HtmlRenderer renderer, TabItemBlock block)
-	{
-		string active = block.IsFirst ? " active" : "";
-		string hidden = block.IsFirst ? "" : " hidden";
-
-		renderer.EnsureLine();
-		renderer.Write($"<div class=\"tab-content{active}\" role=\"tabpanel\"{hidden}>");
-		renderer.WriteLine();
-
-		renderer.WriteChildren(block);
-
-		renderer.Write("</div>");
-		renderer.WriteLine();
-	}
-}
+#endregion

@@ -17,8 +17,12 @@ public sealed class AdmonitionExtension : IMarkdownExtension
 	public void Setup(MarkdownPipelineBuilder pipeline)
 	{
 		if (!pipeline.BlockParsers.Contains<AdmonitionParser>())
+			// Insert at position 0 so it runs before CustomContainerParser, which also
+			// claims ::: syntax but renders a generic <div> and drops the title.
+			// TryOpen returns BlockState.None for types it does not own, so sitting
+			// first costs the other ::: parsers nothing.
 		{
-			pipeline.BlockParsers.InsertBefore<ThematicBreakParser>(new AdmonitionParser());
+			pipeline.BlockParsers.Insert(0, new AdmonitionParser());
 		}
 	}
 

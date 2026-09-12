@@ -55,6 +55,71 @@ Create a CSS file and reference it in your project, or use the custom CSS inject
 }
 ```
 
+## Choosing a Theme
+
+`theme.name` selects which theme renders the site. The default is the theme built
+into MokaDocs:
+
+```yaml
+theme:
+  name: default
+```
+
+Any other value is treated as a path to a theme directory, resolved relative to
+`mokadocs.yaml`:
+
+```yaml
+theme:
+  name: ./my-theme
+```
+
+### Theme Directory Layout
+
+```
+my-theme/
+  layouts/
+    default.html      # required - used by every page unless overridden
+    landing.html      # optional - used by pages with `layout: landing`
+  partials/
+    footer.html       # optional
+  css/
+    main.css
+  js/
+    main.js
+  assets/
+    logo.svg
+```
+
+Layouts are [Scriban](https://github.com/scriban/scriban) templates. A minimal
+`default.html`:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ page.title }} - {{ site.title }}</title>
+    {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
+    {{ end }}
+</head>
+<body>
+    <main>{{ page.content }}</main>
+    {{ for js in js_files }}<script src="{{ js }}"></script>
+    {{ end }}
+</body>
+</html>
+```
+
+Everything under `css/`, `js/` and `assets/` is copied to `_theme/` in the output,
+and `css_files` / `js_files` are populated from what it finds. The built-in
+stylesheet is not included, so a custom theme owns its own styling completely.
+
+### Fallback Behaviour
+
+MokaDocs falls back to the default theme, with a warning, when the directory does
+not exist or contains no `layouts/*.html`. A typo in `theme.name` produces a
+styled site plus a warning rather than a failed build. Run with `--verbose` to see
+the warning.
+
 ## Config-Driven Customization
 
 The `mokadocs.yaml` file provides several options for customizing the theme without writing CSS.
