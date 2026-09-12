@@ -90,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Tests
 
+- Added `Microsoft.Testing.Extensions.TrxReport` to the test projects. Only
+  `TrxReport.Abstractions` arrived transitively, so the trx report switch CI
+  passes discovered zero tests and exited 5, failing the build.
+
 - `TabbedContentExtensionTests` (9 cases, including a hang guard and a check that
   a bare `===` is still a setext heading) and `ThemeResolverTests` (8 cases).
   Total is now 458, up from 424.

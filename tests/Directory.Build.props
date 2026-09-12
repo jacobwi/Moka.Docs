@@ -10,4 +10,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Every test project needs the TRX reporter so CI can request a trx report. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+  </ItemGroup>
+
 </Project>

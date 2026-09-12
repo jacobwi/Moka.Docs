@@ -50,6 +50,10 @@
 		<PackageVersion Include="xunit.v3" Version="4.0.0" />
 		<PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
 		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+		<!-- Supplies the trx report handler CI asks for. Only TrxReport.Abstractions
+		     arrives transitively, so without this the trx switch runs zero tests and
+		     exits 5. Pinned to the Microsoft.Testing.Platform version in the graph. -->
+		<PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
 		<PackageVersion Include="FluentAssertions" Version="8.10.0" />
 		<PackageVersion Include="NSubstitute" Version="6.2.0" />
 		<PackageVersion Include="Verify.XunitV3" Version="32.0.0" />
