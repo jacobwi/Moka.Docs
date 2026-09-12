@@ -258,33 +258,50 @@ mokadocs new component code-group
 
 ## mokadocs doctor
 
-Runs a suite of diagnostic checks against your MokaDocs project and reports any problems found. This is useful for catching configuration issues, broken links, missing metadata, and other common problems before they reach production.
+Runs diagnostic checks against your MokaDocs project and reports problems before they reach production: configuration mistakes, broken links, missing titles, unused images, misspelled plugins and undocumented API.
+
+Checks that depend on what the build produces run against a dry-run build (see [`mokadocs validate`](#mokadocs-validate)), so they see the same routes, plugins and API model a real build would. Nothing is written to your output directory.
 
 ### Checks
 
-The `doctor` command runs 11 built-in checks:
-
 | Check | What It Validates |
 |-------|-------------------|
-| Config | `mokadocs.yaml` syntax and required fields |
-| .NET SDK | Presence and version of the .NET SDK |
-| Projects | `.csproj` paths in config resolve to valid files |
-| XML Docs | C# projects have XML documentation generation enabled |
-| Docs folder | The configured docs directory exists and contains `.md` files |
-| Broken links | Internal links between pages resolve to valid targets |
-| Missing front matter | Pages that lack a `title` or other recommended fields |
-| Orphan images | Image files in the docs directory that are not referenced by any page |
-| Plugins | Configured plugins can be resolved and loaded |
-| Search | Search index can be built without errors |
-| API coverage | Percentage of public API members that have XML doc comments |
+| Configuration | `mokadocs.yaml` exists and parses |
+| .NET SDK | The .NET SDK is on `PATH` |
+| Projects | Every `content.projects` path points at a real `.csproj`. A site with no projects is valid and passes. |
+| Docs Folder | The `content.docs` directory exists |
+| Logo, Favicon | `site.logo` and `site.favicon` resolve to real files. Only shown when set. |
+| Build | A dry-run build completes. Warnings and errors it reports are counted here; run `mokadocs validate` to see them. |
+| Broken Links | Root-relative links and images point at something the build produces |
+| Front Matter | Every page has a non-empty `title` |
+| Orphan Images | Images in the docs folder that nothing references |
+| Plugins | Every `plugins[].name` matches a real plugin id and initializes |
+| Search | The search index builds with entries. Search turned off in config passes. |
+| API Coverage | Share of public types and members with a summary. Only shown when projects are configured. |
+
+### How Links Are Checked
+
+A link counts as valid when it resolves to any of:
+
+- a page, including API reference pages, plugin pages, and pages whose front matter sets `route:`
+- a section directory such as `/guide`, which the build redirects to its first page
+- a static asset in the docs folder, the logo or favicon, or a generated file like `/sitemap.xml`
+
+Links are read from the parsed Markdown, not with a text search, so examples inside code blocks and inline code are never reported. Links to a draft page are reported and labelled, since drafts are left out of production builds. Only root-relative links (`/guide/intro`) are checked; relative links and external URLs are not.
+
+### How API Coverage Is Measured
+
+Coverage is read from the API model generated from your source code, the same one your API pages are built from. A type or member counts as documented when it has a `<summary>`, or when its comment is `<inheritdoc/>`, even if the inherited text lives in a framework type that MokaDocs cannot read. A delegate's `Invoke` shares the delegate's own documentation. Use `--verbose` to list what is missing.
 
 ### Options
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
-| `--fix` | | Automatically fix problems where possible (e.g., add missing front matter titles) | Off |
-| `--config <path>` | `-c` | Path to the configuration file | `mokadocs.yaml` |
-| `--verbose` | `-v` | Show detailed output for each check, including passed checks | Off |
+| `--fix` | | Automatically fix problems where possible. Currently adds a missing front matter `title`, derived from the file name, or from the folder name for `index.md`. | Off |
+| `--config <path>` | `-c` | Path to the configuration file. Paths inside it resolve relative to the file, not the directory you run the command from. | `mokadocs.yaml` |
+| `--verbose` | `-v` | Show more detail, such as which pages lack titles and which symbols lack summaries | Off |
+
+`--fix` preserves line endings and any UTF-8 byte order mark, and inserts the title without touching the rest of your front matter.
 
 ### Exit Codes
 
@@ -303,8 +320,8 @@ mokadocs doctor
 # Run diagnostics with automatic fixes
 mokadocs doctor --fix
 
-# Run with a custom config and verbose output
-mokadocs doctor --config mokadocs.prod.yaml --verbose
+# Diagnose another project and list details
+mokadocs doctor -c samples/my-lib/mokadocs.yaml -v
 ```
 
 Output is colored using Spectre.Console, with green for passed checks, yellow for warnings, and red for errors.
@@ -401,9 +418,69 @@ mokadocs info
 
 ---
 
-## mokadocs validate (Superseded)
+## mokadocs validate
 
-> The `mokadocs validate` command was originally planned but has been superseded by [`mokadocs doctor`](#mokadocs-doctor), which provides a broader set of diagnostic checks along with auto-fix support. Use `mokadocs doctor` instead.
+Runs the complete build as a dry run and reports every warning and error it produces. Markdown is parsed, C# projects are analyzed, plugins run and every page is rendered through the theme, but nothing is written to the output directory, and an existing site there is left untouched.
+
+### `validate` or `doctor`?
+
+They answer different questions and work well together.
+
+- **`mokadocs doctor`** checks your project files: links, titles, images, plugin names, API coverage. It can fix some problems.
+- **`mokadocs validate`** shows what the build itself reports: a page that failed to parse or render, a project that could not be analyzed, a plugin that crashed or never loaded. These only show up by actually running the build.
+
+When `doctor`'s Build row reports warnings or errors, `validate` lists them.
+
+### Output
+
+```
+mokadocs validate - dry run, nothing is written
+
+  ✓ Config        mokadocs.yaml - "My Library"
+  ✓ Build         dry run completed in 0.94s
+                  23 pages (10 markdown, 13 generated)
+                  12 API types
+                  155 search index entries
+                  plugins: mokadocs-repl, mokadocs-changelog
+
+  ⚠ CSharpAnalysis: Project file not found: ./src/Old/Old.csproj
+  ⚠ Plugins: Plugin 'repl' is declared but no plugin has that id
+
+  Result: 0 error(s), 2 warning(s)
+```
+
+Each problem is prefixed with the build phase that reported it.
+
+### Options
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `--config <path>` | `-c` | Path to the configuration file | `mokadocs.yaml` |
+| `--draft` | | Include pages with `visibility: draft` | Off |
+| `--verbose` | `-v` | Show pipeline logging and informational diagnostics | Off |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | The build reported no warnings or errors |
+| 1 | The build reported warnings |
+| 2 | The build reported errors, failed outright, or the config could not be read |
+
+### Usage
+
+```bash
+# Check that the site builds cleanly
+mokadocs validate
+
+# Include drafts and see the full pipeline log
+mokadocs validate --draft -v
+
+# Fail a CI job only on errors
+mokadocs validate || [ $? -eq 1 ]
+```
+
+The C# analysis cache in `.mokadocs/cache/` is used and updated as in a normal build.
 
 ---
 
@@ -420,6 +497,7 @@ mokadocs info
 | Start dev server | `mokadocs serve` |
 | Start dev server on port 3000 | `mokadocs serve --port 3000` |
 | Start dev server without opening browser | `mokadocs serve --no-open` |
+| Check the build without writing output | `mokadocs validate` |
 | Run diagnostics | `mokadocs doctor` |
 | Run diagnostics with auto-fix | `mokadocs doctor --fix` |
 | View project stats | `mokadocs stats` |

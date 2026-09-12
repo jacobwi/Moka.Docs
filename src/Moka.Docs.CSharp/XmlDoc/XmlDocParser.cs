@@ -102,7 +102,8 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 			TypeParameters = ParseParamElements(member, "typeparam"),
 			Exceptions = ParseExceptions(member),
 			Examples = ParseExamples(member),
-			SeeAlso = ParseSeeAlso(member)
+			SeeAlso = ParseSeeAlso(member),
+			HasInheritDocTag = member.Element("inheritdoc") is not null
 		};
 	}
 

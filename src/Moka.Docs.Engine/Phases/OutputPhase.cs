@@ -32,6 +32,13 @@ public sealed class OutputPhase(ILogger<OutputPhase> logger) : IBuildPhase
 	/// <inheritdoc />
 	public Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
 	{
+		if (context.DryRun)
+		{
+			// Most important of the three guards: this phase deletes the output directory.
+			logger.LogInformation("Dry run: skipping output (no clean, no files written)");
+			return Task.CompletedTask;
+		}
+
 		IFileSystem fs = context.FileSystem;
 		string outputDir = context.OutputDirectory;
 

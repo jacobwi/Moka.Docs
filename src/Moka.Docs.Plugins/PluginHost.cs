@@ -112,6 +112,10 @@ public sealed class PluginHost
 			}
 			catch (Exception ex)
 			{
+				// Also record it on the build: a crashed plugin means missing pages, and
+				// without this the only trace was a log line nobody sees in a quiet build.
+				buildContext.Diagnostics.Error(
+					$"Plugin '{loaded.Plugin.Id}' failed: {ex.Message}", "Plugins");
 				_logger.LogError(ex, "Plugin '{PluginName}' failed during execution", loaded.Plugin.Name);
 			}
 		}

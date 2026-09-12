@@ -62,6 +62,14 @@ public sealed class BuildContext
 	public required string OutputDirectory { get; init; }
 
 	/// <summary>
+	///     When true, every analysis and render phase runs but nothing is written to
+	///     <see cref="OutputDirectory" />: no clean, no pages, no theme assets, no sitemap.
+	///     Used by <c>mokadocs validate</c> and <c>mokadocs doctor</c> to exercise the real
+	///     pipeline without disturbing an existing site.
+	/// </summary>
+	public bool DryRun { get; init; }
+
+	/// <summary>
 	///     Whether the build may reuse cached results from a previous run. Set false by
 	///     the CLI's <c>--no-cache</c> flag or <c>build.cache: false</c> in mokadocs.yaml.
 	/// </summary>

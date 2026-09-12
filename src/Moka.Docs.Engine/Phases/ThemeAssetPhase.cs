@@ -26,7 +26,13 @@ public sealed class ThemeAssetPhase(
 		IFileSystem fs = context.FileSystem;
 		string themeDir = fs.Path.Combine(context.OutputDirectory, "_theme");
 
+		// Resolve before the dry-run check so a broken theme still surfaces its warning.
 		ResolvedTheme theme = themeResolver.Resolve(context.Config, context.RootDirectory, fs);
+
+		if (context.DryRun)
+		{
+			return Task.CompletedTask;
+		}
 
 		if (!theme.IsEmbedded)
 		{

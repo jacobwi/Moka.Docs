@@ -322,6 +322,15 @@ public sealed record XmlDocBlock
 
 	/// <summary>Whether this documentation was inherited via inheritdoc.</summary>
 	public bool IsInherited { get; init; }
+
+	/// <summary>
+	///     Whether the source comment contains an <c>&lt;inheritdoc/&gt;</c> tag. Stays true
+	///     when the tag could not be resolved, for example when the base is a framework type
+	///     such as <see cref="object.ToString" /> whose documentation is not part of the
+	///     model. Lets coverage reporting tell "documented by inheritance" apart from
+	///     "never documented", which an empty <see cref="Summary" /> alone cannot.
+	/// </summary>
+	public bool HasInheritDocTag { get; init; }
 }
 
 /// <summary>

@@ -282,6 +282,11 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 			.Select(ExtractParameter)
 			.ToList() ?? [];
 
+		// A delegate's doc comment sits on its declaration and there is nowhere to write a
+		// separate one for the compiler-generated Invoke, so Invoke shares it. Without this the
+		// Invoke row rendered blank and coverage reported a symbol no author can document.
+		XmlDocBlock? documentation = ExtractXmlDoc(symbol);
+
 		return new ApiType
 		{
 			Name = symbol.Name,
@@ -299,11 +304,12 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 					Kind = ApiMemberKind.Method,
 					Signature = symbol.ToDisplayString(),
 					ReturnType = invokeMethod?.ReturnType.ToDisplayString(),
-					Parameters = parameters
+					Parameters = parameters,
+					Documentation = documentation
 				}
 			],
 			IsObsolete = HasAttribute(symbol, "ObsoleteAttribute"),
-			Documentation = ExtractXmlDoc(symbol)
+			Documentation = documentation
 		};
 	}
 
@@ -595,7 +601,8 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				SeeAlso = root.Elements("seealso")
 					.Select(e => e.Attribute("cref")?.Value ?? e.Value)
 					.Where(s => !string.IsNullOrWhiteSpace(s))
-					.ToList()
+					.ToList(),
+				HasInheritDocTag = root.Element("inheritdoc") is not null
 			};
 		}
 		catch

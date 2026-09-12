@@ -174,7 +174,8 @@ echo === Python sample [needs Python on PATH] ===
 dotnet run --project "%CLI%" -f %TFM% --no-build -- build --config "%ROOT%\samples\Moka.Docs.Samples.Python\mokadocs.yaml" --output "%ROOT%\samples\Moka.Docs.Samples.Python\_site"
 echo.
 echo === Self-documenting site ===
-dotnet run --project "%CLI%" -f %TFM% --no-build -- build --config "%ROOT%\mokadocs.yaml" --output "%ROOT%\_site"
+rem No --output: mokadocs.yaml already puts this repo's site in docs\_site.
+dotnet run --project "%CLI%" -f %TFM% --no-build -- build --config "%ROOT%\mokadocs.yaml"
 echo.
 echo All sites built.
 goto after

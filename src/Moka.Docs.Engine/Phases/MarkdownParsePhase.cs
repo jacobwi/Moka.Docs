@@ -65,7 +65,14 @@ public sealed class MarkdownParsePhase(
 		return Task.CompletedTask;
 	}
 
-	private static string BuildRoute(string relativePath, FrontMatter frontMatter)
+	/// <summary>
+	///     Computes the site route for a Markdown file. Public so tooling that reasons about
+	///     routes (such as <c>mokadocs doctor</c>) uses exactly the rule the build does.
+	/// </summary>
+	/// <param name="relativePath">Path of the file relative to the docs directory.</param>
+	/// <param name="frontMatter">The file's front matter; a <c>route</c> value wins.</param>
+	/// <returns>The root-relative route, e.g. <c>/guide/markdown</c>.</returns>
+	public static string BuildRoute(string relativePath, FrontMatter frontMatter)
 	{
 		// Use custom route from front matter if specified
 		if (!string.IsNullOrEmpty(frontMatter.Route))

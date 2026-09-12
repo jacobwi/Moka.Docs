@@ -5,6 +5,76 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ New
+
+- **`mokadocs validate` runs a dry-run build.** It used to print "not yet
+  implemented". It now runs the whole pipeline (Markdown, Roslyn analysis,
+  plugins, theme rendering) without writing to the output directory, and lists
+  every warning and error the build reports, prefixed with the phase that raised
+  it. Exits 0, 1 or 2 like `doctor`. Supports `--config`/`-c`, `--draft` and
+  `--verbose`/`-v`. Useful in CI, where it replaces parsing build output.
+
+### 🐛 Fixed
+
+- **`mokadocs doctor` reported problems that did not exist.** On this repository
+  it exited 2 with one error and three warnings, none of them real.
+  - Broken links were found with a text search, so every link example inside a
+    code block was reported. Links are now read from the parsed Markdown, and
+    checked against the routes a dry-run build produces, so API pages, plugin
+    pages, `route:` overrides and section directories like `/guide` all count.
+  - The plugin check held its own list of ids, which were wrong: it approved
+    `repl`, which never loads, and rejected `mokadocs-repl`, which does. It now
+    uses the plugins the CLI registers.
+  - `--config` resolved paths against the working directory rather than the yaml
+    file, so pointing it at another project diagnosed the current one.
+  - The orphan-image check scanned the build output, and ignored images used as
+    the logo or favicon.
+  - XML Docs and API Coverage read compiled `.xml` files, which the CLI never uses
+    because it analyzes source. The XML Docs check is gone; API Coverage is now
+    measured on the model the API pages are built from.
+  - Search only read the `enabled` flag. It now confirms the index built.
+  - A site with no C# projects, or with search turned off, is no longer a warning.
+  - The documented `-c` and `-v` aliases did not exist.
+- **`doctor --fix` could corrupt front matter.** Existing front matter was passed
+  through `Regex.Replace` as a replacement string, where `$0` and `$1` are
+  substitutions, so `description: Save $1 today` came back as a garbled copy of
+  the whole block. The title is now inserted by concatenation, preserving line
+  endings and any UTF-8 byte order mark.
+- **`<inheritdoc/>` across projects produced blank API descriptions.** Each
+  project is compiled on its own, so an interface from another project is
+  unresolved; Roslyn reports it unqualified and as a base class. The resolver
+  looked it up by full name and missed, which left `Name`, `Order` and
+  `ExecuteAsync` undescribed on every build phase page of this site. It now falls
+  back to a unique simple-name match for unqualified references.
+- **The build cache ignored MokaDocs upgrades.** Entries were keyed only by the
+  user's source files, so a newer analyzer kept serving models built by the old
+  one until a file changed. Each entry now records the identity of the assemblies
+  that produced it, and is rebuilt when they differ.
+- A delegate's generated `Invoke` member had no documentation, so its row
+  rendered blank. It now shares the delegate's comment.
+- A plugin that threw during the build was only logged. It is now recorded as a
+  build error, so the build summary and `validate` show it.
+- CI's test-results artifact contained one project's results: all five test
+  projects wrote to the same file name. Each now gets its own.
+- `scripts/RunSamples.bat` still built this repo's site into the root `_site`.
+
+### 🧪 Tests
+
+- 556 tests, up from 466. New: `DoctorChecksTests`, `DryRunBuildTests`,
+  `BuildCacheTests`, cross-project cases in `InheritDocResolverTests`, and
+  analyzer cases for `<inheritdoc/>` tags and delegate docs. The dry-run guard,
+  the resolver fallback and the cache identity check were each confirmed by
+  disabling the fix and watching the tests fail.
+
+### 📚 Docs
+
+- `cli-reference.md` documents `validate`, and describes what each `doctor` check
+  actually does. The deployment guide's pull request example used
+  `grep "WARNING"`, a string MokaDocs never prints; it now uses `validate` and
+  `doctor`.
+
 ## [1.6.0] - 2026-09-11
 
 ### 🐛 Fixed

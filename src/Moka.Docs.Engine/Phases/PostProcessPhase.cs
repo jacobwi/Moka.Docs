@@ -20,6 +20,11 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 	/// <inheritdoc />
 	public Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
 	{
+		if (context.DryRun)
+		{
+			return Task.CompletedTask;
+		}
+
 		IFileSystem fs = context.FileSystem;
 		string outputDir = context.OutputDirectory;
 

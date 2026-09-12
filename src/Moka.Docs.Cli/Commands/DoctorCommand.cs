@@ -1,9 +1,13 @@
 using System.CommandLine;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO.Abstractions;
+using System.Text;
 using System.Text.RegularExpressions;
+using Moka.Docs.Cli.Diagnostics;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Core.Content;
+using Moka.Docs.Core.Diagnostics;
+using Moka.Docs.Core.Pipeline;
 using Spectre.Console;
 
 namespace Moka.Docs.Cli.Commands;
@@ -11,16 +15,33 @@ namespace Moka.Docs.Cli.Commands;
 /// <summary>
 ///     Diagnoses issues in a MokaDocs documentation project.
 /// </summary>
+/// <remarks>
+///     Checks that need to know what the build produces (routes, plugins, search index, API
+///     model) run against a dry-run build rather than re-deriving those answers. Earlier
+///     versions kept their own copies of the routing rules and the plugin list, and both
+///     drifted from the real ones.
+/// </remarks>
 internal static class DoctorCommand
 {
+	private static readonly HashSet<string> _imageExtensions = new(StringComparer.OrdinalIgnoreCase)
+	{
+		".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".avif"
+	};
+
+	// Files the output phase writes that a page might reasonably link to.
+	private static readonly string[] _generatedTargets = ["/sitemap.xml", "/robots.txt", "/search-index.json", "/404"];
+
+	private static readonly Regex _htmlSrcPattern = new(@"src\s*=\s*[""']([^""']+)[""']", RegexOptions.Compiled);
+
 	/// <summary>Creates the doctor command.</summary>
 	public static Command Create()
 	{
 		var fixOption = new Option<bool>("--fix")
 			{ Description = "Attempt to auto-fix issues (e.g., add missing front matter titles)" };
-		var configOption = new Option<string?>("--config")
+		var configOption = new Option<string?>("--config", "-c")
 			{ Description = "Path to config file (default: mokadocs.yaml)" };
-		var verboseOption = new Option<bool>("--verbose") { Description = "Show detailed output for each check" };
+		var verboseOption = new Option<bool>("--verbose", "-v")
+			{ Description = "Show detailed output for each check" };
 
 		var command = new Command("doctor", "Diagnose issues in your documentation project")
 		{
@@ -29,627 +50,576 @@ internal static class DoctorCommand
 			verboseOption
 		};
 
-		command.SetAction(async (parseResult, _) =>
+		command.SetAction(async (parseResult, ct) =>
 		{
 			bool fix = parseResult.GetValue(fixOption);
 			string? configPath = parseResult.GetValue(configOption);
 			bool verbose = parseResult.GetValue(verboseOption);
 
-			string rootDir = Directory.GetCurrentDirectory();
-			string resolvedConfigPath = configPath ?? Path.Combine(rootDir, "mokadocs.yaml");
+			// Every path in mokadocs.yaml is relative to the yaml file, not to wherever the
+			// command was run from. Using the working directory made --config point at one
+			// project while the checks inspected another.
+			string resolvedConfigPath = Path.GetFullPath(
+				configPath ?? Path.Combine(Directory.GetCurrentDirectory(), "mokadocs.yaml"));
+			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
 
 			AnsiConsole.MarkupLine("[bold blue]mokadocs doctor[/] - Diagnosing your documentation project...");
 			AnsiConsole.WriteLine();
 
-			int passed = 0;
-			int warnings = 0;
-			int errors = 0;
+			var report = new Report();
 
-			// 1. Config validation
-			SiteConfig? config = null;
-			try
-			{
-				var fs = new FileSystem();
-				var reader = new SiteConfigReader(fs);
-				config = reader.Read(resolvedConfigPath);
-				PrintPass("Configuration", $"{Path.GetFileName(resolvedConfigPath)} found and valid");
-				passed++;
-			}
-			catch (FileNotFoundException)
-			{
-				PrintError("Configuration", $"{Path.GetFileName(resolvedConfigPath)} not found");
-				errors++;
-			}
-			catch (SiteConfigException ex)
-			{
-				PrintError("Configuration", $"Invalid config: {Markup.Escape(ex.Message)}");
-				errors++;
-			}
+			SiteConfig? config = CheckConfiguration(resolvedConfigPath, report);
+			await CheckDotnetSdkAsync(report);
 
-			// 2. .NET SDK check
-			try
-			{
-				string? sdkVersion = await GetDotnetSdkVersionAsync();
-				if (sdkVersion is not null)
-				{
-					PrintPass(".NET SDK", $"{sdkVersion} installed");
-					passed++;
-				}
-				else
-				{
-					PrintError(".NET SDK", "dotnet SDK not found on PATH");
-					errors++;
-				}
-			}
-			catch
-			{
-				PrintError(".NET SDK", "Could not detect .NET SDK");
-				errors++;
-			}
-
-			// 3. Projects check
 			if (config is not null)
 			{
-				List<ProjectSource> projects = config.Content.Projects;
-				if (projects.Count > 0)
-				{
-					bool allExist = true;
-					var missingProjects = new List<string>();
-					foreach (ProjectSource proj in projects)
-					{
-						string projPath = Path.GetFullPath(Path.Combine(rootDir, proj.Path));
-						if (!File.Exists(projPath))
-						{
-							allExist = false;
-							missingProjects.Add(proj.Path);
-						}
-					}
+				string docsDir = Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs));
+				string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
 
-					if (allExist)
-					{
-						PrintPass("Projects", $"{projects.Count} project(s) found");
-						passed++;
+				await CheckProjectsAsync(config, rootDir, verbose, report);
+				string[] markdownFiles = CheckDocsFolder(config, docsDir, outputDir, report);
+				CheckBrandAsset("Logo", config.Site.Logo, report);
+				CheckBrandAsset("Favicon", config.Site.Favicon, report);
 
-						if (verbose)
-						{
-							// Try building the first project
-							string firstProj = Path.GetFullPath(Path.Combine(rootDir, projects[0].Path));
-							(int ExitCode, string Output) buildResult =
-								await RunProcessAsync("dotnet", $"build \"{firstProj}\" --nologo -v q");
-							if (buildResult.ExitCode == 0)
-							{
-								PrintDetail("First project builds successfully");
-							}
-							else
-							{
-								PrintDetail("First project build had issues");
-							}
-						}
-					}
-					else
-					{
-						PrintError("Projects", $"{missingProjects.Count} project(s) not found");
-						errors++;
-						foreach (string mp in missingProjects)
-						{
-							PrintDetail(mp);
-						}
-					}
-				}
-				else
-				{
-					PrintWarn("Projects", "No projects configured in content.projects");
-					warnings++;
-				}
+				DryRunOutcome outcome = await DryRunBuild.RunAsync(config, rootDir, false, false, ct);
+				CheckBuild(outcome, report);
+
+				CheckBrokenLinks(markdownFiles, rootDir, outcome, report);
+				CheckFrontMatter(markdownFiles, rootDir, docsDir, fix, verbose, report);
+				CheckOrphanImages(markdownFiles, docsDir, outputDir, rootDir, config, report);
+				CheckPlugins(config, outcome, report);
+				CheckSearch(config, outcome, report);
+				CheckApiCoverage(config, outcome, verbose, report);
 			}
 
-			// 4. XML Documentation check
-			if (config is not null && config.Content.Projects.Count > 0)
-			{
-				var xmlMissing = new List<string>();
-				foreach (ProjectSource proj in config.Content.Projects)
-				{
-					string projPath = Path.GetFullPath(Path.Combine(rootDir, proj.Path));
-					if (!File.Exists(projPath))
-					{
-						continue;
-					}
-
-					string projDir = Path.GetDirectoryName(projPath)!;
-					string projName = Path.GetFileNameWithoutExtension(projPath);
-					// Check common output locations for XML doc files
-					string[] xmlPaths = new[]
-					{
-						Path.Combine(projDir, "bin", "Debug", "**", $"{projName}.xml"),
-						Path.Combine(projDir, $"{projName}.xml")
-					};
-
-					bool found = false;
-					string binDir = Path.Combine(projDir, "bin");
-					if (Directory.Exists(binDir))
-					{
-						string[] xmlFiles = Directory.GetFiles(binDir, $"{projName}.xml", SearchOption.AllDirectories);
-						if (xmlFiles.Length > 0)
-						{
-							found = true;
-						}
-					}
-
-					if (!found)
-					{
-						xmlMissing.Add(proj.Path);
-					}
-				}
-
-				if (xmlMissing.Count == 0)
-				{
-					PrintPass("XML Documentation", "XML doc files found for all projects");
-					passed++;
-				}
-				else
-				{
-					PrintWarn("XML Documentation",
-						$"{xmlMissing.Count} project(s) missing XML doc files (build with GenerateDocumentationFile)");
-					warnings++;
-					if (verbose)
-					{
-						foreach (string m in xmlMissing)
-						{
-							PrintDetail(m);
-						}
-					}
-				}
-			}
-
-			// 5. Docs folder check
-			string? docsDir = null;
-			string[] markdownFiles = Array.Empty<string>();
-			if (config is not null)
-			{
-				docsDir = Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs));
-				if (Directory.Exists(docsDir))
-				{
-					markdownFiles = Directory.GetFiles(docsDir, "*.md", SearchOption.AllDirectories);
-					PrintPass("Docs Folder", $"{markdownFiles.Length} markdown file(s) in {config.Content.Docs}");
-					passed++;
-				}
-				else
-				{
-					PrintError("Docs Folder", $"Docs directory not found: {config.Content.Docs}");
-					errors++;
-				}
-			}
-
-			// 6. Brand assets check (site.logo, site.favicon)
-			if (config is not null)
-			{
-				CheckBrandAsset("Logo", config.Site.Logo, ref passed, ref errors, ref warnings);
-				CheckBrandAsset("Favicon", config.Site.Favicon, ref passed, ref errors, ref warnings);
-			}
-
-			// 7. Broken links check
-			if (docsDir is not null && markdownFiles.Length > 0)
-			{
-				var brokenLinks = new List<(string file, int line, string link)>();
-				var internalLinkPattern = new Regex(@"\[([^\]]*)\]\((/[^)#]+)", RegexOptions.Compiled);
-
-				// Collect all known routes from markdown files
-				var knownRoutes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-				foreach (string mdFile in markdownFiles)
-				{
-					string rel = Path.GetRelativePath(docsDir, mdFile);
-					string route = "/" + rel.Replace(Path.DirectorySeparatorChar, '/')
-						.Replace(".md", "", StringComparison.OrdinalIgnoreCase);
-					if (route.EndsWith("/index", StringComparison.OrdinalIgnoreCase))
-					{
-						route = route[..^6];
-					}
-
-					if (route == "")
-					{
-						route = "/";
-					}
-
-					knownRoutes.Add(route);
-				}
-
-				foreach (string mdFile in markdownFiles)
-				{
-					string[] lines = File.ReadAllLines(mdFile);
-					string relFile = Path.GetRelativePath(rootDir, mdFile);
-					for (int i = 0; i < lines.Length; i++)
-					{
-						MatchCollection matches = internalLinkPattern.Matches(lines[i]);
-						foreach (Match match in matches)
-						{
-							string linkPath = match.Groups[2].Value.TrimEnd('/');
-							if (linkPath == "")
-							{
-								linkPath = "/";
-							}
-
-							// Check if route exists in known routes or as a file
-							if (!knownRoutes.Contains(linkPath))
-								// Also check if it could be an API-generated page path (starts with /api/)
-							{
-								if (!linkPath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
-								{
-									brokenLinks.Add((relFile, i + 1, linkPath));
-								}
-							}
-						}
-					}
-				}
-
-				if (brokenLinks.Count == 0)
-				{
-					PrintPass("Broken Links", "No broken internal links found");
-					passed++;
-				}
-				else
-				{
-					PrintError("Broken Links", $"{brokenLinks.Count} broken internal link(s) found");
-					errors++;
-					foreach ((string file, int line, string link) in brokenLinks)
-					{
-						PrintDetail($"{link} (referenced in {file}:{line})");
-					}
-				}
-			}
-
-			// 8. Front matter check
-			if (docsDir is not null && markdownFiles.Length > 0)
-			{
-				var missingTitle = new List<string>();
-				var frontMatterRegex =
-					new Regex(@"^---\s*\n(.*?)\n---", RegexOptions.Singleline | RegexOptions.Compiled);
-				var titleRegex = new Regex(@"^title\s*:", RegexOptions.Multiline | RegexOptions.Compiled);
-
-				foreach (string mdFile in markdownFiles)
-				{
-					string content = File.ReadAllText(mdFile);
-					Match fmMatch = frontMatterRegex.Match(content);
-					string relFile = Path.GetRelativePath(rootDir, mdFile);
-
-					if (!fmMatch.Success || !titleRegex.IsMatch(fmMatch.Groups[1].Value))
-					{
-						missingTitle.Add(relFile);
-
-						if (fix)
-						{
-							// Auto-fix: add title from filename
-							string fileName = Path.GetFileNameWithoutExtension(mdFile);
-							string title = CultureInfo.CurrentCulture.TextInfo
-								.ToTitleCase(fileName.Replace('-', ' ').Replace('_', ' '));
-
-							if (fmMatch.Success)
-							{
-								// Front matter exists but no title - inject title
-								string newFm = $"---\ntitle: {title}\n{fmMatch.Groups[1].Value}\n---";
-								content = frontMatterRegex.Replace(content, newFm, 1);
-							}
-							else
-							{
-								// No front matter at all - prepend
-								content = $"---\ntitle: {title}\n---\n\n{content}";
-							}
-
-							File.WriteAllText(mdFile, content);
-						}
-					}
-				}
-
-				if (missingTitle.Count == 0)
-				{
-					PrintPass("Front Matter", "All pages have titles");
-					passed++;
-				}
-				else
-				{
-					if (fix)
-					{
-						PrintWarn("Front Matter",
-							$"{missingTitle.Count} page(s) were missing titles (auto-fixed)");
-						warnings++;
-					}
-					else
-					{
-						PrintWarn("Front Matter",
-							$"{missingTitle.Count} page(s) missing title in front matter");
-						warnings++;
-					}
-
-					if (verbose)
-					{
-						foreach (string f in missingTitle)
-						{
-							PrintDetail(f);
-						}
-					}
-				}
-			}
-
-			// 9. Orphan images check
-			if (docsDir is not null && markdownFiles.Length > 0)
-			{
-				var imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-					{ ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico" };
-
-				List<string> imageFiles = Directory.Exists(docsDir)
-					? Directory.GetFiles(docsDir, "*.*", SearchOption.AllDirectories)
-						.Where(f => imageExtensions.Contains(Path.GetExtension(f)))
-						.ToList()
-					: [];
-
-				if (imageFiles.Count > 0)
-				{
-					// Collect all image references from markdown files
-					var referencedImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-					var imgPattern = new Regex(@"!\[[^\]]*\]\(([^)]+)\)|src\s*=\s*""([^""]+)""", RegexOptions.Compiled);
-
-					foreach (string mdFile in markdownFiles)
-					{
-						string content = File.ReadAllText(mdFile);
-						string mdDir = Path.GetDirectoryName(mdFile)!;
-						foreach (Match match in imgPattern.Matches(content))
-						{
-							string imgRef = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
-							imgRef = imgRef.Split('?')[0].Split('#')[0]; // Strip query/fragment
-
-							// Resolve relative paths
-							string resolved;
-							if (imgRef.StartsWith('/'))
-							{
-								resolved = Path.GetFullPath(Path.Combine(docsDir, imgRef.TrimStart('/')));
-							}
-							else
-							{
-								resolved = Path.GetFullPath(Path.Combine(mdDir, imgRef));
-							}
-
-							referencedImages.Add(resolved);
-						}
-					}
-
-					var orphans = imageFiles.Where(img => !referencedImages.Contains(img)).ToList();
-
-					if (orphans.Count == 0)
-					{
-						PrintPass("Orphan Images", $"All {imageFiles.Count} image(s) are referenced");
-						passed++;
-					}
-					else
-					{
-						PrintWarn("Orphan Images", $"{orphans.Count} unreferenced image(s)");
-						warnings++;
-						foreach (string orphan in orphans)
-						{
-							PrintDetail(Path.GetRelativePath(rootDir, orphan));
-						}
-					}
-				}
-				else
-				{
-					PrintPass("Orphan Images", "No images found in docs folder");
-					passed++;
-				}
-			}
-
-			// 10. Plugin availability check
-			if (config is not null)
-			{
-				List<PluginDeclaration> declaredPlugins = config.Plugins;
-				if (declaredPlugins.Count > 0)
-				{
-					// We can check that plugin names are among the known built-in plugins
-					var knownPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-						{ "openapi", "repl", "blazor-preview", "changelog" };
-
-					var unknownPlugins = declaredPlugins
-						.Where(p => p.Name is not null && !knownPlugins.Contains(p.Name))
-						.Select(p => p.Name!)
-						.ToList();
-
-					if (unknownPlugins.Count == 0)
-					{
-						PrintPass("Plugins", $"{declaredPlugins.Count} plugin(s) declared and available");
-						passed++;
-					}
-					else
-					{
-						PrintWarn("Plugins",
-							$"{unknownPlugins.Count} unknown plugin(s) declared");
-						warnings++;
-						foreach (string p in unknownPlugins)
-						{
-							PrintDetail(p);
-						}
-					}
-				}
-				else
-				{
-					PrintPass("Plugins", "No plugins declared");
-					passed++;
-				}
-			}
-
-			// 11. Search index check
-			if (config is not null)
-			{
-				if (config.Features.Search.Enabled)
-				{
-					PrintPass("Search", $"Search enabled (provider: {config.Features.Search.Provider})");
-					passed++;
-				}
-				else
-				{
-					PrintWarn("Search", "Search is disabled in configuration");
-					warnings++;
-				}
-			}
-
-			// 12. API coverage check
-			if (config is not null && config.Content.Projects.Count > 0)
-			{
-				int totalMissingSummary = 0;
-				int totalTypes = 0;
-
-				foreach (ProjectSource proj in config.Content.Projects)
-				{
-					string projPath = Path.GetFullPath(Path.Combine(rootDir, proj.Path));
-					if (!File.Exists(projPath))
-					{
-						continue;
-					}
-
-					string projDir = Path.GetDirectoryName(projPath)!;
-					string projName = Path.GetFileNameWithoutExtension(projPath);
-					string binDir = Path.Combine(projDir, "bin");
-
-					if (!Directory.Exists(binDir))
-					{
-						continue;
-					}
-
-					string[] xmlFiles = Directory.GetFiles(binDir, $"{projName}.xml", SearchOption.AllDirectories);
-					if (xmlFiles.Length == 0)
-					{
-						continue;
-					}
-
-					// Parse the XML doc file to count types and missing summaries
-					try
-					{
-						string xmlContent = File.ReadAllText(xmlFiles[0]);
-						var memberPattern = new Regex(@"<member\s+name=""T:([^""]+)""", RegexOptions.Compiled);
-						var summaryPattern = new Regex(
-							@"<member\s+name=""T:([^""]+)""[^>]*>\s*<summary>",
-							RegexOptions.Compiled | RegexOptions.Singleline);
-
-						int allTypes = memberPattern.Matches(xmlContent).Count;
-						int typesWithSummary = summaryPattern.Matches(xmlContent).Count;
-
-						totalTypes += allTypes;
-						totalMissingSummary += allTypes - typesWithSummary;
-					}
-					catch
-					{
-						// Skip if we can't parse the XML
-					}
-				}
-
-				if (totalTypes > 0)
-				{
-					int coverage = totalTypes > 0
-						? (totalTypes - totalMissingSummary) * 100 / totalTypes
-						: 100;
-
-					if (totalMissingSummary == 0)
-					{
-						PrintPass("API Coverage", $"100% - all {totalTypes} public type(s) have XML doc summaries");
-						passed++;
-					}
-					else
-					{
-						PrintWarn("API Coverage",
-							$"{coverage}% - {totalMissingSummary} public type(s) missing <summary>");
-						warnings++;
-					}
-				}
-			}
-
-			// Summary
 			AnsiConsole.WriteLine();
-			string resultColor = errors > 0 ? "red" : warnings > 0 ? "yellow" : "green";
+			string resultColor = report.Errors > 0 ? "red" : report.Warnings > 0 ? "yellow" : "green";
 			AnsiConsole.MarkupLine(
-				$"  [{resultColor}]Result: {passed} passed, {warnings} warning(s), {errors} error(s)[/]");
+				$"  [{resultColor}]Result: {report.Passed} passed, {report.Warnings} warning(s), {report.Errors} error(s)[/]");
 
-			return errors > 0 ? 2 : warnings > 0 ? 1 : 0;
+			return report.ExitCode;
 		});
 
 		return command;
 	}
 
-	private static void PrintPass(string label, string detail) =>
-		AnsiConsole.MarkupLine($"  [green]✓[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
+	#region Environment
 
-	private static void PrintWarn(string label, string detail) =>
-		AnsiConsole.MarkupLine($"  [yellow]⚠[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
+	private static SiteConfig? CheckConfiguration(string configPath, Report report)
+	{
+		try
+		{
+			SiteConfig config = new SiteConfigReader(new FileSystem()).Read(configPath);
+			report.Pass("Configuration", $"{Path.GetFileName(configPath)} found and valid");
+			return config;
+		}
+		catch (FileNotFoundException)
+		{
+			report.Fail("Configuration", $"{configPath} not found");
+		}
+		catch (SiteConfigException ex)
+		{
+			report.Fail("Configuration", $"Invalid config: {ex.Message}");
+		}
 
-	private static void PrintError(string label, string detail) =>
-		AnsiConsole.MarkupLine($"  [red]✗[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
+		return null;
+	}
 
-	private static void PrintDetail(string detail) => AnsiConsole.MarkupLine($"      → {Markup.Escape(detail)}");
+	private static async Task CheckDotnetSdkAsync(Report report)
+	{
+		(int exitCode, string output) = await RunProcessAsync("dotnet", "--version");
+		if (exitCode == 0)
+		{
+			report.Pass(".NET SDK", $"{output.Trim()} installed");
+		}
+		else
+		{
+			report.Fail(".NET SDK", "dotnet SDK not found on PATH");
+		}
+	}
+
+	private static async Task CheckProjectsAsync(SiteConfig config, string rootDir, bool verbose, Report report)
+	{
+		List<ProjectSource> projects = config.Content.Projects;
+		// A site with no C# projects is valid: a docs-only site, or one whose API reference
+		// comes from a plugin such as mokadocs-python-api. Warning here made every such site
+		// exit non-zero.
+		if (projects.Count == 0)
+		{
+			report.Pass("Projects", "None configured (no C# API reference)");
+			return;
+		}
+
+		var missing = projects
+			.Where(p => !File.Exists(Path.GetFullPath(Path.Combine(rootDir, p.Path))))
+			.Select(p => p.Path)
+			.ToList();
+
+		if (missing.Count > 0)
+		{
+			report.Fail("Projects", $"{missing.Count} project(s) not found");
+			foreach (string path in missing)
+			{
+				Report.Detail(path);
+			}
+
+			return;
+		}
+
+		report.Pass("Projects", $"{projects.Count} project(s) found");
+
+		if (verbose)
+		{
+			string first = Path.GetFullPath(Path.Combine(rootDir, projects[0].Path));
+			(int exitCode, _) = await RunProcessAsync("dotnet", $"build \"{first}\" --nologo -v q");
+			Report.Detail(exitCode == 0 ? "First project builds successfully" : "First project build had issues");
+		}
+	}
+
+	private static string[] CheckDocsFolder(SiteConfig config, string docsDir, string outputDir, Report report)
+	{
+		if (!Directory.Exists(docsDir))
+		{
+			report.Fail("Docs Folder", $"Docs directory not found: {config.Content.Docs}");
+			return [];
+		}
+
+		// The build output can live inside the docs folder (this repo uses docs/_site), and
+		// anything in it is generated rather than authored.
+		string[] markdownFiles = Directory.GetFiles(docsDir, "*.md", SearchOption.AllDirectories)
+			.Where(f => !DoctorChecks.IsUnder(f, outputDir))
+			.ToArray();
+
+		report.Pass("Docs Folder", $"{markdownFiles.Length} markdown file(s) in {config.Content.Docs}");
+		return markdownFiles;
+	}
 
 	/// <summary>
-	///     Doctor check for a single brand asset (<c>site.logo</c> or <c>site.favicon</c>).
-	///     Validates that:
-	///     <list type="bullet">
-	///         <item>
-	///             <description>The asset reference resolved successfully (non-null = user set a value)</description>
-	///         </item>
-	///         <item>
-	///             <description>Absolute URLs are accepted and reported but not file-checked</description>
-	///         </item>
-	///         <item>
-	///             <description>Filesystem references point at existing files</description>
-	///         </item>
-	///         <item>
-	///             <description>
-	///                 Escaped paths (flattened into /_media/) are flagged as informational so users
-	///                 understand why their <c>../branding/logo.png</c> is reachable at a different URL than they wrote
-	///             </description>
-	///         </item>
-	///     </list>
-	///     Unset brand assets are silently skipped (no pass/fail message) - a site without
-	///     a logo is valid and shouldn't clutter the doctor output.
+	///     Checks a single brand asset. Unset assets emit no row: a site without a logo is
+	///     valid and shouldn't clutter the output.
 	/// </summary>
-	private static void CheckBrandAsset(string label, SiteAssetReference? asset, ref int passed, ref int errors,
-		ref int warnings)
+	private static void CheckBrandAsset(string label, SiteAssetReference? asset, Report report)
 	{
 		if (asset is null)
 		{
-			// Not set in yaml - no diagnosis, no row emitted.
 			return;
 		}
 
 		if (asset.IsAbsoluteUrl)
 		{
-			PrintPass(label, $"absolute URL (no file copy): {asset.PublishUrl}");
-			passed++;
+			report.Pass(label, $"absolute URL (no file copy): {asset.PublishUrl}");
 			return;
 		}
 
 		if (asset.SourcePath is null)
 		{
-			PrintWarn(label, $"'{asset.RawValue}' could not be resolved to a filesystem path");
-			warnings++;
+			report.Warn(label, $"'{asset.RawValue}' could not be resolved to a filesystem path");
 			return;
 		}
 
 		if (!File.Exists(asset.SourcePath))
 		{
-			PrintError(label, $"source file not found: {asset.SourcePath}");
-			PrintDetail($"publish URL would have been: {asset.PublishUrl}");
-			errors++;
+			report.Fail(label, $"source file not found: {asset.SourcePath}");
+			Report.Detail($"publish URL would have been: {asset.PublishUrl}");
 			return;
 		}
 
-		// Successful filesystem resolution. Flag escaped-path flattening so users see
-		// exactly what URL the theme will emit, which is especially useful when the source
-		// file lives above the yaml dir via `../`.
+		// Flag flattening so users see why ../branding/logo.png is served from /_media/.
 		bool flattened = asset.PublishUrl.StartsWith("/_media/", StringComparison.Ordinal);
-		string detail = flattened
-			? $"{asset.RawValue} → {asset.PublishUrl} (flattened - source above yaml dir)"
-			: $"{asset.RawValue} → {asset.PublishUrl}";
-		PrintPass(label, detail);
-		passed++;
+		report.Pass(label, flattened
+			? $"{asset.RawValue} -> {asset.PublishUrl} (flattened, source above yaml dir)"
+			: $"{asset.RawValue} -> {asset.PublishUrl}");
 	}
 
-	private static async Task<string?> GetDotnetSdkVersionAsync()
+	#endregion
+
+	#region Build-Backed Checks
+
+	private static void CheckBuild(DryRunOutcome outcome, Report report)
 	{
-		(int ExitCode, string Output) result = await RunProcessAsync("dotnet", "--version");
-		return result.ExitCode == 0 ? result.Output.Trim() : null;
+		if (outcome.Failure is not null)
+		{
+			report.Fail("Build", $"dry run failed: {outcome.Failure.Message}");
+			return;
+		}
+
+		BuildContext context = outcome.Context;
+		int errors = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Error);
+		int warnings = context.Diagnostics.All.Count(d => d.Severity == DiagnosticSeverity.Warning);
+
+		if (errors > 0)
+		{
+			report.Fail("Build", $"{errors} error(s) - run mokadocs validate for details");
+		}
+		else if (warnings > 0)
+		{
+			report.Warn("Build", $"{warnings} warning(s) - run mokadocs validate for details");
+		}
+		else
+		{
+			report.Pass("Build",
+				$"dry run succeeded in {outcome.Elapsed.TotalSeconds:F2}s ({context.Pages.Count} pages)");
+		}
+	}
+
+	private static void CheckBrokenLinks(string[] markdownFiles, string rootDir, DryRunOutcome outcome, Report report)
+	{
+		if (markdownFiles.Length == 0)
+		{
+			return;
+		}
+
+		if (outcome.Failure is not null)
+		{
+			Report.Skip("Broken Links", "skipped because the build failed");
+			return;
+		}
+
+		BuildContext context = outcome.Context;
+
+		// Routes the build actually produced: markdown pages (honouring route: overrides and
+		// feature gating), generated API pages and plugin pages alike.
+		var targets = new HashSet<string>(
+			context.Pages
+				.Where(p => p.FrontMatter.Visibility != PageVisibility.Draft)
+				.Select(p => DoctorChecks.NormalizeRoute(p.Route)),
+			StringComparer.OrdinalIgnoreCase);
+		DoctorChecks.AddSectionAncestors(targets);
+
+		foreach (string asset in context.DiscoveredAssetFiles)
+		{
+			targets.Add(DoctorChecks.NormalizeRoute("/" + asset.Replace('\\', '/')));
+		}
+
+		foreach (string url in context.BrandAssetFiles.Keys.Concat(_generatedTargets))
+		{
+			targets.Add(DoctorChecks.NormalizeRoute(url));
+		}
+
+		var draftRoutes = new HashSet<string>(
+			context.Pages
+				.Where(p => p.FrontMatter.Visibility == PageVisibility.Draft)
+				.Select(p => DoctorChecks.NormalizeRoute(p.Route)),
+			StringComparer.OrdinalIgnoreCase);
+
+		var broken = new List<string>();
+		foreach (string file in markdownFiles)
+		{
+			string relFile = Path.GetRelativePath(rootDir, file);
+			foreach (MarkdownLink link in DoctorChecks.FindLinks(File.ReadAllText(file)))
+			{
+				if (!DoctorChecks.IsRootRelative(link.Url))
+				{
+					continue;
+				}
+
+				string route = DoctorChecks.NormalizeRoute(link.Url);
+				if (targets.Contains(route))
+				{
+					continue;
+				}
+
+				string note = draftRoutes.Contains(route) ? ", links to a draft page"
+					: link.IsImage ? ", image"
+					: "";
+				broken.Add($"{route} ({relFile}:{link.Line}{note})");
+			}
+		}
+
+		if (broken.Count == 0)
+		{
+			report.Pass("Broken Links", "No broken internal links found");
+			return;
+		}
+
+		report.Fail("Broken Links", $"{broken.Count} broken internal link(s) found");
+		foreach (string entry in broken)
+		{
+			Report.Detail(entry);
+		}
+	}
+
+	private static void CheckFrontMatter(string[] markdownFiles, string rootDir, string docsDir, bool fix, bool verbose,
+		Report report)
+	{
+		if (markdownFiles.Length == 0)
+		{
+			return;
+		}
+
+		var missing = new List<string>();
+		foreach (string file in markdownFiles)
+		{
+			(string content, Encoding encoding) = ReadPreservingEncoding(file);
+			if (DoctorChecks.HasTitle(content))
+			{
+				continue;
+			}
+
+			missing.Add(Path.GetRelativePath(rootDir, file));
+
+			if (fix)
+			{
+				string title = DoctorChecks.TitleFromPath(file, docsDir);
+				File.WriteAllText(file, DoctorChecks.AddTitle(content, title), encoding);
+			}
+		}
+
+		if (missing.Count == 0)
+		{
+			report.Pass("Front Matter", "All pages have titles");
+			return;
+		}
+
+		report.Warn("Front Matter", fix
+			? $"{missing.Count} page(s) were missing titles (auto-fixed)"
+			: $"{missing.Count} page(s) missing title in front matter");
+
+		if (verbose || fix)
+		{
+			foreach (string file in missing)
+			{
+				Report.Detail(file);
+			}
+		}
+	}
+
+	private static void CheckOrphanImages(string[] markdownFiles, string docsDir, string outputDir, string rootDir,
+		SiteConfig config, Report report)
+	{
+		if (markdownFiles.Length == 0)
+		{
+			return;
+		}
+
+		var images = Directory.GetFiles(docsDir, "*.*", SearchOption.AllDirectories)
+			.Where(f => _imageExtensions.Contains(Path.GetExtension(f)))
+			.Where(f => !DoctorChecks.IsUnder(f, outputDir))
+			.ToList();
+
+		if (images.Count == 0)
+		{
+			report.Pass("Orphan Images", "No images found in docs folder");
+			return;
+		}
+
+		var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+		foreach (string file in markdownFiles)
+		{
+			string content = File.ReadAllText(file);
+			string fileDir = Path.GetDirectoryName(file)!;
+
+			IEnumerable<string> urls = DoctorChecks.FindLinks(content).Select(l => l.Url)
+				.Concat(_htmlSrcPattern.Matches(content).Select(m => m.Groups[1].Value));
+
+			foreach (string url in urls)
+			{
+				if (ResolveLocalReference(url, docsDir, fileDir) is { } resolved)
+				{
+					referenced.Add(resolved);
+				}
+			}
+		}
+
+		// The logo and favicon are referenced from mokadocs.yaml, not from any page. An image
+		// in docs/ that publishes to the same URL is the file actually served, because the
+		// asset copy runs before the brand-asset copy and the brand copy skips existing files.
+		foreach (SiteAssetReference? asset in new[] { config.Site.Logo, config.Site.Favicon })
+		{
+			if (asset is not { IsAbsoluteUrl: false })
+			{
+				continue;
+			}
+
+			if (asset.SourcePath is not null)
+			{
+				referenced.Add(Path.GetFullPath(asset.SourcePath));
+			}
+
+			referenced.Add(Path.GetFullPath(Path.Combine(docsDir, asset.PublishUrl.TrimStart('/'))));
+		}
+
+		var orphans = images.Where(img => !referenced.Contains(Path.GetFullPath(img))).ToList();
+
+		if (orphans.Count == 0)
+		{
+			report.Pass("Orphan Images", $"All {images.Count} image(s) are referenced");
+			return;
+		}
+
+		report.Warn("Orphan Images", $"{orphans.Count} unreferenced image(s)");
+		foreach (string orphan in orphans)
+		{
+			Report.Detail(Path.GetRelativePath(rootDir, orphan));
+		}
+	}
+
+	private static void CheckPlugins(SiteConfig config, DryRunOutcome outcome, Report report)
+	{
+		if (config.Plugins.Count == 0)
+		{
+			report.Pass("Plugins", "No plugins declared");
+			return;
+		}
+
+		// Ids come from the plugins the CLI actually registers. The hardcoded list this
+		// replaced used names like "repl", which PluginHost would never load, and rejected
+		// the real ids such as "mokadocs-repl".
+		List<string> unknown = DoctorChecks.FindUnknownPlugins(config.Plugins, outcome.RegisteredPluginIds);
+		if (unknown.Count > 0)
+		{
+			report.Warn("Plugins", $"{unknown.Count} declared plugin(s) not found");
+			foreach (string name in unknown)
+			{
+				Report.Detail(name);
+			}
+
+			Report.Detail($"available: {string.Join(", ", outcome.RegisteredPluginIds.Order())}");
+			return;
+		}
+
+		var loaded = new HashSet<string>(outcome.LoadedPluginIds, StringComparer.OrdinalIgnoreCase);
+		var failed = config.Plugins
+			.Select(p => p.Name)
+			.Where(name => !string.IsNullOrWhiteSpace(name) && !loaded.Contains(name))
+			.ToList();
+
+		if (failed.Count > 0)
+		{
+			report.Warn("Plugins", $"{failed.Count} plugin(s) failed to initialize - run mokadocs validate -v");
+			foreach (string? name in failed)
+			{
+				Report.Detail(name!);
+			}
+
+			return;
+		}
+
+		report.Pass("Plugins", $"{config.Plugins.Count} plugin(s) declared and loaded");
+	}
+
+	private static void CheckSearch(SiteConfig config, DryRunOutcome outcome, Report report)
+	{
+		// Disabling search is a deliberate choice, not a problem, so it is not a warning.
+		if (!config.Features.Search.Enabled)
+		{
+			report.Pass("Search", "Disabled in configuration");
+			return;
+		}
+
+		if (outcome.Failure is not null)
+		{
+			Report.Skip("Search", "skipped because the build failed");
+			return;
+		}
+
+		if (outcome.Context.SearchIndex is { Count: > 0 } index)
+		{
+			report.Pass("Search", $"Index built with {index.Count} entries");
+		}
+		else
+		{
+			report.Warn("Search", "Enabled, but the index has no entries");
+		}
+	}
+
+	private static void CheckApiCoverage(SiteConfig config, DryRunOutcome outcome, bool verbose, Report report)
+	{
+		if (config.Content.Projects.Count == 0)
+		{
+			return;
+		}
+
+		if (outcome.Failure is not null)
+		{
+			Report.Skip("API Coverage", "skipped because the build failed");
+			return;
+		}
+
+		// Measured on the model the build generates pages from. The previous check read
+		// compiled .xml doc files, which the CLI never uses (it reads source through
+		// Roslyn), so for most projects it silently never ran.
+		if (outcome.Context.ApiModel is not { } api)
+		{
+			report.Warn("API Coverage", "No API model was produced - check the Projects row");
+			return;
+		}
+
+		ApiCoverage coverage = DoctorChecks.ComputeApiCoverage(api);
+		if (coverage.Missing.Count == 0)
+		{
+			report.Pass("API Coverage", $"100% - all {coverage.Total} types and members have a summary");
+			return;
+		}
+
+		report.Warn("API Coverage",
+			$"{coverage.Percent}% - {coverage.Missing.Count} of {coverage.Total} types and members have no summary");
+
+		if (verbose)
+		{
+			const int limit = 25;
+			foreach (string symbol in coverage.Missing.Take(limit))
+			{
+				Report.Detail(symbol);
+			}
+
+			if (coverage.Missing.Count > limit)
+			{
+				Report.Detail($"... and {coverage.Missing.Count - limit} more");
+			}
+		}
+		else
+		{
+			Report.Detail("run with --verbose to list them");
+		}
+	}
+
+	#endregion
+
+	#region Helpers
+
+	/// <summary>
+	///     Resolves a link written in a Markdown file to an absolute path on disk, or
+	///     <c>null</c> when it points off-site.
+	/// </summary>
+	private static string? ResolveLocalReference(string url, string docsDir, string fileDir)
+	{
+		if (url.Length == 0
+		    || url.StartsWith('#')
+		    || url.StartsWith("//", StringComparison.Ordinal)
+		    || url.Contains("://", StringComparison.Ordinal)
+		    || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+		    || url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
+		{
+			return null;
+		}
+
+		string path = DoctorChecks.NormalizeRoute(url);
+
+		try
+		{
+			return url.StartsWith('/')
+				? Path.GetFullPath(Path.Combine(docsDir, path.TrimStart('/')))
+				: Path.GetFullPath(Path.Combine(fileDir, path));
+		}
+		catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	///     Reads a file and remembers whether it had a UTF-8 byte order mark, so an auto-fix
+	///     writes it back the way it found it.
+	/// </summary>
+	private static (string Content, Encoding Encoding) ReadPreservingEncoding(string path)
+	{
+		byte[] bytes = File.ReadAllBytes(path);
+		bool hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+		var encoding = new UTF8Encoding(hasBom);
+		int offset = hasBom ? 3 : 0;
+		return (encoding.GetString(bytes, offset, bytes.Length - offset), encoding);
 	}
 
 	private static async Task<(int ExitCode, string Output)> RunProcessAsync(string fileName, string arguments)
@@ -680,5 +650,48 @@ internal static class DoctorCommand
 		{
 			return (-1, "");
 		}
+	}
+
+	#endregion
+
+	/// <summary>
+	///     Prints check rows and keeps the pass, warning and error counts that decide the
+	///     exit code.
+	/// </summary>
+	private sealed class Report
+	{
+		public int Passed { get; private set; }
+
+		public int Warnings { get; private set; }
+
+		public int Errors { get; private set; }
+
+		/// <summary>0 when clean, 1 with warnings, 2 with errors, as documented.</summary>
+		public int ExitCode => Errors > 0 ? 2 : Warnings > 0 ? 1 : 0;
+
+		public void Pass(string label, string detail)
+		{
+			Passed++;
+			AnsiConsole.MarkupLine($"  [green]✓[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
+		}
+
+		public void Warn(string label, string detail)
+		{
+			Warnings++;
+			AnsiConsole.MarkupLine($"  [yellow]⚠[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
+		}
+
+		public void Fail(string label, string detail)
+		{
+			Errors++;
+			AnsiConsole.MarkupLine($"  [red]✗[/] {Markup.Escape(label),-24} {Markup.Escape(detail)}");
+		}
+
+		/// <summary>A check that could not run. Not counted: the cause is already reported.</summary>
+		public static void Skip(string label, string reason) =>
+			AnsiConsole.MarkupLine($"  [dim]-[/] {Markup.Escape(label),-24} [dim]{Markup.Escape(reason)}[/]");
+
+		public static void Detail(string detail) =>
+			AnsiConsole.MarkupLine($"      [dim]->[/] {Markup.Escape(detail)}");
 	}
 }

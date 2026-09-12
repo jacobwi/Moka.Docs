@@ -327,4 +327,49 @@ public sealed class AssemblyAnalyzerTests
 		child.BaseType.Should().Be("TestNs.Base");
 		child.ImplementedInterfaces.Should().Contain("TestNs.IFoo");
 	}
+
+	[Fact]
+	public void Analyze_InheritDocComment_RecordsTheTagEvenWhenUnresolvable()
+	{
+		// object.ToString is outside the model, so nothing can fill the summary in. The tag
+		// is the only evidence the author documented it.
+		ApiReference result = AnalyzeSource("""
+		                                    namespace TestNs
+		                                    {
+		                                        /// <summary>A record.</summary>
+		                                        public class Thing
+		                                        {
+		                                            /// <inheritdoc />
+		                                            public override string ToString() => "thing";
+
+		                                            /// <summary>Plain.</summary>
+		                                            public void Plain() { }
+		                                        }
+		                                    }
+		                                    """);
+
+		ApiType type = result.Namespaces[0].Types[0];
+		type.Members.Single(m => m.Name == "ToString").Documentation!.HasInheritDocTag.Should().BeTrue();
+		type.Members.Single(m => m.Name == "Plain").Documentation!.HasInheritDocTag.Should().BeFalse();
+		type.Documentation!.HasInheritDocTag.Should().BeFalse();
+	}
+
+	[Fact]
+	public void Analyze_Delegate_InvokeSharesTheDeclarationDocs()
+	{
+		ApiReference result = AnalyzeSource("""
+		                                    namespace TestNs
+		                                    {
+		                                        /// <summary>Raised when a value changes.</summary>
+		                                        /// <param name="oldValue">The previous value.</param>
+		                                        public delegate void Changed(int oldValue, int newValue);
+		                                    }
+		                                    """);
+
+		ApiType type = result.Namespaces[0].Types.Single();
+		ApiMember invoke = type.Members.Single(m => m.Name == "Invoke");
+
+		invoke.Documentation!.Summary.Should().Contain("Raised when a value changes.");
+		invoke.Documentation.Parameters.Should().ContainKey("oldValue");
+	}
 }

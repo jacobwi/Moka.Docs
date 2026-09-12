@@ -315,7 +315,7 @@ Speed up CI builds by caching the .NET tool installation:
 
 ### Build Validation on Pull Requests
 
-Run the build on pull requests to catch documentation errors before merging:
+Run `mokadocs validate` and `mokadocs doctor` on pull requests to catch documentation problems before merging. Both exit non-zero when they find something, so the job fails without any output parsing:
 
 ```yaml
 name: Validate Documentation
@@ -339,14 +339,20 @@ jobs:
       - name: Install MokaDocs
         run: dotnet tool install -g mokadocs
 
-      - name: Build documentation
-        run: mokadocs build --verbose
+      # Runs the full build without writing output. Exits 1 on warnings, 2 on errors.
+      - name: Validate the build
+        run: mokadocs validate
 
-      - name: Check for build warnings
-        run: |
-          if mokadocs build 2>&1 | grep -q "WARNING"; then
-            echo "::warning::Documentation build produced warnings"
-          fi
+      # Broken links, missing titles, unknown plugins, unused images.
+      - name: Check the docs
+        run: mokadocs doctor
+```
+
+To fail only on errors and let warnings through, accept exit code 1:
+
+```yaml
+      - name: Validate the build
+        run: mokadocs validate || [ $? -eq 1 ]
 ```
 
 ## Clean URLs and Trailing Slashes

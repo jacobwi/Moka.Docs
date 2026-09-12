@@ -130,15 +130,7 @@ internal static class BuildCommand
 			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
 
 			// Initialize plugins once; they inject pages on every pipeline run.
-			PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
-			await pluginHost.DiscoverAndInitializeAsync();
-			pipeline.PluginHook = async (ctx, ct) =>
-			{
-				if (pluginHost.LoadedPlugins.Count > 0)
-				{
-					await pluginHost.ExecuteAllAsync(ctx, ct);
-				}
-			};
+			await InitializePluginsAsync(provider, pipeline);
 
 			var options = new BuildRunOptions(
 				config, rootDir, outputDir, draft, !noCache && config.Build.Cache, verbose);
@@ -192,6 +184,28 @@ internal static class BuildCommand
 		});
 
 		return command;
+	}
+
+	/// <summary>
+	///     Discovers and initializes the plugins declared in mokadocs.yaml and attaches them
+	///     to the pipeline's plugin hook. Shared by build, serve, validate and doctor so the
+	///     four commands cannot drift in how plugins are loaded.
+	/// </summary>
+	/// <returns>The host, whose <see cref="PluginHost.LoadedPlugins" /> reports what loaded.</returns>
+	internal static async Task<PluginHost> InitializePluginsAsync(IServiceProvider provider, BuildPipeline pipeline)
+	{
+		PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
+		await pluginHost.DiscoverAndInitializeAsync();
+
+		pipeline.PluginHook = async (ctx, ct) =>
+		{
+			if (pluginHost.LoadedPlugins.Count > 0)
+			{
+				await pluginHost.ExecuteAllAsync(ctx, ct);
+			}
+		};
+
+		return pluginHost;
 	}
 
 	/// <summary>

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Api;
+using Moka.Docs.CSharp.Metadata;
 
 namespace Moka.Docs.Engine.Caching;
 
@@ -19,6 +20,22 @@ namespace Moka.Docs.Engine.Caching;
 public sealed class BuildCache(ILogger<BuildCache> logger)
 {
 	private const string _cacheDirName = ".mokadocs";
+
+	/// <summary>
+	///     Identifies the code that produced a cached model: the API model types, the Roslyn
+	///     analyzer, and this cache. Taken from each assembly's module version id, which a
+	///     deterministic build derives from the assembly's contents.
+	/// </summary>
+	/// <remarks>
+	///     The source fingerprint alone says whether the user's files changed, not whether
+	///     MokaDocs did. Without this, upgrading MokaDocs kept serving models built by the old
+	///     analyzer until the user happened to edit a file, so analyzer fixes silently did not
+	///     apply to anyone with a warm cache.
+	/// </remarks>
+	private static readonly string _toolIdentity = string.Join("|",
+		typeof(ApiReference).Assembly.ManifestModule.ModuleVersionId,
+		typeof(AssemblyAnalyzer).Assembly.ManifestModule.ModuleVersionId,
+		typeof(BuildCache).Assembly.ManifestModule.ModuleVersionId);
 
 	private static readonly JsonSerializerOptions _json = new()
 	{
@@ -45,7 +62,7 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 		try
 		{
 			CacheEntry? entry = JsonSerializer.Deserialize<CacheEntry>(File.ReadAllText(file), _json);
-			if (entry is null || entry.Fingerprint != fingerprint)
+			if (entry is null || entry.Fingerprint != fingerprint || entry.ToolIdentity != _toolIdentity)
 			{
 				return null;
 			}
@@ -75,7 +92,7 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 		try
 		{
 			Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-			var entry = new CacheEntry { Fingerprint = fingerprint, Api = api };
+			var entry = new CacheEntry { Fingerprint = fingerprint, ToolIdentity = _toolIdentity, Api = api };
 			File.WriteAllText(file, JsonSerializer.Serialize(entry, _json));
 		}
 		catch (Exception ex)
@@ -162,6 +179,8 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 	private sealed class CacheEntry
 	{
 		public string Fingerprint { get; set; } = "";
+
+		public string ToolIdentity { get; set; } = "";
 		public ApiReference? Api { get; set; }
 	}
 }

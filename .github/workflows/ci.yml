@@ -44,14 +44,17 @@ jobs:
         run: dotnet build MokaDocs.sln --no-restore --configuration Release -warnaserror
 
       - name: Test
-        run: dotnet test MokaDocs.sln --no-build --configuration Release --report-trx --report-trx-filename test-results.trx
+        # No --report-trx-filename: a fixed name made all five test projects write the same
+        # file, so the uploaded artifact held only whichever finished last. The default name
+        # is unique per project and target framework.
+        run: dotnet test MokaDocs.sln --no-build --configuration Release --report-trx
 
       - name: Upload test results
         uses: actions/upload-artifact@v5
         if: always()
         with:
           name: test-results
-          path: '**/test-results.trx'
+          path: 'TestResults/*.trx'
 
       - name: Build documentation site
         run: dotnet run --project src/Moka.Docs.Cli --configuration Release --framework net9.0 -- build --output ./docs/_site --base-path /Moka.Docs

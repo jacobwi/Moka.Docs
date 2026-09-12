@@ -119,18 +119,10 @@ internal static class ServeCommand
 			// Set up DI (reuse BuildCommand's service setup for plugins)
 			await using ServiceProvider provider = BuildCommand.BuildServices(config, verbose);
 			BuildPipeline pipeline = provider.GetRequiredService<BuildPipeline>();
-			PluginHost pluginHost = provider.GetRequiredService<PluginHost>();
 			ILoggerFactory loggerFactory = provider.GetRequiredService<ILoggerFactory>();
 
 			// Initialize plugins
-			await pluginHost.DiscoverAndInitializeAsync();
-			pipeline.PluginHook = async (ctx, ct) =>
-			{
-				if (pluginHost.LoadedPlugins.Count > 0)
-				{
-					await pluginHost.ExecuteAllAsync(ctx, ct);
-				}
-			};
+			await BuildCommand.InitializePluginsAsync(provider, pipeline);
 
 			// Resolve version data
 			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
