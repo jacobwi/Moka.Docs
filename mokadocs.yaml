@@ -52,7 +52,7 @@ features:
     enabled: true
     strategy: dropdown-only
     versions:
-      - label: "v1.0"
+      - label: "v1.6"
         branch: main
         default: true
 
