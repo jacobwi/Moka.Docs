@@ -3,7 +3,42 @@ title: MokaDocs
 description: A static documentation site generator for .NET libraries.
 order: 0
 layout: landing
+featuresTitle: Everything you need
+featuresSubtitle: Documentation sites for .NET libraries
+features:
+  - icon: "C#"
+    title: C# API Reference
+    description: Reference pages generated from the doc comments in your C# source.
+  - icon: "</>"
+    title: Themes
+    description: A default theme with color presets, or your own Scriban layouts.
+  - icon: "⚡"
+    title: Instant Search
+    description: Client-side search over titles, headings, tags and page text. No external service.
+  - icon: "☽"
+    title: Dark Mode
+    description: Automatic light and dark mode with system preference detection and manual toggle support.
+  - icon: "v2"
+    title: Versioning
+    description: A version dropdown linking to the docs you publish for each release.
+  - icon: "⚙"
+    title: Plugins
+    description: Built-in plugins for runnable C#, Blazor previews, changelogs, OpenAPI specs and Python APIs.
 ---
+
+## Simple Configuration
+
+A minimal `mokadocs.yaml`:
+
+```yaml
+site:
+  title: My Project
+  description: Docs for my .NET library
+content:
+  docs: ./docs
+  projects:
+    - path: ./src/MyLib/MyLib.csproj
+```
 
 ## Quick Start
 

@@ -595,8 +595,18 @@ public static class EmbeddedThemeProvider
 	                                        color: #fff;
 	                                        border-color: rgba(255,255,255,0.4);
 	                                    }
-	                                    .page-content pre:hover .copy-btn { opacity: 1; }
-	                                    .page-content pre:hover .code-lang { opacity: 0; }
+	                                    /* The language label and the Copy button share the top-right corner, so only one shows
+	                                       at a time: the label hides at once when the button appears, and comes back only after
+	                                       the button has faded out. */
+	                                    .page-content pre:hover .copy-btn,
+	                                    .page-content pre .copy-btn:focus-visible { opacity: 1; }
+	                                    .page-content pre:hover .code-lang,
+	                                    .page-content pre:focus-within .code-lang { opacity: 0; transition: none; }
+	                                    /* Touch screens have no hover, so the button used to stay invisible. */
+	                                    @media (hover: none) {
+	                                        .page-content pre .copy-btn { opacity: 1; }
+	                                        html:not([data-code-style="macos"]):not([data-code-style="terminal"]):not([data-code-style="vscode"]) .page-content pre .code-lang { opacity: 0; }
+	                                    }
 
 	                                    /* Light code themes need dark button colors */
 	                                    [data-code-theme="catppuccin-latte"] .page-content pre .copy-btn,
@@ -1877,10 +1887,13 @@ public static class EmbeddedThemeProvider
 	                                    /* Landing code blocks - reuse page-content pre styles */
 	                                    .landing-content pre { position: relative; margin: 2rem auto; padding: 1.25rem 1.5rem; border-radius: var(--radius); overflow-x: auto; border: 1px solid var(--color-border); max-width: 720px; background: var(--color-bg-secondary); }
 	                                    .landing-content pre code { font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.7; background: none; padding: 0; border: none; }
-	                                    .landing-content pre .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); padding: 0.25rem 0.625rem; border-radius: var(--radius-sm); font-size: 0.75rem; font-family: var(--font-mono); cursor: pointer; transition: all var(--transition); }
+	                                    .landing-content pre .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.75); padding: 0.25rem 0.625rem; border-radius: var(--radius-sm); font-size: 0.75rem; font-family: var(--font-mono); cursor: pointer; opacity: 0; transition: opacity 0.15s ease, background var(--transition), color var(--transition), border-color var(--transition); }
 	                                    .landing-content pre .copy-btn:hover { background: rgba(255,255,255,0.25); color: #fff; border-color: rgba(255,255,255,0.4); }
-	                                    .landing-content pre:hover .code-lang { opacity: 0; }
-	                                    .landing-content pre .code-lang { position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.6875rem; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); user-select: none; transition: opacity var(--transition); }
+	                                    .landing-content pre:hover .copy-btn, .landing-content pre .copy-btn:focus-visible { opacity: 1; }
+	                                    /* Same corner as the Copy button: hide at once, return after the button fades out. */
+	                                    .landing-content pre:hover .code-lang, .landing-content pre:focus-within .code-lang { opacity: 0; transition: none; }
+	                                    @media (hover: none) { .landing-content pre .copy-btn { opacity: 1; } .landing-content pre .code-lang { opacity: 0; } }
+	                                    .landing-content pre .code-lang { position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.6875rem; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); user-select: none; transition: opacity 0.15s ease 0.15s; }
 	                                    .landing-content pre.has-line-numbers { padding-left: 3.5rem; }
 	                                    .landing-content pre .line-numbers { position: absolute; top: 1.25rem; left: 0; width: 2.75rem; text-align: right; padding-right: 0.75rem; font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.7; color: var(--color-text-muted); border-right: 1px solid var(--color-border); user-select: none; }
 	                                    .landing-content pre .line-numbers span { display: block; }
@@ -2150,7 +2163,7 @@ public static class EmbeddedThemeProvider
 	                                        border-bottom: 1px solid rgba(255,255,255,0.06);
 	                                        border-left: 1px solid rgba(255,255,255,0.06);
 	                                        user-select: none;
-	                                        transition: opacity var(--transition);
+	                                        transition: opacity 0.15s ease 0.15s;
 	                                        font-weight: 500;
 	                                    }
 	                                    [data-code-theme="catppuccin-latte"] .page-content pre .code-lang,
@@ -2179,7 +2192,7 @@ public static class EmbeddedThemeProvider
 	                                        font-size: 0.7rem !important;
 	                                        padding: 0.2rem 0.6rem !important;
 	                                        letter-spacing: 0.02em;
-	                                        transition: all 0.2s ease !important;
+	                                        transition: opacity 0.15s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease !important;
 	                                    }
 
 	                                    /* --- 6. TOC scroll spy --- */
@@ -2399,6 +2412,7 @@ public static class EmbeddedThemeProvider
 	                                        transform: translateY(-3px);
 	                                    }
 	                                    .landing-feature-card:hover::before { opacity: 1; }
+	                                    a.landing-feature-card, a.landing-feature-card:hover { color: inherit; }
 	                                    .landing-feature-icon {
 	                                        display: flex;
 	                                        align-items: center;
@@ -2413,6 +2427,7 @@ public static class EmbeddedThemeProvider
 	                                        margin-bottom: 1rem;
 	                                        font-family: var(--font-mono);
 	                                    }
+	                                    .landing-feature-icon svg { width: 22px; height: 22px; }
 	                                    .landing-feature-name {
 	                                        font-size: 1.0625rem;
 	                                        font-weight: 650;
@@ -2424,93 +2439,6 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text-secondary);
 	                                        line-height: 1.6;
 	                                        margin: 0;
-	                                    }
-
-	                                    /* Code preview section */
-	                                    .landing-code-section {
-	                                        max-width: 720px;
-	                                        margin: 0 auto;
-	                                        padding: 2rem 2rem 4rem;
-	                                        text-align: center;
-	                                    }
-	                                    .landing-code-title {
-	                                        font-size: 1.75rem;
-	                                        font-weight: 700;
-	                                        margin-bottom: 0.75rem;
-	                                    }
-	                                    .landing-code-subtitle {
-	                                        color: var(--color-text-secondary);
-	                                        margin-bottom: 2rem;
-	                                        font-size: 1.0625rem;
-	                                    }
-	                                    .landing-code-block {
-	                                        position: relative;
-	                                        text-align: left;
-	                                        background: #1e293b;
-	                                        border-radius: var(--radius);
-	                                        padding: 1.5rem;
-	                                        overflow-x: auto;
-	                                        border: 1px solid var(--color-border);
-	                                        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
-	                                    }
-	                                    [data-theme="dark"] .landing-code-block {
-	                                        background: #0c1222;
-	                                        border-color: #334155;
-	                                        box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-	                                    }
-	                                    .landing-code-block pre {
-	                                        margin: 0;
-	                                        padding: 0;
-	                                        background: none;
-	                                        border: none;
-	                                        overflow: visible;
-	                                    }
-	                                    .landing-code-block code {
-	                                        font-family: var(--font-mono);
-	                                        font-size: 0.875rem;
-	                                        line-height: 1.8;
-	                                        color: #e2e8f0;
-	                                        background: none;
-	                                        padding: 0;
-	                                        border: none;
-	                                    }
-	                                    .landing-code-block .code-comment { color: #64748b; }
-	                                    .landing-code-block .code-key { color: #7dd3fc; }
-	                                    .landing-code-block .code-string { color: #86efac; }
-	                                    .landing-code-block .code-lang-badge {
-	                                        position: absolute;
-	                                        top: 0.625rem;
-	                                        right: 0.75rem;
-	                                        font-family: var(--font-mono);
-	                                        font-size: 0.6875rem;
-	                                        text-transform: uppercase;
-	                                        letter-spacing: 0.05em;
-	                                        color: #64748b;
-	                                        user-select: none;
-	                                    }
-
-	                                    /* Landing copy button - high contrast on dark code blocks */
-	                                    .landing-code-block .copy-btn {
-	                                        position: absolute;
-	                                        top: 0.5rem;
-	                                        right: 0.5rem;
-	                                        background: rgba(255,255,255,0.15);
-	                                        border: 1px solid rgba(255,255,255,0.2);
-	                                        color: rgba(255,255,255,0.7);
-	                                        padding: 0.3rem 0.7rem;
-	                                        border-radius: var(--radius-sm);
-	                                        font-size: 0.75rem;
-	                                        font-family: var(--font-mono);
-	                                        cursor: pointer;
-	                                        transition: all 150ms ease;
-	                                        opacity: 0;
-	                                    }
-	                                    .landing-code-block:hover .copy-btn { opacity: 1; }
-	                                    .landing-code-block:hover .code-lang-badge { opacity: 0; }
-	                                    .landing-code-block .copy-btn:hover {
-	                                        background: rgba(255,255,255,0.25);
-	                                        color: #fff;
-	                                        border-color: rgba(255,255,255,0.35);
 	                                    }
 
 	                                    /* Markdown content area below hero */
@@ -2557,7 +2485,6 @@ public static class EmbeddedThemeProvider
 	                                        .landing-hero { padding: 3rem 1rem 2.5rem; }
 	                                        .landing-features { padding: 2rem 1rem; }
 	                                        .landing-features-grid { grid-template-columns: 1fr; }
-	                                        .landing-code-section { padding: 1rem 1rem 2rem; }
 	                                        .landing-md-content { padding: 0 1rem 2rem; }
 	                                    }
 	                                    """;
@@ -2926,7 +2853,7 @@ public static class EmbeddedThemeProvider
 	                                           // Add line numbers for multi-line code (theme.options.showLineNumbers).
 	                                           // The trailing newline is dropped first: it counted as a line, numbering one past the end.
 	                                           const lines = block.textContent.replace(/\n$/, '').split('\n');
-	                                           if (lines.length >= 3 && !html.hasAttribute('data-no-line-numbers')) {
+	                                           if (lines.length >= 3 && !html.hasAttribute('data-no-line-numbers') && block.closest('.page-content, .landing-content')) {
 	                                               const lineNums = document.createElement('span');
 	                                               lineNums.className = 'line-numbers';
 	                                               lineNums.innerHTML = lines.map((_, i) => '<span>' + (i + 1) + '</span>').join('');
@@ -3875,55 +3802,24 @@ public static class EmbeddedThemeProvider
 	                                              </div>
 	                                          </section>
 
+	                                          {{ if page.features.size > 0 }}
 	                                          <!-- Features Grid -->
 	                                          <section class="landing-features">
-	                                              <h2 class="landing-features-title">Everything you need</h2>
-	                                              <p class="landing-features-subtitle">Documentation sites for .NET libraries</p>
+	                                              {{ if page.features_title != "" }}<h2 class="landing-features-title">{{ page.features_title | html.escape }}</h2>{{ end }}
+	                                              {{ if page.features_subtitle != "" }}<p class="landing-features-subtitle">{{ page.features_subtitle | html.escape }}</p>{{ end }}
 	                                              <div class="landing-features-grid">
-	                                                  <div class="landing-feature-card">
-	                                                      <div class="landing-feature-icon">C#</div>
-	                                                      <div class="landing-feature-name">C# API Reference</div>
-	                                                      <p class="landing-feature-desc">Reference pages generated from the doc comments in your C# source.</p>
-	                                                  </div>
-	                                                  <div class="landing-feature-card">
-	                                                      <div class="landing-feature-icon">&lt;/&gt;</div>
-	                                                      <div class="landing-feature-name">Themes</div>
-	                                                      <p class="landing-feature-desc">A default theme with color presets, or your own Scriban layouts.</p>
-	                                                  </div>
-	                                                  <div class="landing-feature-card">
-	                                                      <div class="landing-feature-icon">&#x26A1;</div>
-	                                                      <div class="landing-feature-name">Instant Search</div>
-	                                                      <p class="landing-feature-desc">Client-side search over titles, headings, tags and page text. No external service.</p>
-	                                                  </div>
-	                                                  <div class="landing-feature-card">
-	                                                      <div class="landing-feature-icon">&#x263D;</div>
-	                                                      <div class="landing-feature-name">Dark Mode</div>
-	                                                      <p class="landing-feature-desc">Automatic light and dark mode with system preference detection and manual toggle support.</p>
-	                                                  </div>
-	                                                  <div class="landing-feature-card">
-	                                                      <div class="landing-feature-icon">v2</div>
-	                                                      <div class="landing-feature-name">Versioning</div>
-	                                                      <p class="landing-feature-desc">A version dropdown linking to the docs you publish for each release.</p>
-	                                                  </div>
-	                                                  <div class="landing-feature-card">
-	                                                      <div class="landing-feature-icon">&#x2699;</div>
-	                                                      <div class="landing-feature-name">Plugins</div>
-	                                                      <p class="landing-feature-desc">Built-in plugins for runnable C#, Blazor previews, changelogs, OpenAPI specs and Python APIs.</p>
-	                                                  </div>
+	                                                  {{ for feature in page.features }}
+	                                                  {{ if feature.link != "" }}<a class="landing-feature-card" href="{{ feature.link | html.escape }}">{{ else }}<div class="landing-feature-card">{{ end }}
+	                                                      {{ if feature.icon_svg != "" }}<div class="landing-feature-icon">{{ feature.icon_svg }}</div>{{ else if feature.icon != "" }}<div class="landing-feature-icon">{{ feature.icon | html.escape }}</div>{{ end }}
+	                                                      {{ if feature.title != "" }}<div class="landing-feature-name">{{ feature.title | html.escape }}</div>{{ end }}
+	                                                      {{ if feature.description != "" }}<p class="landing-feature-desc">{{ feature.description | html.escape }}</p>{{ end }}
+	                                                  {{ if feature.link != "" }}</a>{{ else }}</div>{{ end }}
+	                                                  {{ end }}
 	                                              </div>
 	                                          </section>
+	                                          {{ end }}
 
-	                                          <!-- Code Preview -->
-	                                          <section class="landing-code-section">
-	                                              <h2 class="landing-code-title">Simple configuration</h2>
-	                                              <p class="landing-code-subtitle">A minimal mokadocs.yaml</p>
-	                                              <div class="landing-code-block">
-	                                                  <span class="code-lang-badge">yaml</span>
-	                                                  <pre style="margin:0;padding:0;background:none;border:none"><code><span class="code-comment"># mokadocs.yaml</span>&#10;<span class="code-key">site:</span>&#10;  <span class="code-key">title:</span> <span class="code-string">My Project</span>&#10;  <span class="code-key">description:</span> <span class="code-string">Docs for my .NET library</span>&#10;<span class="code-key">content:</span>&#10;  <span class="code-key">docs:</span> <span class="code-string">./docs</span>&#10;  <span class="code-key">projects:</span>&#10;    - <span class="code-key">path:</span> <span class="code-string">./src/MyLib/MyLib.csproj</span></code></pre>
-	                                              </div>
-	                                          </section>
-
-	                                          <hr class="landing-divider" />
+	                                          {{ if page.features.size > 0 && page.content != "" }}<hr class="landing-divider" />{{ end }}
 
 	                                          <!-- Rendered markdown content from index.md -->
 	                                          {{ if page.content != "" }}

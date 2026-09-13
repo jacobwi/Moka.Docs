@@ -15,7 +15,8 @@ namespace Moka.Docs.Engine.Caching;
 ///     Analysing source with Roslyn is around three quarters of a typical build, so this
 ///     is the only phase worth caching. Entries live in <c>.mokadocs/cache/</c> next to
 ///     mokadocs.yaml, keyed by project path, and are invalidated by a fingerprint of every
-///     source file the analyzer reads.
+///     file the analyzer reads: sources, project file, Directory.Build.props, the assets file
+///     and reference assemblies.
 /// </remarks>
 public sealed class BuildCache(ILogger<BuildCache> logger)
 {
@@ -135,12 +136,34 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 	/// <param name="includeInternals">Whether internal types are included, which changes the output.</param>
 	/// <returns>A hex digest, or an empty string when the directory is missing.</returns>
 	/// <remarks>
+	///     Covers the source files only. The analysis phase uses the overload that also takes
+	///     the project's other inputs.
+	/// </remarks>
+	public static string ComputeFingerprint(string sourceDirectory, bool includeInternals) =>
+		ComputeFingerprint(sourceDirectory, [], includeInternals);
+
+	/// <summary>
+	///     Fingerprints every file the analyzer reads: the source files under the project
+	///     directory plus the project's other inputs, such as the .csproj, Directory.Build.props,
+	///     obj/project.assets.json and reference assemblies.
+	/// </summary>
+	/// <param name="sourceDirectory">The project directory Roslyn walks.</param>
+	/// <param name="projectInputs">
+	///     The other files the analysis depends on (<c>CSharpProjectInfo.InputFiles</c>). A path that
+	///     does not exist counts as missing, so creating that file later changes the key.
+	/// </param>
+	/// <param name="includeInternals">Whether internal types are included, which changes the output.</param>
+	/// <returns>A hex digest, or an empty string when the directory is missing.</returns>
+	/// <remarks>
 	///     Deliberately uses <see cref="Directory" /> rather than the build's
 	///     <c>IFileSystem</c>: it has to observe exactly the same files as
-	///     <c>AssemblyAnalyzer.AnalyzeDirectory</c>, which also reads real disk. Fingerprinting
+	///     <c>AssemblyAnalyzer</c>, which also reads real disk. Fingerprinting
 	///     a different file set than the analyzer reads would hand back stale models.
 	/// </remarks>
-	public static string ComputeFingerprint(string sourceDirectory, bool includeInternals)
+	public static string ComputeFingerprint(
+		string sourceDirectory,
+		IEnumerable<string> projectInputs,
+		bool includeInternals)
 	{
 		if (!Directory.Exists(sourceDirectory))
 		{
@@ -150,20 +173,34 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 		var sb = new StringBuilder();
 		sb.Append("internals=").Append(includeInternals).Append('\n');
 
+		// Framework types resolve against the running runtime's shared framework.
+		sb.Append("runtime=").Append(Path.GetDirectoryName(typeof(object).Assembly.Location)).Append('\n');
+
+		// Only the source files used to count, so enabling ImplicitUsings, restoring a package or
+		// building a referenced project kept serving the model from before the change.
 		var files = Directory.GetFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories)
 			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
 				StringComparison.Ordinal))
 			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
 				StringComparison.Ordinal))
+			.Concat(projectInputs.Distinct(StringComparer.OrdinalIgnoreCase))
 			.OrderBy(f => f, StringComparer.Ordinal)
 			.ToList();
 
 		foreach (string f in files)
 		{
 			var info = new FileInfo(f);
-			sb.Append(f).Append('|')
-				.Append(info.Length).Append('|')
-				.Append(info.LastWriteTimeUtc.Ticks).Append('\n');
+			sb.Append(f).Append('|');
+			if (info.Exists)
+			{
+				sb.Append(info.Length).Append('|').Append(info.LastWriteTimeUtc.Ticks);
+			}
+			else
+			{
+				sb.Append("missing");
+			}
+
+			sb.Append('\n');
 		}
 
 		return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));

@@ -25,6 +25,14 @@ All you need in `mokadocs.yaml`:
 ```yaml
 plugins:
   - name: mokadocs-blazor-preview
+```
+
+That's enough for blocks that use plain Razor and the built-in Blazor
+components. To preview components from your own library, name its package:
+
+```yaml
+plugins:
+  - name: mokadocs-blazor-preview
     options:
       library: MyLibrary@1.2.3
 ```
@@ -32,9 +40,10 @@ plugins:
 The plugin does nothing on builds where no page has a preview block. When a
 build finds one, the plugin:
 
-1. Finds a preview-host project, or **scaffolds** `./preview-host/`: a Blazor
-   WebAssembly project with PackageReferences to `Moka.Blazor.Repl.Host` and
-   your library.
+1. Finds a preview-host project, or **scaffolds** one: a Blazor WebAssembly
+   project with a PackageReference to `Moka.Blazor.Repl.Host`. With `library`
+   set, the project goes in `./preview-host/` and also references your library.
+   Without it, the project goes in `./.mokadocs/preview-host/`.
 2. Runs `dotnet publish -c Release -f net10.0` on that project, unless its
    publish output is newer than all of its files (files under `bin/`, `obj/`
    and `publish-output/` don't count).
@@ -169,18 +178,17 @@ compiler reports none.
 
 ## Configuration
 
-### Minimal (recommended)
+### Minimal
 
 ```yaml
 plugins:
   - name: mokadocs-blazor-preview
-    options:
-      library: MyLibrary@1.2.3
 ```
 
-Everything else (`previewHost`, `references`, `usings`) is optional. The
-plugin scaffolds a preview-host project from a library-agnostic template and
-takes its compile references from that project's `bin/Release/` output.
+Every option is optional. The plugin scaffolds a preview-host project from a
+library-agnostic template and takes its compile references from that
+project's `bin/Release/` output. Add `library` when the blocks use components
+from your own package.
 
 ### Full
 
@@ -188,7 +196,7 @@ takes its compile references from that project's `bin/Release/` output.
 plugins:
   - name: mokadocs-blazor-preview
     options:
-      # Needed only when there is no preview-host project to find or point at
+      # Read only when the plugin scaffolds a preview-host project
       library: MyLibrary@1.2.3
 
       # Optional - path to an existing preview-host project, relative to mokadocs.yaml.
@@ -211,7 +219,7 @@ plugins:
         - ../src/MyLibrary/bin/Debug/net10.0
 ```
 
-### `library` (recommended)
+### `library`
 
 NuGet package ID and optional version of your component library, written as
 `PackageId@Version` (e.g. `MyLibrary@1.2.3`) or just `PackageId` (latest stable
@@ -219,9 +227,11 @@ version). The scaffolded preview host's `.csproj` uses it for the
 PackageReference to your library.
 
 The plugin reads `library` only when it scaffolds, which happens when the
-preview-host directory has no Blazor WebAssembly project. In that case
-`library` is required, and without it the build fails with an error. Once the
-project exists, change the library version in its `.csproj`.
+preview-host directory has no Blazor WebAssembly project. Without `library`,
+the scaffolded project references only `Moka.Blazor.Repl.Host`, which is
+enough for plain Razor, and it goes in `./.mokadocs/preview-host/` unless
+`previewHost` names another folder. Once the project exists, change the
+library version in its `.csproj`.
 
 ### `previewHost`
 
@@ -233,10 +243,12 @@ Path to your docs preview-host Blazor WebAssembly project directory
 3. Any immediate subdirectory of the `mokadocs.yaml` folder
 
 A directory only counts when a `.csproj` at its top level uses
-`Microsoft.NET.Sdk.BlazorWebAssembly`. If the directory has no such project
-and `library` is set, the plugin **scaffolds** one there (`./preview-host/`
-when `previewHost` is not set). The scaffold only writes files that don't
-exist yet, so mokadocs never overwrites an existing project.
+`Microsoft.NET.Sdk.BlazorWebAssembly`. When none of them has such a project,
+the plugin picks `./preview-host/` if `library` is set and
+`./.mokadocs/preview-host/` if it isn't. If the chosen directory, or the
+`previewHost` directory, has no project yet, the plugin **scaffolds** one
+there. The scaffold only writes files that don't exist yet, so mokadocs never
+overwrites an existing project.
 
 The project must target `net10.0`: the plugin publishes it with
 `-f net10.0` into `publish-output/net10.0/`.
@@ -299,6 +311,13 @@ preview-host/
 **Commit all of these to your repo.** They're source code you own, not
 generated artifacts. The `bin/`, `obj/`, and `publish-output/` subdirectories
 are fine to gitignore.
+
+Without `library:`, the same files go in `.mokadocs/preview-host/`, and the
+`.csproj` has no library reference. That folder sits with the build cache,
+which [belongs in `.gitignore`](/getting-started/project-structure#output-directory),
+and `mokadocs clean` deletes it, so the next build scaffolds and publishes the
+host again. To customize a host created this way, move the folder to
+`./preview-host/` and commit it.
 
 ### Customizing - Program.cs
 
@@ -575,7 +594,7 @@ from the old `mode: wasm | ssr` / `wasmAppPath` / `stylesheets` schema:
 | `wasmAppPath: …` | Removed - use `previewHost: …` instead, pointing at a real Blazor WASM csproj |
 | `stylesheets: […]` | Moved into the preview-host's `wwwroot/index.html` `<link>` tags |
 | `references: […]` (required) | Optional and additive - the plugin derives refs from the preview-host's bin automatically |
-| (new) `library: PackageId@Version` | Required when auto-scaffolding |
+| (new) `library: PackageId@Version` | Adds your library to the auto-scaffolded preview host |
 
 The simplest migration is to **delete your old options and set only
 `library: …`**. The plugin then scaffolds a new preview host for you. If

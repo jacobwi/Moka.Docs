@@ -331,6 +331,12 @@ public sealed record XmlDocBlock
 	///     "never documented", which an empty <see cref="Summary" /> alone cannot.
 	/// </summary>
 	public bool HasInheritDocTag { get; init; }
+
+	/// <summary>
+	///     The documentation ID named by <c>&lt;inheritdoc cref="..."/&gt;</c> (for example
+	///     <c>M:MyLib.Parser.Parse(System.String)</c>), or <c>null</c> when the comment has no cref.
+	/// </summary>
+	public string? InheritDocCref { get; init; }
 }
 
 /// <summary>

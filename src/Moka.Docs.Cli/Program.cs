@@ -13,7 +13,8 @@ var rootCommand =
 		InfoCommand.Create(),
 		ValidateCommand.Create(),
 		DoctorCommand.Create(),
-		StatsCommand.Create()
+		StatsCommand.Create(),
+		ReplWorkerCommand.Create()
 	};
 
 return await rootCommand.Parse(args).InvokeAsync();

@@ -16,7 +16,53 @@ namespace Moka.Docs.CSharp.Metadata;
 public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 {
 	/// <summary>
-	///     Analyzes all C# source files in a directory to build an API model.
+	///     Analyzes a project's C# source files with the settings from its project file: target
+	///     framework symbols, implicit and explicit global usings, the nullable context, and the
+	///     package and project references restore recorded.
+	/// </summary>
+	/// <param name="project">The project settings, from <see cref="CSharpProjectInfo.Load" />.</param>
+	/// <param name="assemblyName">The assembly name (used for display).</param>
+	/// <param name="includeInternals">Whether to include internal types and members.</param>
+	/// <returns>The extracted API reference model.</returns>
+	public ApiReference AnalyzeProject(CSharpProjectInfo project, string assemblyName, bool includeInternals = false)
+	{
+		List<string> csFiles = FindSourceFiles(project.ProjectDirectory);
+		if (csFiles.Count == 0)
+		{
+			logger.LogWarning("No C# source files found in {Directory}", project.ProjectDirectory);
+			return new ApiReference { Assemblies = [assemblyName] };
+		}
+
+		logger.LogInformation("Analyzing {Count} source files in {Directory} for {Framework}",
+			csFiles.Count, project.ProjectDirectory, project.TargetFramework ?? "an unknown framework");
+
+		// Without the project's symbols every #if block counts as inactive, so members behind
+		// #if NET8_0_OR_GREATER silently disappeared from the docs.
+		CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithPreprocessorSymbols(project.PreprocessorSymbols);
+		var syntaxTrees = csFiles
+			.Select(f => CSharpSyntaxTree.ParseText(File.ReadAllText(f), parseOptions, f))
+			.ToList();
+
+		// The SDK writes the global usings to a file under obj/, which the source search skips.
+		if (project.GlobalUsings.Count > 0)
+		{
+			syntaxTrees.Add(CSharpSyntaxTree.ParseText(
+				string.Join(Environment.NewLine, project.GlobalUsings), parseOptions, "GlobalUsings.g.cs"));
+		}
+
+		var compilation = CSharpCompilation.Create(
+			assemblyName,
+			syntaxTrees,
+			CompilationReferences.Resolve(project.SharedFrameworks, project.ReferencePaths),
+			new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+				nullableContextOptions: project.NullableContext));
+
+		return AnalyzeCompilation(compilation, assemblyName, includeInternals);
+	}
+
+	/// <summary>
+	///     Analyzes all C# source files in a directory to build an API model. Unlike
+	///     <see cref="AnalyzeProject" />, no project settings are read.
 	/// </summary>
 	/// <param name="sourceDirectory">The directory containing C# source files.</param>
 	/// <param name="assemblyName">The assembly name (used for display).</param>
@@ -24,10 +70,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 	/// <returns>The extracted API reference model.</returns>
 	public ApiReference AnalyzeDirectory(string sourceDirectory, string assemblyName, bool includeInternals = false)
 	{
-		var csFiles = Directory.GetFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories)
-			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
-			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
-			.ToList();
+		List<string> csFiles = FindSourceFiles(sourceDirectory);
 
 		if (csFiles.Count == 0)
 		{
@@ -45,31 +88,18 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 	}
 
 	/// <summary>
-	///     Analyzes syntax trees to build an API model.
+	///     Analyzes syntax trees to build an API model, compiled against the running runtime's
+	///     shared framework.
 	/// </summary>
 	public ApiReference AnalyzeSyntaxTrees(
 		IReadOnlyList<SyntaxTree> syntaxTrees,
 		string assemblyName,
 		bool includeInternals = false)
 	{
-		PortableExecutableReference[] references = new[]
-		{
-			MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-			MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
-		};
-
-		// Add runtime assemblies
-		string runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-		IEnumerable<PortableExecutableReference> runtimeRefs =
-			new[] { "System.Runtime.dll", "System.Collections.dll", "netstandard.dll" }
-				.Select(f => Path.Combine(runtimeDir, f))
-				.Where(File.Exists)
-				.Select(f => MetadataReference.CreateFromFile(f));
-
 		var compilation = CSharpCompilation.Create(
 			assemblyName,
 			syntaxTrees,
-			references.Concat(runtimeRefs),
+			CompilationReferences.Resolve([CompilationReferences.CoreFramework], []),
 			new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
 		return AnalyzeCompilation(compilation, assemblyName, includeInternals);
@@ -83,103 +113,69 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		string assemblyName,
 		bool includeInternals = false)
 	{
-		var namespaceMap = new Dictionary<string, List<ApiType>>(StringComparer.Ordinal);
+		// A partial type has a declaration per part but one symbol. Collecting declarations by
+		// symbol gives it one ApiType; extracting per declaration gave every part its own
+		// ApiType, and the build wrote one page per part to the same route.
+		var declarations = new Dictionary<INamedTypeSymbol, List<MemberDeclarationSyntax>>(SymbolEqualityComparer.Default);
+		var symbols = new List<INamedTypeSymbol>();
 
 		foreach (SyntaxTree tree in compilation.SyntaxTrees)
 		{
 			SemanticModel semanticModel = compilation.GetSemanticModel(tree);
-			SyntaxNode root = tree.GetRoot();
 
-			foreach (TypeDeclarationSyntax typeDecl in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+			foreach (MemberDeclarationSyntax declaration in tree.GetRoot().DescendantNodes()
+				         .OfType<MemberDeclarationSyntax>()
+				         .Where(node => node is BaseTypeDeclarationSyntax or DelegateDeclarationSyntax))
 			{
-				INamedTypeSymbol? symbol = semanticModel.GetDeclaredSymbol(typeDecl);
-				if (symbol is null)
+				if (semanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol
+				    || !ShouldInclude(symbol, includeInternals))
 				{
 					continue;
 				}
 
-				if (!ShouldInclude(symbol, includeInternals))
+				if (!declarations.TryGetValue(symbol, out List<MemberDeclarationSyntax>? parts))
 				{
-					continue;
+					parts = [];
+					declarations[symbol] = parts;
+					symbols.Add(symbol);
 				}
 
-				ApiType? apiType = ExtractType(symbol, includeInternals);
-				if (apiType is null)
-				{
-					continue;
-				}
+				parts.Add(declaration);
+			}
+		}
 
-				// Capture the source code from the syntax node
-				apiType = apiType with { SourceCode = typeDecl.NormalizeWhitespace().ToFullString() };
+		var namespaceMap = new Dictionary<string, List<ApiType>>(StringComparer.Ordinal);
 
-				string ns = NamespaceOf(symbol) ?? "(global)";
-				if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
-				{
-					types = [];
-					namespaceMap[ns] = types;
-				}
+		foreach (INamedTypeSymbol symbol in symbols)
+		{
+			ApiType? apiType = symbol.TypeKind switch
+			{
+				TypeKind.Enum => ExtractEnumType(symbol),
+				TypeKind.Delegate => ExtractDelegateType(symbol),
+				_ => ExtractType(symbol, includeInternals)
+			};
 
-				types.Add(apiType);
+			if (apiType is null)
+			{
+				continue;
 			}
 
-			// Also extract top-level enum declarations
-			foreach (EnumDeclarationSyntax enumDecl in root.DescendantNodes().OfType<EnumDeclarationSyntax>())
+			// The source panel gets the same members the page lists, so private fields and
+			// helpers (and internals unless includeInternals) stay out of it.
+			apiType = apiType with
 			{
-				INamedTypeSymbol? symbol = semanticModel.GetDeclaredSymbol(enumDecl);
-				if (symbol is null)
-				{
-					continue;
-				}
+				SourceCode = DocumentedSource.Render(compilation, declarations[symbol],
+					member => IsDocumented(member, includeInternals))
+			};
 
-				if (!ShouldInclude(symbol, includeInternals))
-				{
-					continue;
-				}
-
-				ApiType apiType = ExtractEnumType(symbol);
-
-				// Capture the source code from the syntax node
-				apiType = apiType with { SourceCode = enumDecl.NormalizeWhitespace().ToFullString() };
-
-				string ns = NamespaceOf(symbol) ?? "(global)";
-				if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
-				{
-					types = [];
-					namespaceMap[ns] = types;
-				}
-
-				types.Add(apiType);
+			string ns = NamespaceOf(symbol) ?? "(global)";
+			if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
+			{
+				types = [];
+				namespaceMap[ns] = types;
 			}
 
-			// Delegate declarations
-			foreach (DelegateDeclarationSyntax delegateDecl in root.DescendantNodes()
-				         .OfType<DelegateDeclarationSyntax>())
-			{
-				INamedTypeSymbol? symbol = semanticModel.GetDeclaredSymbol(delegateDecl);
-				if (symbol is null)
-				{
-					continue;
-				}
-
-				if (!ShouldInclude(symbol, includeInternals))
-				{
-					continue;
-				}
-
-				ApiType apiType = ExtractDelegateType(symbol);
-
-				// Capture the source code from the syntax node
-				apiType = apiType with { SourceCode = delegateDecl.NormalizeWhitespace().ToFullString() };
-
-				string ns = NamespaceOf(symbol) ?? "(global)";
-				if (!namespaceMap.TryGetValue(ns, out List<ApiType>? types))
-				{
-					types = [];
-					namespaceMap[ns] = types;
-				}
-
-				types.Add(apiType);
-			}
+			types.Add(apiType);
 		}
 
 		var namespaces = namespaceMap
@@ -226,7 +222,8 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 			Accessibility = MapAccessibility(symbol.DeclaredAccessibility),
 			IsStatic = symbol.IsStatic,
 			IsAbstract = symbol.IsAbstract && kind != ApiTypeKind.Interface,
-			IsSealed = symbol.IsSealed,
+			// Structs are implicitly sealed and Roslyn says so. Only a class can be declared sealed.
+			IsSealed = symbol.IsSealed && symbol.TypeKind == TypeKind.Class,
 			IsRecord = symbol.IsRecord,
 			BaseType = symbol.BaseType?.ToDisplayString() is { } bt && bt != "object" ? bt : null,
 			ImplementedInterfaces = symbol.Interfaces
@@ -302,7 +299,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 				{
 					Name = "Invoke",
 					Kind = ApiMemberKind.Method,
-					Signature = symbol.ToDisplayString(),
+					Signature = MemberSignatures.ForDelegate(symbol),
 					ReturnType = invokeMethod?.ReturnType.ToDisplayString(),
 					Parameters = parameters,
 					Documentation = documentation
@@ -380,7 +377,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		{
 			Name = name,
 			Kind = kind,
-			Signature = method.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+			Signature = MemberSignatures.ForMember(method),
 			ReturnType = method.ReturnType.ToDisplayString(),
 			Accessibility = MapAccessibility(method.DeclaredAccessibility),
 			IsStatic = method.IsStatic,
@@ -400,30 +397,11 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 
 	private static ApiMember ExtractProperty(IPropertySymbol property)
 	{
-		string signature = property.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-
-		// Add get/set/init accessors info
-		var accessors = new List<string>();
-		if (property.GetMethod is not null)
-		{
-			accessors.Add("get");
-		}
-
-		if (property.SetMethod is not null)
-		{
-			accessors.Add(property.SetMethod.IsInitOnly ? "init" : "set");
-		}
-
-		if (accessors.Count > 0)
-		{
-			signature += $" {{ {string.Join("; ", accessors)}; }}";
-		}
-
 		return new ApiMember
 		{
 			Name = property.Name,
 			Kind = property.IsIndexer ? ApiMemberKind.Indexer : ApiMemberKind.Property,
-			Signature = signature,
+			Signature = MemberSignatures.ForMember(property),
 			ReturnType = property.Type.ToDisplayString(),
 			Accessibility = MapAccessibility(property.DeclaredAccessibility),
 			IsStatic = property.IsStatic,
@@ -453,7 +431,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		{
 			Name = field.Name,
 			Kind = ApiMemberKind.Field,
-			Signature = $"{field.Type.ToDisplayString()} {field.Name}",
+			Signature = MemberSignatures.ForMember(field),
 			ReturnType = field.Type.ToDisplayString(),
 			Accessibility = MapAccessibility(field.DeclaredAccessibility),
 			IsStatic = field.IsStatic,
@@ -469,7 +447,7 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		{
 			Name = @event.Name,
 			Kind = ApiMemberKind.Event,
-			Signature = $"event {@event.Type.ToDisplayString()} {@event.Name}",
+			Signature = MemberSignatures.ForMember(@event),
 			ReturnType = @event.Type.ToDisplayString(),
 			Accessibility = MapAccessibility(@event.DeclaredAccessibility),
 			IsStatic = @event.IsStatic,
@@ -492,7 +470,10 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		return new ApiParameter
 		{
 			Name = param.Name,
-			Type = param.Type.ToDisplayString(),
+			// Short names, as in the signature. Once types from other assemblies resolved, the
+			// fully qualified "IReadOnlyList<Moka.Docs.Core.Api.ApiType>" reached the page
+			// heading, which keeps only the text after the last dot: "ApiType>".
+			Type = MemberSignatures.ForType(param.Type),
 			HasDefaultValue = param.HasExplicitDefaultValue,
 			DefaultValue = param.HasExplicitDefaultValue ? param.ExplicitDefaultValue?.ToString() : null,
 			IsParams = param.IsParams,
@@ -557,12 +538,26 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 			.Where(a => !IsCompilerAttribute(a.AttributeClass!.Name))
 			.Select(a => new ApiAttribute
 			{
-				Name = a.AttributeClass!.Name.Replace("Attribute", ""),
+				Name = AttributeDisplayName(a.AttributeClass!.Name),
+				// Written as C# source. Value.ToString() dropped the quotes around strings and
+				// printed enum arguments as their numbers.
 				Arguments = a.ConstructorArguments
-					.Select(arg => arg.Value?.ToString() ?? "")
+					.Select(arg => arg.ToCSharpString())
 					.ToList()
 			})
 			.ToList();
+	}
+
+	/// <summary>
+	///     The attribute name without its <c>Attribute</c> suffix. Removing every occurrence, as
+	///     <c>Replace("Attribute", "")</c> did, turned <c>AttributeUsageAttribute</c> into <c>Usage</c>.
+	/// </summary>
+	private static string AttributeDisplayName(string name)
+	{
+		const string suffix = "Attribute";
+		return name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal)
+			? name[..^suffix.Length]
+			: name;
 	}
 
 	private static XmlDocBlock? ExtractXmlDoc(ISymbol symbol)
@@ -599,11 +594,13 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 					.Select(e => XmlDocParser.RenderInnerXml(e))
 					.Where(s => !string.IsNullOrWhiteSpace(s))
 					.ToList(),
-				SeeAlso = root.Elements("seealso")
-					.Select(e => e.Attribute("cref")?.Value ?? e.Value)
-					.Where(s => !string.IsNullOrWhiteSpace(s))
-					.ToList(),
-				HasInheritDocTag = root.Element("inheritdoc") is not null
+				// The parser's list keeps href URLs and link text; this one used to keep only the cref
+				// or the text, so an href entry lost its URL in CLI builds.
+				SeeAlso = XmlDocParser.ParseSeeAlso(root),
+				HasInheritDocTag = root.Element("inheritdoc") is not null,
+				// Roslyn has already bound the cref to a documentation ID ("M:Ns.Type.Method"),
+				// or to "!:..." when it could not resolve it.
+				InheritDocCref = root.Element("inheritdoc")?.Attribute("cref")?.Value
 			};
 		}
 		catch
@@ -643,6 +640,25 @@ public sealed class AssemblyAnalyzer(ILogger<AssemblyAnalyzer> logger)
 		}
 
 		return true;
+	}
+
+	/// <summary>
+	///     Whether a type or member belongs in the reference, by the same rules as the page and member lists.
+	/// </summary>
+	private static bool IsDocumented(ISymbol symbol, bool includeInternals) =>
+		symbol is INamedTypeSymbol type
+			? ShouldInclude(type, includeInternals)
+			: IsDocumentedAccessibility(symbol.DeclaredAccessibility, includeInternals);
+
+	private static List<string> FindSourceFiles(string directory)
+	{
+		// Sorted so the parts of a partial type, and anything else that follows file order,
+		// come out the same on every machine.
+		return Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories)
+			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+			.OrderBy(f => f, StringComparer.Ordinal)
+			.ToList();
 	}
 
 	/// <summary>

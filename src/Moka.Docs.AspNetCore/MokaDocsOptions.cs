@@ -44,14 +44,34 @@ public sealed class MokaDocsOptions
 	/// <summary>Accent theme color (CSS hex).</summary>
 	public string AccentColor { get; set; } = "#f59e0b";
 
-	/// <summary>Version label shown in the header (e.g., "v2.0").</summary>
+	/// <summary>
+	///     Version label shown in the version selector in the header (e.g., "v2.0").
+	///     If null, the header has no version selector.
+	/// </summary>
 	public string? Version { get; set; }
 
 	/// <summary>Whether to enable the interactive C# REPL plugin.</summary>
 	public bool EnableRepl { get; set; }
 
-	/// <summary>Whether to enable Blazor component preview.</summary>
+	/// <summary>
+	///     Whether to enable Blazor component preview. The plugin's options, such as
+	///     <c>previewHost</c> or <c>library</c>, go in a <see cref="Plugins" /> entry with the id
+	///     <c>mokadocs-blazor-preview</c>. That entry turns the plugin on by itself, too.
+	/// </summary>
 	public bool EnableBlazorPreview { get; set; }
+
+	/// <summary>
+	///     Plugins to run during the build, the counterpart of the <c>plugins:</c> list in
+	///     mokadocs.yaml. Each entry is matched by <see cref="PluginEntry.Id" /> against the
+	///     <c>IMokaPlugin</c> services in the container.
+	/// </summary>
+	/// <remarks>
+	///     <c>AddMokaDocs</c> registers the built-in plugins <c>openapi</c>,
+	///     <c>mokadocs-blazor-preview</c>, <c>mokadocs-changelog</c> and <c>mokadocs-python-api</c>
+	///     when they are declared here. Register a plugin of your own as an <c>IMokaPlugin</c>
+	///     singleton. The REPL plugin is registered by <see cref="EnableRepl" /> only.
+	/// </remarks>
+	public List<PluginEntry> Plugins { get; set; } = [];
 
 	/// <summary>
 	///     URL path prefix where documentation is served.
@@ -93,6 +113,38 @@ public sealed class NavEntry
 	/// <summary>Whether this section is expanded by default.</summary>
 	public bool Expanded { get; set; }
 
-	/// <summary>Whether to auto-generate child pages (for API reference).</summary>
+	/// <summary>
+	///     Whether to list the API reference under this entry: each namespace, with its types.
+	///     Applies when <see cref="Path" /> is <c>/api</c>, where the API pages are generated.
+	/// </summary>
+	/// <remarks>
+	///     An entry for any other path lists the pages one route segment below it, whether or
+	///     not this is set. Type pages sit several segments below <c>/api</c>, so without this an
+	///     API entry has no children.
+	/// </remarks>
 	public bool AutoGenerate { get; set; }
+}
+
+/// <summary>
+///     Declares a plugin for the build, like an entry in the <c>plugins:</c> list of mokadocs.yaml.
+/// </summary>
+public sealed class PluginEntry
+{
+	/// <summary>
+	///     The plugin's <c>IMokaPlugin.Id</c>, for example <c>"openapi"</c>. Matched without regard
+	///     to case.
+	/// </summary>
+	public required string Id { get; set; }
+
+	/// <summary>
+	///     Plugin-specific options, the <c>options:</c> map of a mokadocs.yaml entry. The plugin
+	///     reads them from <c>IPluginContext.Options</c>. Lists can be any
+	///     <see cref="IEnumerable{T}" /> of strings, such as a <c>string[]</c>.
+	/// </summary>
+	/// <remarks>
+	///     The build's root directory is the application's content root, so the built-in plugins
+	///     resolve relative paths in their options, such as the OpenAPI <c>spec</c> or the Blazor
+	///     preview's <c>previewHost</c>, from there.
+	/// </remarks>
+	public Dictionary<string, object> Options { get; set; } = [];
 }

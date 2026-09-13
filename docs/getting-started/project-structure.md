@@ -23,7 +23,7 @@ my-project/
 ├── src/
 │   └── MyLib/
 │       └── MyLib.csproj   # .NET project for API docs
-├── .mokadocs/             # API analysis cache
+├── .mokadocs/             # API analysis cache, generated preview host
 └── _site/                 # Generated output
 ```
 
@@ -122,7 +122,7 @@ _site/
 .mokadocs/
 ```
 
-`.mokadocs/` holds the cached API analysis. `mokadocs clean` deletes both folders.
+`.mokadocs/` holds the cached API analysis, plus the preview host that the [Blazor Preview plugin](/plugins/blazor-preview) generates when it has no `library` option. `mokadocs clean` deletes both folders.
 
 ## API Projects
 

@@ -156,6 +156,13 @@ site to reference them directly without duplicating the file.
 With no logo, the default layout shows a generic book icon next to the site
 title instead of an `<img>` tag.
 
+#### Missing files
+
+When a local logo file doesn't exist, the build reports a warning that names
+the path it looked for, and the site renders as if no logo were set: no
+`<img>` tag, and the book icon in the header. `mokadocs validate` lists the
+warning, and so does `mokadocs build --verbose`. Absolute URLs aren't checked.
+
 ### `favicon`
 
 - **Type:** `string` (nullable) - filesystem path or absolute URL
@@ -173,7 +180,9 @@ site:
 ```
 
 If omitted, browsers fall back to requesting `/favicon.ico` from the root of
-the domain.
+the domain. A local favicon file that doesn't exist gets the same treatment as
+a [missing logo](#missing-files): a build warning, and no
+`<link rel="icon">` tag on the pages.
 
 ### `copyright`
 
@@ -257,7 +266,7 @@ content:
 - **Type:** `list` of `ProjectSource`
 - **Default:** `[]`
 
-C# projects to generate API reference pages from. MokaDocs doesn't run MSBuild. It parses every `.cs` file under the project's folder with Roslyn, skipping `bin` and `obj`, and reads the XML doc comments from the source. Each type gets a page at `/api/{namespace}/{type}` (lowercase, with the namespace's dots turned into slashes), and `/api` lists them all. See [API Documentation](/guide/api-docs).
+C# projects to generate API reference pages from. MokaDocs doesn't run MSBuild. It parses every `.cs` file under the project's folder with Roslyn, skipping `bin` and `obj`, with the target framework, usings and references read from the project files, and reads the XML doc comments from the source. Each type gets a page at `/api/{namespace}/{type}` (lowercase, with the namespace's dots turned into slashes), and `/api` lists them all. See [API Documentation](/guide/api-docs).
 
 Each entry in the list is a `ProjectSource` object with the following properties:
 
@@ -266,7 +275,7 @@ Each entry in the list is a `ProjectSource` object with the following properties
 - **Type:** `string`
 - **Required:** Yes
 
-The path to the `.csproj` file. A file that doesn't exist produces a build warning. The first project's `.csproj` also supplies the package name and version for the install widget on the `/api` page.
+The path to the `.csproj` file. A file that doesn't exist produces a build warning. The first project that produces a package (test projects and projects with `IsPackable` set to `false` are skipped) also supplies the package name and version for the install widget on the `/api` page.
 
 #### `projects[].label`
 
@@ -447,7 +456,9 @@ theme:
 - **Type:** `bool`
 - **Default:** `true`
 
-Shows "Last updated: YYYY-MM-DD" at the bottom of Markdown pages that use the default layout. The date is the source file's modified time on disk. MokaDocs doesn't read git history, so after a fresh clone, as in most CI builds, every page shows the checkout date.
+Shows "Last updated: YYYY-MM-DD" at the bottom of Markdown pages that use the default layout. When the docs folder is inside a git repository and `git` is on `PATH`, the date is that of the last commit that changed the file. A file with uncommitted changes, or one git doesn't track, uses its modified time on disk instead, and so does every file when git isn't available. The same date goes into the sitemap's `<lastmod>`.
+
+A shallow clone only has the newest commit, so every page shows that commit's date. `actions/checkout` makes a shallow clone unless you set `fetch-depth: 0`; see [Deployment](/advanced/deployment#last-updated-dates-in-ci).
 
 ```yaml
 theme:

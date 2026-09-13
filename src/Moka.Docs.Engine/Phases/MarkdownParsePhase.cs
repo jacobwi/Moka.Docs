@@ -2,6 +2,7 @@ using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Engine.Discovery;
 using Moka.Docs.Parsing.Markdown;
 
 namespace Moka.Docs.Engine.Phases;
@@ -20,10 +21,12 @@ public sealed class MarkdownParsePhase(
 	public int Order => 400;
 
 	/// <inheritdoc />
-	public Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
+	public async Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
 	{
 		string docsPath = context.FileSystem.Path.GetFullPath(
 			context.FileSystem.Path.Combine(context.RootDirectory, context.Config.Content.Docs));
+
+		IReadOnlyDictionary<string, DateTimeOffset> commitDates = await ReadCommitDatesAsync(context, docsPath, ct);
 
 		foreach (string relativePath in context.DiscoveredMarkdownFiles)
 		{
@@ -44,6 +47,11 @@ public sealed class MarkdownParsePhase(
 
 				string route = BuildRoute(relativePath, result.FrontMatter);
 
+				string gitPath = relativePath.Replace(context.FileSystem.Path.DirectorySeparatorChar, '/');
+				DateTimeOffset? lastModified = commitDates.TryGetValue(gitPath, out DateTimeOffset committed)
+					? committed
+					: GetLastModified(context, fullPath);
+
 				var page = new DocPage
 				{
 					FrontMatter = result.FrontMatter,
@@ -56,7 +64,7 @@ public sealed class MarkdownParsePhase(
 					SourcePath = relativePath,
 					Route = route,
 					Origin = PageOrigin.Markdown,
-					LastModified = GetLastModified(context, fullPath)
+					LastModified = lastModified
 				};
 
 				context.Pages.Add(page);
@@ -69,7 +77,24 @@ public sealed class MarkdownParsePhase(
 		}
 
 		logger.LogInformation("Parsed {Count} Markdown pages", context.Pages.Count);
-		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	///     Last commit dates for the docs folder's files, or an empty map when they can't come
+	///     from git. Pages missing from the map use their file's modified time.
+	/// </summary>
+	private async Task<IReadOnlyDictionary<string, DateTimeOffset>> ReadCommitDatesAsync(
+		BuildContext context, string docsPath, CancellationToken ct)
+	{
+		// Git reads the real disk. The ASP.NET Core host builds over an in-memory file system whose
+		// paths don't exist there, and could even match an unrelated folder that does.
+		if (context.FileSystem is not FileSystem || context.DiscoveredMarkdownFiles.Count == 0
+		                                         || !context.FileSystem.Directory.Exists(docsPath))
+		{
+			return new Dictionary<string, DateTimeOffset>();
+		}
+
+		return await GitCommitDates.ReadAsync(docsPath, logger, ct);
 	}
 
 	/// <summary>

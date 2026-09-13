@@ -60,7 +60,7 @@ builder.Services.AddMokaDocs(options =>
     options.PrimaryColor = "#6d28d9";
     options.BasePath = "/docs";
     options.Copyright = "© 2026 Contoso Ltd.";
-    options.DocsPath = Path.Combine(builder.Environment.ContentRootPath, "Docs");
+    options.DocsPath = "Docs";
     options.CacheOutput = true;
 });
 ```
@@ -73,14 +73,15 @@ builder.Services.AddMokaDocs(options =>
 | `Description` | `string` | `""` | Site description. Used as the meta description of pages that don't set their own. |
 | `LogoUrl` | `string?` | `null` | Logo image URL, written into the page as given. When `null`, the header shows a default book icon. |
 | `FaviconUrl` | `string?` | `null` | Favicon URL, written into the page as given. |
-| `DocsPath` | `string?` | `null` | Folder of Markdown pages. A relative path resolves from the process's current working directory, not the content root. When `null`, only API reference pages are built. |
+| `DocsPath` | `string?` | `null` | Folder of Markdown pages. A relative path resolves from the application's content root. When `null`, only API reference pages are built. |
 | `Assemblies` | `List<Assembly>` | `[]` | Assemblies to document. When it's empty, `AddMokaDocs()` adds the assembly that called it. |
 | `IncludeXmlDocs` | `bool` | `true` | Whether to read the XML documentation file (`.xml`) next to each assembly's DLL. |
 | `PrimaryColor` | `string` | `"#0ea5e9"` | Primary theme color as a CSS hex value. |
 | `AccentColor` | `string` | `"#f59e0b"` | Sets the `--color-accent` CSS variable. |
-| `Version` | `string?` | `null` | Not used. Setting it has no effect. |
+| `Version` | `string?` | `null` | Label of the version selector in the header, such as `"v2.0"`. When `null`, the header has no version selector. |
 | `EnableRepl` | `bool` | `false` | Loads the REPL plugin. The REPL doesn't run in this host (see Plugins). |
-| `EnableBlazorPreview` | `bool` | `false` | Loads the Blazor preview plugin. Previews don't build in this host (see Plugins). |
+| `EnableBlazorPreview` | `bool` | `false` | Loads the Blazor preview plugin. Its options go in a `Plugins` entry (see Plugins). |
+| `Plugins` | `List<PluginEntry>` | `[]` | Plugins to run, each with its options (see Plugins). |
 | `BasePath` | `string` | `"/docs"` | URL prefix the site is served under. The site is built with it, so every link and asset URL includes it. |
 | `CacheOutput` | `bool` | `true` | When `true`, the site is built on the first request and kept in memory. When `false`, every request rebuilds it. |
 | `Copyright` | `string?` | `null` | Footer text. `{year}` is replaced with the current year. When `null`, the footer shows `© <current year> <Title>`. |
@@ -88,13 +89,13 @@ builder.Services.AddMokaDocs(options =>
 
 ### Custom Navigation
 
-With an empty `Nav`, the sidebar has an "API Reference" entry for `/api` and, when `DocsPath` is set, a "Guide" entry for `/guide`. Set `Nav` to replace them:
+With an empty `Nav`, the sidebar has an "API Reference" entry for `/api`, listing each namespace with its types, and, when `DocsPath` is set, a "Guide" entry for `/guide`. Set `Nav` to replace them:
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
 {
     options.Title = "My Library";
-    options.DocsPath = Path.Combine(builder.Environment.ContentRootPath, "Docs");
+    options.DocsPath = "Docs";
 
     options.Nav =
     [
@@ -109,7 +110,8 @@ builder.Services.AddMokaDocs(options =>
         {
             Label = "API Reference",
             Path = "/api",
-            Icon = "code"
+            Icon = "code",
+            AutoGenerate = true
         },
         new NavEntry
         {
@@ -129,14 +131,14 @@ Each `NavEntry` supports these properties:
 | `Path` | `string` | URL path (e.g., `"/guide"`). |
 | `Icon` | `string?` | Name of an icon in MokaDocs's built-in Lucide set, such as `"book-open"` or `"code"`. An unknown name shows no icon. |
 | `Expanded` | `bool` | Whether the section starts expanded. |
-| `AutoGenerate` | `bool` | Not used. Setting it has no effect. |
+| `AutoGenerate` | `bool` | On an entry whose `Path` is `/api`, lists each API namespace with its types. Other entries are unaffected. |
 
 How entries fill in, for the defaults and for your own entries alike:
 
 - An entry lists the pages one folder level below its `Path`. For `Path = "/guide"`, that's the pages in `Docs/guide/`. Pages in a deeper folder are listed only when a page exists at that folder's route, such as `Docs/guide/advanced/index.md`, and they appear under that page.
 - Children are sorted by their front matter `order`, then by title.
 - When no page exists at the entry's own path, the entry links to its first child.
-- The API Reference entry has no children. Namespaces and types are listed on the `/api` page itself.
+- Type pages sit several route segments below `/api`, so an entry for `/api` gets no children from its pages. With `AutoGenerate = true` it lists a heading for each namespace, holding a link to each type. Without it, namespaces and types are listed on the `/api` page only.
 - Pages directly inside the `DocsPath` folder aren't listed under any entry. To link one, add an entry whose `Path` is that page's route.
 
 ## Auto-Discovery
@@ -159,44 +161,43 @@ builder.Services.AddMokaDocs(options =>
 
 ### What Gets Scanned
 
-`ReflectionApiModelBuilder` reads each assembly's exported (public) types with `System.Reflection` and skips compiler-generated types. For each type it collects:
+`ReflectionApiModelBuilder` reads each assembly's exported (public) types with `System.Reflection`, adds the protected nested types of types a consumer can derive from, and skips compiler-generated types and members. For each type it collects the members declared on the type itself:
 
-- **Constructors**: public instance constructors, with parameter modifiers (`ref`, `out`, `in`, `params`) and default values
-- **Properties and indexers**: public ones declared on the type itself
-- **Methods**: public ones declared on the type itself, including generic methods. Methods with the special-name flag are skipped, which removes property and event accessors along with operator overloads.
-- **Fields**: public ones, with `const` values and `static` or `readonly` in the signature
-- **Events**: public ones declared on the type itself
+- **Constructors**: instance constructors, with parameter modifiers (`ref`, `out`, `in`, `params`) and default values
+- **Properties and indexers**, with `init` and accessor accessibility such as `{ get; private set; }`
+- **Methods**, including generic and extension methods. Property and event accessors are skipped.
+- **Operators**: operator overloads and conversion operators
+- **Fields**, with `const` values
+- **Events**
+- **Delegates**: an `Invoke` member with the delegate's parameters and return type
 - **Enum members**, with their numeric values
 - **Type metadata**: base type, interfaces not already inherited, generic constraints and `[Obsolete]`
 
-The pages use the same renderer as the CLI, so the rendering notes in [API Documentation](/guide/api-docs) apply here too. As with the CLI, inherited members aren't listed on the derived type, and extension methods appear as ordinary static methods. Compared with the CLI:
+Public members are read on every type. Protected and protected internal members are read too, unless the type is sealed or static, since a consumer reaches them by deriving from the type. Member signatures read like declarations: `protected virtual void OnChanged()`, `public static string Describe(this Shape shape, string? prefix = null)`, `public const int MaxSides = 12`.
 
-- Only public members are read, so `protected` members don't appear.
-- Operator overloads don't appear.
-- Delegates get a page with no members, so their parameters aren't shown.
-- Type pages have no View Source section, and the `/api` page has no NuGet install widget.
+The pages use the same renderer as the CLI, so the rendering notes in [API Documentation](/guide/api-docs) apply here too. As with the CLI, inherited members aren't listed on the derived type, and extension methods appear as ordinary static methods. Compared with the CLI, type pages have no View Source section, and the `/api` page has no NuGet install widget.
 
 ### XML Documentation
 
 When `IncludeXmlDocs` is `true` (the default), MokaDocs looks for an XML file next to each assembly's DLL. For an assembly at `bin/Debug/net9.0/MyLib.dll`, it reads `bin/Debug/net9.0/MyLib.xml`. An assembly with no file location, as in a single-file publish, gets no XML docs.
 
-Documentation is matched by documentation ID. Nested types use a different name form in reflection (`Outer+Inner`) than in the XML file (`Outer.Inner`), so nested types and their members show no XML docs.
+Documentation is matched by documentation ID, the `name` attribute in the XML file. A delegate's `<param>` and `<returns>` tags describe its `Invoke` member.
 
-Empty summaries on types and members are filled from the direct base type or interfaces, when those types are also in `Assemblies`. The rules are the same as for the CLI; see `<inheritdoc>` in [API Documentation](/guide/api-docs).
+Empty summaries on types and members are filled from base types and interfaces, when those types are also in `Assemblies`. The rules are the same as for the CLI, `<inheritdoc cref="..."/>` included; see `<inheritdoc>` in [API Documentation](/guide/api-docs).
 
 ## Markdown Docs
 
-In addition to the API reference, you can serve hand-written Markdown pages. Set `DocsPath` to a folder of `.md` files. A relative path resolves from the process's current working directory, which isn't always your project folder, so building the path from the content root is safer:
+In addition to the API reference, you can serve hand-written Markdown pages. Set `DocsPath` to a folder of `.md` files. A relative path resolves from the application's content root, so it finds the folder whichever directory the app starts in, including with `--contentRoot`:
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
 {
     options.Title = "Contoso API";
-    options.DocsPath = Path.Combine(builder.Environment.ContentRootPath, "Docs");
+    options.DocsPath = "Docs";
 });
 ```
 
-If the folder doesn't exist, the site is built without Markdown pages. The log line "Copying docs from ..." shows the path MokaDocs looked in.
+If the folder doesn't exist, the site is built without Markdown pages, and a warning in the log names the path MokaDocs looked in.
 
 Put guide pages in a `guide` subfolder, since the default Guide entry lists the pages in `Docs/guide/`. `Docs/index.md` becomes the page at `/docs`:
 
@@ -270,22 +271,60 @@ builder.Services.AddMokaDocs(options =>
 
 ### Plugins
 
-Two plugins can be switched on through the options:
+Declare plugins in `Plugins`. A `PluginEntry` names a plugin by its `Id` and carries the options its `plugins:` entry would take in `mokadocs.yaml`:
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
 {
-    options.EnableRepl = true;
-    options.EnableBlazorPreview = true;
+    options.Plugins =
+    [
+        new PluginEntry
+        {
+            Id = "openapi",
+            Options = { ["spec"] = "openapi.json", ["routePrefix"] = "/rest-api" }
+        }
+    ];
+
+    options.Nav =
+    [
+        new NavEntry { Label = "REST API", Path = "/rest-api", Icon = "globe" },
+        new NavEntry { Label = "API Reference", Path = "/api", Icon = "code", AutoGenerate = true }
+    ];
 });
 ```
 
-Neither one works in this host:
+Relative paths in plugin options, such as the OpenAPI `spec`, resolve from the content root, the way the CLI resolves them from the folder of `mokadocs.yaml`. A list option takes any collection of strings, such as a `string[]`.
 
+A declared plugin runs only if the service collection has it. `AddMokaDocs()` registers the built-in plugins you declare: `openapi`, `mokadocs-blazor-preview`, `mokadocs-changelog` and `mokadocs-python-api`. Register a plugin of your own as an `IMokaPlugin`:
+
+```csharp
+builder.Services.AddSingleton<IMokaPlugin, ReleaseNotesPlugin>();
+builder.Services.AddMokaDocs(options =>
+{
+    options.Plugins = [new PluginEntry { Id = "release-notes" }];
+});
+```
+
+An id that matches no registered plugin is skipped with a warning in the log. The build's warnings and errors, plugin failures included, are logged and listed in `InMemorySite.Diagnostics`.
+
+Notes on the built-in plugins in this host:
+
+- **OpenAPI.** Set `routePrefix`. Its default, `/api`, is where the C# API reference lives: the two index pages share the route, only one of them is served, and the log reports the collision.
+- **Blazor preview.** `EnableBlazorPreview = true` loads the plugin. Its options go in an entry with the id `mokadocs-blazor-preview`, which loads the plugin on its own too:
+
+  ```csharp
+  options.Plugins =
+  [
+      new PluginEntry
+      {
+          Id = "mokadocs-blazor-preview",
+          Options = { ["previewHost"] = "../PreviewHost", ["usings"] = new[] { "Contoso.Components" } }
+      }
+  ];
+  ```
+
+  When the preview host's publish output is missing or older than its sources, the plugin runs `dotnet publish` during the build, which needs the .NET SDK on the machine serving the docs. The published host is served from memory under `{BasePath}/_preview-wasm/`.
 - **REPL.** `EnableRepl` adds a Run button to `csharp-repl` code blocks (see [Interactive REPL](/plugins/repl)). The button posts the code to `/api/repl/execute`, which only the `mokadocs serve` dev server handles. `MapMokaDocs()` doesn't map that endpoint, so readers get a "REPL server unavailable" message.
-- **Blazor preview.** The plugin needs its `previewHost` or `library` option to find a preview host project, and `MokaDocsOptions` has no way to pass plugin options. Pages with `blazor-preview` blocks are built without live previews.
-
-Other `IMokaPlugin` implementations, including ones you register in the service collection yourself, are never loaded.
 
 ## Endpoint Mapping
 
@@ -327,7 +366,7 @@ During development, set `CacheOutput = false` so every request rebuilds the site
 builder.Services.AddMokaDocs(options =>
 {
     options.CacheOutput = !builder.Environment.IsDevelopment();
-    options.DocsPath = Path.Combine(builder.Environment.ContentRootPath, "Docs");
+    options.DocsPath = "Docs";
 });
 ```
 
@@ -361,7 +400,7 @@ if (app.Environment.IsDevelopment())
 | | ASP.NET Core Integration | CLI (`mokadocs build`) |
 |---|---|---|
 | **Setup** | NuGet package and two method calls | `mokadocs.yaml` config file and CLI install |
-| **API Discovery** | Reflection over loaded assemblies, public members only | Roslyn analysis of the `.cs` files in each project folder |
+| **API Discovery** | Reflection over loaded assemblies, public and protected members | Roslyn analysis of the `.cs` files in each project folder |
 | **Output** | In memory, served by your app | Static files written to disk |
 | **Hosting** | Your app serves everything | Deploy static files to any host |
 | **Build trigger** | First HTTP request, or every request with `CacheOutput = false` | Explicit `mokadocs build` command |
@@ -382,13 +421,14 @@ builder.Services.AddMokaDocs(options =>
 {
     options.Title = "Contoso API Documentation";
     options.Description = "Reference for the Contoso platform SDK";
+    options.Version = "v2.0";
 
     options.PrimaryColor = "#6d28d9";
     options.LogoUrl = "/images/contoso-logo.svg";
     options.FaviconUrl = "/images/favicon.png";
     options.Copyright = "© {year} Contoso Ltd.";
 
-    options.DocsPath = Path.Combine(builder.Environment.ContentRootPath, "Docs");
+    options.DocsPath = "Docs";
     options.BasePath = "/docs";
     options.CacheOutput = !builder.Environment.IsDevelopment();
 
@@ -397,7 +437,7 @@ builder.Services.AddMokaDocs(options =>
     options.Nav =
     [
         new NavEntry { Label = "Guide", Path = "/guide", Icon = "book-open", Expanded = true },
-        new NavEntry { Label = "API Reference", Path = "/api", Icon = "code" }
+        new NavEntry { Label = "API Reference", Path = "/api", Icon = "code", AutoGenerate = true }
     ];
 });
 

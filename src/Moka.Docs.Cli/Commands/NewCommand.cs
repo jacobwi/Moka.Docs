@@ -156,6 +156,16 @@ internal static class NewCommand
 	}
 
 	/// <summary>
+	///     The plugin class name for a PascalCase plugin name: <c>MyCustom</c> and
+	///     <c>MyCustomPlugin</c> both become <c>MyCustomPlugin</c>. Appending the suffix
+	///     unconditionally produced <c>MyCustomPluginPlugin</c>.
+	/// </summary>
+	internal static string ToPluginClassName(string pascalName) =>
+		pascalName.Length > "Plugin".Length && pascalName.EndsWith("Plugin", StringComparison.Ordinal)
+			? pascalName
+			: pascalName + "Plugin";
+
+	/// <summary>
 	///     <c>MyCustomPlugin</c> and <c>my-custom-plugin</c> both become
 	///     <c>my-custom-plugin</c>, so the plugin id does not depend on how the name was typed.
 	/// </summary>
@@ -275,6 +285,7 @@ internal static class NewCommand
 			string name = parseResult.GetValue(nameArg)!;
 			string outputDir = parseResult.GetValue(pathOpt)!;
 			string pascal = ToPascalCase(name);
+			string className = ToPluginClassName(pascal);
 			string pluginId = $"mokadocs-{ToKebabCase(name)}";
 
 			AnsiConsole.MarkupLine("[bold green]mokadocs new plugin[/] - Scaffolding new plugin...");
@@ -323,7 +334,7 @@ internal static class NewCommand
 			                       /// <summary>
 			                       ///     A custom MokaDocs plugin.
 			                       /// </summary>
-			                       public sealed class {{pascal}}Plugin : IMokaPlugin
+			                       public sealed class {{className}} : IMokaPlugin
 			                       {
 			                           public string Id => "{{pluginId}}";
 			                           public string Name => "{{pascal}}";
@@ -344,12 +355,12 @@ internal static class NewCommand
 			                       """;
 
 			EnsureDirectoryAndWrite(
-				Path.Combine(projectDir, $"{pascal}Plugin.cs"),
+				Path.Combine(projectDir, $"{className}.cs"),
 				pluginClass);
 
 			AnsiConsole.MarkupLine(
 				$"[green]Created:[/] {Markup.Escape(Path.Combine(projectDir, $"{projectName}.csproj"))}");
-			AnsiConsole.MarkupLine($"[green]Created:[/] {Markup.Escape(Path.Combine(projectDir, $"{pascal}Plugin.cs"))}");
+			AnsiConsole.MarkupLine($"[green]Created:[/] {Markup.Escape(Path.Combine(projectDir, $"{className}.cs"))}");
 			AnsiConsole.WriteLine();
 			AnsiConsole.MarkupLine($"Plugin id: [bold]{Markup.Escape(pluginId)}[/]");
 			AnsiConsole.MarkupLine(

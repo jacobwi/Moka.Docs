@@ -32,6 +32,42 @@ public sealed class NewCommandTests
 	public void ToKebabCase_GivesTheSameIdHoweverTheNameIsTyped(string name, string expected) =>
 		NewCommand.ToKebabCase(name).Should().Be(expected);
 
+	[Theory]
+	[InlineData("MyCustom", "MyCustomPlugin")]
+	[InlineData("MyCustomPlugin", "MyCustomPlugin")]
+	[InlineData("Footer2", "Footer2Plugin")]
+	[InlineData("Plugin", "PluginPlugin")]
+	public void ToPluginClassName_AddsThePluginSuffixOnlyWhenMissing(string pascalName, string expected) =>
+		NewCommand.ToPluginClassName(pascalName).Should().Be(expected);
+
+	[Theory]
+	[InlineData("MyCustomPlugin")]
+	[InlineData("my-custom-plugin")]
+	public async Task NewPlugin_NameEndingInPlugin_DoesNotDoubleTheSuffix(string name)
+	{
+		// The class and its file were named MyCustomPluginPlugin.
+		string root = Path.Combine(Path.GetTempPath(), "mokadocs-newplugin-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			int exitCode = await NewCommand.Create().Parse(["plugin", name, "--path", root]).InvokeAsync();
+
+			string projectDir = Path.Combine(root, "Moka.Docs.Plugins.MyCustomPlugin");
+			exitCode.Should().Be(0);
+			Directory.GetFiles(projectDir).Select(Path.GetFileName)
+				.Should().BeEquivalentTo("Moka.Docs.Plugins.MyCustomPlugin.csproj", "MyCustomPlugin.cs");
+			File.ReadAllText(Path.Combine(projectDir, "MyCustomPlugin.cs"))
+				.Should().Contain("public sealed class MyCustomPlugin : IMokaPlugin")
+				.And.Contain("public string Id => \"mokadocs-my-custom-plugin\";");
+		}
+		finally
+		{
+			if (Directory.Exists(root))
+			{
+				Directory.Delete(root, true);
+			}
+		}
+	}
+
 	[Fact]
 	public void CardTemplate_UsesOnlyIconsAndVariantsThatRender()
 	{

@@ -12,9 +12,10 @@ namespace Moka.Docs.Engine.Discovery;
 ///     even when they live outside the <c>content.docs</c> directory tree.
 ///     <para>
 ///         Invoked from <c>DiscoveryPhase</c> after the normal markdown/asset glob.
-///         Logs warnings for missing source files but does not throw - a missing logo
-///         should not break a docs build, just fall back to the default SVG logo in
-///         the theme.
+///         A missing source file gets a warning diagnostic but does not throw - a missing
+///         logo should not break a docs build. The asset stays out of
+///         <see cref="BuildContext.BrandAssetFiles" />, which is how the template engine
+///         knows to fall back to the theme's default logo and to write no favicon link.
 ///     </para>
 /// </summary>
 public sealed class BrandAssetResolver(IFileSystem fileSystem, ILogger<BrandAssetResolver> logger)
@@ -27,11 +28,11 @@ public sealed class BrandAssetResolver(IFileSystem fileSystem, ILogger<BrandAsse
 	public void Resolve(BuildContext context)
 	{
 		SiteMetadata site = context.Config.Site;
-		AddIfPresent(context, site.Logo, "site.logo");
-		AddIfPresent(context, site.Favicon, "site.favicon");
+		AddIfPresent(context, site.Logo, "site.logo", "the header shows the theme's default logo instead");
+		AddIfPresent(context, site.Favicon, "site.favicon", "pages get no favicon link");
 	}
 
-	private void AddIfPresent(BuildContext context, SiteAssetReference? asset, string label)
+	private void AddIfPresent(BuildContext context, SiteAssetReference? asset, string label, string consequence)
 	{
 		if (asset is null || !asset.ShouldCopy)
 		{
@@ -41,7 +42,9 @@ public sealed class BrandAssetResolver(IFileSystem fileSystem, ILogger<BrandAsse
 		string sourcePath = asset.SourcePath!;
 		if (!fileSystem.File.Exists(sourcePath))
 		{
-			logger.LogWarning("{Label} file not found: {Path}", label, sourcePath);
+			// This only reached the logger, which a normal build doesn't print, while the theme
+			// kept emitting an <img> for a file that was never copied.
+			context.Diagnostics.Warning($"{label} file not found: {sourcePath}; {consequence}", "Discovery");
 			return;
 		}
 

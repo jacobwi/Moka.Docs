@@ -792,7 +792,10 @@ docs/api/*.yml
 docs/api/.manifest
 
 ### MokaDocs ###
+# Build cache, including the Blazor preview host generated for sites without a library option
 .mokadocs/
+# dotnet publish output of a Blazor preview host kept outside .mokadocs
+publish-output/
 _site/
 .DS_Store
 .idea/

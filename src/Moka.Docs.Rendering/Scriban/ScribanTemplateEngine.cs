@@ -105,9 +105,11 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 	///     Absolute URLs (http/https/protocol-relative/data URIs) pass through unchanged so CDN-
 	///     hosted brand assets work without a base-path prefix. Root-relative publish URLs get
 	///     the build <see cref="BuildConfig.BasePath" /> prepended so GitHub Pages project-page
-	///     deploys (<c>/Moka.Red/_site/</c>) resolve correctly.
+	///     deploys (<c>/Moka.Red/_site/</c>) resolve correctly. A local file the build didn't
+	///     find gets an empty URL, so the theme falls back as if none were configured.
 	/// </summary>
-	private static string ResolveBrandUrl(SiteAssetReference? asset, string basePath)
+	private static string ResolveBrandUrl(SiteAssetReference? asset, string basePath,
+		IReadOnlyDictionary<string, string>? brandAssetFiles)
 	{
 		if (asset is null)
 		{
@@ -117,6 +119,13 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		if (asset.IsAbsoluteUrl)
 		{
 			return asset.PublishUrl;
+		}
+
+		// A missing file is never copied into the site, and its URL made a broken image in the
+		// header and a favicon link that 404s.
+		if (asset.ShouldCopy && brandAssetFiles is not null && !brandAssetFiles.ContainsKey(asset.PublishUrl))
+		{
+			return "";
 		}
 
 		if (basePath == "/" || string.IsNullOrEmpty(basePath))
@@ -170,7 +179,10 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			// used in URLs (edit links), where Windows backslashes do not belong.
 			{ "source_path", page.SourcePath?.Replace('\\', '/') ?? "" },
 			{ "last_modified", page.LastModified?.ToString("yyyy-MM-dd") ?? "" },
-			{ "is_api", page.Origin == PageOrigin.ApiGenerated }
+			{ "is_api", page.Origin == PageOrigin.ApiGenerated },
+			{ "features", BuildFeatures(page.FrontMatter.Features, bp) },
+			{ "features_title", page.FrontMatter.FeaturesTitle },
+			{ "features_subtitle", page.FrontMatter.FeaturesSubtitle }
 		}, false);
 
 		#endregion
@@ -195,8 +207,8 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "copyright", ExpandYear(ctx.Config.Site.Copyright) },
 			{ "logo", ctx.Config.Site.Logo?.RawValue ?? "" },
 			{ "favicon", ctx.Config.Site.Favicon?.RawValue ?? "" },
-			{ "logo_url", ResolveBrandUrl(ctx.Config.Site.Logo, bp) },
-			{ "favicon_url", ResolveBrandUrl(ctx.Config.Site.Favicon, bp) },
+			{ "logo_url", ResolveBrandUrl(ctx.Config.Site.Logo, bp, ctx.BrandAssetFiles) },
+			{ "favicon_url", ResolveBrandUrl(ctx.Config.Site.Favicon, bp, ctx.BrandAssetFiles) },
 			// repo_url is used by the landing page "View on GitHub" button.
 			// Derived from editLink.repo when available; falls back to empty string
 			// which the template uses to hide the button entirely.
@@ -485,6 +497,38 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return false;
 	}
 
+	/// <summary>
+	///     The landing page feature cards. Text stays raw so the layout escapes it where it is
+	///     written. Icons resolve to SVG markup here because templates can't reach the icon set.
+	/// </summary>
+	private static ScriptArray BuildFeatures(List<LandingFeature> features, string basePath)
+	{
+		var arr = new ScriptArray();
+		foreach (LandingFeature feature in features)
+		{
+			string icon = feature.Icon ?? "";
+			string link = feature.Link ?? "";
+
+			// A root-relative link needs the base path like every other site URL, and nothing
+			// rewrites front matter values later. "//host/x" is protocol-relative, not a route.
+			if (link.StartsWith('/') && !link.StartsWith("//", StringComparison.Ordinal))
+			{
+				link = PrefixRoute(link, basePath);
+			}
+
+			arr.Add(new ScriptObject
+			{
+				{ "title", feature.Title },
+				{ "description", feature.Description },
+				{ "icon", icon },
+				{ "icon_svg", icon.Length > 0 ? LucideIcons.Get(icon) ?? "" : "" },
+				{ "link", link }
+			});
+		}
+
+		return arr;
+	}
+
 	private static ScriptArray BuildSocialLinks(List<SocialLink> links)
 	{
 		var arr = new ScriptArray();
@@ -639,6 +683,14 @@ public sealed class ThemeRenderContext
 
 	/// <summary>Package metadata for NuGet install widget.</summary>
 	public PackageMetadata? PackageInfo { get; init; }
+
+	/// <summary>
+	///     The local brand assets the build found and copies into the site, keyed by publish URL
+	///     (<see cref="BuildContext.BrandAssetFiles" />). A <c>site.logo</c> or <c>site.favicon</c>
+	///     file that is not listed gets an empty <c>site.logo_url</c> or <c>site.favicon_url</c>.
+	///     <c>null</c> leaves every configured URL in place.
+	/// </summary>
+	public IReadOnlyDictionary<string, string>? BrandAssetFiles { get; init; }
 
 	/// <summary>Gets a template by layout name.</summary>
 	public string? GetTemplate(string layoutName) => Templates.GetValueOrDefault(layoutName);

@@ -205,4 +205,26 @@ public sealed class XmlDocParserTests
 		doc.Summary.Should().Contain("<li>Item one</li>");
 		doc.Summary.Should().Contain("<li>Item two</li>");
 	}
+
+	[Fact]
+	public void ParseXml_InheritDocCref_IsKept()
+	{
+		// Only the source analyzer stored the cref, so the ASP.NET Core host ignored it.
+		const string xml = """
+		                   <?xml version="1.0"?>
+		                   <doc>
+		                       <assembly><name>TestLib</name></assembly>
+		                       <members>
+		                           <member name="M:MyApp.Foo.ProcessMarkdown(System.String)">
+		                               <inheritdoc cref="M:MyApp.IProcessor.Process(System.String)"/>
+		                           </member>
+		                       </members>
+		                   </doc>
+		                   """;
+
+		XmlDocBlock doc = _parser.ParseXml(xml).Members["M:MyApp.Foo.ProcessMarkdown(System.String)"];
+
+		doc.HasInheritDocTag.Should().BeTrue();
+		doc.InheritDocCref.Should().Be("M:MyApp.IProcessor.Process(System.String)");
+	}
 }

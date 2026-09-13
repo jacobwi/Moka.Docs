@@ -25,47 +25,20 @@ public sealed class NuGetPackageResolver(ILogger logger)
 		}
 
 		string tempDir = Path.Combine(Path.GetTempPath(), "mokadocs-repl-" + Guid.NewGuid().ToString("N")[..8]);
-		Directory.CreateDirectory(tempDir);
 
 		try
 		{
-			string csproj = BuildProjectFile(packageSpecs);
-			string projectPath = Path.Combine(tempDir, "ReplPackages.csproj");
-			await File.WriteAllTextAsync(projectPath, csproj, ct);
-
-			logger.LogInformation("Resolving {Count} NuGet package(s) for REPL...", packageSpecs.Count);
-
-			string publishDir = Path.Combine(tempDir, "publish");
-
-			// Run dotnet publish to get all DLLs in one folder
-			(int exitCode, string output) = await RunDotnetAsync(
-				$"publish \"{projectPath}\" -c Release -o \"{publishDir}\" --nologo -v quiet",
-				tempDir, ct);
-
-			if (exitCode != 0)
+			ResolvedPackages published = await PublishAsync(packageSpecs, tempDir, ct);
+			if (published.Error is not null)
 			{
-				logger.LogError("dotnet publish failed with exit code {ExitCode} while resolving REPL packages",
-					exitCode);
-				return new ResolvedPackages
-				{
-					Error = $"dotnet publish exited with code {exitCode}"
-					        + (string.IsNullOrWhiteSpace(output) ? "" : $": {output.Trim()}")
-				};
+				return published;
 			}
 
 			var assemblies = new List<Assembly>();
 			var namespaces = new HashSet<string>();
 
-			foreach (string dll in Directory.EnumerateFiles(publishDir, "*.dll"))
+			foreach (string dll in published.AssemblyPaths)
 			{
-				string fileName = Path.GetFileNameWithoutExtension(dll);
-
-				// ReplPackages is the temporary project itself, not one of the packages.
-				if (IsSharedFrameworkAssembly(fileName) || fileName == "ReplPackages")
-				{
-					continue;
-				}
-
 				try
 				{
 					var asm = Assembly.LoadFrom(dll);
@@ -81,7 +54,7 @@ public sealed class NuGetPackageResolver(ILogger logger)
 				}
 				catch (Exception ex)
 				{
-					logger.LogDebug("Skipped {File}: {Error}", fileName, ex.Message);
+					logger.LogDebug("Skipped {File}: {Error}", Path.GetFileName(dll), ex.Message);
 				}
 			}
 
@@ -91,6 +64,7 @@ public sealed class NuGetPackageResolver(ILogger logger)
 			return new ResolvedPackages
 			{
 				Assemblies = assemblies,
+				AssemblyPaths = published.AssemblyPaths,
 				Namespaces = namespaces.OrderBy(n => n).ToList()
 			};
 		}
@@ -106,6 +80,51 @@ public sealed class NuGetPackageResolver(ILogger logger)
 				/* best effort */
 			}
 		}
+	}
+
+	/// <summary>
+	///     Publishes the packages into <paramref name="directory" /> and returns the assembly paths
+	///     without loading them, for a REPL worker process to load. The files stay until the caller
+	///     deletes the directory.
+	/// </summary>
+	internal async Task<ResolvedPackages> PublishAsync(IReadOnlyList<string> packageSpecs, string directory,
+		CancellationToken ct)
+	{
+		Directory.CreateDirectory(directory);
+
+		string csproj = BuildProjectFile(packageSpecs);
+		string projectPath = Path.Combine(directory, "ReplPackages.csproj");
+		await File.WriteAllTextAsync(projectPath, csproj, ct);
+
+		logger.LogInformation("Resolving {Count} NuGet package(s) for REPL...", packageSpecs.Count);
+
+		string publishDir = Path.Combine(directory, "publish");
+
+		// Run dotnet publish to get all DLLs in one folder
+		(int exitCode, string output) = await RunDotnetAsync(
+			$"publish \"{projectPath}\" -c Release -o \"{publishDir}\" --nologo -v quiet",
+			directory, ct);
+
+		if (exitCode != 0)
+		{
+			logger.LogError("dotnet publish failed with exit code {ExitCode} while resolving REPL packages",
+				exitCode);
+			return new ResolvedPackages
+			{
+				Error = $"dotnet publish exited with code {exitCode}"
+				        + (string.IsNullOrWhiteSpace(output) ? "" : $": {output.Trim()}")
+			};
+		}
+
+		// ReplPackages is the temporary project itself, not one of the packages.
+		return new ResolvedPackages
+		{
+			AssemblyPaths = Directory.EnumerateFiles(publishDir, "*.dll")
+				.Where(dll => Path.GetFileNameWithoutExtension(dll) is var name
+				              && name != "ReplPackages" && !IsSharedFrameworkAssembly(name))
+				.Order(StringComparer.OrdinalIgnoreCase)
+				.ToList()
+		};
 	}
 
 	/// <summary>
@@ -232,7 +251,7 @@ public sealed class NuGetPackageResolver(ILogger logger)
 		return (process.ExitCode, $"{stdout}\n{stderr}".Trim());
 	}
 
-	private static IEnumerable<string> GetRootNamespaces(Assembly assembly)
+	internal static IEnumerable<string> GetRootNamespaces(Assembly assembly)
 	{
 		var namespaces = new HashSet<string>();
 		try
@@ -273,6 +292,12 @@ public sealed class NuGetPackageResolver(ILogger logger)
 	{
 		/// <summary>Assemblies loaded from the published output.</summary>
 		public IReadOnlyList<Assembly> Assemblies { get; init; } = [];
+
+		/// <summary>
+		///     Paths of the package assemblies. Filled in both modes; a REPL worker process loads these
+		///     instead of <see cref="Assemblies" />.
+		/// </summary>
+		public IReadOnlyList<string> AssemblyPaths { get; init; } = [];
 
 		/// <summary>Root namespaces discovered from the loaded assemblies.</summary>
 		public IReadOnlyList<string> Namespaces { get; init; } = [];

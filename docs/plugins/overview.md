@@ -45,7 +45,7 @@ MokaDocs ships with these built-in plugins. Add them to your `mokadocs.yaml` to 
 | `mokadocs-changelog` | [Release Changelog](/plugins/changelog) | Timeline UI for release notes using `:::changelog` containers |
 | `mokadocs-python-api` | [Python API Reference](/plugins/python-api) | Generates API reference pages from Python source files |
 
-The [ASP.NET Core host](/guide/aspnetcore) can only activate `mokadocs-repl` and `mokadocs-blazor-preview`, through its `EnableRepl` and `EnableBlazorPreview` options.
+In the [ASP.NET Core host](/guide/aspnetcore), `MokaDocsOptions.Plugins` declares plugins by id with their options, and `EnableRepl` and `EnableBlazorPreview` turn those two on. The REPL doesn't run code there.
 
 ## IMokaPlugin Interface
 
@@ -240,7 +240,7 @@ services.AddSingleton<IMokaPlugin, MyCustomPlugin>();
 Registration alone doesn't activate a plugin: its id also has to be declared under `plugins` in the site configuration. Where that is possible:
 
 - **`mokadocs` CLI** - registers only the built-in plugins. You can't add your own.
-- **ASP.NET Core host** (`AddMokaDocs`) - builds its site configuration from `MokaDocsOptions`, which declares only `mokadocs-repl` and `mokadocs-blazor-preview`. An `IMokaPlugin` you register in the application's services is never activated.
+- **ASP.NET Core host** (`AddMokaDocs`) - register your plugin in the application's services and add a `PluginEntry` with its id to `MokaDocsOptions.Plugins`. See [Plugins](/guide/aspnetcore#plugins).
 - **Your own host** - a program that builds the site with the MokaDocs libraries, registers your plugin, and reads a `mokadocs.yaml` that declares it. [Step 3](#step-3-run-it-from-your-own-host) below shows a complete one.
 
 ## Creating a Custom Plugin

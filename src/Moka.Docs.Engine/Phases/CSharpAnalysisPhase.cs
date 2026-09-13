@@ -1,6 +1,7 @@
 using System.IO.Abstractions;
 using System.Text;
 using System.Web;
+using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Api;
@@ -58,10 +59,14 @@ public sealed class CSharpAnalysisPhase(
 
 			try
 			{
+				// Like the analyzer, this reads the real disk: the references, usings and symbols
+				// come from files next to the sources.
+				CSharpProjectInfo projectInfo = CSharpProjectInfo.Load(projectPath);
+
 				// Roslyn analysis dominates build time, so a cache hit here is most of the
 				// difference between a warm and a cold build.
 				string fingerprint = context.UseCache
-					? BuildCache.ComputeFingerprint(projectDir, project.IncludeInternals)
+					? BuildCache.ComputeFingerprint(projectDir, projectInfo.InputFiles, project.IncludeInternals)
 					: "";
 
 				ApiReference? apiRef = context.UseCache && fingerprint.Length > 0
@@ -71,7 +76,7 @@ public sealed class CSharpAnalysisPhase(
 				if (apiRef is null)
 				{
 					logger.LogInformation("Analyzing project: {Name} ({Path})", assemblyName, project.Path);
-					apiRef = analyzer.AnalyzeDirectory(projectDir, assemblyName, project.IncludeInternals);
+					apiRef = analyzer.AnalyzeProject(projectInfo, assemblyName, project.IncludeInternals);
 
 					if (context.UseCache && fingerprint.Length > 0)
 					{
@@ -112,7 +117,7 @@ public sealed class CSharpAnalysisPhase(
 				context.ApiModel.Namespaces.Sum(n => n.Types.Count),
 				context.ApiModel.Namespaces.Count);
 
-			// Extract package metadata from the first project's .csproj
+			// Extract package metadata for the NuGet install widget
 			context.PackageInfo = ExtractPackageMetadata(context);
 
 			// Generate API pages
@@ -124,14 +129,14 @@ public sealed class CSharpAnalysisPhase(
 
 	private PackageMetadata? ExtractPackageMetadata(BuildContext context)
 	{
-		ProjectSource? firstProject = context.Config.Content.Projects.FirstOrDefault();
-		if (firstProject is null)
+		ProjectSource? packageProject = SelectPackageProject(context);
+		if (packageProject is null)
 		{
 			return null;
 		}
 
 		string projectPath = context.FileSystem.Path.GetFullPath(
-			context.FileSystem.Path.Combine(context.RootDirectory, firstProject.Path));
+			context.FileSystem.Path.Combine(context.RootDirectory, packageProject.Path));
 
 		if (!context.FileSystem.File.Exists(projectPath))
 		{
@@ -166,6 +171,85 @@ public sealed class CSharpAnalysisPhase(
 	}
 
 	/// <summary>
+	///     Picks the project the install widget describes: the first configured project that
+	///     produces a package, or the first project when none does.
+	/// </summary>
+	/// <remarks>
+	///     The widget used to describe the first project whatever it was, so a site that listed a
+	///     test or sample project first told readers to install a package that does not exist.
+	/// </remarks>
+	private static ProjectSource? SelectPackageProject(BuildContext context)
+	{
+		IFileSystem fs = context.FileSystem;
+		foreach (ProjectSource project in context.Config.Content.Projects)
+		{
+			string projectPath = fs.Path.GetFullPath(fs.Path.Combine(context.RootDirectory, project.Path));
+			if (fs.File.Exists(projectPath) && IsPackable(fs, projectPath))
+			{
+				return project;
+			}
+		}
+
+		return context.Config.Content.Projects.FirstOrDefault();
+	}
+
+	private static bool IsPackable(IFileSystem fs, string projectPath)
+	{
+		if (string.Equals(ReadProjectProperty(fs, projectPath, "IsTestProject"), "true", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		if (ReadProjectProperty(fs, projectPath, "IsPackable") is { } isPackable)
+		{
+			return !string.Equals(isPackable, "false", StringComparison.OrdinalIgnoreCase);
+		}
+
+		// Application SDKs default IsPackable to false; the others default it to true.
+		string sdk = TryParseXml(fs, projectPath)?.Root?.Attribute("Sdk")?.Value ?? "";
+		return !sdk.Split(';')
+			.Select(name => name.Split('/')[0].Trim())
+			.Any(name => name.Equals("Microsoft.NET.Sdk.Web", StringComparison.OrdinalIgnoreCase)
+			             || name.Equals("Microsoft.NET.Sdk.Worker", StringComparison.OrdinalIgnoreCase)
+			             || name.Equals("Microsoft.NET.Sdk.BlazorWebAssembly", StringComparison.OrdinalIgnoreCase));
+	}
+
+	/// <summary>
+	///     Reads an unconditional property from the project file, then from the
+	///     <c>Directory.Build.props</c> files above it, nearest first.
+	/// </summary>
+	private static string? ReadProjectProperty(IFileSystem fs, string projectPath, string name)
+	{
+		if (TryParseXml(fs, projectPath) is { } project && ReadProperty(project, name) is { } value)
+		{
+			return value;
+		}
+
+		for (string? dir = fs.Path.GetDirectoryName(projectPath); dir is not null; dir = fs.Path.GetDirectoryName(dir))
+		{
+			string props = fs.Path.Combine(dir, "Directory.Build.props");
+			if (fs.File.Exists(props) && TryParseXml(fs, props) is { } doc && ReadProperty(doc, name) is { } inherited)
+			{
+				return inherited;
+			}
+		}
+
+		return null;
+	}
+
+	private static XDocument? TryParseXml(IFileSystem fs, string path)
+	{
+		try
+		{
+			return XDocument.Parse(fs.File.ReadAllText(path));
+		}
+		catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
 	///     Walks up from the project's folder and returns the version from the nearest
 	///     <c>Directory.Build.props</c> that sets one.
 	/// </summary>
@@ -190,26 +274,30 @@ public sealed class CSharpAnalysisPhase(
 	/// </summary>
 	private static string? ReadVersion(XDocument doc)
 	{
-		string? Property(string name)
-		{
-			string? value = doc.Root?.Elements()
-				.Where(e => e.Name.LocalName == "PropertyGroup" && e.Attribute("Condition") is null)
-				.Elements()
-				.LastOrDefault(e => e.Name.LocalName == name && e.Attribute("Condition") is null)
-				?.Value.Trim();
-
-			return string.IsNullOrEmpty(value) || value.Contains("$(") ? null : value;
-		}
-
-		string? version = Property("PackageVersion") ?? Property("Version");
+		string? version = ReadProperty(doc, "PackageVersion") ?? ReadProperty(doc, "Version");
 		if (version is not null)
 		{
 			return version;
 		}
 
-		string? prefix = Property("VersionPrefix");
-		string? suffix = Property("VersionSuffix");
+		string? prefix = ReadProperty(doc, "VersionPrefix");
+		string? suffix = ReadProperty(doc, "VersionSuffix");
 		return prefix is null ? null : suffix is null ? prefix : $"{prefix}-{suffix}";
+	}
+
+	/// <summary>
+	///     Reads the last unconditional definition of a property, skipping values built from other
+	///     properties such as <c>$(Major).1</c>.
+	/// </summary>
+	private static string? ReadProperty(XDocument doc, string name)
+	{
+		string? value = doc.Root?.Elements()
+			.Where(e => e.Name.LocalName == "PropertyGroup" && e.Attribute("Condition") is null)
+			.Elements()
+			.LastOrDefault(e => e.Name.LocalName == name && e.Attribute("Condition") is null)
+			?.Value.Trim();
+
+		return string.IsNullOrEmpty(value) || value.Contains("$(") ? null : value;
 	}
 
 	private static void GenerateApiPages(BuildContext context)
@@ -218,6 +306,9 @@ public sealed class CSharpAnalysisPhase(
 		{
 			return;
 		}
+
+		// Collect all types across namespaces for cref links and type dependency graph lookups
+		var allTypes = context.ApiModel.Namespaces.SelectMany(n => n.Types).ToList();
 
 		// Generate API index page listing all namespaces and types
 		var indexHtml = new StringBuilder();
@@ -231,7 +322,8 @@ public sealed class CSharpAnalysisPhase(
 			{
 				string route = $"/api/{ns.Name.Replace('.', '/')}/{type.Name}".ToLowerInvariant();
 				string kindBadge = type.Kind.ToString().ToLowerInvariant();
-				string summary = type.Documentation?.Summary ?? "";
+				// Resolved like the type page: raw <see cref> anchors had no href in this table.
+				string summary = ApiPageRenderer.RenderSummary(type, allTypes);
 				indexHtml.AppendLine("<tr>");
 				indexHtml.AppendLine($"<td><a href=\"{route}\">{HttpUtility.HtmlEncode(type.Name)}</a></td>");
 				indexHtml.AppendLine($"<td><span class=\"api-badge api-badge-{kindBadge}\">{type.Kind}</span></td>");
@@ -259,9 +351,6 @@ public sealed class CSharpAnalysisPhase(
 			Origin = PageOrigin.ApiGenerated
 		};
 		context.Pages.Add(indexPage);
-
-		// Collect all types across namespaces for type dependency graph lookups
-		var allTypes = context.ApiModel.Namespaces.SelectMany(n => n.Types).ToList();
 
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
 		foreach (ApiType type in ns.Types)

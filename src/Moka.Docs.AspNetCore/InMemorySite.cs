@@ -1,3 +1,5 @@
+using Moka.Docs.Core.Diagnostics;
+
 namespace Moka.Docs.AspNetCore;
 
 /// <summary>
@@ -8,6 +10,12 @@ public sealed class InMemorySite
 {
 	/// <summary>All files in the site, keyed by relative path.</summary>
 	public Dictionary<string, SiteFile> Files { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	///     Warnings and errors the build reported, such as a plugin that failed or two pages
+	///     sharing a route. The CLI prints these; the in-memory build also logs them.
+	/// </summary>
+	public IReadOnlyList<Diagnostic> Diagnostics { get; init; } = [];
 }
 
 /// <summary>
@@ -38,6 +46,9 @@ public sealed record SiteFile(byte[] Content, string ContentType)
 			".xml" => "application/xml",
 			".txt" => "text/plain; charset=utf-8",
 			".webp" => "image/webp",
+			// The Blazor preview host's runtime. Browsers only compile WebAssembly while it
+			// downloads when the response says application/wasm.
+			".wasm" => "application/wasm",
 			_ => "application/octet-stream"
 		};
 	}

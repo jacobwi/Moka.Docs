@@ -104,33 +104,18 @@ public sealed class PluginDiagnosticsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task BlazorPreview_WithABlockButNoPreviewHost_ReportsAnError()
-	{
-		File.WriteAllText(Path.Combine(_root, "docs", "index.md"),
-			"---\ntitle: Home\n---\n\n```blazor-preview\n<h3>Hello</h3>\n```\n");
-
-		DryRunOutcome outcome = await DryRunBuild.RunAsync(Config(), _root, false, false,
-			TestContext.Current.CancellationToken);
-
-		outcome.Context.Diagnostics.All.Should().ContainSingle(d =>
-			d.Severity == DiagnosticSeverity.Error
-			&& d.Source == "mokadocs-blazor-preview"
-			&& d.Message.Contains("preview-host"));
-	}
-
-	[Fact]
 	public async Task Build_WhenAPluginReportsAnError_ExitsNonZero()
 	{
 		// Error diagnostics used to leave the exit code at 0, so CI published a broken site.
-		File.WriteAllText(Path.Combine(_root, "docs", "index.md"),
-			"---\ntitle: Home\n---\n\n```blazor-preview\n<h3>Hello</h3>\n```\n");
+		File.WriteAllText(Path.Combine(_root, "docs", "index.md"), "---\ntitle: Home\n---\n\nText.\n");
 		string yaml = Path.Combine(_root, "mokadocs.yaml");
-		File.WriteAllText(yaml,
-			"site:\n  title: T\ncontent:\n  docs: ./docs\nbuild:\n  output: ./_site\n  cache: false\nplugins:\n  - name: mokadocs-blazor-preview\n");
+		const string site = "site:\n  title: T\ncontent:\n  docs: ./docs\nbuild:\n  output: ./_site\n  cache: false\n";
 
+		// The Python API plugin reports an error when its required source option is missing.
+		File.WriteAllText(yaml, site + "plugins:\n  - name: mokadocs-python-api\n");
 		int failing = await BuildCommand.Create().Parse(["--config", yaml]).InvokeAsync();
 
-		File.WriteAllText(Path.Combine(_root, "docs", "index.md"), "---\ntitle: Home\n---\n\nNo previews.\n");
+		File.WriteAllText(yaml, site);
 		int passing = await BuildCommand.Create().Parse(["--config", yaml]).InvokeAsync();
 
 		failing.Should().Be(1);

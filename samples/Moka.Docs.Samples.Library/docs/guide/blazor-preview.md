@@ -73,16 +73,10 @@ A component that renders a dynamic list of items:
 
 ## How It Works
 
-When you use `mokadocs serve`, the preview tab sends the component source to the dev server, which performs server-side rendering to produce a static HTML preview. This gives you a visual representation of the component's initial state without requiring a full Blazor WebAssembly runtime.
+The build compiles each block into its own assembly and shows the component in an iframe running a Blazor WebAssembly app, so event handlers such as `@onclick` work in the preview. The **Source** tab shows the code of the block.
 
-The preview supports:
-
-- **HTML markup** with inline styles
-- **Field initializers** (variables are substituted with their initial values)
-- **`@foreach` loops** over simple collections
-- **`@if` conditionals** based on field truthiness
-- **Blazor directives** (`@onclick`, `@bind`, etc.) are displayed in source but stripped from the preview
+This sample's `mokadocs.yaml` declares the plugin without a `library` option, because the blocks only use plain Razor. The first build generates the preview app in `.mokadocs/preview-host/` and publishes it, which takes a minute or two and downloads packages from NuGet. Later builds reuse it.
 
 ::: tip
-For the best experience, run `mokadocs serve` to see live previews. In static builds, the source code is always visible but previews require the dev server.
+Previews run entirely in the browser, so they work on a static host such as GitHub Pages as well as under `mokadocs serve`.
 :::

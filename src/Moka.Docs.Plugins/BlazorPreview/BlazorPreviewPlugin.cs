@@ -258,6 +258,19 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	/// </remarks>
 	private const string _hostPackageVersion = "1.3.5";
 
+	/// <summary>
+	///     Where the plugin scaffolds a preview host when neither <c>previewHost</c> nor
+	///     <c>library</c> is set, relative to the mokadocs.yaml directory.
+	/// </summary>
+	/// <remarks>
+	///     A host without a library holds nothing of the user's, so it lives with the build cache
+	///     instead of next to their sources. The SDK also leaves dot folders out of a project's
+	///     default globs: in <c>./preview-host/</c>, a project that shares its folder with
+	///     mokadocs.yaml (the Library sample does) compiles the host's <c>Program.cs</c> as its own
+	///     source.
+	/// </remarks>
+	private const string _generatedHostDirectory = ".mokadocs/preview-host";
+
 	// ── Instance state ─────────────────────────────────────────────────────────
 
 	private readonly List<string> _extraUsings = [];
@@ -396,24 +409,26 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// Resolve the preview-host directory: explicit option wins, otherwise scan
 		// conventional locations (./preview-host/, ./docs-preview-host/, or any subdir
 		// containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
-		string previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, buildContext.RootDirectory);
+		string previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, library, buildContext.RootDirectory);
 
 		// Auto-scaffold a fresh preview-host project from a generic template if the
 		// resolved directory doesn't yet contain a Blazor WASM csproj. The user owns the
 		// scaffolded files thereafter - mokadocs never overwrites them.
 		if (!HasBlazorWasmCsproj(previewHostDir))
 		{
-			if (string.IsNullOrWhiteSpace(library))
+			// Both the scaffold and dotnet publish need a real directory, and a build over a
+			// virtual file system can have a root that isn't on disk.
+			if (!Directory.Exists(buildContext.RootDirectory))
 			{
 				context.LogError(
-					$"mokadocs-blazor-preview: no Blazor WebAssembly preview-host project found at " +
-					$"'{previewHostDir}', and the 'library' option is not set. Add " +
-					$"`library: <PackageId>@<Version>` (or just `library: <PackageId>`) to your " +
-					"mokadocs.yaml so the plugin can scaffold a preview-host project for you. " +
-					"Alternatively, set `previewHost: <path>` to point at an existing project.");
+					$"mokadocs-blazor-preview: no Blazor WebAssembly preview-host project found at '{previewHostDir}', " +
+					$"and the build root '{buildContext.RootDirectory}' is not a directory on disk, so the plugin " +
+					"can't scaffold one.");
 				return false;
 			}
 
+			// Without a library the scaffold references only Moka.Blazor.Repl.Host, which is all
+			// plain Razor previews need. This used to fail the build and ask for a library.
 			ScaffoldPreviewHost(previewHostDir, library, context);
 		}
 
@@ -576,11 +591,13 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///         </list>
 	///     </para>
 	///     <para>
-	///         If nothing is found, returns <c>./preview-host/</c> as the default scaffold target -
-	///         the caller is expected to scaffold a fresh project there.
+	///         If nothing is found, returns the scaffold target: <c>./preview-host/</c> when a
+	///         <paramref name="library" /> is set, otherwise <c>./.mokadocs/preview-host/</c>
+	///         (<see cref="_generatedHostDirectory" />). The caller scaffolds a project there
+	///         unless one already exists.
 	///     </para>
 	/// </summary>
-	private static string ResolvePreviewHostDirectory(string? explicitPath, string rootDir)
+	private static string ResolvePreviewHostDirectory(string? explicitPath, string? library, string rootDir)
 	{
 		if (!string.IsNullOrWhiteSpace(explicitPath))
 		{
@@ -610,7 +627,9 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		}
 
 		// Default scaffold target if nothing found.
-		return Path.GetFullPath(Path.Combine(rootDir, conventional[0]));
+		return Path.GetFullPath(string.IsNullOrWhiteSpace(library)
+			? Path.Combine(rootDir, _generatedHostDirectory)
+			: Path.Combine(rootDir, conventional[0]));
 	}
 
 	/// <summary>
@@ -645,14 +664,17 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	/// <summary>
 	///     Writes a fresh, library-agnostic Blazor WebAssembly preview-host project (csproj +
-	///     Program.cs + wwwroot/index.html) into <paramref name="dir" />, substituting the
-	///     consumer's library package id and version into the csproj's <c>PackageReference</c>
-	///     and into the index.html theme/customization markers. Files are written ONLY when they
-	///     do not already exist - mokadocs never overwrites user edits.
+	///     Program.cs + wwwroot/index.html) into <paramref name="dir" />. With a
+	///     <paramref name="librarySpec" />, the consumer's library package id and version go into
+	///     the csproj's <c>PackageReference</c> and into the index.html customization markers;
+	///     without one, the csproj references only <c>Moka.Blazor.Repl.Host</c>. Files are written
+	///     ONLY when they do not already exist - mokadocs never overwrites user edits.
 	/// </summary>
-	private static void ScaffoldPreviewHost(string dir, string librarySpec, IPluginContext context)
+	private static void ScaffoldPreviewHost(string dir, string? librarySpec, IPluginContext context)
 	{
-		(string libId, string libVersion) = ParseLibrarySpec(librarySpec);
+		(string Id, string Version)? library = string.IsNullOrWhiteSpace(librarySpec)
+			? null
+			: ParseLibrarySpec(librarySpec);
 
 		Directory.CreateDirectory(dir);
 		Directory.CreateDirectory(Path.Combine(dir, "wwwroot"));
@@ -671,14 +693,19 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		string buildTargetsPath = Path.Combine(dir, "Directory.Build.targets");
 		string packagesPropsPath = Path.Combine(dir, "Directory.Packages.props");
 
+		string libraryReference = library is { } lib
+			? _scaffoldLibraryReferenceTemplate
+				.Replace("{LIBRARY_ID}", lib.Id, StringComparison.Ordinal)
+				.Replace("{LIBRARY_VERSION}", lib.Version, StringComparison.Ordinal)
+			: "";
+
 		string csproj = _scaffoldCsprojTemplate
-			.Replace("{LIBRARY_ID}", libId, StringComparison.Ordinal)
-			.Replace("{LIBRARY_VERSION}", libVersion, StringComparison.Ordinal)
+			.Replace("{LIBRARY_REFERENCE}", libraryReference, StringComparison.Ordinal)
 			.Replace("{HOST_VERSION}", _hostPackageVersion, StringComparison.Ordinal);
 
 		string program = _scaffoldProgramTemplate;
 		string indexHtml = _scaffoldIndexHtmlTemplate
-			.Replace("{LIBRARY_ID}", libId, StringComparison.Ordinal);
+			.Replace("{LIBRARY_ID}", library?.Id ?? "YourLibrary", StringComparison.Ordinal);
 
 		bool any = false;
 		if (!File.Exists(csprojPath))
@@ -720,9 +747,12 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		if (any)
 		{
+			string libraryText = library is null
+				? "no component library"
+				: $"library: {library.Value.Id}@{library.Value.Version}";
 			context.LogInfo(
 				$"mokadocs-blazor-preview: scaffolded preview-host at '{dir}' " +
-				$"(library: {libId}@{libVersion}, host: Moka.Blazor.Repl.Host@{_hostPackageVersion}). " +
+				$"({libraryText}, host: Moka.Blazor.Repl.Host@{_hostPackageVersion}). " +
 				"Edit Program.cs / wwwroot/index.html to add your services and CSS - mokadocs will not overwrite them.");
 		}
 	}
@@ -1483,17 +1513,23 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                                 <ItemGroup>
 	                                                   <!-- The iframe-hosted App.razor + wasmPreview.js bridge. -->
 	                                                   <PackageReference Include="Moka.Blazor.Repl.Host" Version="{HOST_VERSION}" />
-
-	                                                   <!-- Your component library. The mokadocs plugin reads this project's
-	                                                        bin/Release/net10.0/ for Roslyn references when compiling docs
-	                                                        preview snippets, so any types you can `@using` from your library
-	                                                        here are available inside docs preview blocks. -->
-	                                                   <PackageReference Include="{LIBRARY_ID}" Version="{LIBRARY_VERSION}" />
-	                                                 </ItemGroup>
+	                                               {LIBRARY_REFERENCE}  </ItemGroup>
 
 	                                               </Project>
 
 	                                               """;
+
+	// The leading and trailing newlines are deliberate: {LIBRARY_REFERENCE} sits at the start of
+	// the </ItemGroup> line, so a host without a library gets no stray blank line.
+	private const string _scaffoldLibraryReferenceTemplate = """
+
+	                                                             <!-- Your component library. The mokadocs plugin reads this project's
+	                                                                  bin/Release/net10.0/ for Roslyn references when compiling docs
+	                                                                  preview snippets, so any types you can `@using` from your library
+	                                                                  here are available inside docs preview blocks. -->
+	                                                             <PackageReference Include="{LIBRARY_ID}" Version="{LIBRARY_VERSION}" />
+
+	                                                         """;
 
 	private const string _scaffoldProgramTemplate = """
 	                                                using Microsoft.AspNetCore.Components.Web;

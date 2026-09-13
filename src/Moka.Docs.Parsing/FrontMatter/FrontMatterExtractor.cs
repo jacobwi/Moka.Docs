@@ -128,8 +128,34 @@ public sealed class FrontMatterExtractor
 			Expanded = dto.Expanded ?? true,
 			Route = dto.Route,
 			Version = dto.Version,
-			Requires = dto.Requires
+			Requires = dto.Requires,
+			Features = MapFeatures(dto.Features),
+			FeaturesTitle = dto.FeaturesTitle?.Trim() ?? "",
+			FeaturesSubtitle = dto.FeaturesSubtitle?.Trim() ?? ""
 		};
+	}
+
+	private static List<LandingFeature> MapFeatures(List<LandingFeatureDto?>? features)
+	{
+		var cards = new List<LandingFeature>();
+		foreach (LandingFeatureDto? feature in features ?? [])
+		{
+			// A bare "-" list item deserializes to null and has nothing to show.
+			if (feature is null)
+			{
+				continue;
+			}
+
+			cards.Add(new LandingFeature
+			{
+				Title = feature.Title?.Trim() ?? "",
+				Description = feature.Description?.Trim() ?? "",
+				Icon = string.IsNullOrWhiteSpace(feature.Icon) ? null : feature.Icon.Trim(),
+				Link = string.IsNullOrWhiteSpace(feature.Link) ? null : feature.Link.Trim()
+			});
+		}
+
+		return cards;
 	}
 
 	private static PageVisibility ParseVisibility(string? value)
@@ -172,6 +198,18 @@ internal sealed class FrontMatterDto
 	public string? Route { get; set; }
 	public string? Version { get; set; }
 	public string? Requires { get; set; }
+	public List<LandingFeatureDto?>? Features { get; set; }
+	public string? FeaturesTitle { get; set; }
+	public string? FeaturesSubtitle { get; set; }
+}
+
+/// <summary>DTO for one item of the <c>features</c> front matter list.</summary>
+internal sealed class LandingFeatureDto
+{
+	public string? Title { get; set; }
+	public string? Description { get; set; }
+	public string? Icon { get; set; }
+	public string? Link { get; set; }
 }
 
 #endregion

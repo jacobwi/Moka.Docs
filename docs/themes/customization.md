@@ -371,13 +371,13 @@ Markdown pages link to `{repo}/edit/{branch}/{path}/{file}`, where `{file}` is t
 
 ### Contributors
 
-`showContributors` is accepted in `mokadocs.yaml` but has no effect. The default theme doesn't show contributors, and MokaDocs doesn't read git history.
+`showContributors` is accepted in `mokadocs.yaml` but has no effect. The default theme doesn't show contributors.
 
 ### Last Updated
 
 The date a page was last modified appears at the bottom of each page, formatted `yyyy-MM-dd`. It's on by default; `showLastUpdated: false` hides it.
 
-The date is the Markdown file's last write time on disk. A fresh git clone gives every file the time of the checkout, so a site built in CI shows the build date on every page.
+The date is that of the last git commit that changed the Markdown file. Files with uncommitted changes, files git doesn't track, and sites built without git or outside a repository use the file's last write time on disk. A shallow clone gives every page the date of its one commit, so CI builds need the full history (`fetch-depth: 0` with `actions/checkout`, see [Deployment](/advanced/deployment#last-updated-dates-in-ci)).
 
 ### Logo and Favicon
 
@@ -389,7 +389,7 @@ site:
   favicon: assets/favicon.ico
 ```
 
-The logo replaces the book icon next to the site title in the header. Any image format the browser can display works.
+The logo replaces the book icon next to the site title in the header. Any image format the browser can display works. If the logo or favicon file doesn't exist, the build warns and leaves it out, so the header keeps the book icon.
 
 Paths are resolved **relative to the directory containing `mokadocs.yaml`** and support several forms, including parent-directory escapes via `../` and absolute URLs for CDN-hosted assets. See the [Site Configuration - Logo](/configuration/site-config#logo) page for the full path resolution rules and worked examples.
 
@@ -422,7 +422,21 @@ To change the dark colors, override them in a custom theme's stylesheet:
 
 ## Landing Page
 
-Pages with `layout: landing` in their front matter use the landing layout. It starts with a hero section: the site logo, the site title, the page's `description`, a **Get Started** button that links to the first sidebar item, and a **View on GitHub** button when `site.editLink.repo` is set. A fixed feature grid and a sample `mokadocs.yaml` block follow, then the page's own Markdown content. The feature grid and sample block can't be changed from configuration.
+Pages with `layout: landing` in their front matter use the landing layout. It starts with a hero section: the site logo, the site title, the page's `description`, a **Get Started** button that links to the first sidebar item, and a **View on GitHub** button when `site.editLink.repo` is set. Next come the feature cards listed in the page's [`features`](/configuration/front-matter#features) front matter, under an optional `featuresTitle` and `featuresSubtitle`, then the page's own Markdown content. A page without `features` goes from the hero straight to its content.
+
+```yaml
+---
+title: Widgets
+description: UI widgets for .NET
+layout: landing
+featuresTitle: Why Widgets
+features:
+  - title: Fast
+    icon: zap
+    description: Renders in under a millisecond.
+    link: /guide/performance
+---
+```
 
 ### Gradient Customization
 

@@ -47,6 +47,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The ASP.NET Core host initializes plugins once.** It initialized them again
   before every in-memory build, so with `CacheOutput = false` each rebuild ran
   them one more time and injected the REPL assets again.
+- **The landing layout no longer shows MokaDocs' own feature cards.** Every site
+  using `layout: landing` showed "C# API Reference", "Instant Search" and a sample
+  `mokadocs.yaml`. Cards now come from the page's `features` front matter (see New),
+  and a page without it has no card section.
+- **"Last updated" dates come from git.** Each page shows the date of the last
+  commit that touched it, and so does its sitemap `<lastmod>`. They used to be file
+  times, so every page of a site built in CI showed the build date. Files with
+  uncommitted changes, and builds outside a git work tree, still use the file time.
+  A shallow clone gives every page the latest commit's date: check out with
+  `fetch-depth: 0`.
 
 ### ✨ New
 
@@ -105,6 +115,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Returns  when missing."
 - A warning for social link icons that are not in the icon set. The footer prints
   the name as text.
+- **Landing page feature cards from front matter.** `features` takes a list of
+  cards with `title`, `icon`, `description` and an optional `link`; `featuresTitle`
+  and `featuresSubtitle` set the section heading.
+- **Blazor preview blocks work without `previewHost` or `library`.** For plain Razor
+  previews the plugin generates a host in `.mokadocs/preview-host/` instead of failing
+  the build. The Library sample builds again.
+- **API reference links.** `<see cref>` and exception types link to type pages,
+  member anchors, or learn.microsoft.com for `System.*` and `Microsoft.*` types. A
+  reference that doesn't resolve shows as inline code instead of a link-colored name
+  that went nowhere. See Also entries link the same way and keep `href` URLs.
+- **API member details.** Member blocks show remarks, examples, see also, type
+  parameters and `<value>`, and appear for any documented member; they used to need a
+  summary, parameter or return value. Type and member signatures show their
+  attributes, and Python pages their decorators.
+- **ASP.NET Core host: plugins with options.** `MokaDocsOptions.Plugins` declares
+  plugins by id, each with the options its `plugins:` entry would take in
+  `mokadocs.yaml`. A plugin registered in the service collection runs; before, only
+  the REPL and Blazor preview flags declared anything, so a custom plugin never ran
+  and the registered OpenAPI plugin couldn't be turned on.
 - `CNAME`, `_redirects` and `_headers` in the docs folder root are copied, as are
   `.txt`, `.webmanifest` and `.avif` files. A GitHub Pages custom domain file was
   dropped because it has no extension.
@@ -211,6 +240,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the links, a root-relative `LogoUrl` was rewritten into a 404, canonical links
   doubled the base path, and section folders had no redirect on Windows. The site
   is now built with the base path instead of patching the HTML afterwards.
+- **`AddMokaDocs()` replaced the application's configuration.** The engine registered
+  its feature flag settings as `IConfiguration`, so after `AddMokaDocs()` anything in
+  the app that injected `IConfiguration`, `BindConfiguration` included, read MokaDocs'
+  feature flags instead of `appsettings.json`.
+- ASP.NET Core host:
+  - Blazor previews never built: the plugin couldn't receive `previewHost` or
+    `library`, looked for the host in a folder that wasn't on disk, and copying the
+    published host through the in-memory file system threw. Previews build, and the
+    published host is served from memory (`.wasm` as `application/wasm`).
+  - A relative `DocsPath` resolved from the working directory, so an app started from
+    another folder found no docs. It and the plugin path options resolve from the
+    content root.
+  - The API reference left out protected members, operators, conversions and delegate
+    parameters, and nested types had no XML docs. Signatures read like declarations,
+    with accessibility, modifiers, constant values and accessor accessibility.
+  - `Version` did nothing; it shows in the header's version selector. `NavEntry.AutoGenerate`
+    did nothing; on an `/api` entry it lists each namespace with its types.
 - The dev server's feedback endpoint returned 404 under a base path.
 - `AddMokaDocsThemes()` and `AddMokaDocsRendering()` were empty. The CLI
   registered feature management twice.
@@ -235,9 +281,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A title or description containing `"` ended the `<meta>` attribute early. Head
   tags are now escaped.
 - Code blocks showed one line number more than they had lines.
+- **The Copy button covered the language label** on the landing layout, where both
+  were always visible in the same corner. It now takes the label's place on hover, as
+  on other pages, and the label comes back only after the button fades out. On touch
+  screens the button shows without hover; it used to be invisible there. Line numbers
+  were added to every code block, and where the theme doesn't position them they ran
+  into the code as text (`MyLib.csproj12345678` on the landing page).
 - Generated pages (API, OpenAPI, Python) got an "Edit this page" link to the docs
   folder itself. They now have none.
 - `new component card` used variants and icons that do not exist.
+- Member tables and headings showed metadata names such as `op_Addition` and
+  `this[]`. They show `operator +(Money a, Money b)`, `implicit operator Money(int
+  amount)` and `this[int index]`, parameter types keep their generic arguments, and
+  each overload gets its own anchor instead of sharing one.
+- **C# analysis compiled against five runtime assemblies**, with no global usings and
+  no `#if` symbols, so types from packages, other projects and most of the framework
+  were unresolved and `#if NET8_0_OR_GREATER` branches were skipped. Projects now
+  compile against the running runtime's shared frameworks and the package and
+  project references in `obj/project.assets.json`, with the project's implicit and
+  explicit usings, `Nullable`, `DefineConstants` and the SDK's framework symbols for
+  its highest target framework. The analysis cache is invalidated when the project
+  file, a `Directory.Build.props`, the assets file or a reference changes.
+- **Member signatures** left out accessibility, modifiers, `this`, accessor
+  accessibility and constant values. They read like the declaration, for example
+  `public static string Shout(this string value)` and `public const int Max = 10`.
+  Struct pages lost a Sealed badge their declarations never had.
+- A `partial` type got one API page per declaration, all on the same route. It gets
+  one page, and View Source shows every declaration.
+- `<inheritdoc cref>` was ignored and only the direct base type and the type's own
+  interfaces were searched. The cref is followed, then the whole base chain and all
+  interfaces, nearest first. The ASP.NET Core host follows crefs too.
+- View Source showed private members, and internal ones whatever `includeInternals`
+  said. It shows only the members the page documents.
+- The install widget described the first project even when it was a test or sample
+  app. It uses the first project that produces a package.
+- Attributes: `AttributeUsage` showed as `Usage`, strings lost their quotes and enum
+  values showed as numbers. Names and arguments appear as written.
+- Summaries on the `/api` index page kept `<see cref>` references as link-colored
+  text with no link. They link like on the type pages.
+- `mokadocs new plugin MyCustomPlugin` created the class `MyCustomPluginPlugin`.
+- A `site.logo` or `site.favicon` file that doesn't exist gave a broken image and a
+  favicon link that 404s. The build warns and the theme uses its default logo.
 - `serve`:
   - A busy port crashed with an `ObjectDisposedException` that hid the port error.
     It now prints the reason and exits 1.
@@ -248,6 +332,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - REPL packages whose assembly names start with `System.`, such as
     `System.Reactive`, were skipped, and "Packages loaded" printed even when the
     restore failed.
+  - **REPL snippets couldn't be stopped.** They ran inside `serve`, where the
+    5 second timeout was only a cancellation token: `while (true) { }` kept running
+    until `serve` exited, `Environment.Exit` stopped the dev server, and
+    `Console.ReadLine()` read from the terminal. Snippets now run in a
+    `mokadocs repl-worker` process that is killed and replaced on a timeout or
+    crash, exits with `serve`, gets no console input, and returns at most 100,000
+    characters of output.
 - The Blazor preview plugin sorted `bin/Release` framework folders by name, picking
   `net9.0` over `net10.0`.
 - Python API examples collapsed onto one line and kept their docstring indent after
@@ -255,7 +346,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Tests
 
-- 960 tests, up from 466. New: `DoctorChecksTests`, `DryRunBuildTests`,
+- 1246 tests, up from 466. New: `DoctorChecksTests`, `DryRunBuildTests`,
   `BuildCacheTests`, `DevServerTests`, `OutputDirectoryGuardTests`,
   `NavigationBuildPhaseTests`, `ProjectStatsTests`, `CleanCommandTests`,
   `ConfigPathTests`, `NewCommandTests`, `ServeCommandTests`,
@@ -263,10 +354,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `NestedContainerTests`, `RelativeLinksTests`, `ChangelogExtensionTests`,
   `SiteUrlsTests`, `SiteConfigEnvironmentTests`, `ApiGenerationTests`,
   `FileWatcherTests`, `NuGetPackageResolverTests`, `ApiDocTextTests`,
-  `TargetFrameworksTests`, rendering checks in `BuildPipelineIntegrationTests`,
-  and analyzer and XML doc cases for accessibility, `<inheritdoc/>` tags,
-  exception crefs, delegate docs, escaping and the global namespace. Each fix was
-  confirmed by reverting it and watching its tests fail.
+  `TargetFrameworksTests`, `ReplExecutionServiceTests` (real worker processes),
+  `EmbeddedThemeCodeBlockTests`, `ApiPageRendererTests`, `MemberSignatureTests`,
+  `PartialTypeTests`, `ProjectCompilationTests`, `ViewSourceTests`,
+  `InheritDocChainTests`, `CSharpAnalysisPhaseTests`, `AspNetCoreHostTests`,
+  `ReflectionApiModelBuilderTests`, `LandingLayoutTests`,
+  `LandingFeaturesFrontMatterTests`, `BrandAssetRenderingTests`,
+  `GitLastUpdatedTests` (skipped without git), `BlazorPreviewScaffoldTests`,
+  rendering checks in `BuildPipelineIntegrationTests`, and analyzer and XML doc
+  cases for accessibility, `<inheritdoc/>` tags, exception crefs, delegate docs,
+  escaping and the global namespace. Each fix was confirmed by reverting it and
+  watching its tests fail.
 
 ### 📚 Docs
 

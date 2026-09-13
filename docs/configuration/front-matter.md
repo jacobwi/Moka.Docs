@@ -144,7 +144,7 @@ The layout template to use when rendering this page. The default theme has two:
 | Layout | Description |
 |---|---|
 | `default` | Documentation page with the sidebar, content area and table of contents. |
-| `landing` | Home page layout with no sidebar or table of contents. It shows the site title and the page `description` at the top, then a feature grid and a sample configuration block that are built into the theme, then the page content. |
+| `landing` | Home page layout with no sidebar or table of contents. It shows the site title and the page `description` at the top, then the cards from [`features`](#features) when the page has any, then the page content. |
 
 `api-type` is also accepted and renders the same template as `default`. Any other name, such as `wide`, falls back to `default`, and the build warns once for each unknown name.
 
@@ -347,6 +347,60 @@ Flags only decide which pages are built. Turning one on doesn't switch on the fe
 | On | `BackToTop`, `Breadcrumbs`, `CodeLanguageBadge`, `ColorThemeSelector`, `CopyButton`, `DarkModeToggle`, `FeedbackWidget`, `InheritDocResolution`, `InstallWidget`, `LastUpdated`, `LineNumbers`, `MinifyOutput`, `PrevNextNavigation`, `RobotsTxt`, `SearchBar`, `SearchIndex`, `Sitemap`, `TableOfContents`, `TypeDependencyGraph`, `VersionSelector`, `ViewSource` |
 | Off | `ShowBetaDocs`, `ShowCloudDocs`, `ShowInternalDocs`, `ShowPremiumDocs`, `AiSearch`, `Analytics`, `ApiAccess`, `AuditLog`, `BlazorPreview`, `ChangelogPlugin`, `Cloud`, `CodeStyleSelector`, `CodeThemeSelector`, `Contributors`, `CustomBranding`, `CustomDomain`, `EditLink`, `OpenApiPlugin`, `PageAnimations`, `PdfExport`, `PrivateRepo`, `ReplPlugin`, `SSOAuth`, `TeamCollaboration`, `WhiteLabel` |
 
+### `features`
+
+- **Type:** `list` of objects
+- **Default:** `[]`
+
+Feature cards for the `landing` layout. They appear in a grid between the hero section and the page content, three to a row on wide screens. A landing page without `features` has no card section. The `default` layout ignores this key.
+
+Each card takes these keys, all optional:
+
+| Key | Contents |
+|---|---|
+| `title` | The card heading |
+| `description` | The text under the heading |
+| `icon` | A name from the [icon list](/configuration/navigation#icon-support), drawn as that icon. Any other value, such as `C#` or an emoji, is shown as text |
+| `link` | A URL that makes the whole card a link. A value starting with `/` gets the base path |
+
+```yaml
+---
+title: "Widgets"
+description: "UI widgets for .NET"
+layout: landing
+featuresTitle: "Why Widgets"
+featuresSubtitle: "Everything ships in one package"
+features:
+  - title: "Fast"
+    icon: "zap"
+    description: "Renders in under a millisecond."
+    link: "/guide/performance"
+  - title: "Typed"
+    icon: "C#"
+    description: "Every option is a C# property."
+---
+```
+
+Titles, descriptions and text icons are HTML-escaped, so `<b>` shows up as written rather than making text bold. Links are used as written apart from the base path: point them at a page's route, such as `/guide/performance`, not at its `.md` file.
+
+`features` must be a YAML list. A single value such as `features: Fast` invalidates the whole front matter block.
+
+A custom theme's templates can read the cards as `page.features`, see [Template Variables](/advanced/architecture#template-variables).
+
+### `featuresTitle`
+
+- **Type:** `string`
+- **Default:** `""`
+
+The heading above the landing layout's feature cards. The cards have no heading without it, and it has no effect on a page without `features`.
+
+### `featuresSubtitle`
+
+- **Type:** `string`
+- **Default:** `""`
+
+A line of text under `featuresTitle`. Like the title, it only shows on a page with `features`.
+
 ---
 
 ## Complete Example
@@ -393,6 +447,9 @@ When front matter properties are omitted, the following defaults apply:
 | `route` | Generated from the file path |
 | `version` | `null` (not used) |
 | `requires` | `null` (no feature gate) |
+| `features` | `[]` (no feature cards) |
+| `featuresTitle` | `""` |
+| `featuresSubtitle` | `""` |
 
 ## Tips
 

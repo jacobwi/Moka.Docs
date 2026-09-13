@@ -238,8 +238,7 @@ This produces:
 - Parameters table → a (float, "Dividend."), b (float, "Divisor.")
 - Returns → "The quotient of a and b."
 - Exceptions table → ZeroDivisionError: "If b is zero."
-- Examples → not shown, because examples are only rendered for a class or
-  module docstring
+- Examples → a Python code block in the method's detail block
 
 ### Type annotations
 
@@ -275,9 +274,11 @@ module's `__all__` only applies to that module, so re-exports in a package's
 
 ### Decorators
 
-The analyzer records decorators, but the pages don't show them.
-`@property`, `@staticmethod`, `@classmethod` and `@abstractmethod` set the
-member kinds and flags listed above, and `@dataclass` makes a class a Record.
+Decorators appear above the declaration, such as `@dataclass` above a class.
+Only the name is kept, so `@lru_cache(maxsize=32)` shows as `@lru_cache`.
+`@property`, `@staticmethod`, `@classmethod` and `@abstractmethod` aren't shown
+on members, because they set the member kinds and flags listed above.
+`@dataclass` also makes a class a Record.
 
 A function or method decorated with a bare `deprecated` or `deprecation` name,
 such as `@deprecated` or `@deprecated("Use add")`, gets an **obsolete** badge in
@@ -315,17 +316,16 @@ Each type page includes:
   three or more parameters are shortened to `(…)`. Enum values are listed by
   name, without their values.
 - Details for members whose docstring has a summary or at least one `Args:`
-  entry: the Python signature (in a `csharp` code block), the summary, a
-  parameter table when `Args:` documents at least one parameter, the return
-  value and the exceptions
+  entry, or that have a decorator the page shows: the Python signature (in a
+  `csharp` code block) with its decorators, the summary, a parameter table
+  when `Args:` documents at least one parameter, the return value, the
+  exceptions, remarks, examples and See Also entries
 - Examples from the class or module docstring, as a Python code block
-- See Also entries, as code text rather than links
+- See Also entries, as code text rather than links. An entry written as a
+  Markdown link, `[text](https://...)`, becomes a link.
 - A Mermaid type relationship diagram, when the type has a base class,
   protocols or subclasses
 - A View Source panel with the first lines of the class
-
-Member-level `Examples:`, `Note:`, `Warning:`, `Todo:` and `See Also:` sections
-are not shown.
 
 ---
 

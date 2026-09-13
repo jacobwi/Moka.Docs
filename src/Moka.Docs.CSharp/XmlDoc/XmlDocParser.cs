@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,7 @@ namespace Moka.Docs.CSharp.XmlDoc;
 ///     Parses a .NET XML documentation file (the output of <c>&lt;DocumentationFile&gt;</c>)
 ///     into a dictionary of member ID → <see cref="XmlDocBlock" />.
 /// </summary>
-public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
+public sealed partial class XmlDocParser(ILogger<XmlDocParser> logger)
 {
 	/// <summary>
 	///     Parses an XML documentation file from a file path.
@@ -103,7 +104,10 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 			Exceptions = ParseExceptions(member),
 			Examples = ParseExamples(member),
 			SeeAlso = ParseSeeAlso(member),
-			HasInheritDocTag = member.Element("inheritdoc") is not null
+			HasInheritDocTag = member.Element("inheritdoc") is not null,
+			// Compiled XML doc files hold the cref as a documentation ID, the same form the analyzer
+			// stores, so the ASP.NET Core host follows <inheritdoc cref> too.
+			InheritDocCref = member.Element("inheritdoc")?.Attribute("cref")?.Value
 		};
 	}
 
@@ -156,13 +160,66 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 			.ToList();
 	}
 
-	private static List<string> ParseSeeAlso(XElement member)
+	/// <summary>
+	///     Reads the <c>&lt;seealso&gt;</c> entries of a doc comment. A <c>cref</c> without text is kept as
+	///     its documentation ID, such as <c>T:MyApp.Widget</c>. An entry with an <c>href</c> or its own text
+	///     is stored as <c>[text](target)</c>, where the target is the URL or the documentation ID.
+	/// </summary>
+	/// <remarks>
+	///     The entries stay plain strings because the Python plugin fills the same list with plain
+	///     text, and the page renderer escapes whatever it doesn't recognize. Only the <c>cref</c>, or the
+	///     text of an entry without one, used to be stored, so an <c>href</c> entry lost its URL.
+	/// </remarks>
+	internal static List<string> ParseSeeAlso(XElement member)
 	{
-		return member.Elements("seealso")
-			.Select(e => e.Attribute("cref")?.Value ?? e.Value)
-			.Where(s => !string.IsNullOrWhiteSpace(s))
-			.ToList();
+		var result = new List<string>();
+
+		foreach (XElement seeAlso in member.Elements("seealso"))
+		{
+			string cref = seeAlso.Attribute("cref")?.Value.Trim() ?? "";
+			string href = seeAlso.Attribute("href")?.Value.Trim() ?? "";
+			string text = NormalizeWhitespace(seeAlso.Value).Trim();
+			string target = cref.Length > 0 ? cref : href;
+
+			if (target.Length == 0)
+			{
+				if (text.Length > 0)
+				{
+					result.Add(text);
+				}
+			}
+			else if (text.Length > 0)
+			{
+				result.Add($"[{text}]({target})");
+			}
+			else
+			{
+				result.Add(cref.Length > 0 ? cref : $"[{href}]({href})");
+			}
+		}
+
+		return result;
 	}
+
+	/// <summary>
+	///     The link text used for a <c>&lt;see cref&gt;</c> without text of its own: the type name, or
+	///     <c>Type.Member</c> for a member, without generic arity markers.
+	/// </summary>
+	/// <param name="cref">A documentation ID such as <c>M:MyApp.Widget`1.#ctor(System.Int32)</c>.</param>
+	/// <returns>The display name, for example <c>Widget</c>.</returns>
+	public static string GetCrefDisplayName(string cref)
+	{
+		// Arity markers are metadata syntax, so <see cref="Widget{T}"/> rendered as "Widget`1", and a
+		// constructor's #ctor name rendered as "Widget.#ctor".
+		string name = ArityMarkerRegex().Replace(MemberIdParser.GetDisplayName(cref), "");
+		return ConstructorSuffixRegex().Replace(name, "");
+	}
+
+	[GeneratedRegex(@"`{1,2}\d+")]
+	private static partial Regex ArityMarkerRegex();
+
+	[GeneratedRegex(@"\.#c?ctor$")]
+	private static partial Regex ConstructorSuffixRegex();
 
 	/// <summary>
 	///     Renders the inner content of an XML doc element to HTML-like text.
@@ -235,7 +292,7 @@ public sealed class XmlDocParser(ILogger<XmlDocParser> logger)
 
 				if (!string.IsNullOrEmpty(cref))
 				{
-					string displayName = MemberIdParser.GetDisplayName(cref);
+					string displayName = GetCrefDisplayName(cref);
 					string escapedCref = HttpUtility.HtmlAttributeEncode(cref);
 					string escapedText =
 						HttpUtility.HtmlEncode(string.IsNullOrEmpty(linkText) ? displayName : linkText);

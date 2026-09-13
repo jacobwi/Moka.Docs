@@ -128,4 +128,21 @@ public sealed class ApiGenerationTests : IDisposable
 		outcome.Context.Pages.Single(p => p.Route == "/api/lib/widget").Content.Html
 			.Should().NotContain("github.com/o/r/edit");
 	}
+
+	[Fact]
+	public async Task IndexSummaries_LinkTheirCrefs()
+	{
+		// The /api table inserted summaries as parsed, so a <see cref> stayed an anchor with no href.
+		Write("src/Lib/Box.cs", """
+		                        namespace Lib;
+
+		                        /// <summary>Wraps a <see cref="Widget"/>.</summary>
+		                        public class Box { }
+		                        """);
+
+		DryRunOutcome outcome = await RunAsync();
+
+		string index = outcome.Context.Pages.Single(p => p.Route == "/api").Content.Html;
+		index.Should().Contain("<td>Wraps a <a href=\"/api/lib/widget\">Widget</a>.</td>").And.NotContain("data-cref=");
+	}
 }

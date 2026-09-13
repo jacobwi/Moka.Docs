@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -12,11 +13,20 @@ namespace Moka.Docs.AspNetCore.Reflection;
 ///     using <see cref="System.Reflection" /> instead of Roslyn source analysis.
 ///     Produces the same model shape as <c>AssemblyAnalyzer</c>.
 /// </summary>
+/// <remarks>
+///     A type's public members are documented, and so are its protected and protected internal
+///     members when the type can be derived from. Signatures read like C# declarations, with
+///     accessibility, modifiers and nullable annotations.
+/// </remarks>
 public sealed class ReflectionApiModelBuilder(
 	XmlDocParser xmlDocParser,
 	InheritDocResolver inheritDocResolver,
 	ILogger<ReflectionApiModelBuilder> logger)
 {
+	private const BindingFlags _declaredMembers = BindingFlags.Public | BindingFlags.NonPublic |
+	                                              BindingFlags.Instance | BindingFlags.Static |
+	                                              BindingFlags.DeclaredOnly;
+
 	private static readonly Dictionary<string, string> _clrToCSharpTypeNames = new(StringComparer.Ordinal)
 	{
 		["System.Boolean"] = "bool",
@@ -37,6 +47,62 @@ public sealed class ReflectionApiModelBuilder(
 		["System.Void"] = "void",
 		["System.IntPtr"] = "nint",
 		["System.UIntPtr"] = "nuint"
+	};
+
+	/// <summary>C# tokens for the metadata names of operators, by the name the compiler emits.</summary>
+	private static readonly Dictionary<string, string> _operatorTokens = new(StringComparer.Ordinal)
+	{
+		["op_UnaryPlus"] = "+",
+		["op_UnaryNegation"] = "-",
+		["op_LogicalNot"] = "!",
+		["op_OnesComplement"] = "~",
+		["op_Increment"] = "++",
+		["op_Decrement"] = "--",
+		["op_True"] = "true",
+		["op_False"] = "false",
+		["op_Addition"] = "+",
+		["op_Subtraction"] = "-",
+		["op_Multiply"] = "*",
+		["op_Division"] = "/",
+		["op_Modulus"] = "%",
+		["op_BitwiseAnd"] = "&",
+		["op_BitwiseOr"] = "|",
+		["op_ExclusiveOr"] = "^",
+		["op_LeftShift"] = "<<",
+		["op_RightShift"] = ">>",
+		["op_UnsignedRightShift"] = ">>>",
+		["op_Equality"] = "==",
+		["op_Inequality"] = "!=",
+		["op_LessThan"] = "<",
+		["op_GreaterThan"] = ">",
+		["op_LessThanOrEqual"] = "<=",
+		["op_GreaterThanOrEqual"] = ">=",
+		["op_CheckedUnaryNegation"] = "checked -",
+		["op_CheckedIncrement"] = "checked ++",
+		["op_CheckedDecrement"] = "checked --",
+		["op_CheckedAddition"] = "checked +",
+		["op_CheckedSubtraction"] = "checked -",
+		["op_CheckedMultiply"] = "checked *",
+		["op_CheckedDivision"] = "checked /",
+		["op_AdditionAssignment"] = "+=",
+		["op_SubtractionAssignment"] = "-=",
+		["op_MultiplicationAssignment"] = "*=",
+		["op_DivisionAssignment"] = "/=",
+		["op_ModulusAssignment"] = "%=",
+		["op_BitwiseAndAssignment"] = "&=",
+		["op_BitwiseOrAssignment"] = "|=",
+		["op_ExclusiveOrAssignment"] = "^=",
+		["op_LeftShiftAssignment"] = "<<=",
+		["op_RightShiftAssignment"] = ">>=",
+		["op_UnsignedRightShiftAssignment"] = ">>>=",
+		["op_IncrementAssignment"] = "++",
+		["op_DecrementAssignment"] = "--",
+		["op_CheckedAdditionAssignment"] = "checked +=",
+		["op_CheckedSubtractionAssignment"] = "checked -=",
+		["op_CheckedMultiplicationAssignment"] = "checked *=",
+		["op_CheckedDivisionAssignment"] = "checked /=",
+		["op_CheckedIncrementAssignment"] = "checked ++",
+		["op_CheckedDecrementAssignment"] = "checked --"
 	};
 
 	/// <summary>
@@ -70,29 +136,10 @@ public sealed class ReflectionApiModelBuilder(
 		foreach (Assembly assembly in assemblies)
 		{
 			string assemblyName = assembly.GetName().Name ?? assembly.FullName ?? "";
-			try
+			foreach (Type type in GetDocumentedTypes(assembly, assemblyName))
 			{
-				Type[] exportedTypes = assembly.GetExportedTypes();
-				foreach (Type type in exportedTypes)
+				if (!ShouldSkipType(type))
 				{
-					if (ShouldSkipType(type))
-					{
-						continue;
-					}
-
-					allTypes.Add((type, assemblyName));
-				}
-			}
-			catch (ReflectionTypeLoadException ex)
-			{
-				logger.LogWarning(ex, "Could not load all types from assembly {Assembly}", assemblyName);
-				foreach (Type? type in ex.Types)
-				{
-					if (type is null || ShouldSkipType(type))
-					{
-						continue;
-					}
-
 					allTypes.Add((type, assemblyName));
 				}
 			}
@@ -140,6 +187,53 @@ public sealed class ReflectionApiModelBuilder(
 		return reference;
 	}
 
+	/// <summary>
+	///     The exported types, plus the protected nested types of those a consumer can derive from,
+	///     and everything visible inside those.
+	/// </summary>
+	private List<Type> GetDocumentedTypes(Assembly assembly, string assemblyName)
+	{
+		Type[] exported;
+		try
+		{
+			exported = assembly.GetExportedTypes();
+		}
+		catch (ReflectionTypeLoadException ex)
+		{
+			logger.LogWarning(ex, "Could not load all types from assembly {Assembly}", assemblyName);
+			exported = ex.Types.OfType<Type>().ToArray();
+		}
+
+		var types = new List<Type>(exported);
+		foreach (Type type in exported)
+		{
+			// Exported types stop at public nesting. A protected nested type is part of the API a
+			// derived class sees, like any other protected member.
+			foreach (Type nested in type.GetNestedTypes(BindingFlags.NonPublic))
+			{
+				if (!type.IsSealed && (nested.IsNestedFamily || nested.IsNestedFamORAssem))
+				{
+					types.Add(nested);
+					AddVisibleNestedTypes(nested, types);
+				}
+			}
+		}
+
+		return types;
+	}
+
+	private static void AddVisibleNestedTypes(Type type, List<Type> types)
+	{
+		foreach (Type nested in type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+		{
+			if (nested.IsNestedPublic || (!type.IsSealed && (nested.IsNestedFamily || nested.IsNestedFamORAssem)))
+			{
+				types.Add(nested);
+				AddVisibleNestedTypes(nested, types);
+			}
+		}
+	}
+
 	private static bool ShouldSkipType(Type type)
 	{
 		if (type.GetCustomAttribute<CompilerGeneratedAttribute>() is not null)
@@ -176,7 +270,9 @@ public sealed class ReflectionApiModelBuilder(
 		bool isStatic = type.IsAbstract && type.IsSealed;
 		bool isAbstract = type.IsAbstract && !type.IsSealed;
 		bool isRecord = IsRecordType(type);
-		bool isSealed = type.IsSealed && !type.IsAbstract;
+		// Structs, enums and delegates are sealed in metadata, but only a class can be declared
+		// sealed; matching the source analyzer keeps a Sealed badge off struct pages.
+		bool isSealed = type.IsSealed && !type.IsAbstract && type.IsClass && !typeof(Delegate).IsAssignableFrom(type);
 
 		string? baseType = GetBaseTypeName(type);
 		List<string> interfaces = GetDirectInterfaces(type);
@@ -186,18 +282,22 @@ public sealed class ReflectionApiModelBuilder(
 		List<ApiAttribute> attributes = GetAttributes(type.GetCustomAttributesData());
 
 		string typeName = GetSimpleTypeName(type);
-		string fullName = type.Namespace is not null ? $"{type.Namespace}.{typeName}" : typeName;
+		string fullName = string.Join(".", DeclaringChain(type).Select(GetSimpleTypeName));
+		if (type.Namespace is not null)
+		{
+			fullName = $"{type.Namespace}.{fullName}";
+		}
 
 		XmlDocBlock? documentation = LookupTypeDoc(type, xmlDocs);
 
-		List<ApiMember> members = BuildMembers(type, kind, xmlDocs);
+		List<ApiMember> members = BuildMembers(type, kind, documentation, xmlDocs);
 
 		return new ApiType
 		{
 			Name = typeName,
 			FullName = fullName,
 			Kind = isRecord ? ApiTypeKind.Record : kind,
-			Accessibility = ApiAccessibility.Public,
+			Accessibility = GetTypeAccessibility(type),
 			IsStatic = isStatic,
 			IsAbstract = isAbstract,
 			IsSealed = isSealed,
@@ -214,6 +314,11 @@ public sealed class ReflectionApiModelBuilder(
 			ObsoleteMessage = obsoleteAttr?.Message
 		};
 	}
+
+	private static ApiAccessibility GetTypeAccessibility(Type type) =>
+		type.IsNestedFamily ? ApiAccessibility.Protected
+		: type.IsNestedFamORAssem ? ApiAccessibility.ProtectedInternal
+		: ApiAccessibility.Public;
 
 	private static ApiTypeKind ResolveTypeKind(Type type)
 	{
@@ -285,7 +390,7 @@ public sealed class ReflectionApiModelBuilder(
 
 		return allInterfaces
 			.Where(i => !inherited.Contains(i))
-			.Select(FormatTypeName)
+			.Select(i => FormatTypeName(i))
 			.OrderBy(n => n, StringComparer.Ordinal)
 			.ToList();
 	}
@@ -342,6 +447,7 @@ public sealed class ReflectionApiModelBuilder(
 	private List<ApiMember> BuildMembers(
 		Type type,
 		ApiTypeKind kind,
+		XmlDocBlock? typeDocumentation,
 		Dictionary<string, XmlDocFile> xmlDocs)
 	{
 		var members = new List<ApiMember>();
@@ -353,98 +459,132 @@ public sealed class ReflectionApiModelBuilder(
 		}
 
 		if (kind == ApiTypeKind.Delegate)
-			// Delegates don't have meaningful members to expose
 		{
+			BuildDelegateInvoke(type, members, typeDocumentation);
 			return members;
 		}
 
-		BuildConstructors(type, members, xmlDocs);
-		BuildProperties(type, members, xmlDocs);
-		BuildMethods(type, members, xmlDocs);
-		BuildFields(type, members, xmlDocs);
-		BuildEvents(type, members, xmlDocs);
+		// Protected members are reachable only by deriving, so a sealed type (a struct or a
+		// static class included) has none worth listing.
+		bool includeProtected = !type.IsSealed;
+
+		BuildConstructors(type, members, xmlDocs, includeProtected);
+		BuildProperties(type, members, xmlDocs, includeProtected);
+		BuildMethods(type, members, xmlDocs, includeProtected);
+		BuildFields(type, members, xmlDocs, includeProtected);
+		BuildEvents(type, members, xmlDocs, includeProtected);
 
 		return members;
 	}
 
-	private void BuildConstructors(
+	private static void BuildConstructors(
 		Type type,
 		List<ApiMember> members,
-		Dictionary<string, XmlDocFile> xmlDocs)
+		Dictionary<string, XmlDocFile> xmlDocs,
+		bool includeProtected)
 	{
-		ConstructorInfo[] ctors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+		ConstructorInfo[] ctors = type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
 		foreach (ConstructorInfo ctor in ctors)
 		{
-			if (ctor.GetCustomAttribute<CompilerGeneratedAttribute>() is not null)
+			if (IsCompilerGenerated(ctor))
 			{
 				continue;
 			}
 
-			List<ApiParameter> parameters = BuildParameters(ctor.GetParameters());
-			string signature = BuildConstructorSignature(type, ctor);
+			ApiAccessibility accessibility = GetAccessibility(ctor);
+			if (!IsDocumented(accessibility, includeProtected))
+			{
+				continue;
+			}
+
+			string name = GetSimpleTypeName(type);
+			string signature = $"{AccessPrefix(type, accessibility)}{name}({FormatParameterList(ctor.GetParameters(), false)})";
 			string memberId = GetConstructorMemberId(type, ctor);
-			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
 
 			members.Add(new ApiMember
 			{
-				Name = GetSimpleTypeName(type),
+				Name = name,
 				Kind = ApiMemberKind.Constructor,
 				Signature = signature,
-				Parameters = parameters,
-				Documentation = documentation,
-				Accessibility = ApiAccessibility.Public
+				Parameters = BuildParameters(ctor.GetParameters()),
+				Documentation = LookupMemberDoc(type, memberId, xmlDocs),
+				Accessibility = accessibility
 			});
 		}
 	}
 
-	private void BuildProperties(
+	private static void BuildProperties(
 		Type type,
 		List<ApiMember> members,
-		Dictionary<string, XmlDocFile> xmlDocs)
+		Dictionary<string, XmlDocFile> xmlDocs,
+		bool includeProtected)
 	{
-		PropertyInfo[] properties = type.GetProperties(
-			BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
-
-		foreach (PropertyInfo prop in properties)
+		foreach (PropertyInfo prop in type.GetProperties(_declaredMembers))
 		{
-			// Skip indexers - they are treated separately
-			ParameterInfo[] indexParams = prop.GetIndexParameters();
-			if (indexParams.Length > 0)
+			MethodInfo? getter = prop.GetGetMethod(true);
+			MethodInfo? setter = prop.GetSetMethod(true);
+			MethodInfo? accessor = getter ?? setter;
+
+			// A record's EqualityContract is compiler-generated and protected.
+			if (accessor is null || IsCompilerGenerated(prop))
 			{
-				BuildIndexer(type, prop, members, xmlDocs);
 				continue;
 			}
 
-			string returnType = FormatTypeName(prop.PropertyType);
-			string signature = BuildPropertySignature(prop);
-			string memberId = $"P:{type.FullName}.{prop.Name}";
-			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
+			// The property is as accessible as its most accessible accessor.
+			ApiAccessibility accessibility = getter is not null && setter is not null
+				? AccessibilityRank(GetAccessibility(getter)) >= AccessibilityRank(GetAccessibility(setter))
+					? GetAccessibility(getter)
+					: GetAccessibility(setter)
+				: GetAccessibility(accessor);
 
-			MethodInfo? getter = prop.GetGetMethod();
-			MethodInfo? setter = prop.GetSetMethod();
+			if (!IsDocumented(accessibility, includeProtected))
+			{
+				continue;
+			}
 
-			bool isStatic = (getter?.IsStatic ?? setter?.IsStatic) == true;
-			bool isVirtual = (getter?.IsVirtual ?? setter?.IsVirtual) == true &&
-			                 !(getter?.IsFinal ?? setter?.IsFinal ?? false);
-			bool isAbstract = (getter?.IsAbstract ?? setter?.IsAbstract) == true;
-			bool isOverride = isVirtual && ((getter is not null && getter.GetBaseDefinition() != getter)
-			                                || (setter is not null && setter.GetBaseDefinition() != setter));
+			ParameterInfo[] indexParams = prop.GetIndexParameters();
+			bool isIndexer = indexParams.Length > 0;
 
+			string memberId = isIndexer
+				? $"P:{GetDocIdName(type)}.{prop.Name}({string.Join(",", indexParams.Select(p => GetMemberIdTypeName(p.ParameterType)))})"
+				: $"P:{GetDocIdName(type)}.{prop.Name}";
+
+			string returnType = FormatTypeName(prop.PropertyType, NullableAnnotations.For(prop.GetCustomAttributesData(), type));
+
+			var signature = new StringBuilder();
+			signature.Append(AccessPrefix(type, accessibility));
+			signature.Append(MethodModifiers(accessor));
+			if (HasAttribute(prop.GetCustomAttributesData(), "System.Runtime.CompilerServices.RequiredMemberAttribute"))
+			{
+				signature.Append("required ");
+			}
+
+			signature.Append(returnType);
+			signature.Append(' ');
+			signature.Append(isIndexer ? $"this[{FormatParameterList(indexParams, false)}]" : prop.Name);
+			signature.Append(' ');
+			signature.Append(BuildAccessorList(getter, setter, accessibility));
+
+			bool isVirtual = accessor.IsVirtual && !accessor.IsFinal;
+			bool isOverride = IsOverride(accessor);
 			ObsoleteAttribute? obsoleteAttr = prop.GetCustomAttribute<ObsoleteAttribute>();
 
 			members.Add(new ApiMember
 			{
-				Name = prop.Name,
-				Kind = ApiMemberKind.Property,
-				Signature = signature,
+				Name = isIndexer ? "this[]" : prop.Name,
+				Kind = isIndexer ? ApiMemberKind.Indexer : ApiMemberKind.Property,
+				Signature = signature.ToString(),
 				ReturnType = returnType,
-				Accessibility = ApiAccessibility.Public,
-				IsStatic = isStatic,
-				IsVirtual = isVirtual && !isAbstract && !isOverride,
-				IsAbstract = isAbstract,
+				Parameters = isIndexer ? BuildParameters(indexParams) : [],
+				Accessibility = accessibility,
+				IsStatic = accessor.IsStatic,
+				IsVirtual = isVirtual && !accessor.IsAbstract && !isOverride,
+				IsAbstract = accessor.IsAbstract,
 				IsOverride = isOverride,
-				Documentation = documentation,
+				IsSealed = accessor.IsFinal && isOverride,
+				Documentation = LookupMemberDoc(type, memberId, xmlDocs),
 				Attributes = GetAttributes(prop.GetCustomAttributesData()),
 				IsObsolete = obsoleteAttr is not null,
 				ObsoleteMessage = obsoleteAttr?.Message
@@ -452,98 +592,58 @@ public sealed class ReflectionApiModelBuilder(
 		}
 	}
 
-	private void BuildIndexer(
-		Type type,
-		PropertyInfo prop,
-		List<ApiMember> members,
-		Dictionary<string, XmlDocFile> xmlDocs)
-	{
-		ParameterInfo[] indexParams = prop.GetIndexParameters();
-		List<ApiParameter> parameters = BuildParameters(indexParams);
-		string returnType = FormatTypeName(prop.PropertyType);
-
-		string paramTypes = string.Join(",", indexParams.Select(p => GetMemberIdTypeName(p.ParameterType)));
-		string memberId = $"P:{type.FullName}.Item({paramTypes})";
-		XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
-
-		MethodInfo? getter = prop.GetGetMethod();
-		MethodInfo? setter = prop.GetSetMethod();
-		string accessors = BuildAccessorString(getter is not null, setter is not null);
-
-		string paramList = string.Join(", ", indexParams.Select(p => $"{FormatTypeName(p.ParameterType)} {p.Name}"));
-		string signature = $"{returnType} this[{paramList}] {accessors}";
-
-		members.Add(new ApiMember
-		{
-			Name = "this[]",
-			Kind = ApiMemberKind.Indexer,
-			Signature = signature,
-			ReturnType = returnType,
-			Parameters = parameters,
-			Accessibility = ApiAccessibility.Public,
-			Documentation = documentation
-		});
-	}
-
-	private void BuildMethods(
+	private static void BuildMethods(
 		Type type,
 		List<ApiMember> members,
-		Dictionary<string, XmlDocFile> xmlDocs)
+		Dictionary<string, XmlDocFile> xmlDocs,
+		bool includeProtected)
 	{
-		MethodInfo[] methods = type.GetMethods(
-			BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
-
-		foreach (MethodInfo method in methods)
+		foreach (MethodInfo method in type.GetMethods(_declaredMembers))
 		{
-			if (method.IsSpecialName)
+			// Record members (<Clone>$, PrintMembers, Equals...) carry [CompilerGenerated].
+			if (IsCompilerGenerated(method) || method.Name.StartsWith('<'))
 			{
 				continue;
 			}
 
-			if (method.GetCustomAttribute<CompilerGeneratedAttribute>() is not null)
+			// Property and event accessors have special names; so do operators, which used to be
+			// skipped along with the accessors.
+			bool isOperator = method.IsSpecialName && method.Name.StartsWith("op_", StringComparison.Ordinal);
+			if (method.IsSpecialName && !isOperator)
 			{
 				continue;
 			}
 
-			// Skip compiler-generated record methods
-			if (method.Name is "<Clone>$" or "$" || method.Name.StartsWith('<'))
+			ApiAccessibility accessibility = GetAccessibility(method);
+			if (!IsDocumented(accessibility, includeProtected))
 			{
 				continue;
 			}
 
-			bool isOperator = method.Name.StartsWith("op_");
-			ApiMemberKind memberKind = isOperator ? ApiMemberKind.Operator : ApiMemberKind.Method;
-
-			List<ApiParameter> parameters = BuildParameters(method.GetParameters());
-			List<ApiTypeParameter> typeParameters = GetMethodTypeParameters(method);
-			string returnType = FormatTypeName(method.ReturnType);
-			string signature = BuildMethodSignature(method);
+			string returnType = FormatTypeName(method.ReturnType, ReturnAnnotations(method));
 			string memberId = GetMethodMemberId(type, method);
-			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
 
+			bool isOverride = IsOverride(method);
 			bool isVirtual = method.IsVirtual && !method.IsFinal;
-			bool isOverride = method.IsVirtual && method.GetBaseDefinition().DeclaringType != type;
+			bool isExtensionMethod = method.IsStatic && method.IsDefined(typeof(ExtensionAttribute), false);
 			ObsoleteAttribute? obsoleteAttr = method.GetCustomAttribute<ObsoleteAttribute>();
-
-			bool isExtensionMethod = method.IsStatic
-			                         && method.IsDefined(typeof(ExtensionAttribute), false);
 
 			members.Add(new ApiMember
 			{
 				Name = method.Name,
-				Kind = memberKind,
-				Signature = signature,
+				Kind = isOperator ? ApiMemberKind.Operator : ApiMemberKind.Method,
+				Signature = BuildMethodSignature(type, method, accessibility, isOperator, isExtensionMethod),
 				ReturnType = returnType,
-				Accessibility = ApiAccessibility.Public,
+				Accessibility = accessibility,
 				IsStatic = method.IsStatic,
 				IsVirtual = isVirtual && !method.IsAbstract && !isOverride,
 				IsAbstract = method.IsAbstract,
 				IsOverride = isOverride,
 				IsSealed = method.IsFinal && isOverride,
 				IsExtensionMethod = isExtensionMethod,
-				Parameters = parameters,
-				TypeParameters = typeParameters,
-				Documentation = documentation,
+				Parameters = BuildParameters(method.GetParameters()),
+				TypeParameters = GetMethodTypeParameters(method),
+				Documentation = LookupMemberDoc(type, memberId, xmlDocs),
 				Attributes = GetAttributes(method.GetCustomAttributesData()),
 				IsObsolete = obsoleteAttr is not null,
 				ObsoleteMessage = obsoleteAttr?.Message
@@ -551,18 +651,15 @@ public sealed class ReflectionApiModelBuilder(
 		}
 	}
 
-	private void BuildFields(
+	private static void BuildFields(
 		Type type,
 		List<ApiMember> members,
-		Dictionary<string, XmlDocFile> xmlDocs)
+		Dictionary<string, XmlDocFile> xmlDocs,
+		bool includeProtected)
 	{
-		BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static |
-		                     BindingFlags.DeclaredOnly;
-		FieldInfo[] fields = type.GetFields(flags);
-
-		foreach (FieldInfo field in fields)
+		foreach (FieldInfo field in type.GetFields(_declaredMembers))
 		{
-			if (field.GetCustomAttribute<CompilerGeneratedAttribute>() is not null)
+			if (IsCompilerGenerated(field))
 			{
 				continue;
 			}
@@ -573,21 +670,25 @@ public sealed class ReflectionApiModelBuilder(
 				continue;
 			}
 
-			string returnType = FormatTypeName(field.FieldType);
-			string signature = BuildFieldSignature(field);
-			string memberId = $"F:{type.FullName}.{field.Name}";
-			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
+			ApiAccessibility accessibility = GetAccessibility(field);
+			if (!IsDocumented(accessibility, includeProtected))
+			{
+				continue;
+			}
+
+			string returnType = FormatTypeName(field.FieldType, NullableAnnotations.For(field.GetCustomAttributesData(), type));
+			string memberId = $"F:{GetDocIdName(type)}.{field.Name}";
 			ObsoleteAttribute? obsoleteAttr = field.GetCustomAttribute<ObsoleteAttribute>();
 
 			members.Add(new ApiMember
 			{
 				Name = field.Name,
 				Kind = ApiMemberKind.Field,
-				Signature = signature,
+				Signature = BuildFieldSignature(type, field, accessibility, returnType),
 				ReturnType = returnType,
-				Accessibility = ApiAccessibility.Public,
+				Accessibility = accessibility,
 				IsStatic = field.IsStatic,
-				Documentation = documentation,
+				Documentation = LookupMemberDoc(type, memberId, xmlDocs),
 				Attributes = GetAttributes(field.GetCustomAttributesData()),
 				IsObsolete = obsoleteAttr is not null,
 				ObsoleteMessage = obsoleteAttr?.Message
@@ -595,7 +696,7 @@ public sealed class ReflectionApiModelBuilder(
 		}
 	}
 
-	private void BuildEnumFields(
+	private static void BuildEnumFields(
 		Type type,
 		List<ApiMember> members,
 		Dictionary<string, XmlDocFile> xmlDocs)
@@ -604,13 +705,13 @@ public sealed class ReflectionApiModelBuilder(
 
 		foreach (FieldInfo field in fields)
 		{
-			string memberId = $"F:{type.FullName}.{field.Name}";
+			string memberId = $"F:{GetDocIdName(type)}.{field.Name}";
 			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
 			ObsoleteAttribute? obsoleteAttr = field.GetCustomAttribute<ObsoleteAttribute>();
 
 			object? rawValue = field.GetRawConstantValue();
 			string signature = rawValue is not null
-				? $"{field.Name} = {rawValue}"
+				? $"{field.Name} = {Convert.ToString(rawValue, CultureInfo.InvariantCulture)}"
 				: field.Name;
 
 			members.Add(new ApiMember
@@ -628,41 +729,98 @@ public sealed class ReflectionApiModelBuilder(
 		}
 	}
 
-	private void BuildEvents(
+	private static void BuildEvents(
 		Type type,
 		List<ApiMember> members,
-		Dictionary<string, XmlDocFile> xmlDocs)
+		Dictionary<string, XmlDocFile> xmlDocs,
+		bool includeProtected)
 	{
-		EventInfo[] events = type.GetEvents(
-			BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
-
-		foreach (EventInfo evt in events)
+		foreach (EventInfo evt in type.GetEvents(_declaredMembers))
 		{
+			MethodInfo? addMethod = evt.GetAddMethod(true);
+			if (addMethod is null)
+			{
+				continue;
+			}
+
+			ApiAccessibility accessibility = GetAccessibility(addMethod);
+			if (!IsDocumented(accessibility, includeProtected))
+			{
+				continue;
+			}
+
 			string handlerType = evt.EventHandlerType is not null
-				? FormatTypeName(evt.EventHandlerType)
+				? FormatTypeName(evt.EventHandlerType, NullableAnnotations.For(evt.GetCustomAttributesData(), type))
 				: "EventHandler";
 
-			string signature = $"event {handlerType} {evt.Name}";
-			string memberId = $"E:{type.FullName}.{evt.Name}";
-			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
-
-			MethodInfo? addMethod = evt.GetAddMethod();
-			bool isStatic = addMethod?.IsStatic == true;
+			string signature =
+				$"{AccessPrefix(type, accessibility)}{MethodModifiers(addMethod)}event {handlerType} {evt.Name}";
+			string memberId = $"E:{GetDocIdName(type)}.{evt.Name}";
 			ObsoleteAttribute? obsoleteAttr = evt.GetCustomAttribute<ObsoleteAttribute>();
+			bool isOverride = IsOverride(addMethod);
 
 			members.Add(new ApiMember
 			{
-				Name = evt.Name ?? "",
+				Name = evt.Name,
 				Kind = ApiMemberKind.Event,
 				Signature = signature,
 				ReturnType = handlerType,
-				Accessibility = ApiAccessibility.Public,
-				IsStatic = isStatic,
-				Documentation = documentation,
+				Accessibility = accessibility,
+				IsStatic = addMethod.IsStatic,
+				IsVirtual = addMethod.IsVirtual && !addMethod.IsFinal && !addMethod.IsAbstract && !isOverride,
+				IsAbstract = addMethod.IsAbstract,
+				IsOverride = isOverride,
+				Documentation = LookupMemberDoc(type, memberId, xmlDocs),
 				IsObsolete = obsoleteAttr is not null,
 				ObsoleteMessage = obsoleteAttr?.Message
 			});
 		}
+	}
+
+	/// <summary>
+	///     A delegate's one meaningful member: its <c>Invoke</c> method, which carries the
+	///     parameters and return type. Delegates used to get no members, so their parameters
+	///     appeared nowhere.
+	/// </summary>
+	private static void BuildDelegateInvoke(Type type, List<ApiMember> members, XmlDocBlock? typeDocumentation)
+	{
+		MethodInfo? invoke = type.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+		if (invoke is null)
+		{
+			return;
+		}
+
+		ApiAccessibility accessibility = GetTypeAccessibility(type);
+
+		var signature = new StringBuilder();
+		signature.Append(Keyword(accessibility));
+		signature.Append(" delegate ");
+		signature.Append(FormatReturn(invoke));
+		signature.Append(' ');
+		signature.Append(GetSimpleTypeName(type));
+		if (type.IsGenericTypeDefinition)
+		{
+			signature.Append('<');
+			signature.Append(string.Join(", ", type.GetGenericArguments().Select(FormatTypeParameterDeclaration)));
+			signature.Append('>');
+		}
+
+		signature.Append('(');
+		signature.Append(FormatParameterList(invoke.GetParameters(), false));
+		signature.Append(')');
+
+		members.Add(new ApiMember
+		{
+			Name = "Invoke",
+			Kind = ApiMemberKind.Method,
+			Signature = signature.ToString(),
+			ReturnType = FormatTypeName(invoke.ReturnType, ReturnAnnotations(invoke)),
+			Parameters = BuildParameters(invoke.GetParameters()),
+			Accessibility = accessibility,
+			// A delegate's doc comment sits on its declaration and describes Invoke's parameters;
+			// there is nowhere to write a separate one. AssemblyAnalyzer shares it the same way.
+			Documentation = typeDocumentation
+		});
 	}
 
 	#region Method Type Parameters
@@ -678,6 +836,129 @@ public sealed class ReflectionApiModelBuilder(
 			.Select(BuildTypeParameter)
 			.ToList();
 	}
+
+	#endregion
+
+	#region Accessibility and Modifiers
+
+	private static ApiAccessibility GetAccessibility(MethodBase method) =>
+		method.IsPublic ? ApiAccessibility.Public
+		: method.IsFamilyOrAssembly ? ApiAccessibility.ProtectedInternal
+		: method.IsFamily ? ApiAccessibility.Protected
+		: method.IsAssembly ? ApiAccessibility.Internal
+		: method.IsFamilyAndAssembly ? ApiAccessibility.PrivateProtected
+		: ApiAccessibility.Private;
+
+	private static ApiAccessibility GetAccessibility(FieldInfo field) =>
+		field.IsPublic ? ApiAccessibility.Public
+		: field.IsFamilyOrAssembly ? ApiAccessibility.ProtectedInternal
+		: field.IsFamily ? ApiAccessibility.Protected
+		: field.IsAssembly ? ApiAccessibility.Internal
+		: field.IsFamilyAndAssembly ? ApiAccessibility.PrivateProtected
+		: ApiAccessibility.Private;
+
+	/// <summary>
+	///     Public members, and protected or protected internal ones when a consumer can derive
+	///     from the type. Only public members used to be read, so a base class's protected
+	///     constructors and virtual methods were missing from its page.
+	/// </summary>
+	private static bool IsDocumented(ApiAccessibility accessibility, bool includeProtected) =>
+		accessibility == ApiAccessibility.Public
+		|| (includeProtected && accessibility is ApiAccessibility.Protected or ApiAccessibility.ProtectedInternal);
+
+	private static int AccessibilityRank(ApiAccessibility accessibility) => accessibility switch
+	{
+		ApiAccessibility.Public => 5,
+		ApiAccessibility.ProtectedInternal => 4,
+		ApiAccessibility.Protected => 3,
+		ApiAccessibility.Internal => 2,
+		ApiAccessibility.PrivateProtected => 1,
+		_ => 0
+	};
+
+	private static string Keyword(ApiAccessibility accessibility) => accessibility switch
+	{
+		ApiAccessibility.Public => "public",
+		ApiAccessibility.ProtectedInternal => "protected internal",
+		ApiAccessibility.Protected => "protected",
+		ApiAccessibility.Internal => "internal",
+		ApiAccessibility.PrivateProtected => "private protected",
+		_ => "private"
+	};
+
+	/// <summary>
+	///     The accessibility keyword and a space. Interface members are public unless they say
+	///     otherwise, and their declarations leave it out.
+	/// </summary>
+	private static string AccessPrefix(Type declaringType, ApiAccessibility accessibility) =>
+		declaringType.IsInterface && accessibility == ApiAccessibility.Public ? "" : Keyword(accessibility) + " ";
+
+	/// <summary>
+	///     <c>static</c>, <c>virtual</c>, <c>abstract</c>, <c>sealed</c> and <c>override</c>, each
+	///     followed by a space, in the order C# code style writes them.
+	/// </summary>
+	private static string MethodModifiers(MethodInfo method)
+	{
+		var sb = new StringBuilder();
+		if (method.IsStatic)
+		{
+			sb.Append("static ");
+		}
+
+		if (method.DeclaringType?.IsInterface == true)
+		{
+			// An instance interface member is abstract or virtual without saying so. A static one
+			// has to be declared abstract or virtual to be either.
+			if (method.IsStatic && method.IsAbstract)
+			{
+				sb.Append("abstract ");
+			}
+			else if (method.IsStatic && method.IsVirtual)
+			{
+				sb.Append("virtual ");
+			}
+
+			return sb.ToString();
+		}
+
+		bool isOverride = IsOverride(method);
+		if (method.IsVirtual && !method.IsFinal && !method.IsAbstract && !isOverride)
+		{
+			sb.Append("virtual ");
+		}
+
+		if (method.IsAbstract)
+		{
+			sb.Append("abstract ");
+		}
+
+		if (method.IsFinal && isOverride)
+		{
+			sb.Append("sealed ");
+		}
+
+		if (isOverride)
+		{
+			sb.Append("override ");
+		}
+
+		return sb.ToString();
+	}
+
+	/// <summary>
+	///     Whether the method overrides a base class method. A method that implements an interface
+	///     is virtual in metadata too, but its base definition is itself.
+	/// </summary>
+	private static bool IsOverride(MethodInfo method) =>
+		method.IsVirtual
+		&& method.DeclaringType is { IsInterface: false }
+		&& method.GetBaseDefinition().DeclaringType != method.DeclaringType;
+
+	private static bool IsCompilerGenerated(MemberInfo member) =>
+		member.IsDefined(typeof(CompilerGeneratedAttribute), false);
+
+	private static bool HasAttribute(IEnumerable<CustomAttributeData> attributes, string fullName) =>
+		attributes.Any(a => a.AttributeType.FullName == fullName);
 
 	#endregion
 
@@ -741,55 +1022,66 @@ public sealed class ReflectionApiModelBuilder(
 
 	#region Signature Builders
 
-	private static string BuildConstructorSignature(Type type, ConstructorInfo ctor)
-	{
-		string name = GetSimpleTypeName(type);
-		string parameters = FormatParameterList(ctor.GetParameters());
-		return $"{name}({parameters})";
-	}
-
-	private static string BuildMethodSignature(MethodInfo method)
+	private static string BuildMethodSignature(
+		Type type,
+		MethodInfo method,
+		ApiAccessibility accessibility,
+		bool isOperator,
+		bool isExtensionMethod)
 	{
 		var sb = new StringBuilder();
-		sb.Append(FormatTypeName(method.ReturnType));
+		sb.Append(AccessPrefix(type, accessibility));
+		sb.Append(MethodModifiers(method));
+
+		string parameters = FormatParameterList(method.GetParameters(), isExtensionMethod);
+		string returnType = FormatReturn(method);
+
+		if (isOperator && method.Name is "op_Implicit" or "op_Explicit" or "op_CheckedExplicit")
+		{
+			sb.Append(method.Name switch
+			{
+				"op_Implicit" => "implicit operator ",
+				"op_Explicit" => "explicit operator ",
+				_ => "explicit operator checked "
+			});
+			sb.Append(returnType);
+			sb.Append($"({parameters})");
+			return sb.ToString();
+		}
+
+		sb.Append(returnType);
 		sb.Append(' ');
+
+		if (isOperator && _operatorTokens.TryGetValue(method.Name, out string? token))
+		{
+			sb.Append($"operator {token}({parameters})");
+			return sb.ToString();
+		}
+
 		sb.Append(method.Name);
 
 		if (method.IsGenericMethodDefinition)
 		{
-			Type[] typeArgs = method.GetGenericArguments();
 			sb.Append('<');
-			sb.Append(string.Join(", ", typeArgs.Select(t => t.Name)));
+			sb.Append(string.Join(", ", method.GetGenericArguments().Select(t => t.Name)));
 			sb.Append('>');
 		}
 
-		sb.Append('(');
-		sb.Append(FormatParameterList(method.GetParameters()));
-		sb.Append(')');
-
+		sb.Append($"({parameters})");
 		return sb.ToString();
 	}
 
-	private static string BuildPropertySignature(PropertyInfo prop)
+	private static string BuildFieldSignature(Type type, FieldInfo field, ApiAccessibility accessibility, string fieldType)
 	{
-		string typeName = FormatTypeName(prop.PropertyType);
-		MethodInfo? getter = prop.GetGetMethod();
-		MethodInfo? setter = prop.GetSetMethod();
-		string accessors = BuildAccessorString(getter is not null, setter is not null);
-		return $"{typeName} {prop.Name} {accessors}";
-	}
+		var sb = new StringBuilder();
+		sb.Append(AccessPrefix(type, accessibility));
 
-	private static string BuildFieldSignature(FieldInfo field)
-	{
-		string typeName = FormatTypeName(field.FieldType);
 		if (field.IsLiteral)
 		{
-			object? value = field.GetRawConstantValue();
-			string valueStr = value is string s ? $"\"{s}\"" : value?.ToString() ?? "null";
-			return $"const {typeName} {field.Name} = {valueStr}";
+			sb.Append($"const {fieldType} {field.Name} = {FormatConstant(field.GetRawConstantValue(), field.FieldType)}");
+			return sb.ToString();
 		}
 
-		var sb = new StringBuilder();
 		if (field.IsStatic)
 		{
 			sb.Append("static ");
@@ -800,60 +1092,102 @@ public sealed class ReflectionApiModelBuilder(
 			sb.Append("readonly ");
 		}
 
-		sb.Append(typeName);
+		if (HasAttribute(field.GetCustomAttributesData(), "System.Runtime.CompilerServices.RequiredMemberAttribute"))
+		{
+			sb.Append("required ");
+		}
+
+		if (field.GetRequiredCustomModifiers().Any(m => m.FullName == "System.Runtime.CompilerServices.IsVolatile"))
+		{
+			sb.Append("volatile ");
+		}
+
+		sb.Append(fieldType);
 		sb.Append(' ');
 		sb.Append(field.Name);
 		return sb.ToString();
 	}
 
-	private static string BuildAccessorString(bool hasGetter, bool hasSetter)
+	/// <summary>
+	///     <c>{ get; set; }</c>, with an accessor's own accessibility when it differs from the
+	///     property's, as in <c>{ get; private set; }</c>, and <c>init</c> for init-only setters.
+	/// </summary>
+	private static string BuildAccessorList(MethodInfo? getter, MethodInfo? setter, ApiAccessibility propertyAccessibility)
 	{
-		return (hasGetter, hasSetter) switch
+		var accessors = new List<string>(2);
+		if (getter is not null)
 		{
-			(true, true) => "{ get; set; }",
-			(true, false) => "{ get; }",
-			(false, true) => "{ set; }",
-			_ => "{ }"
+			accessors.Add(AccessorPrefix(getter, propertyAccessibility) + "get;");
+		}
+
+		if (setter is not null)
+		{
+			bool isInit = setter.ReturnParameter.GetRequiredCustomModifiers()
+				.Any(m => m.FullName == "System.Runtime.CompilerServices.IsExternalInit");
+			accessors.Add(AccessorPrefix(setter, propertyAccessibility) + (isInit ? "init;" : "set;"));
+		}
+
+		return accessors.Count == 0 ? "{ }" : $"{{ {string.Join(" ", accessors)} }}";
+	}
+
+	private static string AccessorPrefix(MethodInfo accessor, ApiAccessibility propertyAccessibility)
+	{
+		ApiAccessibility accessibility = GetAccessibility(accessor);
+		return accessibility == propertyAccessibility ? "" : Keyword(accessibility) + " ";
+	}
+
+	/// <summary>
+	///     A method's return type as written in its declaration, including <c>ref</c> and
+	///     <c>ref readonly</c> returns.
+	/// </summary>
+	private static string FormatReturn(MethodInfo method)
+	{
+		string returnType = FormatTypeName(method.ReturnType, ReturnAnnotations(method));
+		if (!method.ReturnType.IsByRef)
+		{
+			return returnType;
+		}
+
+		bool isReadOnly = HasAttribute(method.ReturnParameter.GetCustomAttributesData(),
+			"System.Runtime.CompilerServices.IsReadOnlyAttribute");
+		return (isReadOnly ? "ref readonly " : "ref ") + returnType;
+	}
+
+	private static NullableAnnotations ReturnAnnotations(MethodInfo method) =>
+		NullableAnnotations.For(method.ReturnParameter.GetCustomAttributesData(), method);
+
+	private static string FormatTypeParameterDeclaration(Type typeParameter)
+	{
+		GenericParameterAttributes variance = typeParameter.GenericParameterAttributes & GenericParameterAttributes.VarianceMask;
+		return variance switch
+		{
+			GenericParameterAttributes.Contravariant => "in " + typeParameter.Name,
+			GenericParameterAttributes.Covariant => "out " + typeParameter.Name,
+			_ => typeParameter.Name
 		};
 	}
 
-	private static string FormatParameterList(ParameterInfo[] parameters)
+	private static string FormatParameterList(IReadOnlyList<ParameterInfo> parameters, bool isExtensionMethod)
 	{
-		if (parameters.Length == 0)
+		if (parameters.Count == 0)
 		{
 			return "";
 		}
 
-		var parts = new List<string>(parameters.Length);
+		var parts = new List<string>(parameters.Count);
 
-		foreach (ParameterInfo param in parameters)
+		for (int i = 0; i < parameters.Count; i++)
 		{
+			ParameterInfo param = parameters[i];
 			var sb = new StringBuilder();
 
-			if (param.IsDefined(typeof(ParamArrayAttribute), false))
+			if (i == 0 && isExtensionMethod)
 			{
-				sb.Append("params ");
-			}
-			else if (param.IsIn)
-			{
-				sb.Append("in ");
-			}
-			else if (param.IsOut)
-			{
-				sb.Append("out ");
-			}
-			else if (param.ParameterType.IsByRef)
-			{
-				sb.Append("ref ");
+				sb.Append("this ");
 			}
 
-			Type paramType = param.ParameterType;
-			if (paramType.IsByRef)
-			{
-				paramType = paramType.GetElementType()!;
-			}
-
-			sb.Append(FormatTypeName(paramType));
+			sb.Append(GetParameterModifier(param));
+			sb.Append(FormatParameterType(param));
 			sb.Append(' ');
 			sb.Append(param.Name ?? "arg");
 
@@ -869,148 +1203,271 @@ public sealed class ReflectionApiModelBuilder(
 		return string.Join(", ", parts);
 	}
 
+	/// <summary>
+	///     <c>params</c>, <c>out</c>, <c>ref readonly</c>, <c>in</c> or <c>ref</c>, with a trailing space.
+	/// </summary>
+	/// <remarks>
+	///     <c>in</c> is read from the parameter only when it is passed by reference: interop
+	///     signatures mark by-value parameters <c>[In]</c> as well.
+	/// </remarks>
+	private static string GetParameterModifier(ParameterInfo param)
+	{
+		if (IsParams(param))
+		{
+			return "params ";
+		}
+
+		if (!param.ParameterType.IsByRef)
+		{
+			return "";
+		}
+
+		if (param.IsOut)
+		{
+			return "out ";
+		}
+
+		if (HasAttribute(param.GetCustomAttributesData(), "System.Runtime.CompilerServices.RequiresLocationAttribute"))
+		{
+			return "ref readonly ";
+		}
+
+		return param.IsIn ? "in " : "ref ";
+	}
+
+	private static bool IsParams(ParameterInfo param) =>
+		param.GetCustomAttributesData().Any(a => a.AttributeType.FullName
+			is "System.ParamArrayAttribute" or "System.Runtime.CompilerServices.ParamCollectionAttribute");
+
+	private static string FormatParameterType(ParameterInfo param) =>
+		FormatTypeName(param.ParameterType,
+			NullableAnnotations.For(param.GetCustomAttributesData(), param.Member));
+
 	private static string FormatDefaultValue(ParameterInfo param)
 	{
-		object? value = param.DefaultValue;
-		if (value is null)
+		Type type = param.ParameterType.IsByRef ? param.ParameterType.GetElementType()! : param.ParameterType;
+		return FormatConstant(param.DefaultValue, type);
+	}
+
+	/// <summary>
+	///     A constant as C# source writes it. Numbers use the invariant culture; they used the
+	///     server's, so a German locale showed <c>1,5</c>.
+	/// </summary>
+	private static string FormatConstant(object? value, Type type)
+	{
+		Type valueType = Nullable.GetUnderlyingType(type) ?? type;
+
+		if (value is null or DBNull || value == Missing.Value)
 		{
-			return "null";
+			// `= default` on a struct or type parameter reads back as null; "null" did not compile.
+			bool isDefault = type.IsGenericParameter || (type.IsValueType && Nullable.GetUnderlyingType(type) is null);
+			return isDefault ? "default" : "null";
 		}
 
-		if (value is bool b)
+		if (valueType.IsEnum)
 		{
-			return b ? "true" : "false";
+			return FormatEnumValue(valueType, value);
 		}
 
-		if (value is string s)
+		return value switch
 		{
-			return $"\"{s}\"";
+			bool b => b ? "true" : "false",
+			string s => "\"" + EscapeLiteral(s, '"') + "\"",
+			char c => "'" + EscapeLiteral(c.ToString(), '\'') + "'",
+			IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+			_ => value.ToString() ?? "default"
+		};
+	}
+
+	private static string FormatEnumValue(Type enumType, object value)
+	{
+		string typeName = FormatTypeName(enumType);
+		string text;
+		try
+		{
+			text = Enum.ToObject(enumType, value).ToString() ?? "";
+		}
+		catch (ArgumentException)
+		{
+			return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
 		}
 
-		if (value is char c)
+		// A value no member matches formats as its number.
+		if (text.Length == 0 || char.IsDigit(text[0]) || text[0] == '-')
 		{
-			return $"'{c}'";
+			return $"({typeName}){Convert.ToString(value, CultureInfo.InvariantCulture)}";
 		}
 
-		if (value.GetType().IsEnum)
+		return string.Join(" | ", text.Split(", ").Select(name => $"{typeName}.{name}"));
+	}
+
+	private static string EscapeLiteral(string value, char quote)
+	{
+		var sb = new StringBuilder(value.Length);
+		foreach (char c in value)
 		{
-			return $"{FormatTypeName(value.GetType())}.{value}";
+			sb.Append(c switch
+			{
+				'\\' => "\\\\",
+				'\n' => "\\n",
+				'\r' => "\\r",
+				'\t' => "\\t",
+				'\0' => "\\0",
+				_ when c == quote => "\\" + quote,
+				_ => c.ToString()
+			});
 		}
 
-		return value.ToString() ?? "default";
+		return sb.ToString();
 	}
 
 	#endregion
 
 	#region Type Name Formatting
 
-	private static string FormatTypeName(Type type)
+	/// <summary>
+	///     A type as C# source refers to it: keywords for built-in types, no namespaces, generic
+	///     arguments in angle brackets and containing types before nested ones. With nullable
+	///     annotations, reference types the declaration marked with <c>?</c> keep it.
+	/// </summary>
+	private static string FormatTypeName(Type type, NullableAnnotations? nullable = null)
 	{
-		// Handle by-ref types (ref, out, in)
+		// A by-ref type (ref, out, in) shares its annotation position with the type it refers to.
 		if (type.IsByRef)
 		{
-			return FormatTypeName(type.GetElementType()!);
+			return FormatTypeName(type.GetElementType()!, nullable);
 		}
 
-		// Handle pointer types
 		if (type.IsPointer)
 		{
-			return FormatTypeName(type.GetElementType()!) + "*";
+			return FormatTypeName(type.GetElementType()!, nullable) + "*";
 		}
 
-		// Handle array types
 		if (type.IsArray)
 		{
-			string elementType = FormatTypeName(type.GetElementType()!);
+			bool arrayAnnotated = nullable?.NextIsAnnotated() == true;
+			string elementType = FormatTypeName(type.GetElementType()!, nullable);
 			int rank = type.GetArrayRank();
 			string commas = rank > 1 ? new string(',', rank - 1) : "";
-			return $"{elementType}[{commas}]";
+			return $"{elementType}[{commas}]{(arrayAnnotated ? "?" : "")}";
 		}
 
-		// Handle Nullable<T>
+		// Nullable<T> has no annotation position of its own.
 		Type? underlyingNullable = Nullable.GetUnderlyingType(type);
 		if (underlyingNullable is not null)
 		{
-			return FormatTypeName(underlyingNullable) + "?";
+			return FormatTypeName(underlyingNullable, nullable) + "?";
 		}
 
-		// Handle generic types
-		if (type.IsGenericType)
-		{
-			Type definition = type.GetGenericTypeDefinition();
-			string fullName = definition.FullName ?? definition.Name;
-
-			// Remove the arity suffix (e.g., `2)
-			int backtickIndex = fullName.IndexOf('`');
-			if (backtickIndex > 0)
-			{
-				fullName = fullName[..backtickIndex];
-			}
-
-			// Use C# alias if available
-			if (_clrToCSharpTypeNames.TryGetValue(fullName, out string? alias))
-			{
-				return alias;
-			}
-
-			// Use simple name (without namespace) for the generic type
-			string simpleName = fullName;
-			int lastDot = simpleName.LastIndexOf('.');
-			if (lastDot >= 0)
-			{
-				simpleName = simpleName[(lastDot + 1)..];
-			}
-
-			// Nested types use + in CLR names
-			simpleName = simpleName.Replace('+', '.');
-
-			Type[] typeArgs = type.GetGenericArguments();
-			string formattedArgs = string.Join(", ", typeArgs.Select(FormatTypeName));
-
-			return $"{simpleName}<{formattedArgs}>";
-		}
-
-		// Handle generic type parameters (T, TKey, etc.)
 		if (type.IsGenericParameter)
 		{
-			return type.Name;
+			return type.Name + (nullable?.NextIsAnnotated() == true ? "?" : "");
 		}
 
-		// Check CLR-to-C# keyword map
-		string typeFullName = type.FullName ?? type.Name;
-		if (_clrToCSharpTypeNames.TryGetValue(typeFullName, out string? csharpName))
+		// Reference types take a position; value types only when they are generic.
+		bool annotated = false;
+		if (!type.IsValueType)
 		{
-			return csharpName;
+			annotated = nullable?.NextIsAnnotated() == true;
 		}
-
-		// Use simple name for types in common namespaces, full name otherwise
-		string name = type.Name;
-
-		// Handle nested types
-		if (type.IsNested && type.DeclaringType is not null)
+		else if (type.IsGenericType)
 		{
-			string declaringName = GetSimpleTypeName(type.DeclaringType);
-			return $"{declaringName}.{name}";
+			nullable?.NextIsAnnotated();
 		}
 
-		return name;
+		string name = FormatNamedType(type, nullable);
+		return annotated ? name + "?" : name;
 	}
 
-	private static string GetSimpleTypeName(Type type)
+	private static string FormatNamedType(Type type, NullableAnnotations? nullable)
 	{
-		string name = type.Name;
-		int backtickIndex = name.IndexOf('`');
-		if (backtickIndex > 0)
+		if (!type.IsGenericType)
 		{
-			name = name[..backtickIndex];
+			if (type.FullName is not null && _clrToCSharpTypeNames.TryGetValue(type.FullName, out string? keyword))
+			{
+				return keyword;
+			}
+
+			return string.Join(".", DeclaringChain(type).Select(t => t.Name));
 		}
 
-		return name;
+		Type definition = type.GetGenericTypeDefinition();
+		Type[] arguments = type.GetGenericArguments();
+
+		if (definition.FullName is { } definitionName
+		    && definitionName.StartsWith("System.ValueTuple`", StringComparison.Ordinal)
+		    && arguments.Length is >= 2 and <= 7)
+		{
+			return $"({string.Join(", ", arguments.Select(a => FormatTypeName(a, nullable)))})";
+		}
+
+		// Reflection flattens the arguments of containing types into the nested type's list,
+		// outermost first. Each level takes as many as its arity. Nested generic types used to
+		// lose everything after the first backtick, so Outer<T>.Inner displayed as Outer<T>.
+		var sb = new StringBuilder();
+		int consumed = 0;
+		foreach (Type level in DeclaringChain(definition))
+		{
+			if (sb.Length > 0)
+			{
+				sb.Append('.');
+			}
+
+			(string name, int arity) = SplitArity(level.Name);
+			sb.Append(name);
+
+			if (arity > 0 && consumed + arity <= arguments.Length)
+			{
+				sb.Append('<');
+				sb.Append(string.Join(", ", arguments.Skip(consumed).Take(arity).Select(a => FormatTypeName(a, nullable))));
+				sb.Append('>');
+				consumed += arity;
+			}
+		}
+
+		return sb.ToString();
 	}
+
+	/// <summary>
+	///     The type and the types containing it, outermost first.
+	/// </summary>
+	private static List<Type> DeclaringChain(Type type)
+	{
+		var chain = new List<Type>();
+		for (Type? current = type; current is not null; current = current.IsNested ? current.DeclaringType : null)
+		{
+			chain.Add(current);
+		}
+
+		chain.Reverse();
+		return chain;
+	}
+
+	private static (string Name, int Arity) SplitArity(string metadataName)
+	{
+		int backtick = metadataName.IndexOf('`');
+		if (backtick < 0)
+		{
+			return (metadataName, 0);
+		}
+
+		return int.TryParse(metadataName.AsSpan(backtick + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int arity)
+			? (metadataName[..backtick], arity)
+			: (metadataName[..backtick], 0);
+	}
+
+	private static string GetSimpleTypeName(Type type) => SplitArity(type.Name).Name;
 
 	#endregion
 
 	#region XML Doc Member ID Generation
+
+	/// <summary>
+	///     The type's name in documentation IDs. Reflection separates a nested type from its
+	///     container with <c>+</c> where the XML file uses <c>.</c>, so nested types and their
+	///     members found no documentation.
+	/// </summary>
+	private static string GetDocIdName(Type type) => (type.FullName ?? type.Name).Replace('+', '.');
 
 	private static string GetMemberIdTypeName(Type type)
 	{
@@ -1019,21 +1476,21 @@ public sealed class ReflectionApiModelBuilder(
 			return GetMemberIdTypeName(type.GetElementType()!) + "@";
 		}
 
+		if (type.IsPointer)
+		{
+			return GetMemberIdTypeName(type.GetElementType()!) + "*";
+		}
+
 		if (type.IsArray)
 		{
 			string elementType = GetMemberIdTypeName(type.GetElementType()!);
-			int rank = type.GetArrayRank();
-			if (rank == 1)
+			if (type.IsSZArray)
 			{
 				return $"{elementType}[]";
 			}
 
-			return $"{elementType}[{new string(',', rank - 1)}]";
-		}
-
-		if (type.IsPointer)
-		{
-			return GetMemberIdTypeName(type.GetElementType()!) + "*";
+			// The compiler writes a lower bound for each dimension: int[,] is System.Int32[0:,0:].
+			return $"{elementType}[{string.Join(",", Enumerable.Repeat("0:", type.GetArrayRank()))}]";
 		}
 
 		if (type.IsGenericParameter)
@@ -1047,22 +1504,43 @@ public sealed class ReflectionApiModelBuilder(
 			return "`" + type.GenericParameterPosition;
 		}
 
-		if (type.IsGenericType)
+		if (!type.IsGenericType)
 		{
-			Type definition = type.GetGenericTypeDefinition();
-			string fullName = definition.FullName ?? definition.Name;
-			int backtickIndex = fullName.IndexOf('`');
-			if (backtickIndex > 0)
-			{
-				fullName = fullName[..backtickIndex];
-			}
-
-			Type[] typeArgs = type.GetGenericArguments();
-			string formattedArgs = string.Join(",", typeArgs.Select(GetMemberIdTypeName));
-			return $"{fullName}{{{formattedArgs}}}";
+			return GetDocIdName(type);
 		}
 
-		return type.FullName ?? type.Name;
+		Type definition = type.GetGenericTypeDefinition();
+		Type[] arguments = type.GetGenericArguments();
+		var sb = new StringBuilder();
+		int consumed = 0;
+
+		foreach (Type level in DeclaringChain(definition))
+		{
+			if (sb.Length == 0)
+			{
+				if (!string.IsNullOrEmpty(level.Namespace))
+				{
+					sb.Append(level.Namespace).Append('.');
+				}
+			}
+			else
+			{
+				sb.Append('.');
+			}
+
+			(string name, int arity) = SplitArity(level.Name);
+			sb.Append(name);
+
+			if (arity > 0 && consumed + arity <= arguments.Length)
+			{
+				sb.Append('{');
+				sb.Append(string.Join(",", arguments.Skip(consumed).Take(arity).Select(GetMemberIdTypeName)));
+				sb.Append('}');
+				consumed += arity;
+			}
+		}
+
+		return sb.ToString();
 	}
 
 	private static string GetConstructorMemberId(Type type, ConstructorInfo ctor)
@@ -1070,18 +1548,18 @@ public sealed class ReflectionApiModelBuilder(
 		ParameterInfo[] parameters = ctor.GetParameters();
 		if (parameters.Length == 0)
 		{
-			return $"M:{type.FullName}.#ctor";
+			return $"M:{GetDocIdName(type)}.#ctor";
 		}
 
 		string paramTypes = string.Join(",", parameters.Select(p => GetMemberIdTypeName(p.ParameterType)));
-		return $"M:{type.FullName}.#ctor({paramTypes})";
+		return $"M:{GetDocIdName(type)}.#ctor({paramTypes})";
 	}
 
 	private static string GetMethodMemberId(Type type, MethodInfo method)
 	{
 		var sb = new StringBuilder();
 		sb.Append("M:");
-		sb.Append(type.FullName);
+		sb.Append(GetDocIdName(type));
 		sb.Append('.');
 		sb.Append(method.Name);
 
@@ -1099,6 +1577,13 @@ public sealed class ReflectionApiModelBuilder(
 			sb.Append(')');
 		}
 
+		// Conversion operators differ only by return type, so their IDs end with it.
+		if (method.Name is "op_Implicit" or "op_Explicit" or "op_CheckedExplicit")
+		{
+			sb.Append('~');
+			sb.Append(GetMemberIdTypeName(method.ReturnType));
+		}
+
 		return sb.ToString();
 	}
 
@@ -1114,8 +1599,7 @@ public sealed class ReflectionApiModelBuilder(
 			return null;
 		}
 
-		string memberId = $"T:{type.FullName}";
-		return docFile.GetMemberDoc(memberId);
+		return docFile.GetMemberDoc($"T:{GetDocIdName(type)}");
 	}
 
 	private static XmlDocBlock? LookupMemberDoc(Type type, string memberId, Dictionary<string, XmlDocFile> xmlDocs)
@@ -1147,49 +1631,96 @@ public sealed class ReflectionApiModelBuilder(
 			return new ApiParameter
 			{
 				Name = p.Name ?? "arg",
-				Type = FormatTypeName(paramType),
+				Type = FormatParameterType(p),
 				HasDefaultValue = p.HasDefaultValue,
 				DefaultValue = p.HasDefaultValue ? FormatDefaultValue(p) : null,
-				IsParams = p.IsDefined(typeof(ParamArrayAttribute), false),
+				IsParams = IsParams(p),
 				IsRef = isByRef && !p.IsOut && !p.IsIn,
 				IsOut = p.IsOut,
-				IsIn = p.IsIn,
-				IsNullable = IsNullableParameter(p)
+				IsIn = isByRef && p.IsIn,
+				IsNullable = Nullable.GetUnderlyingType(paramType) is not null
+				             || (!paramType.IsValueType
+				                 && NullableAnnotations.For(p.GetCustomAttributesData(), p.Member).NextIsAnnotated())
 			};
 		}).ToList();
 	}
 
-	private static bool IsNullableParameter(ParameterInfo param)
+	#endregion
+
+	#region Nullable Annotations
+
+	/// <summary>
+	///     Reads the nullable annotations the C# compiler writes into metadata: one flag per type
+	///     reference, in the order <see cref="FormatTypeName" /> visits them.
+	/// </summary>
+	/// <remarks>
+	///     <see cref="NullabilityInfoContext" /> answers whether a value may be null rather than
+	///     what was declared. It reports an unconstrained <c>T</c> as nullable, which would render
+	///     <c>T?</c> where the source says <c>T</c>.
+	/// </remarks>
+	private sealed class NullableAnnotations
 	{
-		Type paramType = param.ParameterType;
-		if (paramType.IsByRef)
+		private const byte _annotated = 2;
+		private readonly byte[] _flags;
+		private int _position;
+
+		private NullableAnnotations(byte[] flags) => _flags = flags;
+
+		/// <summary>
+		///     The annotations for one type reference: its own <c>[Nullable]</c> attribute, else the
+		///     nearest <c>[NullableContext]</c> on the member or a containing type.
+		/// </summary>
+		public static NullableAnnotations For(IEnumerable<CustomAttributeData> attributes, MemberInfo context)
 		{
-			paramType = paramType.GetElementType()!;
+			foreach (CustomAttributeData attribute in attributes)
+			{
+				if (attribute.AttributeType.FullName != "System.Runtime.CompilerServices.NullableAttribute"
+				    || attribute.ConstructorArguments.Count != 1)
+				{
+					continue;
+				}
+
+				object? value = attribute.ConstructorArguments[0].Value;
+				if (value is byte single)
+				{
+					return new NullableAnnotations([single]);
+				}
+
+				if (value is IReadOnlyCollection<CustomAttributeTypedArgument> flags)
+				{
+					return new NullableAnnotations(flags.Select(f => f.Value is byte b ? b : (byte)0).ToArray());
+				}
+			}
+
+			for (MemberInfo? member = context; member is not null; member = member.DeclaringType)
+			{
+				CustomAttributeData? contextAttribute = member.GetCustomAttributesData().FirstOrDefault(a =>
+					a.AttributeType.FullName == "System.Runtime.CompilerServices.NullableContextAttribute");
+				if (contextAttribute?.ConstructorArguments is [{ Value: byte flag }])
+				{
+					return new NullableAnnotations([flag]);
+				}
+			}
+
+			return new NullableAnnotations([]);
 		}
 
-		// Nullable value types
-		if (Nullable.GetUnderlyingType(paramType) is not null)
+		/// <summary>
+		///     Whether the next type reference is annotated with <c>?</c>. Moves past it.
+		/// </summary>
+		public bool NextIsAnnotated()
 		{
-			return true;
+			// A single flag stands for every position.
+			byte flag = _flags.Length switch
+			{
+				0 => 0,
+				1 => _flags[0],
+				_ => _position < _flags.Length ? _flags[_position] : (byte)0
+			};
+
+			_position++;
+			return flag == _annotated;
 		}
-
-		// Check NullableAttribute for reference types
-		// The attribute is compiler-generated with byte values: 0=oblivious, 1=not-nullable, 2=nullable
-		CustomAttributeData? nullableAttr = param.GetCustomAttributesData()
-			.FirstOrDefault(a => a.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-
-		if (nullableAttr?.ConstructorArguments is [{ Value: byte value }])
-		{
-			return value == 2;
-		}
-
-		if (nullableAttr?.ConstructorArguments is [{ Value: IReadOnlyList<CustomAttributeTypedArgument> values }]
-		    && values.Count > 0 && values[0].Value is byte firstByte)
-		{
-			return firstByte == 2;
-		}
-
-		return false;
 	}
 
 	#endregion

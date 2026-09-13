@@ -55,7 +55,8 @@ public sealed class RenderPhase(
 			AllPages = context.Pages,
 			Versions = context.Versions,
 			CurrentVersion = context.CurrentVersion,
-			PackageInfo = context.PackageInfo
+			PackageInfo = context.PackageInfo,
+			BrandAssetFiles = context.BrandAssetFiles
 		};
 
 		int rendered = 0;

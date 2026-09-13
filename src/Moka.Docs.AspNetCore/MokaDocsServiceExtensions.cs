@@ -1,6 +1,7 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moka.Docs.AspNetCore.Phases;
 using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Configuration;
@@ -10,7 +11,9 @@ using Moka.Docs.Engine;
 using Moka.Docs.Parsing;
 using Moka.Docs.Plugins;
 using Moka.Docs.Plugins.BlazorPreview;
+using Moka.Docs.Plugins.Changelog;
 using Moka.Docs.Plugins.OpenApi;
+using Moka.Docs.Plugins.PythonApi;
 using Moka.Docs.Plugins.Repl;
 
 namespace Moka.Docs.AspNetCore;
@@ -54,6 +57,7 @@ public static class MokaDocsServiceExtensions
 		// Register all MokaDocs subsystems
 		services.AddMokaDocsParsing();
 		services.AddMokaDocsCSharp();
+
 		services.AddMokaDocsEngine();
 
 		// Register our reflection-based API page phase
@@ -68,9 +72,21 @@ public static class MokaDocsServiceExtensions
 			services.AddSingleton<IMokaPlugin, ReplPlugin>();
 		}
 
-		if (options.EnableBlazorPreview)
+		// The plugin host runs only the plugins it finds in the container, so a built-in declared in
+		// options.Plugins is registered here. An application registers its own plugins itself.
+		if (options.EnableBlazorPreview || SiteConfigFactory.IsDeclared(options, SiteConfigFactory.BlazorPreviewPluginId))
 		{
-			services.AddSingleton<IMokaPlugin, BlazorPreviewPlugin>();
+			services.TryAddEnumerable(ServiceDescriptor.Singleton<IMokaPlugin, BlazorPreviewPlugin>());
+		}
+
+		if (SiteConfigFactory.IsDeclared(options, "mokadocs-changelog"))
+		{
+			services.TryAddEnumerable(ServiceDescriptor.Singleton<IMokaPlugin, ChangelogPlugin>());
+		}
+
+		if (SiteConfigFactory.IsDeclared(options, "mokadocs-python-api"))
+		{
+			services.TryAddEnumerable(ServiceDescriptor.Singleton<IMokaPlugin, PythonApiPlugin>());
 		}
 
 		// ASP.NET Core integration services

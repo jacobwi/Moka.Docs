@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Abstractions;
 using System.Net;
 using Microsoft.CodeAnalysis;
@@ -51,7 +52,7 @@ internal static class ServeCommand
 			basePathOption
 		};
 
-		command.SetAction(async (parseResult, _) =>
+		command.SetAction(async (parseResult, ct) =>
 		{
 			int port = parseResult.GetValue(portOption);
 			bool verbose = parseResult.GetValue(verboseOption);
@@ -130,13 +131,18 @@ internal static class ServeCommand
 			// every site.
 			PluginDeclaration? replPlugin = config.Plugins.FirstOrDefault(p =>
 				string.Equals(p.Name, "mokadocs-repl", StringComparison.OrdinalIgnoreCase));
-			ReplExecutionService? replService = replPlugin is null
+			// Snippets run in a `mokadocs repl-worker` process that is killed when a run times out.
+			// In-process, a snippet that never returned kept running until serve exited.
+			using ReplExecutionService? replService = replPlugin is null
 				? null
-				: new ReplExecutionService(loggerFactory.CreateLogger<ReplExecutionService>());
+				: new ReplExecutionService(loggerFactory.CreateLogger<ReplExecutionService>(),
+					() => CreateReplWorkerStartInfo(Environment.ProcessPath ?? "dotnet",
+						typeof(ServeCommand).Assembly.Location, Environment.ProcessId));
 
 			if (replService is not null)
 			{
 				await LoadReplReferencesAsync(replService, replPlugin!, config, rootDir);
+				_ = replService.WarmUpAsync(ct);
 			}
 
 			ILogger<BlazorPreviewService> blazorLogger = loggerFactory.CreateLogger<BlazorPreviewService>();
@@ -341,6 +347,29 @@ internal static class ServeCommand
 	}
 
 	/// <summary>
+	///     The command for a REPL worker: this executable again, running the hidden
+	///     <c>repl-worker</c> command. Under <c>dotnet mokadocs.dll</c> the process is the dotnet
+	///     host, which needs the assembly path first.
+	/// </summary>
+	/// <param name="processPath">The running process's executable.</param>
+	/// <param name="entryAssemblyPath">The path of <c>mokadocs.dll</c>.</param>
+	/// <param name="parentProcessId">This process's id, so the worker exits along with it.</param>
+	internal static ProcessStartInfo CreateReplWorkerStartInfo(string processPath, string entryAssemblyPath,
+		int parentProcessId)
+	{
+		var startInfo = new ProcessStartInfo(processPath);
+		if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+		{
+			startInfo.ArgumentList.Add(entryAssemblyPath);
+		}
+
+		startInfo.ArgumentList.Add(ReplWorkerCommand.Name);
+		startInfo.ArgumentList.Add("--parent-pid");
+		startInfo.ArgumentList.Add(parentProcessId.ToString(CultureInfo.InvariantCulture));
+		return startInfo;
+	}
+
+	/// <summary>
 	///     Loads the NuGet packages listed in the REPL plugin's options and the compiled
 	///     assemblies of the documented projects, so REPL blocks can use their types.
 	/// </summary>
@@ -361,7 +390,7 @@ internal static class ServeCommand
 
 				// "Packages loaded" used to print even when the restore failed.
 				AnsiConsole.MarkupLine(resolved.Error is null
-					? $"[green]REPL:[/] Loaded {resolved.Assemblies.Count} package assemblies"
+					? $"[green]REPL:[/] Loaded {resolved.AssemblyPaths.Count} package assemblies"
 					: $"[red]REPL:[/] Packages not loaded: {Markup.Escape(resolved.Error)}");
 			}
 		}

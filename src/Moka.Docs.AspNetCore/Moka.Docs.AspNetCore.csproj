@@ -26,4 +26,8 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.Integration.Tests" />
+  </ItemGroup>
+
 </Project>

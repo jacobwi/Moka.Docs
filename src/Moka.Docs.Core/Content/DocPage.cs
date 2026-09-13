@@ -82,6 +82,40 @@ public sealed record FrontMatter
 
 	/// <summary>Feature flag required for this page to be included in the build.</summary>
 	public string? Requires { get; init; }
+
+	/// <summary>
+	///     Feature cards the <c>landing</c> layout shows under its hero section, in order. The
+	///     layout leaves the whole section out when this is empty.
+	/// </summary>
+	public List<LandingFeature> Features { get; init; } = [];
+
+	/// <summary>Heading above the landing layout's feature cards, or empty for none.</summary>
+	public string FeaturesTitle { get; init; } = "";
+
+	/// <summary>Text under <see cref="FeaturesTitle" />, or empty for none.</summary>
+	public string FeaturesSubtitle { get; init; } = "";
+}
+
+/// <summary>
+///     One card from the <c>features</c> front matter list of a <c>landing</c> layout page.
+///     Every field is optional; the layout leaves out the parts that are empty.
+/// </summary>
+public sealed record LandingFeature
+{
+	/// <summary>The card heading.</summary>
+	public string Title { get; init; } = "";
+
+	/// <summary>The text under the heading.</summary>
+	public string Description { get; init; } = "";
+
+	/// <summary>
+	///     A Lucide icon name, or short text such as <c>C#</c> that is shown when the name is not
+	///     in the icon set. <c>null</c> for no icon.
+	/// </summary>
+	public string? Icon { get; init; }
+
+	/// <summary>The URL the card links to, or <c>null</c> when the card is not a link.</summary>
+	public string? Link { get; init; }
 }
 
 /// <summary>

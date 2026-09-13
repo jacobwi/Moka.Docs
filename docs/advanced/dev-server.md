@@ -131,7 +131,7 @@ The server sends no CORS headers, and a preflight `OPTIONS` request gets a 404, 
 
 Available when the `mokadocs-repl` plugin is declared in `mokadocs.yaml`. Without it, the endpoint returns `503` with `{"error": "REPL service is not available."}`.
 
-The endpoint runs the posted C# script inside the server process, with the permissions of the user running `serve`. Scripts are limited to 10,000 characters and 5 seconds.
+The endpoint runs the posted C# script in a worker process that `serve` starts, with the permissions of the user running `serve`. Scripts are limited to 10,000 characters and 5 seconds; a script that runs longer has its worker killed and replaced, so it can't hang the server.
 
 ```
 POST /api/repl/execute

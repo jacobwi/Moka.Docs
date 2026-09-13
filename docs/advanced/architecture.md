@@ -29,7 +29,7 @@ The pipeline also has a plugin hook. It runs once, just before the first phase w
 | Order | Phase | What it does |
 |-------|-------|--------------|
 | 200 | `DiscoveryPhase` | Lists Markdown files and static assets under `content.docs`, skipping anything inside `build.output`. Checks which `content.projects` files exist and resolves `site.logo` and `site.favicon` |
-| 300 | `CSharpAnalysisPhase` | Reads the `.cs` files of each configured project with Roslyn, or loads the result from the build cache. Adds the `/api` index page and one page per type, and reads the package name and version from the first project's `.csproj` |
+| 300 | `CSharpAnalysisPhase` | Reads the `.cs` files of each configured project with Roslyn, using the settings and references from its project files, or loads the result from the build cache. Adds the `/api` index page and one page per type, and reads the package name and version from the first project that produces a package |
 | 400 | `MarkdownParsePhase` | Turns each Markdown file into a `DocPage`: front matter, HTML, table of contents and route |
 | | Plugin hook | Runs the plugins declared under `plugins:` in `mokadocs.yaml` |
 | 500 | `FeatureGatePhase` | Removes pages whose `requires` feature flag is disabled |
@@ -107,7 +107,7 @@ public sealed class BuildContext
 | `IncludeDrafts` | Host | True with `--draft` |
 | `Pages` | `CSharpAnalysisPhase`, `MarkdownParsePhase`, plugins | `FeatureGatePhase` removes pages. `RenderPhase` replaces each page's `Content.Html` with the fully rendered document |
 | `ApiModel` | `CSharpAnalysisPhase` | All analyzed projects merged by namespace, with `<inheritdoc/>` resolved. The ASP.NET Core host sets it before the build starts |
-| `PackageInfo` | `CSharpAnalysisPhase` | `Name` and `Version` from the first project's `.csproj`, shown by the NuGet install widget on `/api` |
+| `PackageInfo` | `CSharpAnalysisPhase` | `Name` and `Version` from the first packable project's `.csproj`, shown by the NuGet install widget on `/api` |
 | `Navigation` | `NavigationBuildPhase` | The sidebar tree |
 | `SearchIndex` | `SearchIndexPhase` | Null when search is disabled |
 | `CurrentVersion`, `Versions` | Host | The CLI fills them from `features.versioning` when versioning is enabled |
@@ -115,7 +115,7 @@ public sealed class BuildContext
 | `DiscoveredMarkdownFiles` | `DiscoveryPhase` | Paths relative to `content.docs` |
 | `DiscoveredProjectFiles` | `DiscoveryPhase` | Absolute paths of the `content.projects` files that exist |
 | `DiscoveredAssetFiles` | `DiscoveryPhase` | Paths relative to `content.docs` |
-| `BrandAssetFiles` | `DiscoveryPhase` | Logo and favicon files to copy. The key is the publish URL (such as `/assets/logo.png`), the value the absolute source path |
+| `BrandAssetFiles` | `DiscoveryPhase` | Logo and favicon files to copy. The key is the publish URL (such as `/assets/logo.png`), the value the absolute source path. A local logo or favicon whose file is missing isn't listed, gets a warning, and renders with an empty `site.logo_url` or `site.favicon_url` |
 | `DeferredOutputFiles` | Plugins | File contents keyed by output-relative path. `OutputPhase` writes them after cleaning the output directory |
 | `DeferredOutputDirectories` | Plugins | Folders that `OutputPhase` copies into the output directory |
 
@@ -151,6 +151,17 @@ public sealed record FrontMatter
     public string? Route { get; init; }
     public string? Version { get; init; }
     public string? Requires { get; init; }
+    public List<LandingFeature> Features { get; init; } = [];   // cards for the landing layout
+    public string FeaturesTitle { get; init; } = "";
+    public string FeaturesSubtitle { get; init; } = "";
+}
+
+public sealed record LandingFeature
+{
+    public string Title { get; init; } = "";
+    public string Description { get; init; } = "";
+    public string? Icon { get; init; }   // icon name, or text shown as is
+    public string? Link { get; init; }
 }
 ```
 
@@ -159,7 +170,7 @@ public sealed record FrontMatter
 - `TableOfContents.Entries` is a list of `TocEntry` records with `Level`, `Text`, `Id` and `Children`.
 - `Route` comes from the file path (`guide/intro.md` becomes `/guide/intro`, and `index.md` takes its folder's route) unless front matter sets `route`. A `route` value always gets a leading slash and loses any trailing slash. `OutputPhase` writes each page to `{route}/index.html`.
 - Front matter that isn't valid YAML, or has a value of the wrong type, is ignored with a warning. The page is then titled `Untitled` and the front matter block stays in its content.
-- `LastModified` is the Markdown file's last write time on disk. Generated pages have none.
+- `LastModified` is the date of the last git commit that changed the Markdown file, read with one `git log` for the whole docs folder. It falls back to the file's last write time on disk for uncommitted or untracked files, when git isn't available, and for builds over a non-physical file system such as the ASP.NET Core host's. Generated pages have none.
 
 ### NavigationNode
 
@@ -275,8 +286,10 @@ When a layout has a syntax error or throws while rendering, the page is written 
 | `page.source_path` | Path relative to `content.docs` with forward slashes, empty for generated pages |
 | `page.last_modified` | The date as `yyyy-MM-dd`, or an empty string |
 | `page.is_api`, `page.is_api_index` | Whether the page was generated by C# analysis, and whether it is `/api` |
+| `page.features` | Cards from the `features` front matter, each with `title`, `description`, `icon`, `icon_svg` (SVG markup when `icon` names a bundled icon, otherwise empty) and `link` (a link starting with `/` includes the base path). Text is not escaped |
+| `page.features_title`, `page.features_subtitle` | Front matter `featuresTitle` and `featuresSubtitle`, not escaped |
 
-`site` fields: `title`, `description`, `url`, `copyright` (with `{year}` replaced), `logo` and `favicon` (the raw values from `mokadocs.yaml`), `logo_url` and `favicon_url` (resolved URLs, with the base path added for local files), and `repo_url` (`site.editLink.repo`).
+`site` fields: `title`, `description`, `url`, `copyright` (with `{year}` replaced), `logo` and `favicon` (the raw values from `mokadocs.yaml`), `logo_url` and `favicon_url` (resolved URLs, with the base path added for local files, or empty when a local file is missing), and `repo_url` (`site.editLink.repo`).
 
 `theme` fields: `primary_color`, `accent_color`, `code_theme`, `code_style`, `default_color_theme`, `initial_color_theme` (the preset applied on a first visit, empty when none is), `toc_depth`, `social_links` (each with `icon`, `url` and `icon_svg`), and one boolean per option: `color_themes`, `code_theme_selector`, `code_style_selector`, `show_edit_link`, `show_last_updated`, `show_feedback`, `show_dark_mode_toggle`, `show_animations`, `show_search`, `show_table_of_contents`, `show_prev_next`, `show_breadcrumbs`, `show_back_to_top`, `show_copy_button`, `show_line_numbers`, `show_version_selector` and `show_built_with`.
 

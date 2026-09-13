@@ -39,7 +39,8 @@ public sealed class AssemblyAnalyzerTests
 		ApiType type = result.Namespaces[0].Types[0];
 		type.Name.Should().Be("MyClass");
 		type.Kind.Should().Be(ApiTypeKind.Class);
-		type.Documentation?.Summary.Should().Be("A test class.");
+		type.Documentation.Should().NotBeNull();
+		type.Documentation!.Summary.Should().Be("A test class.");
 	}
 
 	[Fact]
@@ -67,8 +68,9 @@ public sealed class AssemblyAnalyzerTests
 		method.Parameters[0].Name.Should().Be("a");
 		method.Parameters[0].Type.Should().Be("int");
 		method.ReturnType.Should().Be("int");
-		method.Documentation?.Summary.Should().Be("Adds values.");
-		method.Documentation?.Parameters.Should().ContainKey("a");
+		method.Documentation.Should().NotBeNull();
+		method.Documentation!.Summary.Should().Be("Adds values.");
+		method.Documentation.Parameters.Should().ContainKey("a");
 	}
 
 	[Fact]
@@ -458,5 +460,52 @@ public sealed class AssemblyAnalyzerTests
 
 		result.Namespaces.Should().ContainSingle().Which.Name.Should().Be("(global)");
 		result.Namespaces[0].Types.Should().HaveCount(3).And.OnlyContain(t => t.Namespace == null);
+	}
+
+	[Fact]
+	public void Analyze_Attributes_KeepTheirNamesAndArgumentsAsWritten()
+	{
+		// Replace("Attribute", "") turned AttributeUsage into "Usage", strings lost their quotes and enums became numbers.
+		ApiReference result = AnalyzeSource("""
+		                                    using System;
+		                                    namespace TestNs
+		                                    {
+		                                        [AttributeUsage(AttributeTargets.Class)]
+		                                        public sealed class LabelAttribute : Attribute
+		                                        {
+		                                            public LabelAttribute(string text, int order) { }
+		                                        }
+
+		                                        [Label("Widget", 3)]
+		                                        public class Widget { }
+		                                    }
+		                                    """);
+
+		List<ApiType> types = result.Namespaces[0].Types;
+		ApiAttribute usage = types.Single(t => t.Name == "LabelAttribute").Attributes.Should().ContainSingle().Subject;
+		usage.Name.Should().Be("AttributeUsage");
+		usage.Arguments.Should().ContainSingle().Which.Should().EndWith("AttributeTargets.Class");
+
+		ApiAttribute label = types.Single(t => t.Name == "Widget").Attributes.Should().ContainSingle().Subject;
+		label.Name.Should().Be("Label");
+		label.Arguments.Should().Equal("\"Widget\"", "3");
+	}
+
+	[Fact]
+	public void Analyze_SeeAlsoHref_KeepsTheUrlAndText()
+	{
+		// The analyzer built its own list from the cref or the text, so an href entry lost its URL.
+		ApiReference result = AnalyzeSource("""
+		                                    namespace TestNs
+		                                    {
+		                                        /// <summary>A widget.</summary>
+		                                        /// <seealso href="https://docs.example.com/widgets">Widget guide</seealso>
+		                                        public class Widget { }
+		                                    }
+		                                    """);
+
+		ApiType type = result.Namespaces[0].Types.Single();
+		type.Documentation.Should().NotBeNull();
+		type.Documentation!.SeeAlso.Should().Equal("[Widget guide](https://docs.example.com/widgets)");
 	}
 }

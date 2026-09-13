@@ -58,6 +58,8 @@ public sealed class ReflectionApiPagePhase(
 			return;
 		}
 
+		var allTypes = context.ApiModel.Namespaces.SelectMany(n => n.Types).ToList();
+
 		// Generate API index page listing all namespaces and types
 		var indexHtml = new StringBuilder();
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
@@ -68,9 +70,9 @@ public sealed class ReflectionApiPagePhase(
 			indexHtml.AppendLine("<tbody>");
 			foreach (ApiType type in ns.Types)
 			{
-				string route = $"/api/{ns.Name.Replace('.', '/')}/{type.Name}".ToLowerInvariant();
+				string route = GetTypeRoute(ns, type);
 				string kindBadge = type.Kind.ToString().ToLowerInvariant();
-				string summary = type.Documentation?.Summary ?? "";
+				string summary = ApiPageRenderer.RenderSummary(type, allTypes);
 				indexHtml.AppendLine("<tr>");
 				indexHtml.AppendLine($"<td><a href=\"{route}\">{HttpUtility.HtmlEncode(type.Name)}</a></td>");
 				indexHtml.AppendLine($"<td><span class=\"api-badge api-badge-{kindBadge}\">{type.Kind}</span></td>");
@@ -91,13 +93,11 @@ public sealed class ReflectionApiPagePhase(
 		});
 
 		// Generate per-type pages
-		var allTypes = context.ApiModel.Namespaces.SelectMany(n => n.Types).ToList();
 
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
 		foreach (ApiType type in ns.Types)
 		{
-			string safeName = SanitizeRoutePart(type.Name);
-			string route = $"/api/{ns.Name.Replace('.', '/')}/{safeName}".ToLowerInvariant();
+			string route = GetTypeRoute(ns, type);
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
 			TableOfContents toc = ApiPageRenderer.BuildTocForType(type);
 
@@ -122,6 +122,13 @@ public sealed class ReflectionApiPagePhase(
 			});
 		}
 	}
+
+	/// <summary>
+	///     The route of a type's page. The sidebar entries that <c>NavEntry.AutoGenerate</c> adds
+	///     link to it too, and the theme highlights the current page only on an exact match.
+	/// </summary>
+	internal static string GetTypeRoute(ApiNamespace ns, ApiType type) =>
+		$"/api/{ns.Name.Replace('.', '/')}/{SanitizeRoutePart(type.Name)}".ToLowerInvariant();
 
 	private static string SanitizeRoutePart(string name) =>
 		name.Replace('<', '-').Replace('>', '-').Replace('`', '-').TrimEnd('-');

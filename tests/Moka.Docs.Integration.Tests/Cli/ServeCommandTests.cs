@@ -67,4 +67,23 @@ public sealed class ServeCommandTests : IDisposable
 	[Fact]
 	public void FindProjectAssembly_NoBuild_ReturnsNull() =>
 		ServeCommand.FindProjectAssembly(_project, "Lib", 10).Should().BeNull();
+
+	[Theory]
+	[InlineData("dotnet", true)]
+	[InlineData("dotnet.exe", true)]
+	[InlineData("mokadocs", false)]
+	[InlineData("mokadocs.exe", false)]
+	public void CreateReplWorkerStartInfo_PassesTheAssemblyOnlyToTheDotnetHost(string executable, bool viaDotnet)
+	{
+		string processPath = Path.Combine(_project, executable);
+		string assembly = Path.Combine(_project, "mokadocs.dll");
+
+		var startInfo = ServeCommand.CreateReplWorkerStartInfo(processPath, assembly, 1234);
+
+		startInfo.FileName.Should().Be(processPath);
+		string[] expected = viaDotnet
+			? [assembly, "repl-worker", "--parent-pid", "1234"]
+			: ["repl-worker", "--parent-pid", "1234"];
+		startInfo.ArgumentList.Should().Equal(expected);
+	}
 }

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Moka.Docs.AspNetCore\Moka.Docs.AspNetCore.csproj" />
     <ProjectReference Include="..\..\src\Moka.Docs.Engine\Moka.Docs.Engine.csproj" />
     <ProjectReference Include="..\..\src\Moka.Docs.Cli\Moka.Docs.Cli.csproj" />
     <ProjectReference Include="..\..\src\Moka.Docs.Serve\Moka.Docs.Serve.csproj" />

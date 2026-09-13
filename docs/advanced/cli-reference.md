@@ -70,7 +70,7 @@ Runs the full build pipeline: parses Markdown, analyzes the configured C# projec
 | 0 | The build completed without errors |
 | 1 | The build failed, or it reported one or more errors |
 
-Errors include problems reported by plugins, such as a Blazor preview block with no preview host. They are always printed; warnings are counted, and listed with `--verbose`.
+Errors include problems reported by plugins, such as a Blazor preview host that fails to publish. They are always printed; warnings are counted, and listed with `--verbose`.
 
 ### Build Output Summary
 
@@ -147,7 +147,7 @@ Builds the site and serves it locally, rebuilding and reloading the browser when
 - **Clean URLs**: a request for `/guide` is served from `/guide/index.html`.
 - **404 page**: unknown paths get the site's generated `404.html`.
 - **Base path aware**: with `build.basePath` or `--base-path`, the server strips that prefix from requests, so `http://localhost:5080/my-repo/` serves the same pages the deployed site will.
-- **REPL endpoint**: `POST /api/repl/execute` exists only when the `mokadocs-repl` plugin is declared. It runs the posted C# code inside the server process with your permissions.
+- **REPL endpoint**: `POST /api/repl/execute` exists only when the `mokadocs-repl` plugin is declared. It runs the posted C# code in a separate worker process with your permissions, and kills that process when a run passes 5 seconds.
 - **Blazor preview endpoint**: `POST /api/blazor/preview` exists only when the `mokadocs-blazor-preview` plugin is declared.
 
 The API endpoints accept only JSON requests, and a browser request must come from the dev server's own origin (`http://localhost:<port>`). Requests from other sites get `403`, so a web page open in the same browser cannot run code through the REPL endpoint.
@@ -227,7 +227,7 @@ Scaffolds a plugin project: a `.csproj` that references the `Moka.Docs.Plugins` 
 mokadocs new plugin MyCustomPlugin
 ```
 
-This creates `Moka.Docs.Plugins.MyCustomPlugin/` containing `Moka.Docs.Plugins.MyCustomPlugin.csproj` and `MyCustomPluginPlugin.cs`. The plugin id is `mokadocs-my-custom-plugin`; `MyCustomPlugin` and `my-custom-plugin` produce the same id.
+This creates `Moka.Docs.Plugins.MyCustomPlugin/` containing `Moka.Docs.Plugins.MyCustomPlugin.csproj` and `MyCustomPlugin.cs`, which declares the class `MyCustomPlugin`. The plugin id is `mokadocs-my-custom-plugin`; `MyCustomPlugin` and `my-custom-plugin` produce the same id. The class name gets a `Plugin` suffix only when the name doesn't already end with one, so `mokadocs new plugin Footer` creates `FooterPlugin`.
 
 The `mokadocs` CLI loads only its built-in plugins, so a plugin built from this template runs only in a host that registers it as an `IMokaPlugin` and declares its id under `plugins`. See [Plugin System](/plugins/overview).
 

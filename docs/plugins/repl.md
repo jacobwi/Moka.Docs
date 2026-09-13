@@ -66,10 +66,9 @@ When the reader clicks Run, the script:
 Only `mokadocs serve` runs code. Its `/api/repl/execute` endpoint hands the code to `ReplExecutionService`, which:
 
 1. Rejects empty code and code longer than 10,000 characters
-2. Redirects `Console.Out` and `Console.Error` to string writers
-3. Compiles the code as a Roslyn `CSharpScript` with the default imports, plus any loaded packages and project assemblies
-4. Runs the script
-5. Returns JSON with `output` and `error` fields
+2. Sends the code to a worker process: `mokadocs repl-worker`, a hidden command that `serve` starts with the loaded packages and project assemblies, and starts again whenever the previous worker was stopped
+3. In the worker, redirects `Console.Out` and `Console.Error`, compiles the code as a Roslyn `CSharpScript` with the default imports plus those references, and runs it
+4. Returns JSON with `output` and `error` fields
 
 ### 5. Output Display
 
@@ -85,7 +84,9 @@ The output panel uses a monospace font and scrolls once its content passes 300px
 
 ### Execution Timeout
 
-Each run gets a 5-second timeout, implemented as a cancellation token. It can stop a slow compile, but it doesn't interrupt code that is already running: a snippet with an infinite loop never returns, and its thread stays busy until you stop the server. See [Security](#security).
+Each run gets 5 seconds, compile included. When a run takes longer, `serve` kills the worker process, answers `Execution timed out after 5 seconds.`, and starts a new worker for the next run, which takes about a second. An infinite loop stops with it.
+
+A snippet that ends the process, for example with `Environment.Exit`, gets `The code ended the REPL process (exit code N).`, and the next run starts a new worker the same way. See [Security](#security).
 
 ### Console Output Capture
 
@@ -205,13 +206,16 @@ plugins:
 
 ## Security
 
-REPL code runs inside the `mokadocs serve` process with the permissions of the user who started it. There is no sandbox: a snippet can do anything the dev server process can, such as reading and writing files. Only enable the plugin for documentation whose code you trust.
+REPL code runs in a separate worker process with the permissions of the user who started `mokadocs serve`. The process keeps a hung or crashing snippet from taking the dev server down, but it is not a sandbox: a snippet can do anything you can, such as reading and writing files. Only enable the plugin for documentation whose code you trust.
 
 These limits do apply:
 
 - **Size limit.** Code longer than 10,000 characters is rejected before it is compiled.
-- **Timeout.** The 5-second cancellation token can stop a slow compile, but not code that is already running. A tight loop never returns and keeps a thread busy until you stop the server.
-- **Fresh script per run.** Variables don't carry over between runs, even on the same code block. Static state in loaded package or project assemblies lasts until the server stops.
+- **Timeout.** A run that takes longer than 5 seconds kills the worker process, loops included.
+- **Output limit.** Output past 100,000 characters is cut off with a note.
+- **No input.** `Console.ReadLine()` returns `null`.
+- **Fresh script per run.** Variables don't carry over between runs, even on the same code block. Static state in loaded package or project assemblies lasts until the worker is replaced after a timeout or crash, or until the server stops.
+- **Tied to the server.** The worker exits when `serve` exits, even if `serve` is killed while a snippet is running.
 - **Local, same-origin requests.** The dev server listens on `localhost` only. The endpoint accepts a `POST` only with `Content-Type: application/json`, and a browser request only from the dev server's own origin (`http://localhost:<port>`). Requests from other origins get a 403, and the server sends no `Access-Control-Allow-Origin` header. Requests without an `Origin` header, such as from `curl`, are accepted, so any program on your machine can send code to it.
 - **Only when declared.** If `mokadocs.yaml` doesn't declare `mokadocs-repl`, the endpoint answers 503 and runs nothing.
 

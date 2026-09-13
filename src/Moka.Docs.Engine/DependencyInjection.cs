@@ -21,7 +21,9 @@ public static class EngineServiceExtensions
 	/// </summary>
 	public static IServiceCollection AddMokaDocsEngine(this IServiceCollection services)
 	{
-		// Register feature management with MokaDefaults + env var overrides
+		// Register feature management with MokaDefaults + env var overrides. The settings go to
+		// feature management directly and are not registered as IConfiguration: in an ASP.NET Core
+		// app that registration replaced the application's own configuration.
 		IConfigurationRoot featureConfig = new ConfigurationBuilder()
 			.AddInMemoryCollection(
 				MokaFeatureConfiguration.GetDefaults()
@@ -29,7 +31,6 @@ public static class EngineServiceExtensions
 						new KeyValuePair<string, string?>($"FeatureManagement:{kvp.Key}", kvp.Value.ToString())))
 			.AddEnvironmentVariables("MOKADOCS_")
 			.Build();
-		services.AddSingleton<IConfiguration>(featureConfig);
 		services.AddFeatureManagement(featureConfig.GetSection("FeatureManagement"));
 
 		services.AddSingleton<BuildPipeline>();
