@@ -602,6 +602,7 @@ public sealed class DevServer : IDisposable
 			".ttf" => "font/ttf",
 			".eot" => "application/vnd.ms-fontobject",
 			".txt" => "text/plain; charset=utf-8",
+			".yaml" or ".yml" => "application/yaml; charset=utf-8",
 			".map" => "application/json",
 			_ => "application/octet-stream"
 		};

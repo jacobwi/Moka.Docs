@@ -25,4 +25,20 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 
+  <!-- Real OpenAPI document providers for AspNetCoreOpenApiTests, the versions an app on each framework
+       uses. Each leg keeps one Microsoft.OpenApi major: 1.x on net9.0, 2.x on net10.0. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" VersionOverride="9.0.23" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" VersionOverride="9.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Plugins\OpenApi\Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

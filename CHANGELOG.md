@@ -5,6 +5,152 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🔒 Security
+
+- **Restore failed on two new .NET advisories.** NuGet.Packaging 7.9.0 brings
+  `System.Security.Cryptography.Pkcs` 8.0.1 onto the net9.0 leg, which carries
+  GHSA-2fmv-rv2c-59x7 (moderate) and GHSA-846f-f764-76mx (high), both published on
+  2026-10-13. It is pinned to the patched 10.0.15. The 1.7.0 packages ship 8.0.1 on
+  net9.0.
+
+### 🔄 Changed
+
+- **NuGet dependencies updated to the latest of the .NET 10 line.** Microsoft.Extensions.*
+  and Microsoft.AspNetCore.OpenApi 10.0.12 to 10.0.15 (9.0.23 on the net9.0 legs),
+  Markdig 1.3.2 to 1.6.0, Scriban 7.4.0 to 7.6.1, System.IO.Abstractions 22.2.0 to
+  23.0.0, System.CommandLine 2.0.12 to 2.0.15, Microsoft.FeatureManagement 4.7.0 to
+  4.8.0 and Moka.Blazor.Repl.* 1.3.5 to 1.3.6, and on the test side xunit.v3 4.0.3,
+  Microsoft.Testing.Platform 2.5.2, FluentAssertions 8.11.0 and Swashbuckle 10.3.1.
+  The .NET 11 releases (Microsoft.Extensions 11, System.CommandLine 3) are not used.
+  Verify.XunitV3 stays on 32.x: 33 adds a license check that fails the build.
+- **New Blazor preview hosts reference Moka.Blazor.Repl.Host 1.3.6** and
+  Microsoft.AspNetCore.Components.WebAssembly 10.0.15. An existing scaffolded host
+  keeps its versions; delete `.mokadocs/preview-host` to regenerate it.
+- **The `NuGet.Packaging`/`NuGet.Protocol` pins are gone.** Moka.Blazor.Repl.Compiler
+  1.3.6 depends on NuGet 7.9.0 itself, so the pins that cleared GHSA-g4vj-cjjj-v7hg
+  no longer change anything.
+
+### ⚠️ Behavior changes
+
+- **`MapMokaDocs()` returns a `RouteGroupBuilder`**, so `.RequireAuthorization()` and
+  other conventions chain onto it and cover every docs endpoint. It still implements
+  `IEndpointRouteBuilder`, so source compiles as before; code compiled against 1.7.0
+  needs a rebuild. Pages and assets answer GET and HEAD only, other methods get 405.
+- **The ASP.NET Core site is built at startup.** The build runs in the background once
+  the app has started (`BuildOnStartup`), so the first reader no longer waits for it.
+  Startup work only happens when `MapMokaDocs` was called.
+- **Docs responses carry a strong ETag** and answer a matching `If-None-Match` with 304.
+  Everything except static assets gets `Cache-Control: no-cache`.
+- **OpenAPI pages in the ASP.NET Core host default to `/rest-api`.** An `openapi` entry
+  without a `routePrefix` used `/api`, the API reference's own route. The CLI default
+  is unchanged.
+
+### ✨ New
+
+- **REST API pages from the app's own OpenAPI document.** `options.OpenApiDocument = "v1"`
+  reads the document through the `IDocumentProvider` contract that `dotnet-getdocument`
+  uses, so it works with `AddOpenApi()` (Microsoft.AspNetCore.OpenApi 9 and 10) and
+  `AddSwaggerGen()` (Swashbuckle 9 and 10) without a package dependency.
+  `OpenApiRoutePrefix` and `OpenApiLabel` set where and under what name the pages
+  appear, and the default sidebar gets a REST API entry. A document that can't be read
+  is a build warning.
+- **The REPL runs in the ASP.NET Core host.** Add
+  `if (await MokaDocsReplWorker.TryRunAsync()) return;` as the first line of
+  Program.cs and `EnableRepl` snippets run in a copy of the app's own executable, with
+  the documented assemblies referenced. Without the line nothing is spawned and Run
+  answers with the fix. The endpoint is mapped in Development only, runs code for
+  requests from the same machine only, and accepts JSON from the app's own origin only.
+  `AllowRemoteRepl` lifts the first two; put the docs behind authorization first.
+  `ReplWorkerStartInfo` overrides the worker command.
+- **Feedback in the ASP.NET Core host.** `POST {BasePath}/api/feedback` logs each vote
+  and passes it to the new `OnFeedback` callback. `ShowFeedback = false` hides the
+  widget and maps nothing.
+- **`WatchDocs` rebuilds the site when a file under `DocsPath` changes**, in
+  Development by default. Requests get the previous site until the new one is ready.
+  `MokaDocsService.RebuildAsync()` does the same on demand.
+- **View source links in the ASP.NET Core host.** Type pages link to the declaration in
+  its repository, read from the SourceLink data in the assembly's portable PDB (next to
+  the DLL or embedded). GitHub and GitLab links open the file at the type's first line.
+  `SourceLinks = false` turns them off. `IncludeSourceCode` (off by default) adds the
+  CLI's View Source panel from the PDB's embedded source or the files it names.
+- **Namespace filters.** `IncludeNamespaces` and `ExcludeNamespaces` pick the
+  namespaces the host documents, a segment at a time; exclude wins. Types and members
+  marked `[EditorBrowsable(EditorBrowsableState.Never)]` are left out.
+- **XML docs kept elsewhere.** `XmlDocFiles` adds XML documentation files, matched to
+  assemblies by the name inside them. An assembly without one now gets a build warning
+  naming the path that was checked.
+- **Inherited Members and Extension Methods on API type pages**, in the CLI and the
+  host. A type lists the members it inherits from documented base types and
+  interfaces, grouped by declaring type and linked to their entries, leaving out
+  constructors, operators and overridden or hidden members. It also lists the
+  documented extension methods whose receiver is the type, a base type or an
+  implemented interface, including constrained generic receivers.
+- **OpenAPI plugin:** reads OpenAPI 3.1 (type lists, nullable references through
+  `oneOf`/`anyOf`, `$ref` with sibling keywords, `const`, schema `examples`). Types
+  show nullability (`string | null`), maps, unions and enum values, and `allOf` parts
+  are merged. Schema names link to the C# type page when exactly one documented type
+  has that name. A new `document` option takes the document's text instead of a file.
+- **OpenAPI pages, more of the document.** Descriptions render as Markdown (CommonMark,
+  as the spec defines them; raw HTML stays text and only http, https and mailto links
+  are kept). Every endpoint has an anchor from its operationId, or its method and path,
+  that the overview links to, and each endpoint gets its own table of contents and
+  search entry. The overview lists the servers and an Authentication section for each
+  security scheme (API key, HTTP, OAuth 2.0 flows with scopes, OpenID Connect), and each
+  endpoint shows the schemes it needs. A new Models page lists the document's schemas,
+  and schema names without a C# type page link there. The document itself is published
+  at `{routePrefix}/openapi.json` (or `.yaml`) and linked from the overview, in the CLI
+  and the ASP.NET Core host.
+- A root base path (`MapMokaDocs("/")` or `BasePath = "/"`) serves the docs at the app
+  root.
+
+### 🐛 Fixed
+
+- **MokaDocs broke a .NET 9 app's own OpenAPI document.** Moka.Docs.Plugins referenced
+  Microsoft.OpenApi 2.x, which every app using Moka.Docs.AspNetCore then got.
+  Microsoft.AspNetCore.OpenApi 9 and Swashbuckle 9 need 1.x and threw
+  `TypeLoadException`, so `/openapi/v1.json` failed in a default .NET 9 web API. The
+  OpenAPI parser now uses System.Text.Json and YamlDotNet, and MokaDocs no longer
+  references Microsoft.OpenApi.
+- The feedback widget in the ASP.NET Core host posted to an endpoint that didn't exist
+  and got a 404 for every vote.
+- REPL Run buttons posted to `/api/repl/execute` without the site's base path, and in
+  the ASP.NET Core host to an endpoint that didn't exist. They now post under the base
+  path, show the server's error when it refuses a run, and no longer tell readers to
+  run `mokadocs serve`.
+- A cancelled REPL run left the snippet running, and its answer reached the next run,
+  or that run failed on the read still pending. The worker is now replaced on cancel,
+  under `mokadocs serve` and in the host, so a reader who leaves stops the snippet.
+- Several `openapi` plugin entries rendered with the last entry's options. An OpenAPI
+  3.0 schema `example` was ignored, a 3.0 `nullable: true` beside a `$ref` was dropped,
+  and a `routePrefix` without a leading slash produced broken routes.
+- A root base path mapped `//{**path}`, which matched nothing.
+- Sidebar labels, breadcrumbs, previous and next page titles, the site title and the
+  table of contents were written into pages unescaped, so a title such as `Box<T>`
+  became an element. They are HTML-escaped now.
+- The AspNetCore sample built for net9.0 as well: `Directory.Build.props` sets
+  `TargetFrameworks`, which the sample's singular `TargetFramework` didn't override.
+
+### 🧪 Tests
+
+- 1694 tests, up from 1246. New: `AspNetCoreEndpointTests`, `AspNetCoreReplTests`,
+  `AspNetCoreRebuildTests`, `AspNetCoreOpenApiTests` (Microsoft.AspNetCore.OpenApi and
+  Swashbuckle on both frameworks, in a real app), `OpenApiParserTests` with documents
+  generated by both providers, `OpenApiPluginTests`, `OpenApiPagesTests`, `ReflectionSourceTests` (sidecar
+  and embedded PDBs with SourceLink), `ReflectionFilterTests`,
+  `ReflectionRelatedMembersTests`, `ApiRelatedMembersTests` (renderer and CLI), and a
+  cancelled-run case in `ReplExecutionServiceTests`. Each fix was confirmed by
+  reverting it and watching its tests fail.
+
+### 📚 Docs
+
+- ASP.NET Core guide: REST API (OpenAPI), Filtering, View Source, Feedback,
+  Interactive REPL and Remote REPL sections, a Development Mode section on watching,
+  and the new options in the reference table. API documentation guide: Inherited
+  Members and Extension Methods. OpenAPI and REPL plugin pages updated. The sample app
+  shows the REPL, the REST API pages and the watcher.
+
 ## [1.7.0] - 2026-09-12
 
 ### 🔒 Security

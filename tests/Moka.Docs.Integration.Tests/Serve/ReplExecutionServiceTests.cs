@@ -98,6 +98,24 @@ public sealed class ReplExecutionServiceTests(ReplWorkerFixture fixture) : IClas
 	}
 
 	[Fact]
+	public async Task CancelledRun_StopsTheWorkerAndTheNextRunGetsItsOwnResult()
+	{
+		// The cancelled snippet kept running, and its answer reached the next run's read.
+		await Service.ExecuteAsync("0", Ct);
+		int? worker = Service.WorkerProcessId;
+
+		using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(Ct))
+		{
+			cancel.CancelAfter(TimeSpan.FromMilliseconds(300));
+			Func<Task> run = () => Service.ExecuteAsync("System.Threading.Thread.Sleep(1500); Console.Write(\"first\");", cancel.Token);
+			await run.Should().ThrowAsync<OperationCanceledException>();
+		}
+
+		HasExited(worker!.Value).Should().BeTrue();
+		(await Service.ExecuteAsync("Console.Write(\"second\");", Ct)).Output.Should().Be("second");
+	}
+
+	[Fact]
 	public async Task LargeOutput_IsTruncated()
 	{
 		// Output went into an unbounded string, so printing in a loop grew it without limit.

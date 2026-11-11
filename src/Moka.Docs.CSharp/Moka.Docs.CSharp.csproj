@@ -15,4 +15,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The ASP.NET Core host renders View Source panels with DocumentedSource, as the CLI does. -->
+    <InternalsVisibleTo Include="Moka.Docs.AspNetCore" />
+  </ItemGroup>
+
 </Project>

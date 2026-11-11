@@ -445,8 +445,8 @@ Displays environment and project paths. This is helpful for debugging or when fi
 ╭───────────────────┬──────────────────────────────────────╮
 │ Property          │ Value                                │
 ├───────────────────┼──────────────────────────────────────┤
-│ Version           │ 1.6.0                                │
-│ Runtime           │ .NET 10.0.12                         │
+│ Version           │ 1.8.0                                │
+│ Runtime           │ .NET 10.0.15                         │
 │ OS                │ Microsoft Windows 10.0.26200         │
 │ Working Directory │ C:\src\my-library                    │
 │ Config File       │ C:\src\my-library\mokadocs.yaml      │

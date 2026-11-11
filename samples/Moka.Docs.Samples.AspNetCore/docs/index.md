@@ -22,8 +22,9 @@ Documentation served straight out of the running application by
   `options.Assemblies` are documented from their XML comments.
 - **Built in memory** - the same build pipeline the CLI uses runs over a virtual
   file system, and the result is held in memory rather than written to `_site`.
-- **Cached in production** - `CacheOutput` is off in Development so edits show up
-  on refresh, and on everywhere else so the site is built once.
+- **Built at startup, rebuilt on change** - the site is built once in the background
+  after the app starts. In Development, a change under `docs/` rebuilds it while the
+  previous site keeps serving.
 
 ---
 

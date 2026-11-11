@@ -1,9 +1,11 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Api;
+using Moka.Docs.Core.Diagnostics;
 using Moka.Docs.CSharp.XmlDoc;
 
 namespace Moka.Docs.AspNetCore.Reflection;
@@ -23,6 +25,9 @@ public sealed class ReflectionApiModelBuilder(
 	InheritDocResolver inheritDocResolver,
 	ILogger<ReflectionApiModelBuilder> logger)
 {
+	/// <summary>The source of the diagnostics the builder reports.</summary>
+	internal const string DiagnosticSource = "ReflectionApiModel";
+
 	private const BindingFlags _declaredMembers = BindingFlags.Public | BindingFlags.NonPublic |
 	                                              BindingFlags.Instance | BindingFlags.Static |
 	                                              BindingFlags.DeclaredOnly;
@@ -106,56 +111,75 @@ public sealed class ReflectionApiModelBuilder(
 	};
 
 	/// <summary>
-	///     Builds an <see cref="ApiReference" /> from the given assemblies.
+	///     Builds an <see cref="ApiReference" /> from the given assemblies, with the default
+	///     <see cref="MokaDocsOptions" /> for everything else.
 	/// </summary>
 	/// <param name="assemblies">The assemblies to scan.</param>
 	/// <param name="includeXmlDocs">Whether to load and attach XML documentation.</param>
 	/// <returns>A fully populated API reference model.</returns>
-	public ApiReference Build(IReadOnlyList<Assembly> assemblies, bool includeXmlDocs)
+	public ApiReference Build(IReadOnlyList<Assembly> assemblies, bool includeXmlDocs) =>
+		Build(new MokaDocsOptions { Assemblies = [.. assemblies], IncludeXmlDocs = includeXmlDocs },
+			Directory.GetCurrentDirectory(), new DiagnosticBag());
+
+	/// <summary>
+	///     Builds an <see cref="ApiReference" /> from <see cref="MokaDocsOptions.Assemblies" />, applying
+	///     the options for XML documentation, namespace filters and source.
+	/// </summary>
+	/// <param name="options">The options. Their assemblies are scanned.</param>
+	/// <param name="contentRoot">The folder relative <see cref="MokaDocsOptions.XmlDocFiles" /> paths resolve from.</param>
+	/// <param name="diagnostics">Receives warnings, such as an assembly without XML documentation.</param>
+	/// <returns>A fully populated API reference model, without the types and members the options leave out.</returns>
+	public ApiReference Build(MokaDocsOptions options, string contentRoot, DiagnosticBag diagnostics)
 	{
-		var xmlDocs = new Dictionary<string, XmlDocFile>(StringComparer.Ordinal);
+		IReadOnlyList<Assembly> assemblies = options.Assemblies;
+		Dictionary<string, XmlDocFile> xmlDocs = options.IncludeXmlDocs
+			? LoadXmlDocs(options, contentRoot, diagnostics)
+			: new Dictionary<string, XmlDocFile>(StringComparer.Ordinal);
+		var namespaceFilter = new NamespaceFilter(options.IncludeNamespaces, options.ExcludeNamespaces);
 
-		if (includeXmlDocs)
-		{
-			foreach (Assembly assembly in assemblies)
-			{
-				string? xmlPath = GetXmlDocPath(assembly);
-				if (xmlPath is not null)
-				{
-					XmlDocFile docFile = xmlDocParser.Parse(xmlPath);
-					if (docFile.Members.Count > 0)
-					{
-						xmlDocs[assembly.GetName().Name ?? ""] = docFile;
-					}
-				}
-			}
-		}
-
-		var allTypes = new List<(Type Type, string AssemblyName)>();
+		var allTypes = new List<(Type Type, ApiType ApiType)>();
 
 		foreach (Assembly assembly in assemblies)
 		{
 			string assemblyName = assembly.GetName().Name ?? assembly.FullName ?? "";
+			AssemblySource? source = null;
+
 			foreach (Type type in GetDocumentedTypes(assembly, assemblyName))
 			{
-				if (!ShouldSkipType(type))
+				if (ShouldSkipType(type))
 				{
-					allTypes.Add((type, assemblyName));
+					continue;
 				}
+
+				ApiType apiType = BuildApiType(type, assemblyName, xmlDocs);
+
+				// Excluded types are built only to pass their documentation on through <inheritdoc/>,
+				// so their source isn't read.
+				if ((options.SourceLinks || options.IncludeSourceCode) && namespaceFilter.IsIncluded(type.Namespace))
+				{
+					source ??= AssemblySource.Open(assembly, options, logger);
+					apiType = apiType with
+					{
+						SourceUrl = options.SourceLinks ? source.Pdb?.GetSourceUrl(type) : null,
+						SourceCode = options.IncludeSourceCode ? source.Declarations?.Render(type) : null
+					};
+				}
+
+				allTypes.Add((type, apiType));
 			}
 		}
 
-		IOrderedEnumerable<IGrouping<string, (Type Type, string AssemblyName)>> namespaceGroups = allTypes
-			.GroupBy(t => t.Type.Namespace ?? "(global)")
+		IOrderedEnumerable<IGrouping<string, (Type Type, ApiType ApiType)>> namespaceGroups = allTypes
+			.GroupBy(t => t.Type.Namespace ?? NamespaceFilter.GlobalNamespace)
 			.OrderBy(g => g.Key, StringComparer.Ordinal);
 
 		var namespaces = new List<ApiNamespace>();
 
-		foreach (IGrouping<string, (Type Type, string AssemblyName)> nsGroup in namespaceGroups)
+		foreach (IGrouping<string, (Type Type, ApiType ApiType)> nsGroup in namespaceGroups)
 		{
 			var types = nsGroup
 				.OrderBy(t => t.Type.Name, StringComparer.Ordinal)
-				.Select(t => BuildApiType(t.Type, t.AssemblyName, xmlDocs))
+				.Select(t => t.ApiType)
 				.ToList();
 
 			namespaces.Add(new ApiNamespace
@@ -176,15 +200,120 @@ public sealed class ReflectionApiModelBuilder(
 			Assemblies = assemblyNames
 		};
 
+		// Resolved before the namespace filter applies, so a kept type still inherits documentation
+		// from a base type in an excluded namespace. The filter then removes the excluded types
+		// before navigation and pages are built from the model, so nothing links to them.
 		reference = inheritDocResolver.Resolve(reference);
+		reference = reference with
+		{
+			Namespaces = reference.Namespaces
+				.Where(ns => namespaceFilter.IsIncluded(ns.Name))
+				.ToList()
+		};
 
 		logger.LogInformation(
 			"Built API reference from {AssemblyCount} assemblies: {TypeCount} types in {NamespaceCount} namespaces",
 			assemblies.Count,
-			namespaces.Sum(ns => ns.Types.Count),
-			namespaces.Count);
+			reference.Namespaces.Sum(ns => ns.Types.Count),
+			reference.Namespaces.Count);
 
 		return reference;
+	}
+
+	/// <summary>
+	///     The XML documentation of each assembly: the <see cref="MokaDocsOptions.XmlDocFiles" /> that
+	///     name it, else the file next to its DLL.
+	/// </summary>
+	private Dictionary<string, XmlDocFile> LoadXmlDocs(MokaDocsOptions options, string contentRoot, DiagnosticBag diagnostics)
+	{
+		var xmlDocs = new Dictionary<string, XmlDocFile>(StringComparer.Ordinal);
+		var assemblyNames = new HashSet<string>(
+			options.Assemblies.Select(a => a.GetName().Name ?? ""), StringComparer.Ordinal);
+
+		foreach (string entry in options.XmlDocFiles)
+		{
+			if (string.IsNullOrWhiteSpace(entry))
+			{
+				continue;
+			}
+
+			string path = Path.GetFullPath(Path.Combine(contentRoot, entry));
+			if (!File.Exists(path))
+			{
+				diagnostics.Warning($"XmlDocFiles entry '{entry}' does not exist: looked for {path}.", DiagnosticSource);
+				continue;
+			}
+
+			XmlDocFile docFile = xmlDocParser.Parse(path);
+			if (docFile.AssemblyName.Length == 0)
+			{
+				diagnostics.Warning(
+					$"XML documentation file {path} has no <doc><assembly><name> element, or could not be read, so it matches no assembly.",
+					DiagnosticSource);
+				continue;
+			}
+
+			if (!assemblyNames.Contains(docFile.AssemblyName))
+			{
+				diagnostics.Warning(
+					$"XML documentation file {path} documents assembly '{docFile.AssemblyName}', which is not in Assemblies, so it was not used.",
+					DiagnosticSource);
+				continue;
+			}
+
+			// Two files for one assembly add up; a member in both takes the later file's comment.
+			if (xmlDocs.TryGetValue(docFile.AssemblyName, out XmlDocFile? earlier))
+			{
+				var members = new Dictionary<string, XmlDocBlock>(earlier.Members, StringComparer.Ordinal);
+				foreach ((string id, XmlDocBlock block) in docFile.Members)
+				{
+					members[id] = block;
+				}
+
+				docFile = earlier with { Members = members };
+			}
+
+			xmlDocs[docFile.AssemblyName] = docFile;
+		}
+
+		var checkedNames = new HashSet<string>(StringComparer.Ordinal);
+		foreach (Assembly assembly in options.Assemblies)
+		{
+			string name = assembly.GetName().Name ?? "";
+			if (xmlDocs.ContainsKey(name) || !checkedNames.Add(name))
+			{
+				continue;
+			}
+
+			// Single-file publishing and assemblies loaded from bytes have no location.
+			if (string.IsNullOrEmpty(assembly.Location))
+			{
+				diagnostics.Warning(
+					$"No XML documentation for assembly '{name}': it was not loaded from a file, so there is no folder to look in. " +
+					"Add its XML file to MokaDocsOptions.XmlDocFiles.",
+					DiagnosticSource);
+				continue;
+			}
+
+			string xmlPath = Path.ChangeExtension(assembly.Location, ".xml");
+			if (!File.Exists(xmlPath))
+			{
+				diagnostics.Warning(
+					$"No XML documentation for assembly '{name}': looked for {xmlPath}. " +
+					"Set <GenerateDocumentationFile>true</GenerateDocumentationFile> in its project, " +
+					"or add its XML file to MokaDocsOptions.XmlDocFiles.",
+					DiagnosticSource);
+				continue;
+			}
+
+			XmlDocFile docFile = xmlDocParser.Parse(xmlPath);
+			if (docFile.Members.Count > 0)
+			{
+				xmlDocs[name] = docFile;
+			}
+		}
+
+		return xmlDocs;
 	}
 
 	/// <summary>
@@ -246,20 +375,27 @@ public sealed class ReflectionApiModelBuilder(
 			return true;
 		}
 
+		// A type hidden from IntelliSense hides the types nested in it as well.
+		for (Type? current = type; current is not null; current = current.DeclaringType)
+		{
+			if (IsHiddenFromEditors(current))
+			{
+				return true;
+			}
+		}
+
 		return false;
 	}
 
-	private static string? GetXmlDocPath(Assembly assembly)
-	{
-		string location = assembly.Location;
-		if (string.IsNullOrEmpty(location))
-		{
-			return null;
-		}
-
-		string xmlPath = Path.ChangeExtension(location, ".xml");
-		return File.Exists(xmlPath) ? xmlPath : null;
-	}
+	/// <summary>
+	///     Whether the member is marked <c>[EditorBrowsable(EditorBrowsableState.Never)]</c>, the
+	///     convention for API that is public only for tooling or compatibility.
+	/// </summary>
+	private static bool IsHiddenFromEditors(MemberInfo member) =>
+		member.GetCustomAttributesData().Any(a =>
+			a.AttributeType.FullName == "System.ComponentModel.EditorBrowsableAttribute"
+			&& a.ConstructorArguments is [{ Value: { } state }]
+			&& Convert.ToInt32(state, CultureInfo.InvariantCulture) == (int)EditorBrowsableState.Never);
 
 	private ApiType BuildApiType(
 		Type type,
@@ -487,7 +623,7 @@ public sealed class ReflectionApiModelBuilder(
 
 		foreach (ConstructorInfo ctor in ctors)
 		{
-			if (IsCompilerGenerated(ctor))
+			if (IsCompilerGenerated(ctor) || IsHiddenFromEditors(ctor))
 			{
 				continue;
 			}
@@ -527,7 +663,7 @@ public sealed class ReflectionApiModelBuilder(
 			MethodInfo? accessor = getter ?? setter;
 
 			// A record's EqualityContract is compiler-generated and protected.
-			if (accessor is null || IsCompilerGenerated(prop))
+			if (accessor is null || IsCompilerGenerated(prop) || IsHiddenFromEditors(prop))
 			{
 				continue;
 			}
@@ -601,7 +737,7 @@ public sealed class ReflectionApiModelBuilder(
 		foreach (MethodInfo method in type.GetMethods(_declaredMembers))
 		{
 			// Record members (<Clone>$, PrintMembers, Equals...) carry [CompilerGenerated].
-			if (IsCompilerGenerated(method) || method.Name.StartsWith('<'))
+			if (IsCompilerGenerated(method) || method.Name.StartsWith('<') || IsHiddenFromEditors(method))
 			{
 				continue;
 			}
@@ -659,7 +795,7 @@ public sealed class ReflectionApiModelBuilder(
 	{
 		foreach (FieldInfo field in type.GetFields(_declaredMembers))
 		{
-			if (IsCompilerGenerated(field))
+			if (IsCompilerGenerated(field) || IsHiddenFromEditors(field))
 			{
 				continue;
 			}
@@ -705,6 +841,11 @@ public sealed class ReflectionApiModelBuilder(
 
 		foreach (FieldInfo field in fields)
 		{
+			if (IsHiddenFromEditors(field))
+			{
+				continue;
+			}
+
 			string memberId = $"F:{GetDocIdName(type)}.{field.Name}";
 			XmlDocBlock? documentation = LookupMemberDoc(type, memberId, xmlDocs);
 			ObsoleteAttribute? obsoleteAttr = field.GetCustomAttribute<ObsoleteAttribute>();
@@ -738,7 +879,7 @@ public sealed class ReflectionApiModelBuilder(
 		foreach (EventInfo evt in type.GetEvents(_declaredMembers))
 		{
 			MethodInfo? addMethod = evt.GetAddMethod(true);
-			if (addMethod is null)
+			if (addMethod is null || IsHiddenFromEditors(evt))
 			{
 				continue;
 			}

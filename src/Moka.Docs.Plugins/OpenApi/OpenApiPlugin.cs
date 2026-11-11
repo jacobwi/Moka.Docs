@@ -1,13 +1,17 @@
+using System.Text;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 
 namespace Moka.Docs.Plugins.OpenApi;
 
 /// <summary>
-///     MokaDocs plugin that reads an OpenAPI 3.0 JSON specification file and generates
-///     beautiful endpoint documentation pages. Endpoints are grouped by tag, and each
-///     group receives its own detail page with parameter tables, request/response schemas,
-///     HTTP method badges, and example JSON payloads.
+///     MokaDocs plugin that reads an OpenAPI document (2.0, 3.0 or 3.1, JSON or YAML) and generates
+///     endpoint documentation pages. Endpoints are grouped by tag, and each group receives its own
+///     detail page with parameter tables, request/response schemas, HTTP method badges, and example
+///     JSON payloads. A models page lists the document's schemas. Schema names link to the API reference
+///     page of the C# type with the same name, or else to the schema on the models page. The source
+///     document is published as <c>{routePrefix}/openapi.json</c> (or <c>.yaml</c>) and linked from the
+///     index page.
 ///     <para>
 ///         Configuration in <c>mokadocs.yaml</c>:
 ///         <code>
@@ -20,11 +24,26 @@ namespace Moka.Docs.Plugins.OpenApi;
 /// </code>
 ///     </para>
 /// </summary>
+/// <remarks>
+///     The <c>document</c> option takes the document's text instead of a file. The ASP.NET Core host
+///     sets it to the document the application generates.
+/// </remarks>
 public sealed class OpenApiPlugin : IMokaPlugin
 {
-	private string _label = "REST API";
-	private string _routePrefix = "/api";
-	private string _specPath = "";
+	/// <summary>The option that holds the document's text, used instead of <c>spec</c>.</summary>
+	public const string DocumentOption = "document";
+
+	/// <summary>The option that sets the URL prefix of the generated pages.</summary>
+	public const string RoutePrefixOption = "routePrefix";
+
+	/// <summary>The option that sets the title of the index page.</summary>
+	public const string LabelOption = "label";
+
+	/// <summary>The route prefix used when <see cref="RoutePrefixOption" /> is not set.</summary>
+	public const string DefaultRoutePrefix = "/api";
+
+	/// <summary>The label used when <see cref="LabelOption" /> is not set.</summary>
+	public const string DefaultLabel = "REST API";
 
 	/// <inheritdoc />
 	public string Id => "openapi";
@@ -38,88 +57,99 @@ public sealed class OpenApiPlugin : IMokaPlugin
 	/// <inheritdoc />
 	public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
 	{
-		IReadOnlyDictionary<string, object> options = context.Options;
-
-		if (options.TryGetValue("spec", out object? specObj) && specObj is string specStr)
-		{
-			_specPath = specStr;
-		}
-
-		if (options.TryGetValue("label", out object? labelObj) && labelObj is string labelStr)
-		{
-			_label = labelStr;
-		}
-
-		if (options.TryGetValue("routePrefix", out object? prefixObj) && prefixObj is string prefixStr)
-		{
-			_routePrefix = prefixStr.TrimEnd('/');
-		}
-
-		if (string.IsNullOrWhiteSpace(_specPath))
-		{
-			context.LogWarning("OpenAPI plugin: 'spec' option is not set. " +
-			                   "Will attempt auto-discovery of openapi.json or swagger.json.");
-		}
-
-		context.LogInfo($"OpenAPI plugin initialized (spec={_specPath}, label={_label}, routePrefix={_routePrefix})");
+		Settings settings = Settings.Read(context.Options);
+		context.LogInfo(
+			$"OpenAPI plugin initialized (spec={settings.Spec}, label={settings.Label}, routePrefix={settings.RoutePrefix})");
 		return Task.CompletedTask;
 	}
 
 	/// <inheritdoc />
+	/// <remarks>
+	///     The options are read here, not in <see cref="InitializeAsync" />: every <c>openapi</c> entry
+	///     in <c>plugins:</c> shares this instance, so options kept in fields made all entries render
+	///     with the last entry's options. The ASP.NET Core host also sets <c>document</c> after the
+	///     plugin is initialized, before each build.
+	/// </remarks>
 	public async Task ExecuteAsync(IPluginContext context, BuildContext buildContext, CancellationToken ct = default)
 	{
-		string? specFullPath = ResolveSpecPath(buildContext);
-		if (specFullPath is null)
-		{
-			context.LogWarning("OpenAPI plugin: No OpenAPI spec file found. Skipping.");
-			return;
-		}
+		Settings settings = Settings.Read(context.Options);
+		string content;
+		string source;
 
-		context.LogInfo($"OpenAPI plugin: Processing spec at {specFullPath}");
+		if (settings.Document is { } document)
+		{
+			// The ASP.NET Core host leaves it empty after warning that the app's document could not be read.
+			if (string.IsNullOrWhiteSpace(document))
+			{
+				context.LogInfo("OpenAPI plugin: The 'document' option is empty. Skipping.");
+				return;
+			}
 
-		string json;
-		try
-		{
-			json = await File.ReadAllTextAsync(specFullPath, ct);
+			content = document;
+			source = "the 'document' option";
 		}
-		catch (Exception ex)
+		else
 		{
-			context.LogError($"OpenAPI plugin: Failed to read spec file '{specFullPath}': {ex.Message}");
-			return;
+			string? specFullPath = ResolveSpecPath(buildContext, settings.Spec);
+			if (specFullPath is null)
+			{
+				context.LogWarning("OpenAPI plugin: No OpenAPI spec file found. Skipping.");
+				return;
+			}
+
+			context.LogInfo($"OpenAPI plugin: Processing spec at {specFullPath}");
+			source = $"spec file '{specFullPath}'";
+
+			try
+			{
+				content = await File.ReadAllTextAsync(specFullPath, ct);
+			}
+			catch (Exception ex)
+			{
+				context.LogError($"OpenAPI plugin: Failed to read spec file '{specFullPath}': {ex.Message}");
+				return;
+			}
 		}
 
 		OpenApiSpec spec;
 		try
 		{
-			spec = OpenApiParser.Parse(json);
+			spec = OpenApiParser.Parse(content);
 		}
 		catch (Exception ex)
 		{
-			context.LogError($"OpenAPI plugin: Failed to parse spec file '{specFullPath}': {ex.Message}");
+			context.LogError($"OpenAPI plugin: Failed to parse {source}: {ex.Message}");
 			return;
 		}
 
-		List<DocPage> pages = GeneratePages(spec, context);
+		string documentFileName = OpenApiParser.IsJson(content) ? "openapi.json" : "openapi.yaml";
+		OpenApiLayout layout = OpenApiLayout.Create(spec, settings.RoutePrefix, documentFileName);
+
+		// OutputPhase writes staged files after it cleans the output, and not at all in a dry run.
+		buildContext.DeferredOutputFiles[layout.DocumentOutputPath!] = Encoding.UTF8.GetBytes(content);
+
+		IReadOnlyDictionary<string, string> typeLinks = OpenApiTypeLinks.Build(buildContext);
+		List<DocPage> pages = GeneratePages(spec, settings, layout, typeLinks, context);
 		buildContext.Pages.AddRange(pages);
 
 		context.LogInfo(
-			$"OpenAPI plugin: Generated {pages.Count} pages ({spec.Endpoints.Count} endpoints) from '{specFullPath}'");
+			$"OpenAPI plugin: Generated {pages.Count} pages ({spec.Endpoints.Count} endpoints) from {source}");
 	}
 
 	/// <summary>
 	///     Resolves the OpenAPI spec file path. If the user specified a path in the config,
 	///     resolves it relative to the project root. Otherwise, tries common file names.
 	/// </summary>
-	private string? ResolveSpecPath(BuildContext buildContext)
+	private static string? ResolveSpecPath(BuildContext buildContext, string? specPath)
 	{
 		string root = buildContext.RootDirectory;
 
 		// User-specified path
-		if (!string.IsNullOrWhiteSpace(_specPath))
+		if (!string.IsNullOrWhiteSpace(specPath))
 		{
-			string full = Path.IsPathRooted(_specPath)
-				? _specPath
-				: Path.GetFullPath(Path.Combine(root, _specPath));
+			string full = Path.IsPathRooted(specPath)
+				? specPath
+				: Path.GetFullPath(Path.Combine(root, specPath));
 
 			return File.Exists(full) ? full : null;
 		}
@@ -149,91 +179,158 @@ public sealed class OpenApiPlugin : IMokaPlugin
 	}
 
 	/// <summary>
-	///     Generates all documentation pages from the parsed spec: one index page
-	///     and one detail page per tag group.
+	///     Generates all documentation pages from the parsed spec: one index page, one detail page per
+	///     tag group and, when the document has schemas, a models page.
 	/// </summary>
-	private List<DocPage> GeneratePages(OpenApiSpec spec, IPluginContext context)
+	private static List<DocPage> GeneratePages(OpenApiSpec spec, Settings settings, OpenApiLayout layout,
+		IReadOnlyDictionary<string, string> typeLinks, IPluginContext context)
 	{
 		var pages = new List<DocPage>();
 		string inlineCss = OpenApiPageRenderer.GetInlineCss();
 
-		// Group endpoints by tag
-		var grouped = new Dictionary<string, List<OpenApiEndpoint>>(StringComparer.OrdinalIgnoreCase);
-		foreach (OpenApiEndpoint ep in spec.Endpoints)
-		{
-			List<string> tags = ep.Tags.Count > 0 ? ep.Tags : ["Other"];
-			foreach (string tag in tags)
-			{
-				if (!grouped.TryGetValue(tag, out List<OpenApiEndpoint>? list))
-				{
-					list = [];
-					grouped[tag] = list;
-				}
+		// A schema links to its C# type's page when there is one, and to its entry on the models page
+		// otherwise.
+		Func<string, string?> schemaLink = name =>
+			typeLinks.GetValueOrDefault(name)
+			?? (layout.ModelsRoute is { } modelsRoute && layout.ModelAnchors.TryGetValue(name, out string? anchor)
+				? $"{modelsRoute}#{anchor}"
+				: null);
 
-				list.Add(ep);
-			}
-		}
-
-		// Index page
-		string indexHtml = inlineCss + OpenApiPageRenderer.RenderIndexPage(spec, _routePrefix);
+		string description = OpenApiMarkdown.PlainText(spec.Description);
 		pages.Add(new DocPage
 		{
 			FrontMatter = new FrontMatter
 			{
-				Title = _label,
-				Description = spec.Description,
+				Title = settings.Label,
+				Description = description,
 				Icon = "code"
 			},
 			Content = new PageContent
 			{
-				Html = indexHtml,
-				PlainText = $"{_label} - {spec.Title} - {spec.Description}"
+				Html = inlineCss + OpenApiPageRenderer.RenderIndexPage(spec, layout),
+				PlainText = $"{settings.Label} - {spec.Title} - {description}"
 			},
-			Route = _routePrefix,
+			TableOfContents = BuildIndexToc(spec, layout),
+			Route = settings.RoutePrefix,
 			Origin = PageOrigin.ApiGenerated
 		});
 
-		// Per-tag detail pages
 		int order = 1;
-		foreach ((string tag, List<OpenApiEndpoint> endpoints) in grouped.OrderBy(kv => kv.Key))
+		foreach (OpenApiTagPageLayout page in layout.TagPages)
 		{
-			string slug = Slugify(tag);
-			string tagHtml = inlineCss + OpenApiPageRenderer.RenderTagPage(tag, endpoints);
-
-			var plainTextParts = new List<string> { tag };
-			foreach (OpenApiEndpoint ep in endpoints)
-			{
-				plainTextParts.Add($"{ep.Method} {ep.Path} {ep.Summary}");
-			}
+			var plainTextParts = new List<string> { page.Tag, OpenApiMarkdown.PlainText(spec.TagDescriptions.GetValueOrDefault(page.Tag)) };
+			plainTextParts.AddRange(page.Endpoints.Select(e => $"{e.Endpoint.Method} {e.Endpoint.Path} {e.Endpoint.Summary}"));
 
 			pages.Add(new DocPage
 			{
 				FrontMatter = new FrontMatter
 				{
-					Title = tag,
-					Description = $"{_label} - {tag}",
+					Title = page.Tag,
+					Description = $"{settings.Label} - {page.Tag}",
 					Order = order++
 				},
 				Content = new PageContent
 				{
-					Html = tagHtml,
-					PlainText = string.Join(" ", plainTextParts)
+					Html = inlineCss + OpenApiPageRenderer.RenderTagPage(spec, layout, page, schemaLink),
+					PlainText = string.Join(" ", plainTextParts.Where(p => p.Length > 0))
 				},
-				Route = $"{_routePrefix}/{slug}",
+				// One entry per endpoint, which also gives each its own search result.
+				TableOfContents = new TableOfContents
+				{
+					Entries = page.Endpoints.Select(e => new TocEntry { Level = 2, Text = e.Title, Id = e.Anchor }).ToList()
+				},
+				Route = page.Route,
 				Origin = PageOrigin.ApiGenerated
 			});
 
-			context.LogInfo($"OpenAPI plugin: Generated page for tag '{tag}' with {endpoints.Count} endpoints");
+			context.LogInfo($"OpenAPI plugin: Generated page for tag '{page.Tag}' with {page.Endpoints.Count} endpoints");
+		}
+
+		if (layout.ModelsRoute is { } route)
+		{
+			var plainTextParts = new List<string> { "Models" };
+			plainTextParts.AddRange(layout.ModelNames.Select(name =>
+				$"{name} {OpenApiMarkdown.PlainText(spec.Schemas[name].Description)}".TrimEnd()));
+
+			pages.Add(new DocPage
+			{
+				FrontMatter = new FrontMatter
+				{
+					Title = "Models",
+					Description = $"{settings.Label} - Models",
+					// After the tag pages, which the sidebar sorts by this.
+					Order = order
+				},
+				Content = new PageContent
+				{
+					Html = inlineCss + OpenApiPageRenderer.RenderModelsPage(spec, layout, schemaLink, typeLinks.GetValueOrDefault),
+					PlainText = string.Join(" ", plainTextParts)
+				},
+				TableOfContents = new TableOfContents
+				{
+					Entries = layout.ModelNames.Select(name => new TocEntry { Level = 2, Text = name, Id = layout.ModelAnchors[name] }).ToList()
+				},
+				Route = route,
+				Origin = PageOrigin.ApiGenerated
+			});
 		}
 
 		return pages;
 	}
 
-	private static string Slugify(string value)
+	private static TableOfContents BuildIndexToc(OpenApiSpec spec, OpenApiLayout layout)
 	{
-		return value.ToLowerInvariant()
-			.Replace(' ', '-')
-			.Replace('/', '-')
-			.Replace('.', '-');
+		var entries = new List<TocEntry>();
+		if (spec.Servers.Count > 0)
+		{
+			entries.Add(new TocEntry { Level = 2, Text = "Servers", Id = OpenApiLayout.ServersAnchor });
+		}
+
+		if (layout.HasAuthentication)
+		{
+			entries.Add(new TocEntry
+			{
+				Level = 2,
+				Text = "Authentication",
+				Id = OpenApiLayout.AuthenticationAnchor,
+				Children = layout.SchemeAnchors.Select(s => new TocEntry { Level = 3, Text = s.Key, Id = s.Value }).ToList()
+			});
+		}
+
+		entries.AddRange(layout.TagPages.Select(page =>
+			new TocEntry { Level = 2, Text = page.Tag, Id = layout.TagSectionAnchors[page.Tag] }));
+		return new TableOfContents { Entries = entries };
+	}
+
+	/// <summary>
+	///     One <c>plugins:</c> entry's options.
+	/// </summary>
+	private sealed record Settings(string? Spec, string? Document, string Label, string RoutePrefix)
+	{
+		public static Settings Read(IReadOnlyDictionary<string, object> options)
+		{
+			string? spec = options.GetValueOrDefault("spec") as string;
+			string? label = options.GetValueOrDefault(LabelOption) as string;
+			string? prefix = options.GetValueOrDefault(RoutePrefixOption) as string;
+
+			return new Settings(
+				string.IsNullOrWhiteSpace(spec) ? null : spec,
+				options.GetValueOrDefault(DocumentOption) as string,
+				string.IsNullOrWhiteSpace(label) ? DefaultLabel : label,
+				prefix is null ? DefaultRoutePrefix : NormalizeRoutePrefix(prefix));
+		}
+	}
+
+	/// <summary>
+	///     The route prefix with one leading slash and no trailing one, such as <c>/rest-api</c>, or an
+	///     empty string for the site root.
+	/// </summary>
+	/// <param name="routePrefix">The <c>routePrefix</c> option as written.</param>
+	/// <returns>The prefix the pages' routes start with.</returns>
+	public static string NormalizeRoutePrefix(string routePrefix)
+	{
+		// Without the leading slash, the routes and the index page's links to the tag pages were relative.
+		string trimmed = routePrefix.Trim().Trim('/');
+		return trimmed.Length == 0 ? "" : "/" + trimmed;
 	}
 }

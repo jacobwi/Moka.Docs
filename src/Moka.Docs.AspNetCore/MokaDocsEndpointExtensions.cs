@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Net.Http.Headers;
 
 namespace Moka.Docs.AspNetCore;
 
@@ -10,21 +13,37 @@ namespace Moka.Docs.AspNetCore;
 /// </summary>
 public static class MokaDocsEndpointExtensions
 {
+	private static readonly string[] _readMethods = [HttpMethods.Get, HttpMethods.Head];
+
 	/// <summary>
 	///     Maps the MokaDocs documentation site at the configured base path.
 	///     Serves the fully-generated documentation site including API reference,
 	///     guides, search, and all theme assets.
 	/// </summary>
+	/// <remarks>
+	///     Pages and assets answer GET and HEAD. The group also holds
+	///     <c>POST {BasePath}/api/feedback</c> when <see cref="MokaDocsOptions.ShowFeedback" /> is
+	///     set, and <c>POST {BasePath}/api/repl/execute</c> when <see cref="MokaDocsOptions.EnableRepl" />
+	///     is set and the environment is Development or
+	///     <see cref="MokaDocsOptions.AllowRemoteRepl" /> is set.
+	/// </remarks>
 	/// <param name="endpoints">The endpoint route builder.</param>
 	/// <param name="basePath">
 	///     Optional override for the URL path prefix (default: uses <see cref="MokaDocsOptions.BasePath" />).
+	///     <c>"/"</c> serves the docs at the root of the app.
 	/// </param>
-	/// <returns>The endpoint route builder for chaining.</returns>
-	public static IEndpointRouteBuilder MapMokaDocs(
+	/// <returns>
+	///     The route group holding every docs endpoint, so conventions such as
+	///     <c>RequireAuthorization()</c> chain onto it and cover them all.
+	/// </returns>
+	public static RouteGroupBuilder MapMokaDocs(
 		this IEndpointRouteBuilder endpoints,
 		string? basePath = null)
 	{
-		MokaDocsOptions options = endpoints.ServiceProvider.GetRequiredService<MokaDocsOptions>();
+		IServiceProvider services = endpoints.ServiceProvider;
+		MokaDocsOptions options = services.GetRequiredService<MokaDocsOptions>();
+		MokaDocsService docsService = services.GetRequiredService<MokaDocsService>();
+		ILogger logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(MokaDocsEndpointExtensions));
 		string effectiveBase = (basePath ?? options.BasePath).Trim('/');
 
 		// The site is built with its base path in every link, so an override has to reach the
@@ -35,49 +54,107 @@ public static class MokaDocsEndpointExtensions
 			options.BasePath = "/" + effectiveBase;
 		}
 
-		// Shared handler for serving docs pages
-		async Task ServeDocs(HttpContext context, string? path)
+		// A root base path used to produce the pattern "//{**path}", which matched nothing.
+		RouteGroupBuilder group = endpoints.MapGroup("/" + effectiveBase);
+
+		group.MapMethods("/", _readMethods, context => ServeDocsAsync(context, docsService));
+		group.MapMethods("/{**path}", _readMethods, context => ServeDocsAsync(context, docsService));
+
+		if (options.ShowFeedback)
 		{
-			MokaDocsService docsService = context.RequestServices.GetRequiredService<MokaDocsService>();
-			InMemorySite site = await docsService.GetSiteAsync(context.RequestAborted);
-
-			string requestPath = path?.Trim('/') ?? "";
-			SiteFile? file = ResolveFile(site, requestPath);
-
-			if (file is null)
-			{
-				context.Response.StatusCode = 404;
-
-				// Try serving a 404 page from the built site
-				file = site.Files.GetValueOrDefault("404.html");
-				if (file is not null)
-				{
-					context.Response.ContentType = file.ContentType;
-					await context.Response.Body.WriteAsync(file.Content, context.RequestAborted);
-				}
-
-				return;
-			}
-
-			// Set cache headers for static assets (CSS, JS, fonts, images)
-			string extension = Path.GetExtension(requestPath);
-			if (IsStaticAsset(extension))
-			{
-				context.Response.Headers.CacheControl = "public, max-age=86400"; // 24 hours
-			}
-
-			context.Response.ContentType = file.ContentType;
-			context.Response.ContentLength = file.Content.Length;
-			await context.Response.Body.WriteAsync(file.Content, context.RequestAborted);
+			group.MapPost("/api/feedback", context => MokaDocsApiEndpoints.HandleFeedbackAsync(context, options, logger));
 		}
 
-		// Catch-all route for the documentation site (handles /docs/anything)
-		endpoints.Map($"/{effectiveBase}/{{**path}}", (HttpContext ctx, string? path) => ServeDocs(ctx, path));
+		if (options.EnableRepl)
+		{
+			MapRepl(group, services, options, logger);
+		}
 
-		// Root route: /docs and /docs/ (serves index.html)
-		endpoints.Map($"/{effectiveBase}", ctx => ServeDocs(ctx, null));
+		docsService.IsMapped = true;
+		return group;
+	}
 
-		return endpoints;
+	private static void MapRepl(RouteGroupBuilder group, IServiceProvider services, MokaDocsOptions options,
+		ILogger logger)
+	{
+		// The endpoint runs any code it is sent, as the app's user. Outside Development that is
+		// remote code execution for anyone who can reach it, so it takes an explicit opt-in.
+		bool isDevelopment = services.GetService<IHostEnvironment>()?.IsDevelopment() == true;
+		if (!isDevelopment && !options.AllowRemoteRepl)
+		{
+			logger.LogWarning(
+				"EnableRepl is on, but the REPL endpoint is not mapped outside the Development environment, " +
+				"so Run buttons can't execute code. Set AllowRemoteRepl to map it, behind authorization");
+			return;
+		}
+
+		MokaDocsRepl repl = services.GetRequiredService<MokaDocsRepl>();
+		repl.IsMapped = true;
+		group.MapPost("/api/repl/execute", context => MokaDocsApiEndpoints.HandleReplAsync(context, repl, logger));
+	}
+
+	private static async Task ServeDocsAsync(HttpContext context, MokaDocsService docsService)
+	{
+		InMemorySite site = await docsService.GetSiteAsync(context.RequestAborted);
+
+		string requestPath = (context.GetRouteValue("path") as string)?.Trim('/') ?? "";
+		SiteFile? file = ResolveFile(site, requestPath);
+		HttpResponse response = context.Response;
+		bool writeBody = !HttpMethods.IsHead(context.Request.Method);
+
+		if (file is null)
+		{
+			response.StatusCode = StatusCodes.Status404NotFound;
+
+			// Try serving a 404 page from the built site
+			file = site.Files.GetValueOrDefault("404.html");
+			if (file is not null)
+			{
+				response.ContentType = file.ContentType;
+				response.ContentLength = file.Content.Length;
+				if (writeBody)
+				{
+					await response.Body.WriteAsync(file.Content, context.RequestAborted);
+				}
+			}
+
+			return;
+		}
+
+		// Static assets are cached for a day. Everything else, pages and the search index
+		// included, changes with each rebuild, so browsers revalidate it with the ETag.
+		response.Headers.ETag = file.ETag;
+		response.Headers.CacheControl = IsStaticAsset(Path.GetExtension(requestPath))
+			? "public, max-age=86400"
+			: "no-cache";
+
+		if (IsNotModified(context.Request, file.ETag))
+		{
+			response.StatusCode = StatusCodes.Status304NotModified;
+			return;
+		}
+
+		response.ContentType = file.ContentType;
+		response.ContentLength = file.Content.Length;
+		if (writeBody)
+		{
+			await response.Body.WriteAsync(file.Content, context.RequestAborted);
+		}
+	}
+
+	/// <summary>
+	///     Whether the request's <c>If-None-Match</c> names the file's current tag. The header
+	///     uses weak comparison, so <c>W/"tag"</c> matches too.
+	/// </summary>
+	private static bool IsNotModified(HttpRequest request, string etag)
+	{
+		if (!EntityTagHeaderValue.TryParseList(request.Headers.IfNoneMatch, out IList<EntityTagHeaderValue>? tags))
+		{
+			return false;
+		}
+
+		var current = new EntityTagHeaderValue(etag);
+		return tags.Any(tag => tag.Equals(EntityTagHeaderValue.Any) || tag.Compare(current, false));
 	}
 
 	/// <summary>

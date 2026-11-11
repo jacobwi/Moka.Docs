@@ -1,6 +1,8 @@
+using Moka.Docs.AspNetCore.OpenApi;
 using Moka.Docs.AspNetCore.Phases;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Plugins.OpenApi;
 
 namespace Moka.Docs.AspNetCore;
 
@@ -23,6 +25,7 @@ internal static class SiteConfigFactory
 	/// </summary>
 	public static SiteConfig Create(MokaDocsOptions options, ApiReference? apiModel)
 	{
+		List<PluginDeclaration> plugins = CreatePluginDeclarations(options);
 		var nav = new List<NavItem>();
 
 		// Auto-generate nav if user didn't specify custom entries
@@ -36,6 +39,10 @@ internal static class SiteConfigFactory
 				AutoGenerate = true,
 				Children = CreateApiChildren("/api", apiModel)
 			});
+
+			// The REST pages had no way into the default sidebar: they sit at their own prefix, and only
+			// a custom Nav could point at it.
+			nav.AddRange(CreateOpenApiNavItems(plugins));
 
 			if (options.DocsPath is not null)
 			{
@@ -60,25 +67,6 @@ internal static class SiteConfigFactory
 				Children = n.AutoGenerate ? CreateApiChildren(n.Path, apiModel) : []
 			}));
 		}
-
-		var plugins = new List<PluginDeclaration>();
-		if (options.EnableRepl)
-		{
-			plugins.Add(new PluginDeclaration { Name = "mokadocs-repl" });
-		}
-
-		// A Plugins entry for the preview carries its options. A second, bare declaration next to
-		// it would load the plugin twice, the second time without previewHost or library.
-		if (options.EnableBlazorPreview && !IsDeclared(options, BlazorPreviewPluginId))
-		{
-			plugins.Add(new PluginDeclaration { Name = BlazorPreviewPluginId });
-		}
-
-		plugins.AddRange(options.Plugins.Select(p => new PluginDeclaration
-		{
-			Name = p.Id,
-			Options = p.Options is null ? [] : new Dictionary<string, object>(p.Options)
-		}));
 
 		return new SiteConfig
 		{
@@ -126,7 +114,9 @@ internal static class SiteConfigFactory
 					PrimaryColor = options.PrimaryColor,
 					AccentColor = options.AccentColor,
 					ShowEditLink = false, // no source repo in embedded mode
-					ShowLastUpdated = false
+					ShowLastUpdated = false,
+					// MapMokaDocs maps the endpoint the widget posts to only when this is on.
+					ShowFeedback = options.ShowFeedback
 				}
 			},
 			Features = new FeaturesConfig
@@ -163,6 +153,75 @@ internal static class SiteConfigFactory
 	/// </summary>
 	internal static bool IsDeclared(MokaDocsOptions options, string pluginId) =>
 		options.Plugins.Any(p => string.Equals(p.Id, pluginId, StringComparison.OrdinalIgnoreCase));
+
+	private static List<PluginDeclaration> CreatePluginDeclarations(MokaDocsOptions options)
+	{
+		var plugins = new List<PluginDeclaration>();
+		if (options.EnableRepl)
+		{
+			plugins.Add(new PluginDeclaration { Name = "mokadocs-repl" });
+		}
+
+		// A Plugins entry for the preview carries its options. A second, bare declaration next to
+		// it would load the plugin twice, the second time without previewHost or library.
+		if (options.EnableBlazorPreview && !IsDeclared(options, BlazorPreviewPluginId))
+		{
+			plugins.Add(new PluginDeclaration { Name = BlazorPreviewPluginId });
+		}
+
+		plugins.AddRange(options.Plugins.Select(p => new PluginDeclaration
+		{
+			Name = p.Id,
+			Options = WithOpenApiDefaults(p.Id, p.Options is null ? [] : new Dictionary<string, object>(p.Options), options)
+		}));
+
+		if (!string.IsNullOrWhiteSpace(options.OpenApiDocument))
+		{
+			plugins.Add(new PluginDeclaration
+			{
+				Name = AppOpenApiDocument.PluginId,
+				Options = WithOpenApiDefaults(AppOpenApiDocument.PluginId,
+					new Dictionary<string, object> { [AppOpenApiDocument.DocumentNameOption] = options.OpenApiDocument },
+					options)
+			});
+		}
+
+		return plugins;
+	}
+
+	/// <summary>
+	///     Fills in the route prefix and label of an <c>openapi</c> entry that doesn't set them.
+	/// </summary>
+	/// <remarks>
+	///     The plugin's own default prefix is <c>/api</c>, where this host always puts the API reference,
+	///     so the two index pages collided and only one was served. The CLI keeps <c>/api</c>: changing it
+	///     there would move the pages of existing sites.
+	/// </remarks>
+	private static Dictionary<string, object> WithOpenApiDefaults(string pluginId, Dictionary<string, object> pluginOptions,
+		MokaDocsOptions options)
+	{
+		if (string.Equals(pluginId, AppOpenApiDocument.PluginId, StringComparison.OrdinalIgnoreCase))
+		{
+			pluginOptions.TryAdd(OpenApiPlugin.RoutePrefixOption, options.OpenApiRoutePrefix);
+			pluginOptions.TryAdd(OpenApiPlugin.LabelOption, options.OpenApiLabel);
+		}
+
+		return pluginOptions;
+	}
+
+	/// <summary>
+	///     A sidebar entry for each route prefix that <c>openapi</c> entries generate pages under. The
+	///     navigation phase lists the tag pages below it.
+	/// </summary>
+	private static IEnumerable<NavItem> CreateOpenApiNavItems(List<PluginDeclaration> plugins) =>
+		plugins
+			.Where(p => string.Equals(p.Name, AppOpenApiDocument.PluginId, StringComparison.OrdinalIgnoreCase))
+			.Select(p => (
+				Path: OpenApiPlugin.NormalizeRoutePrefix(p.Options.GetValueOrDefault(OpenApiPlugin.RoutePrefixOption) as string ?? ""),
+				Label: p.Options.GetValueOrDefault(OpenApiPlugin.LabelOption) as string ?? OpenApiPlugin.DefaultLabel))
+			.Where(item => item.Path.Length > 0)
+			.DistinctBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+			.Select(item => new NavItem { Label = item.Label, Path = item.Path, Icon = "globe" });
 
 	/// <summary>
 	///     One child per namespace, holding one child per type, for an entry that points at the

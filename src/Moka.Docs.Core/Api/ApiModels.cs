@@ -92,6 +92,13 @@ public sealed record ApiType
 	/// <summary>The original source code of the type declaration, if available.</summary>
 	public string? SourceCode { get; init; }
 
+	/// <summary>
+	///     A link to the type's declaration in its repository, such as a GitHub page with a line
+	///     anchor. The ASP.NET Core host reads it from the SourceLink data in the assembly's PDB;
+	///     the CLI leaves it empty.
+	/// </summary>
+	public string? SourceUrl { get; init; }
+
 	/// <inheritdoc />
 	public override string ToString() => $"ApiType({Kind} {FullName})";
 }

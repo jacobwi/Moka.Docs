@@ -302,7 +302,7 @@ preview-host/
 ├── Directory.Build.props         ← empty shadow (isolates from parent repo)
 ├── Directory.Build.targets       ← empty shadow
 ├── Directory.Packages.props      ← empty shadow
-├── DocsPreviewHost.csproj        ← net10.0, references MyLibrary + Moka.Blazor.Repl.Host 1.3.5
+├── DocsPreviewHost.csproj        ← net10.0, references MyLibrary + Moka.Blazor.Repl.Host 1.3.6
 ├── Program.cs                    ← RootComponents.Add<App>("#app")
 └── wwwroot/
     └── index.html                ← loads wasmPreview.js + blazor.webassembly.js
@@ -552,8 +552,8 @@ block's code. Common gotchas:
 ### Iframe keeps growing in height
 
 The page script sets each iframe's height to the size its preview reports
-through `postMessage`, plus 16px. `Moka.Blazor.Repl.Host` 1.3.5, the version the
-scaffold references, avoids a growth loop: it measures the `#app` element
+through `postMessage`, plus 16px. `Moka.Blazor.Repl.Host` 1.3.5 and later (the
+scaffold references 1.3.6) avoid a growth loop: it measures the `#app` element
 instead of `documentElement.scrollHeight`, ignores changes under 2px, and sends
 at most 20 size updates per second. If an older preview host keeps growing,
 raise its `Moka.Blazor.Repl.Host` version in the `.csproj`. The next build

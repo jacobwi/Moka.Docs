@@ -258,7 +258,21 @@ public sealed class ReplExecutionService : IDisposable
 				return new ReplResult { Error = $"The REPL worker process failed to start: {ex.Message}" };
 			}
 
-			(ReplResult? result, ReplWorkerStatus status) = await _worker.ExecuteAsync(code, Timeout, ct);
+			ReplResult? result;
+			ReplWorkerStatus status;
+			try
+			{
+				(result, status) = await _worker.ExecuteAsync(code, Timeout, ct);
+			}
+			catch (OperationCanceledException) when (ct.IsCancellationRequested)
+			{
+				// The snippet is still running and its answer would reach the next run's read, or
+				// that read would fail on the one still pending. A new worker has nothing in flight.
+				_worker.Kill();
+				DiscardWorker();
+				throw;
+			}
+
 			switch (status)
 			{
 				case ReplWorkerStatus.Completed:

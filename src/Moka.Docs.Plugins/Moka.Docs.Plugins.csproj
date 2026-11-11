@@ -17,8 +17,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="Microsoft.OpenApi" />
-    <PackageReference Include="Microsoft.OpenApi.YamlReader" />
+    <!-- OpenAPI documents are read with System.Text.Json and YamlDotNet, not Microsoft.OpenApi: an app
+         loads one version of that, and 2.x here broke the 1.x that Microsoft.AspNetCore.OpenApi 9 and
+         Swashbuckle 9 need. -->
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
   <!-- Embed the Python analyzer script so the PythonApiPlugin can extract it

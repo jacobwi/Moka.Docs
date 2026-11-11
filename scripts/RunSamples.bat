@@ -6,9 +6,10 @@ rem
 rem Interactive:     RunSamples.bat
 rem Non-interactive: RunSamples.bat <choice> [tfm]     e.g. RunSamples.bat 2 net9.0
 rem
-rem The CLI and every sample multi-target net9.0;net10.0 (Directory.Build.props
-rem sets TargetFrameworks, which overrides the singular TargetFramework the
-rem AspNetCore sample declares), so each dotnet run needs an explicit -f.
+rem The CLI and the samples multi-target net9.0;net10.0 (Directory.Build.props
+rem sets TargetFrameworks), so each dotnet run needs an explicit -f. The
+rem AspNetCore sample targets net10.0 only: it reads the app's OpenAPI document
+rem from Microsoft.AspNetCore.OpenApi 10.
 
 set "ROOT=%~dp0.."
 set "CLI=%ROOT%\src\Moka.Docs.Cli"
@@ -157,7 +158,9 @@ call :ensure_build
 if defined BUILD_FAILED goto failed
 echo.
 echo AspNetCore sample app. Docs at http://localhost:5311/docs - Ctrl+C to stop.
-dotnet run --project "%ROOT%\samples\Moka.Docs.Samples.AspNetCore" -f %TFM% --no-build --no-launch-profile --urls "http://localhost:5311"
+rem Development maps the REPL endpoint and watches the docs folder.
+set "ASPNETCORE_ENVIRONMENT=Development"
+dotnet run --project "%ROOT%\samples\Moka.Docs.Samples.AspNetCore" -f net10.0 --no-build --no-launch-profile --urls "http://localhost:5311"
 goto after
 
 :build_all

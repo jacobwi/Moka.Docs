@@ -7,8 +7,9 @@ namespace Moka.Docs.Plugins.Repl;
 /// <summary>
 ///     MokaDocs plugin that adds interactive C# REPL functionality to documentation pages.
 ///     Code blocks written as <c>```csharp-repl</c> are enhanced with a Run button and
-///     output panel. In <c>mokadocs serve</c> mode, code is executed server-side via
-///     Roslyn scripting. In static builds, a message directs users to use the dev server.
+///     output panel. Under <c>mokadocs serve</c>, or in an ASP.NET Core app with
+///     <c>EnableRepl</c>, code is executed server-side via Roslyn scripting. A static build has no
+///     server, so Run shows that the code can't run there.
 /// </summary>
 public sealed class ReplPlugin : IMokaPlugin
 {
@@ -141,16 +142,36 @@ public sealed class ReplPlugin : IMokaPlugin
 
 	                                             var startTime = performance.now();
 
-	                                             fetch('/api/repl/execute', {
+	                                             function showUnavailable() {
+	                                                 outputEl.style.display = 'block';
+	                                                 outputEl.className = 'repl-output repl-unavailable';
+	                                                 outputEl.textContent = 'REPL server unavailable, so this code can\'t run here.';
+	                                                 status.textContent = '';
+	                                             }
+
+	                                             // A site built with a base path posts to /base/api/..., like the feedback widget.
+	                                             fetch((document.documentElement.dataset.basePath || '') + '/api/repl/execute', {
 	                                                 method: 'POST',
 	                                                 headers: { 'Content-Type': 'application/json' },
 	                                                 body: JSON.stringify({ code: code })
 	                                             })
-	                                             .then(function(res) { return res.json(); })
-	                                             .then(function(data) {
+	                                             .then(function(res) {
+	                                                 return res.json()
+	                                                     .catch(function() { return null; })
+	                                                     .then(function(data) { return { ok: res.ok, data: data }; });
+	                                             })
+	                                             .then(function(result) {
+	                                                 var data = result.data;
 	                                                 var elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-	                                                 outputEl.style.display = 'block';
 
+	                                                 // A host without the endpoint answers with an HTML 404 or 405. One that
+	                                                 // has it can still refuse, and then says why in the error field.
+	                                                 if (!data || (!result.ok && !data.error)) {
+	                                                     showUnavailable();
+	                                                     return;
+	                                                 }
+
+	                                                 outputEl.style.display = 'block';
 	                                                 if (data.error) {
 	                                                     outputEl.className = 'repl-output repl-error';
 	                                                     outputEl.textContent = data.error;
@@ -161,12 +182,7 @@ public sealed class ReplPlugin : IMokaPlugin
 	                                                     status.textContent = 'Completed in ' + elapsed + 's';
 	                                                 }
 	                                             })
-	                                             .catch(function(err) {
-	                                                 outputEl.style.display = 'block';
-	                                                 outputEl.className = 'repl-output repl-unavailable';
-	                                                 outputEl.textContent = 'REPL server unavailable. Run "mokadocs serve" to enable interactive code execution.';
-	                                                 status.textContent = '';
-	                                             })
+	                                             .catch(showUnavailable)
 	                                             .finally(function() {
 	                                                 runBtn.disabled = false;
 	                                                 runBtn.innerHTML = playIcon + ' Run';

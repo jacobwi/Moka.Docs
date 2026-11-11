@@ -45,7 +45,7 @@ MokaDocs ships with these built-in plugins. Add them to your `mokadocs.yaml` to 
 | `mokadocs-changelog` | [Release Changelog](/plugins/changelog) | Timeline UI for release notes using `:::changelog` containers |
 | `mokadocs-python-api` | [Python API Reference](/plugins/python-api) | Generates API reference pages from Python source files |
 
-In the [ASP.NET Core host](/guide/aspnetcore), `MokaDocsOptions.Plugins` declares plugins by id with their options, and `EnableRepl` and `EnableBlazorPreview` turn those two on. The REPL doesn't run code there.
+In the [ASP.NET Core host](/guide/aspnetcore), `MokaDocsOptions.Plugins` declares plugins by id with their options, and `EnableRepl` and `EnableBlazorPreview` turn those two on. The REPL runs code there in Development (see [Interactive REPL](/guide/aspnetcore#interactive-repl)).
 
 ## IMokaPlugin Interface
 

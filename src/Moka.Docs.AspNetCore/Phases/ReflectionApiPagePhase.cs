@@ -99,7 +99,7 @@ public sealed class ReflectionApiPagePhase(
 		{
 			string route = GetTypeRoute(ns, type);
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
-			TableOfContents toc = ApiPageRenderer.BuildTocForType(type);
+			TableOfContents toc = ApiPageRenderer.BuildTocForType(type, allTypes);
 
 			context.Pages.Add(new DocPage
 			{

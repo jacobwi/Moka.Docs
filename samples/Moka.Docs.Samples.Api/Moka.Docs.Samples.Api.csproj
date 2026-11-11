@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" VersionOverride="9.0.20" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" VersionOverride="9.0.23" />
   </ItemGroup>
 
   <ItemGroup>

@@ -93,6 +93,8 @@ A type's members are grouped into sections:
 | Fields       | Fields and enum members   | `public const int MaxDepth = 10`, `Info = 1`              |
 | Operators    | Operators and conversions | `public static Point operator +(Point a, Point b)`        |
 
+After these, a page can list the members the type inherits from other documented types and the extension methods that apply to it. See [Inherited Members](#inherited-members) and [Extension Methods](#extension-methods).
+
 Each section starts with a table of member names and summaries. Below it, members get a detail block with their signature and documentation. What to expect:
 
 - A member gets a detail block when it has any documentation tag, is obsolete, or has an attribute that the page shows (see [Attributes Display](#attributes-display)). Otherwise it only appears in the table, and its name there isn't a link.
@@ -321,13 +323,13 @@ During analysis, `AssemblyAnalyzer` takes each of the type's declarations, remov
 
 The section shows the declaration with normalized whitespace, doc comments included. It keeps the members the page documents, with their bodies, and leaves out the rest: `private` members and private nested types always, and `internal` and `private protected` ones unless `includeInternals` is `true`. A `#region` or `#if` directive on a removed member stays when its closing directive is on a member that stays. For a `partial` type it shows every declaration.
 
-Pages served by the [ASP.NET Core integration](/guide/aspnetcore) have no View Source section, because that host reads compiled assemblies.
+Pages served by the [ASP.NET Core integration](/guide/aspnetcore) have the section only when `IncludeSourceCode` is on, and read the source through the assembly's PDB; see View Source there.
 
 ## Type Relationships
 
 ### Base Types and Interfaces
 
-An Inheritance section lists the direct base type and the interfaces the type declares itself. Types further up the chain aren't listed. Structs show `System.ValueType` as their base type.
+An Inheritance section lists the direct base type and the interfaces the type declares itself. Types further up the chain aren't listed there, but the members they declare are, under [Inherited Members](#inherited-members). Structs show `System.ValueType` as their base type.
 
 ```csharp
 namespace MyLibrary;
@@ -343,6 +345,46 @@ public class MarkdownProcessor : DocumentProcessor, IProcessor, IDisposable
 ```
 
 The `MarkdownProcessor` page lists `MyLibrary.DocumentProcessor` as its base type and `MyLibrary.IProcessor` and `System.IDisposable` as interfaces.
+
+### Inherited Members
+
+Class, record and interface pages can have an Inherited Members section after the type's own members. A class inherits from its chain of base types, an interface from the interfaces it extends. Each row is one documented type, nearest first, linked to its page and followed by the members inherited from it. Each member links to its entry on that page.
+
+```csharp
+namespace MyLibrary;
+
+public abstract class Shape
+{
+    public Shape() { }
+    public string Name { get; set; } = "";
+    public abstract double Area { get; }
+    public void Move(int x, int y) { }
+    public void Move(double distance) { }
+}
+
+public class Circle : Shape
+{
+    public override double Area => 3.14;
+    public double Radius { get; set; }
+}
+
+public sealed class UnitCircle : Circle
+{
+    public new void Move(double distance) { }
+}
+```
+
+The `UnitCircle` page lists `Area` and `Radius` from `Circle`, then `Name` and `Move(int, int)` from `Shape`. Left out:
+
+- Constructors and operators.
+- On a sealed class, `protected` and `protected internal` members, since nothing can derive from it to use them.
+- A member that the type, or a type between it and the declaring type, declares again with the same name and parameter types: an override, or a member hidden with `new`. `Shape.Area` is left out because `Circle` overrides it, and `Move(double)` because `UnitCircle` hides it. The other `Move` overload stays.
+- Members of types that aren't documented, such as `System.Object`, `System.Exception` or `ControllerBase`. The chain stops at the first base type outside the documented types, so a class whose base type is one of those has no section.
+- Interface members on a class or struct page. The type implements them rather than inheriting them.
+
+Members show their name, plus parameter types for methods and indexers, such as `Move(int, int)` and `this[int]`. A generic base type's type parameters are replaced by the arguments the type passes: a class that derives from `Repository<User>` lists `Find(User)`, in a row labeled `Repository<User>`.
+
+Base types and interfaces are found like the source of `<inheritdoc>`: by full name, with generic types matched by name and number of type parameters, or by name alone when the reference has no namespace. Projects are compiled separately, so a base type from another configured project has none. When several documented types have that name, the one in the type's own namespace or the nearest enclosing namespace is used. If that doesn't settle it, the base type isn't listed.
 
 ### Generic Type Parameters
 
@@ -378,21 +420,27 @@ The diagram doesn't follow the hierarchy any further in either direction. No con
 
 ## Extension Methods
 
-Extension methods are listed as static methods of the class that declares them. The `this` modifier in the signature is the only mark that the method extends a type.
+An extension method is documented on the page of the static class that declares it, with `this` on its first parameter: `public static string Describe(this Shape shape)`. It's also listed in an Extension Methods section on the pages of the documented types it applies to: the type of the `this` parameter, the types that derive from it and, for an interface, the types that implement it. The section comes after Inherited Members.
 
 ```csharp
-public static class StringExtensions
+namespace MyLibrary;
+
+public static class ShapeExtensions
 {
-    /// <summary>
-    /// Converts a Markdown string to plain text by stripping all formatting.
-    /// </summary>
-    /// <param name="markdown">The Markdown-formatted string.</param>
-    /// <returns>The plain text content without Markdown formatting.</returns>
+    /// <summary>Describes a shape.</summary>
+    public static string Describe(this Shape shape) => shape.Name;
+
+    /// <summary>Converts Markdown to plain text.</summary>
     public static string ToPlainText(this string markdown) => markdown;
 }
 ```
 
-This method's signature shows as `public static string ToPlainText(this string markdown)`.
+With the shapes from [Inherited Members](#inherited-members), `Describe` is listed on the `Shape`, `Circle` and `UnitCircle` pages as `Describe(Shape)`, with a link to `ShapeExtensions` and its summary. The name links to the method's entry on the `ShapeExtensions` page. `ToPlainText` only appears on the `ShapeExtensions` page, because `string` isn't a documented type.
+
+- A generic `this` parameter matches by name and number of type arguments, so `this Repository<T> repository` applies to `Repository<T>` and the types that derive from it. A `this` parameter whose type isn't documented, such as `this IEnumerable<T> items`, isn't listed on any other page.
+- A `this` parameter typed as a type parameter, as in `Tag<T>(this T item) where T : Shape`, applies to the types that meet its constraints. It's only listed when every type constraint names a documented type, and an unconstrained one isn't listed.
+- An array, a tuple or a nullable struct (`this Shape[] shapes`, `this Point? point`) doesn't match the type it's made from.
+- Types are matched the same way as for [Inherited Members](#inherited-members), names without a namespace included.
 
 ## Analysis Cache
 

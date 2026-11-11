@@ -256,7 +256,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///     a scaffolded host restored 1.3.2 with a warning instead of the version the compiler
 	///     here is built against.
 	/// </remarks>
-	private const string _hostPackageVersion = "1.3.5";
+	private const string _hostPackageVersion = "1.3.6";
 
 	/// <summary>
 	///     Where the plugin scaffolds a preview host when neither <c>previewHost</c> nor
@@ -1506,8 +1506,8 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                                 </PropertyGroup>
 
 	                                                 <ItemGroup>
-	                                                   <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
-	                                                   <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
+	                                                   <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
+	                                                   <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.15" PrivateAssets="all" />
 	                                                 </ItemGroup>
 
 	                                                 <ItemGroup>

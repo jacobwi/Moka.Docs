@@ -70,6 +70,9 @@ public static class MokaDocsServiceExtensions
 		if (options.EnableRepl)
 		{
 			services.AddSingleton<IMokaPlugin, ReplPlugin>();
+
+			// Owns the worker process; the container disposes it, and the worker with it, on shutdown.
+			services.AddSingleton<MokaDocsRepl>();
 		}
 
 		// The plugin host runs only the plugins it finds in the container, so a built-in declared in
@@ -93,6 +96,9 @@ public static class MokaDocsServiceExtensions
 		services.AddSingleton<ReflectionApiModelBuilder>();
 		services.AddSingleton<InMemoryBuildOrchestrator>();
 		services.AddSingleton<MokaDocsService>();
+
+		// The startup build, the docs watcher and the REPL warm-up. Only a running host starts it.
+		services.AddHostedService<MokaDocsStartupService>();
 
 		return services;
 	}

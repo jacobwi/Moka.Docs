@@ -376,5 +376,20 @@ public sealed class ApiPageRendererTests
 			.And.NotContain("[dataclass]");
 	}
 
+	[Theory]
+	[InlineData("https://github.com/o/r/blob/c/Shape.cs#L3", true)]
+	[InlineData("javascript:alert(1)", false)]
+	[InlineData("data:text/html,x", false)]
+	[InlineData("src/Shape.cs", false)]
+	public void SourceUrl_IsLinkedOnlyForHttp(string url, bool linked)
+	{
+		// The URL comes from SourceLink data in a PDB, which can hold any text.
+		var type = new ApiType { Name = "Shape", FullName = "Fixture.Shape", Kind = ApiTypeKind.Class, SourceUrl = url };
+
+		string html = ApiPageRenderer.RenderType(type, [type]);
+
+		html.Contains("source-link", StringComparison.Ordinal).Should().Be(linked);
+	}
+
 	#endregion
 }

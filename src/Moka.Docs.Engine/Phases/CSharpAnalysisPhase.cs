@@ -358,7 +358,7 @@ public sealed class CSharpAnalysisPhase(
 			string safeName = SanitizeRoutePart(type.Name);
 			string route = $"/api/{ns.Name.Replace('.', '/')}/{safeName}".ToLowerInvariant();
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
-			TableOfContents toc = ApiPageRenderer.BuildTocForType(type);
+			TableOfContents toc = ApiPageRenderer.BuildTocForType(type, allTypes);
 			var page = new DocPage
 			{
 				FrontMatter = new FrontMatter

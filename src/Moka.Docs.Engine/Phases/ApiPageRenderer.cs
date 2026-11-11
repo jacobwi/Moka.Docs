@@ -95,8 +95,8 @@ public static partial class ApiPageRenderer
 	/// </summary>
 	/// <param name="type">The type to render.</param>
 	/// <param name="allTypes">
-	///     All types in the API model, used to discover derived types for the dependency graph and to link
-	///     <c>cref</c> references to other type pages.
+	///     All types in the API model, used to discover derived types for the dependency graph, to link
+	///     <c>cref</c> references to other type pages and to list inherited members and extension methods.
 	/// </param>
 	public static string RenderType(ApiType type, IReadOnlyList<ApiType>? allTypes = null)
 	{
@@ -200,6 +200,14 @@ public static partial class ApiPageRenderer
 
 		#endregion
 
+		#region Inherited Members and Extension Methods
+
+		ApiTypeRelations relations = ApiTypeRelations.For(allTypes);
+		RenderInheritedMembers(sb, type, relations, links);
+		RenderExtensionMethods(sb, type, relations, links);
+
+		#endregion
+
 		#region Examples
 
 		if (type.Documentation?.Examples is { Count: > 0 } examples)
@@ -252,6 +260,22 @@ public static partial class ApiPageRenderer
 			sb.AppendLine("</summary>");
 			sb.AppendLine($"<pre><code class=\"language-csharp\">{Esc(type.SourceCode)}</code></pre>");
 			sb.AppendLine("</details>");
+		}
+
+		// Only the ASP.NET Core host sets a source URL, from the SourceLink data in the assembly's PDB.
+		// The class gives it the look of the theme's "Edit this page" link. The URL comes from a
+		// build artifact, so anything but http(s), such as a javascript: URL, gets no link.
+		if (Uri.TryCreate(type.SourceUrl, UriKind.Absolute, out Uri? sourceUri)
+		    && (sourceUri.Scheme == Uri.UriSchemeHttps || sourceUri.Scheme == Uri.UriSchemeHttp))
+		{
+			string sourceLabel = $"View source on {sourceUri.Host}";
+			sb.AppendLine("<div class=\"edit-link source-link\">");
+			sb.AppendLine($"<a href=\"{HttpUtility.HtmlAttributeEncode(type.SourceUrl)}\" target=\"_blank\" rel=\"noopener\">");
+			sb.AppendLine(
+				"<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 3h6v6\"/><path d=\"M10 14 21 3\"/><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"/></svg>");
+			sb.AppendLine(Esc(sourceLabel));
+			sb.AppendLine("</a>");
+			sb.AppendLine("</div>");
 		}
 
 		#endregion
@@ -609,7 +633,7 @@ public static partial class ApiPageRenderer
 	///     Taking the text after the last dot turned
 	///     <c>Dictionary&lt;string, System.Collections.Generic.List&lt;int&gt;&gt;</c> into <c>List&lt;int&gt;&gt;</c>.
 	/// </summary>
-	private static string ShortTypeName(string type) => NamespaceQualifierRegex().Replace(type, "");
+	internal static string ShortTypeName(string type) => NamespaceQualifierRegex().Replace(type, "");
 
 	/// <summary>
 	///     Puts the attributes worth showing above a declaration, as C# attributes or, for Python, decorators.
@@ -856,8 +880,20 @@ public static partial class ApiPageRenderer
 
 	/// <summary>
 	///     Builds a table of contents for an API type page based on the sections it will render.
+	///     Without the other types it leaves out the Inherited Members and Extension Methods sections;
+	///     see <see cref="BuildTocForType(ApiType, IReadOnlyList{ApiType})" />.
 	/// </summary>
-	public static TableOfContents BuildTocForType(ApiType type)
+	public static TableOfContents BuildTocForType(ApiType type) => BuildTocForType(type, null);
+
+	/// <summary>
+	///     Builds a table of contents for an API type page based on the sections it will render.
+	/// </summary>
+	/// <param name="type">The type whose page it is.</param>
+	/// <param name="allTypes">
+	///     All types in the API model, as passed to <see cref="RenderType" />. The Inherited Members and
+	///     Extension Methods sections depend on them.
+	/// </param>
+	public static TableOfContents BuildTocForType(ApiType type, IReadOnlyList<ApiType>? allTypes)
 	{
 		var entries = new List<TocEntry>();
 
@@ -904,6 +940,17 @@ public static partial class ApiPageRenderer
 		if (type.Members.Any(m => m.Kind == ApiMemberKind.Operator))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Operators", Id = "operators" });
+		}
+
+		ApiTypeRelations relations = ApiTypeRelations.For(allTypes);
+		if (relations.InheritedMembers(type).Count > 0)
+		{
+			entries.Add(new TocEntry { Level = 2, Text = "Inherited Members", Id = _inheritedMembersId });
+		}
+
+		if (relations.ExtensionMethods(type).Count > 0)
+		{
+			entries.Add(new TocEntry { Level = 2, Text = "Extension Methods", Id = _extensionMethodsId });
 		}
 
 		if (type.Documentation?.Examples is { Count: > 0 })

@@ -357,6 +357,57 @@ public sealed class BuildPipelineIntegrationTests
 		fs.File.Exists("/project/mokadocs.yaml").Should().BeTrue();
 	}
 
+	[Fact]
+	public async Task FullPipeline_TocText_IsEscaped()
+	{
+		// The TOC wrote heading text into the page as markup, so <T> became an element. The OpenAPI
+		// plugin fills the TOC with paths and schema names taken from documents it doesn't control.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\n# Home\n\n## Using `List<T>` & more\n\nText.\n") }
+		});
+
+		(BuildPipeline pipeline, _) = CreatePipeline(fs);
+		await pipeline.ExecuteAsync(new BuildContext
+		{
+			Config = MinimalConfig(),
+			FileSystem = fs,
+			RootDirectory = "/project",
+			OutputDirectory = "/project/_site"
+		}, TestContext.Current.CancellationToken);
+
+		string page = fs.File.ReadAllText("/project/_site/index.html");
+		page.Should().Contain(">Using List&lt;T&gt; &amp; more</a>");
+		page.Should().NotContain(">Using List<T>");
+	}
+
+	[Fact]
+	public async Task FullPipeline_NavBreadcrumbAndPagerLabels_AreEscaped()
+	{
+		// Labels and titles were written raw, so a title such as Box<T> became an element. The
+		// OpenAPI plugin names pages after tags taken from documents it doesn't control.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\n# Home\n") },
+			{ "/project/docs/guide/a.md", new MockFileData("---\ntitle: Box<T> & friends\norder: 1\n---\nText.\n") },
+			{ "/project/docs/guide/b.md", new MockFileData("---\ntitle: Last <b>page</b>\norder: 2\n---\nText.\n") }
+		});
+
+		(BuildPipeline pipeline, _) = CreatePipeline(fs);
+		await pipeline.ExecuteAsync(new BuildContext
+		{
+			Config = MinimalConfig("Q&A <Docs>"),
+			FileSystem = fs,
+			RootDirectory = "/project",
+			OutputDirectory = "/project/_site"
+		}, TestContext.Current.CancellationToken);
+
+		string page = fs.File.ReadAllText("/project/_site/guide/b/index.html");
+		page.Should().Contain("Box&lt;T&gt; &amp; friends").And.NotContain("Box<T>");
+		page.Should().Contain("Last &lt;b&gt;page&lt;/b&gt;").And.NotContain("<b>page</b>");
+		page.Should().Contain("<span class=\"site-name\">Q&amp;A &lt;Docs&gt;</span>");
+	}
+
 	private static async Task<MockFileSystem> BuildSiteAsync(SiteConfig config)
 	{
 		var fs = new MockFileSystem(new Dictionary<string, MockFileData>

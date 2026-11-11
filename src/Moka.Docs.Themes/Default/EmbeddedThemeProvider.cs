@@ -3344,8 +3344,8 @@ public static class EmbeddedThemeProvider
 	                                          <header class="site-header">
 	                                              <div class="header-inner">
 	                                                  <a class="site-logo" href="{{ base_path }}/">
-	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
-	                                                      <span class="site-name">{{ site.title }}</span>
+	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title | html.escape }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+	                                                      <span class="site-name">{{ site.title | html.escape }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
 	                                                      {{ if versions.size > 0 && theme.show_version_selector }}
@@ -3359,7 +3359,7 @@ public static class EmbeddedThemeProvider
 	                                                              {{ for v in versions }}
 	                                                              <li role="option"{{ if v.label == current_version }} aria-selected="true"{{ end }}>
 	                                                                  <a class="version-option{{ if v.label == current_version }} active{{ end }}" href="{{ if v.is_default }}{{ base_path }}/{{ else }}{{ base_path }}/{{ v.slug }}/{{ end }}" data-version-slug="{{ v.slug }}">
-	                                                                      <span class="version-option-label">{{ v.label }}</span>
+	                                                                      <span class="version-option-label">{{ v.label | html.escape }}</span>
 	                                                                      {{ if v.is_default }}<span class="version-badge version-badge-default">latest</span>{{ end }}
 	                                                                      {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">pre</span>{{ end }}
 	                                                                  </a>
@@ -3444,22 +3444,22 @@ public static class EmbeddedThemeProvider
 	                                                              {{ if item.has_page }}
 	                                                              <a class="nav-link{{ if item.is_active }} current{{ else if item.has_active_child }} parent-active{{ end }}" href="{{ item.route }}">
 	                                                                  {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
-	                                                                  {{ item.label }}
+	                                                                  {{ item.label | html.escape }}
 	                                                              </a>
 	                                                              {{ else }}
 	                                                              <span class="nav-link nav-group-label{{ if item.has_active_child }} parent-active{{ end }}">
 	                                                                  {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
-	                                                                  {{ item.label }}
+	                                                                  {{ item.label | html.escape }}
 	                                                              </span>
 	                                                              {{ end }}
-	                                                              <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ item.label }}" type="button" aria-expanded="{{ if item.expanded || item.has_active_child }}true{{ else }}false{{ end }}">
+	                                                              <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ item.label | html.escape }}" type="button" aria-expanded="{{ if item.expanded || item.has_active_child }}true{{ else }}false{{ end }}">
 	                                                                  <svg class="nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
 	                                                              </button>
 	                                                          </div>
 	                                                          {{ else }}
 	                                                          <a class="nav-link{{ if item.is_active }} current{{ end }}" href="{{ item.route }}">
 	                                                              {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
-	                                                              {{ item.label }}
+	                                                              {{ item.label | html.escape }}
 	                                                          </a>
 	                                                          {{ end }}
 	                                                          {{ if item.children.size > 0 }}
@@ -3470,18 +3470,18 @@ public static class EmbeddedThemeProvider
 	                                                                  <div class="nav-sub-section{{ if child.is_active || child.has_active_child }} active{{ end }}">
 	                                                                      <div class="nav-header">
 	                                                                          {{ if child.has_page }}
-	                                                                          <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route }}">{{ child.label }}</a>
+	                                                                          <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route }}">{{ child.label | html.escape }}</a>
 	                                                                          {{ else }}
-	                                                                          <span class="nav-link nav-group-label">{{ child.label }}</span>
+	                                                                          <span class="nav-link nav-group-label">{{ child.label | html.escape }}</span>
 	                                                                          {{ end }}
-	                                                                          <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ child.label }}" type="button" aria-expanded="{{ if child.expanded || child.has_active_child }}true{{ else }}false{{ end }}">
+	                                                                          <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ child.label | html.escape }}" type="button" aria-expanded="{{ if child.expanded || child.has_active_child }}true{{ else }}false{{ end }}">
 	                                                                              <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
 	                                                                          </button>
 	                                                                      </div>
 	                                                                      <ul class="nav-children{{ if child.expanded || child.has_active_child }} expanded{{ end }}">
 	                                                                          {{ for grandchild in child.children }}
 	                                                                          <li>
-	                                                                              <a class="nav-link{{ if grandchild.is_active }} current{{ end }}" href="{{ grandchild.route }}">{{ grandchild.label }}</a>
+	                                                                              <a class="nav-link{{ if grandchild.is_active }} current{{ end }}" href="{{ grandchild.route }}">{{ grandchild.label | html.escape }}</a>
 	                                                                          </li>
 	                                                                          {{ end }}
 	                                                                      </ul>
@@ -3489,7 +3489,7 @@ public static class EmbeddedThemeProvider
 	                                                                  {{ else }}
 	                                                                  <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route }}">
 	                                                                      {{ if child.icon != "" }}<span class="nav-icon">{{ child.icon }}</span>{{ end }}
-	                                                                      {{ child.label }}
+	                                                                      {{ child.label | html.escape }}
 	                                                                  </a>
 	                                                                  {{ end }}
 	                                                              </li>
@@ -3509,11 +3509,11 @@ public static class EmbeddedThemeProvider
 	                                                          {{ for crumb in breadcrumbs }}
 	                                                              <li>
 	                                                              {{ if crumb.is_current }}
-	                                                                  <span aria-current="page">{{ crumb.label }}</span>
+	                                                                  <span aria-current="page">{{ crumb.label | html.escape }}</span>
 	                                                              {{ else if crumb.url != "" }}
-	                                                                  <a href="{{ crumb.url }}">{{ crumb.label }}</a>
+	                                                                  <a href="{{ crumb.url }}">{{ crumb.label | html.escape }}</a>
 	                                                              {{ else }}
-	                                                                  <span>{{ crumb.label }}</span>
+	                                                                  <span>{{ crumb.label | html.escape }}</span>
 	                                                              {{ end }}
 	                                                              </li>
 	                                                          {{ end }}
@@ -3523,22 +3523,22 @@ public static class EmbeddedThemeProvider
 
 	                                                      {{ if package && page.is_api_index }}
 	                                                      <div class="package-install-widget">
-	                                                          <div class="install-header"><span class="install-package-name">{{ package.name }}</span><a href="https://www.nuget.org/packages/{{ package.name }}" target="_blank" rel="noopener noreferrer" class="install-nuget-link" aria-label="View on NuGet.org"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 17.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M14 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><circle cx="7" cy="7" r="2"/></svg><span>NuGet</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+	                                                          <div class="install-header"><span class="install-package-name">{{ package.name | html.escape }}</span><a href="https://www.nuget.org/packages/{{ package.name | html.escape }}" target="_blank" rel="noopener noreferrer" class="install-nuget-link" aria-label="View on NuGet.org"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 17.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M14 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><circle cx="7" cy="7" r="2"/></svg><span>NuGet</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
 	                                                          <div class="install-tabs" role="tablist">
 	                                                              <button class="install-tab active" role="tab" aria-selected="true" data-tab="pm">Package Manager</button>
 	                                                              <button class="install-tab" role="tab" aria-selected="false" data-tab="cli">.NET CLI</button>
 	                                                              <button class="install-tab" role="tab" aria-selected="false" data-tab="ref">PackageReference</button>
 	                                                          </div>
 	                                                          <div class="install-panel active" data-panel="pm">
-	                                                              <pre><code>Install-Package {{ package.name }} -Version {{ package.version }}</code></pre>
+	                                                              <pre><code>Install-Package {{ package.name | html.escape }} -Version {{ package.version }}</code></pre>
 	                                                              <button class="install-copy-btn" aria-label="Copy to clipboard">Copy</button>
 	                                                          </div>
 	                                                          <div class="install-panel" data-panel="cli">
-	                                                              <pre><code>dotnet add package {{ package.name }} --version {{ package.version }}</code></pre>
+	                                                              <pre><code>dotnet add package {{ package.name | html.escape }} --version {{ package.version }}</code></pre>
 	                                                              <button class="install-copy-btn" aria-label="Copy to clipboard">Copy</button>
 	                                                          </div>
 	                                                          <div class="install-panel" data-panel="ref">
-	                                                              <pre><code>&lt;PackageReference Include="{{ package.name }}" Version="{{ package.version }}" /&gt;</code></pre>
+	                                                              <pre><code>&lt;PackageReference Include="{{ package.name | html.escape }}" Version="{{ package.version }}" /&gt;</code></pre>
 	                                                              <button class="install-copy-btn" aria-label="Copy to clipboard">Copy</button>
 	                                                          </div>
 	                                                      </div>
@@ -3574,19 +3574,19 @@ public static class EmbeddedThemeProvider
 	                                                          {{ for entry in page.toc }}
 	                                                          {{ if entry.level <= theme.toc_depth }}
 	                                                          <li class="toc-item toc-level-{{ entry.level }}">
-	                                                              <a href="#{{ entry.id }}">{{ entry.text }}</a>
+	                                                              <a href="#{{ entry.id }}">{{ entry.text | html.escape }}</a>
 	                                                              {{ if entry.children.size > 0 }}
 	                                                              <ul>
 	                                                                  {{ for child in entry.children }}
 	                                                                  {{ if child.level <= theme.toc_depth }}
 	                                                                  <li class="toc-item toc-level-{{ child.level }}">
-	                                                                      <a href="#{{ child.id }}">{{ child.text }}</a>
+	                                                                      <a href="#{{ child.id }}">{{ child.text | html.escape }}</a>
 	                                                                      {{ if child.children.size > 0 }}
 	                                                                      <ul>
 	                                                                          {{ for grandchild in child.children }}
 	                                                                          {{ if grandchild.level <= theme.toc_depth }}
 	                                                                          <li class="toc-item toc-level-{{ grandchild.level }}">
-	                                                                              <a href="#{{ grandchild.id }}">{{ grandchild.text }}</a>
+	                                                                              <a href="#{{ grandchild.id }}">{{ grandchild.text | html.escape }}</a>
 	                                                                          </li>
 	                                                                          {{ end }}
 	                                                                          {{ end }}
@@ -3631,7 +3631,7 @@ public static class EmbeddedThemeProvider
 	                                              <svg class="page-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
 	                                              <div class="page-nav-text">
 	                                                <span class="page-nav-label">Previous</span>
-	                                                <span class="page-nav-title">{{ prev_page.title }}</span>
+	                                                <span class="page-nav-title">{{ prev_page.title | html.escape }}</span>
 	                                              </div>
 	                                            </a>
 	                                            {{ else }}
@@ -3641,7 +3641,7 @@ public static class EmbeddedThemeProvider
 	                                            <a class="page-nav-link page-nav-next" href="{{ next_page.route }}">
 	                                              <div class="page-nav-text">
 	                                                <span class="page-nav-label">Next</span>
-	                                                <span class="page-nav-title">{{ next_page.title }}</span>
+	                                                <span class="page-nav-title">{{ next_page.title | html.escape }}</span>
 	                                              </div>
 	                                              <svg class="page-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 	                                            </a>
@@ -3715,8 +3715,8 @@ public static class EmbeddedThemeProvider
 	                                          <header class="site-header">
 	                                              <div class="header-inner">
 	                                                  <a class="site-logo" href="{{ base_path }}/">
-	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title }}" class="site-logo-img" />{{ end }}
-	                                                      <span class="site-name">{{ site.title }}</span>
+	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title | html.escape }}" class="site-logo-img" />{{ end }}
+	                                                      <span class="site-name">{{ site.title | html.escape }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
 	                                                      {{ if search_enabled }}
@@ -3786,7 +3786,7 @@ public static class EmbeddedThemeProvider
 	                                              <div class="landing-hero-icon">
 	                                                  {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
 	                                              </div>
-	                                              <h1 class="landing-hero-title">{{ site.title }}</h1>
+	                                              <h1 class="landing-hero-title">{{ site.title | html.escape }}</h1>
 	                                              <p class="landing-hero-subtitle">{{ page.description }}</p>
 	                                              <div class="landing-hero-actions">
 	                                                  <a class="landing-btn landing-btn-primary" href="{{ nav[0].route ?? (base_path + '/docs/') }}">

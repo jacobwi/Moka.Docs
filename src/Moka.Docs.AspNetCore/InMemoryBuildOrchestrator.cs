@@ -2,6 +2,7 @@ using System.IO.Abstractions.TestingHelpers;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moka.Docs.AspNetCore.OpenApi;
 using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Configuration;
@@ -66,7 +67,8 @@ public sealed class InMemoryBuildOrchestrator(
 
 		// Build API model from runtime assemblies via reflection. It comes first because sidebar
 		// entries with AutoGenerate list its namespaces.
-		ApiReference apiModel = apiModelBuilder.Build(options.Assemblies, options.IncludeXmlDocs);
+		var apiDiagnostics = new DiagnosticBag();
+		ApiReference apiModel = apiModelBuilder.Build(options, contentRoot, apiDiagnostics);
 		logger.LogInformation("Reflection analysis found {TypeCount} types across {AsmCount} assemblies",
 			apiModel.Namespaces.Sum(n => n.Types.Count), apiModel.Assemblies.Count);
 
@@ -107,6 +109,13 @@ public sealed class InMemoryBuildOrchestrator(
 		// Pre-populate the API model so ReflectionApiPagePhase generates pages
 		context.ApiModel = apiModel;
 
+		// The model is built before the context exists, because the navigation needs it. The
+		// builder reports warnings only.
+		foreach (Diagnostic diagnostic in apiDiagnostics.All)
+		{
+			context.Diagnostics.Warning(diagnostic.Message, diagnostic.Source);
+		}
+
 		// The CLI fills these from mokadocs.yaml the same way; the header's version selector reads them.
 		var versionManager = new VersionManager(config, NullLogger<VersionManager>.Instance);
 		if (versionManager.IsEnabled)
@@ -117,6 +126,10 @@ public sealed class InMemoryBuildOrchestrator(
 
 		// Initialize plugins
 		await pluginHost.DiscoverAndInitializeAsync(ct);
+
+		// The app's own OpenAPI document (MokaDocsOptions.OpenApiDocument), read for every build: the
+		// endpoints it describes exist only once the app runs.
+		await AppOpenApiDocument.SupplyAsync(pluginHost, context.Diagnostics, logger, ct);
 
 		// Wire up plugin hook
 		pipeline.PluginHook = async (ctx, c) =>

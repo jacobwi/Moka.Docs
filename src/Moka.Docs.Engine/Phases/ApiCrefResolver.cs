@@ -381,7 +381,7 @@ internal sealed partial class ApiCrefResolver
 	/// <summary>
 	///     Mirrors the route that <c>CSharpAnalysisPhase</c> and <c>ReflectionApiPagePhase</c> give a type page.
 	/// </summary>
-	private static string TypeRoute(ApiType type)
+	internal static string TypeRoute(ApiType type)
 	{
 		string name = type.Name.Replace('<', '-').Replace('>', '-').Replace('`', '-').TrimEnd('-');
 		return $"/api/{(type.Namespace ?? "(global)").Replace('.', '/')}/{name}".ToLowerInvariant();

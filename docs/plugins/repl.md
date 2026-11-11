@@ -5,7 +5,7 @@ order: 2
 
 # Interactive REPL Plugin
 
-The REPL plugin adds a **Run** button to C# code blocks. While you preview the site with `mokadocs serve`, a click runs the snippet through Roslyn scripting inside the dev server and shows the console output under the block. Static builds show the code but can't run it.
+The REPL plugin adds a **Run** button to C# code blocks. While you preview the site with `mokadocs serve`, a click runs the snippet through Roslyn scripting and shows the console output under the block. An ASP.NET Core app that serves its docs with `EnableRepl` runs snippets too (see [Interactive REPL](/guide/aspnetcore#interactive-repl) in the ASP.NET Core guide). Static builds show the code but can't run it.
 
 **Plugin ID:** `mokadocs-repl`
 
@@ -57,16 +57,16 @@ When plugins run (see the [build pipeline order](/plugins/overview#build-pipelin
 When the reader clicks Run, the script:
 
 1. Reads the text of the code block
-2. Sends a `POST` request to `/api/repl/execute` with the JSON body `{"code": "..."}`
+2. Sends a `POST` request to `/api/repl/execute` under the site's base path (`/docs/api/repl/execute` for a site built with `basePath: /docs`) with the JSON body `{"code": "..."}`
 3. Shows the spinner until the response arrives
-4. Renders the output or error in the output panel and the elapsed time in the status label
+4. Renders the output or error in the output panel and the elapsed time in the status label. When the server refuses the run and says why in an `error` field, that message is shown; any other failure shows that the code can't run there.
 
 ### 4. Server-Side Execution (ReplExecutionService)
 
-Only `mokadocs serve` runs code. Its `/api/repl/execute` endpoint hands the code to `ReplExecutionService`, which:
+`mokadocs serve` and the ASP.NET Core host run code. Their `/api/repl/execute` endpoint hands the code to `ReplExecutionService`, which:
 
 1. Rejects empty code and code longer than 10,000 characters
-2. Sends the code to a worker process: `mokadocs repl-worker`, a hidden command that `serve` starts with the loaded packages and project assemblies, and starts again whenever the previous worker was stopped
+2. Sends the code to a worker process, started with the loaded packages and project assemblies and started again whenever the previous worker was stopped. Under `serve` the worker is `mokadocs repl-worker`, a hidden command. In the ASP.NET Core host it is the app's own executable, which `MokaDocsReplWorker.TryRunAsync()` turns into a worker
 3. In the worker, redirects `Console.Out` and `Console.Error`, compiles the code as a Roslyn `CSharpScript` with the default imports plus those references, and runs it
 4. Returns JSON with `output` and `error` fields
 
@@ -219,10 +219,12 @@ These limits do apply:
 - **Local, same-origin requests.** The dev server listens on `localhost` only. The endpoint accepts a `POST` only with `Content-Type: application/json`, and a browser request only from the dev server's own origin (`http://localhost:<port>`). Requests from other origins get a 403, and the server sends no `Access-Control-Allow-Origin` header. Requests without an `Origin` header, such as from `curl`, are accepted, so any program on your machine can send code to it.
 - **Only when declared.** If `mokadocs.yaml` doesn't declare `mokadocs-repl`, the endpoint answers 503 and runs nothing.
 
+In the ASP.NET Core host, the endpoint runs code as the web app's account, and anyone who can reach it can run code on that server. By default it is mapped in the Development environment only, runs code only for requests from the same machine, and, like the dev server's, accepts browser requests from the app's own origin only. See [Remote REPL](/guide/aspnetcore#remote-repl).
+
 ## Static Build Behavior
 
 The Run button is added to every page with a REPL block, including sites built with `mokadocs build`. A static host has no execution endpoint, so a click shows this message in the output panel:
 
-> REPL server unavailable. Run "mokadocs serve" to enable interactive code execution.
+> REPL server unavailable, so this code can't run here.
 
-The ASP.NET Core host (`EnableRepl`) doesn't add an execution endpoint either, so Run doesn't work there. In every case the code stays readable with syntax highlighting.
+An ASP.NET Core app with `EnableRepl` shows the same message outside Development, where it maps no execution endpoint unless `AllowRemoteRepl` is set. In every case the code stays readable with syntax highlighting.
