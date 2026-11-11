@@ -41,6 +41,30 @@ public sealed class SiteConfigStrictnessTests
 	}
 
 	[Fact]
+	public void Parse_TyposUnderLayout_AreUnknownKeys()
+	{
+		const string yaml = """
+		                    site:
+		                      title: Docs
+		                    theme:
+		                      options:
+		                        layout:
+		                          navbr: tabs
+		                          PageNav: minimal
+		                          footer: columns
+		                    """;
+
+		SiteConfig config = SiteConfigReader.Parse(yaml);
+
+		config.Warnings.Should().Equal(
+			"unknown key 'theme.options.layout.navbr' (line 6)",
+			"unknown key 'theme.options.layout.PageNav' (line 7); keys are case sensitive, did you mean 'pageNav'?");
+		config.Theme.Options.Layout.Navbar.Should().Be("default", "the misspelled key was not applied");
+		config.Theme.Options.Layout.PageNav.Should().Be("default");
+		config.Theme.Options.Layout.Footer.Should().Be("columns");
+	}
+
+	[Fact]
 	public void Parse_SearchProvider_IsAWarningThatItIsIgnored()
 	{
 		// It was parsed and read by nothing, so "provider: pagefind" looked like it did something.

@@ -212,6 +212,7 @@ public sealed class SiteConfigReader
 						"STYLE", o.Style, MokaDefaults.Style),
 					StyleSelector = MokaDefaults.ResolveBool(
 						"SHOW_STYLE_SELECTOR", o.StyleSelector, MokaDefaults.ShowStyleSelector),
+					Layout = MapLayoutOptions(o.Layout),
 					Sidebar = MokaDefaults.ResolveString(
 						"SIDEBAR", o.Sidebar, MokaDefaults.Sidebar),
 					SidebarInlineLimit = Math.Max(0, MokaDefaults.ResolveInt(
@@ -248,6 +249,23 @@ public sealed class SiteConfigReader
 					}).ToList() ?? [],
 					DefaultColorTheme = o.DefaultColorTheme ?? "ocean"
 				}
+		};
+	}
+
+	// Names are kept as written, like the style, so the render phase can quote an unknown one in its
+	// warning. ThemeLayouts resolves them when the pages are rendered.
+	private static ThemeLayoutOptions MapLayoutOptions(ThemeLayoutDto? dto)
+	{
+		dto ??= new ThemeLayoutDto();
+
+		return new ThemeLayoutOptions
+		{
+			Width = MokaDefaults.ResolveString("LAYOUT_WIDTH", dto.Width, ThemeLayouts.Default),
+			Navbar = MokaDefaults.ResolveString("LAYOUT_NAVBAR", dto.Navbar, ThemeLayouts.Default),
+			Footer = MokaDefaults.ResolveString("LAYOUT_FOOTER", dto.Footer, ThemeLayouts.Default),
+			Toc = MokaDefaults.ResolveString("LAYOUT_TOC", dto.Toc, ThemeLayouts.Default),
+			Breadcrumbs = MokaDefaults.ResolveString("LAYOUT_BREADCRUMBS", dto.Breadcrumbs, ThemeLayouts.Default),
+			PageNav = MokaDefaults.ResolveString("LAYOUT_PAGE_NAV", dto.PageNav, ThemeLayouts.Default)
 		};
 	}
 
@@ -486,6 +504,7 @@ public sealed class SiteConfigReader
 					CodeStyleSelector = config.Theme.Options.CodeStyleSelector ? null : false,
 					Style = config.Theme.Options.Style == ThemeStyles.Default ? null : config.Theme.Options.Style,
 					StyleSelector = config.Theme.Options.StyleSelector ? null : false,
+					Layout = MapLayoutToDto(config.Theme.Options.Layout),
 					Sidebar = config.Theme.Options.Sidebar == SidebarModes.Auto ? null : config.Theme.Options.Sidebar,
 					SidebarInlineLimit = config.Theme.Options.SidebarInlineLimit == MokaDefaults.SidebarInlineLimit
 						? null
@@ -530,6 +549,30 @@ public sealed class SiteConfigReader
 	}
 
 	private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+	// Null rather than an empty DTO when every part is the default: the serializer writes an empty
+	// object as "layout: {}".
+	private static ThemeLayoutDto? MapLayoutToDto(ThemeLayoutOptions layout)
+	{
+		var dto = new ThemeLayoutDto
+		{
+			Width = NullIfDefaultLayout(layout.Width),
+			Navbar = NullIfDefaultLayout(layout.Navbar),
+			Footer = NullIfDefaultLayout(layout.Footer),
+			Toc = NullIfDefaultLayout(layout.Toc),
+			Breadcrumbs = NullIfDefaultLayout(layout.Breadcrumbs),
+			PageNav = NullIfDefaultLayout(layout.PageNav)
+		};
+
+		return dto is { Width: null, Navbar: null, Footer: null, Toc: null, Breadcrumbs: null, PageNav: null }
+			? null
+			: dto;
+	}
+
+	private static string? NullIfDefaultLayout(string? name) =>
+		string.IsNullOrWhiteSpace(name) || name.Trim().Equals(ThemeLayouts.Default, StringComparison.OrdinalIgnoreCase)
+			? null
+			: name;
 
 	/// <summary>
 	///     Resolves a raw yaml brand-asset string (logo or favicon) into a

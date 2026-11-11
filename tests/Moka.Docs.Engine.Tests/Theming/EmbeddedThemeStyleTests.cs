@@ -44,6 +44,8 @@ public sealed class EmbeddedThemeStyleTests
 		// An unscoped selector would change the default look, which must stay as it was.
 		int start = _css.IndexOf("/* Styles: shared tokens", StringComparison.Ordinal);
 		start.Should().BeGreaterThan(0);
+		int end = _css.IndexOf("/* Layouts:", start, StringComparison.Ordinal);
+		end.Should().BeGreaterThan(start, "the layout variants follow the styles and have their own scoping test");
 		string[] allowed =
 		[
 			_sharedScope,
@@ -53,7 +55,7 @@ public sealed class EmbeddedThemeStyleTests
 
 		var unscoped = new List<string>();
 		bool inComment = false;
-		foreach (string line in _css[start..].Split('\n'))
+		foreach (string line in _css[start..end].Split('\n'))
 		{
 			if (inComment || line.TrimStart().StartsWith("/*", StringComparison.Ordinal))
 			{

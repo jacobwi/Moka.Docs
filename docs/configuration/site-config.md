@@ -367,6 +367,90 @@ theme:
     styleSelector: false
 ```
 
+#### `options.layout`
+
+- **Type:** object with the keys below
+- **Default:** `default` for every part
+
+Picks a layout variant for six parts of the page: the width, the top bar, the footer, the "On this page" panel, the breadcrumbs and the previous/next links. Each part is set on its own and works with every [style](#options.style), color preset and code theme, in light and dark mode. A part you leave out keeps its `default` variant, the theme's original layout.
+
+```yaml
+theme:
+  options:
+    layout:
+      width: wide
+      navbar: tabs
+      footer: columns
+      toc: floating
+      breadcrumbs: pills
+      pageNav: minimal
+```
+
+Only the default theme reads these settings. Unlike the style, readers can't switch layouts from the header: every reader gets the layout you set. The landing layout (`layout: landing` in front matter) uses the `navbar` and `footer` settings too.
+
+Names are matched without regard to case. An unknown name renders that part as `default`, and the build reports a warning (`mokadocs validate` lists it), for example `Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide; using 'default'`. Each part also has an [environment variable](#environment-variables), such as `MOKADOCS_LAYOUT_NAVBAR`.
+
+##### `layout.width`
+
+| Value | Layout |
+|---|---|
+| `default` | The sidebar, a reading column of about 780px (the style can change it) and the "On this page" panel, up to 1440px wide |
+| `wide` | A 1040px reading column, up to 1680px wide |
+| `full` | The page fills the window and the reading column has no cap |
+| `boxed` | The page sits in a 1280px framed column on a tinted background. Narrower windows show it without the frame |
+
+##### `layout.navbar`
+
+| Value | Layout |
+|---|---|
+| `default` | A sticky bar |
+| `compact` | A shorter bar with smaller controls |
+| `floating` | A rounded bar inset from the edges |
+| `tabs` | Adds a second row with a tab for each top-level sidebar entry, the current one underlined. On a phone the row scrolls sideways |
+| `autohide` | Slides away while scrolling down, and comes back on scrolling up or when it gets keyboard focus |
+
+##### `layout.footer`
+
+| Value | Layout |
+|---|---|
+| `default` | One row: copyright, social links and "Built with" |
+| `minimal` | One centered line |
+| `columns` | The site name and description next to a column of links for each top-level sidebar section (up to four columns of six links), with the copyright and "Built with" underneath. Top-level pages with nothing under them share a first column titled "Docs" |
+| `none` | No footer |
+
+##### `layout.toc`
+
+| Value | Layout |
+|---|---|
+| `default` | The right-hand column with reading progress, a section counter and a Top link |
+| `minimal` | The right-hand column with the links only |
+| `inline` | A collapsible "On this page" box under the page title, in place of the right-hand column |
+| `floating` | A button in the corner opens the list over the page, at every screen width |
+
+[`showTableOfContents: false`](#options.showtableofcontents) and `toc: false` in a page's front matter still turn it off.
+
+##### `layout.breadcrumbs`
+
+| Value | Layout |
+|---|---|
+| `default` | A slash-separated trail |
+| `chevrons` | Chevron separators, with the current page in bold |
+| `pills` | Each step in a rounded chip |
+| `path` | A monospace path, like a terminal prompt |
+| `back` | Only a "back to parent" link |
+
+[`showBreadcrumbs: false`](#options.showbreadcrumbs) still hides them.
+
+##### `layout.pageNav`
+
+| Value | Layout |
+|---|---|
+| `default` | Two bordered cards |
+| `minimal` | Plain links, each under a thin divider |
+| `stacked` | Each link a full-width row, previous above next |
+
+[`showPrevNext: false`](#options.showprevnext) still hides them.
+
 #### `options.sidebar`
 
 - **Type:** `string`
@@ -1276,6 +1360,12 @@ MOKADOCS_PRIMARY_COLOR="#7c3aed" MOKADOCS_SHOW_FEEDBACK=false mokadocs build
 | `MOKADOCS_THEME_NAME` | `theme.name` |
 | `MOKADOCS_STYLE` | `theme.options.style` |
 | `MOKADOCS_SHOW_STYLE_SELECTOR` | `theme.options.styleSelector` |
+| `MOKADOCS_LAYOUT_WIDTH` | `theme.options.layout.width` |
+| `MOKADOCS_LAYOUT_NAVBAR` | `theme.options.layout.navbar` |
+| `MOKADOCS_LAYOUT_FOOTER` | `theme.options.layout.footer` |
+| `MOKADOCS_LAYOUT_TOC` | `theme.options.layout.toc` |
+| `MOKADOCS_LAYOUT_BREADCRUMBS` | `theme.options.layout.breadcrumbs` |
+| `MOKADOCS_LAYOUT_PAGE_NAV` | `theme.options.layout.pageNav` |
 | `MOKADOCS_SIDEBAR` | `theme.options.sidebar` |
 | `MOKADOCS_SIDEBAR_INLINE_LIMIT` | `theme.options.sidebarInlineLimit` |
 | `MOKADOCS_PRIMARY_COLOR` | `theme.options.primaryColor` |
@@ -1356,6 +1446,13 @@ theme:
   options:
     style: "default"
     styleSelector: true
+    layout:
+      width: "default"
+      navbar: "default"
+      footer: "default"
+      toc: "default"
+      breadcrumbs: "default"
+      pageNav: "default"
     primaryColor: "#0ea5e9"
     accentColor: "#f59e0b"
     codeTheme: "catppuccin-mocha"

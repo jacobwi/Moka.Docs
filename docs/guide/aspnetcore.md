@@ -85,6 +85,7 @@ builder.Services.AddMokaDocs(options =>
 | `AccentColor` | `string` | `"#f59e0b"` | Sets the `--color-accent` CSS variable. |
 | `Style` | `string` | `"default"` | The look pages start with: `"default"`, `"moka"`, `"minimal"`, `"classic"` or `"soft"` (see Theme Styles). An unknown name renders as `"default"` and logs a warning. |
 | `StyleSelector` | `bool` | `true` | Shows the header button that lets readers pick another style. When `false`, every page uses `Style`. |
+| `Layout` | `MokaDocsLayoutOptions` | every part `"default"` | Layout variants for the page width, top bar, footer, "On this page" panel, breadcrumbs and previous/next links (see Page Layout). An unknown name renders as `"default"` and logs a warning. |
 | `Sidebar` | `string` | `"auto"` | How pages get the sidebar: `"inline"` (all of it in every page), `"shared"` (written once to `{BasePath}/_theme/js/sidebar.js` and loaded by every page) or `"auto"` (inline up to 300 entries, shared above). See Sidebar Size. |
 | `Version` | `string?` | `null` | Label of the version selector in the header, such as `"v2.0"`. When `null`, the header has no version selector. It isn't read from the app's assembly version, which is rarely the version of the library the docs describe. Pages with a front matter `version` range that leaves out this version aren't served. |
 | `EnableRepl` | `bool` | `false` | Adds a Run button to `csharp-repl` code blocks and, in Development, the endpoint that runs them (see Interactive REPL). |
@@ -425,6 +426,19 @@ builder.Services.AddMokaDocs(options =>
 {
     options.Style = "classic";
     options.StyleSelector = false;
+});
+```
+
+### Page Layout
+
+`Layout` has a property for each part of the page that `theme.options.layout` in `mokadocs.yaml` sets, with the same variants (see [`options.layout`](/configuration/site-config#options.layout)): `Width`, `Navbar`, `Footer`, `Toc`, `Breadcrumbs` and `PageNav`. Each starts as `"default"`. Readers can't switch layouts the way they switch styles.
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.Layout.Width = "wide";
+    options.Layout.Navbar = "tabs";
+    options.Layout.Toc = "floating";
 });
 ```
 

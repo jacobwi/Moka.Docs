@@ -12,9 +12,12 @@ internal sealed class RenderIndex
 
 	private readonly Dictionary<string, HashSet<NavigationNode>> _ancestors = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, (PageLink? Previous, PageLink? Next)> _neighbors = new(StringComparer.Ordinal);
+	private readonly NavigationTree? _navigation;
+	private IReadOnlyList<NavSection>? _topSections;
 
 	public RenderIndex(IReadOnlyList<DocPage> pages, NavigationTree? navigation, BlogSite? blog = null)
 	{
+		_navigation = navigation;
 		PageRoutes = new HashSet<string>(pages.Select(p => p.Route), StringComparer.OrdinalIgnoreCase);
 
 		var sidebarRoutes = new List<string>();
@@ -55,6 +58,10 @@ internal sealed class RenderIndex
 	// subtree for each node of each page made the sidebar cost grow with its depth too.
 	public IReadOnlySet<NavigationNode> AncestorsOf(string? route) =>
 		route is not null && _ancestors.TryGetValue(route, out HashSet<NavigationNode>? nodes) ? nodes : _noNodes;
+
+	// The top-level sidebar entries that lead somewhere, each with the entries directly under it, for
+	// the header tabs and the footer columns.
+	public IReadOnlyList<NavSection> TopSections => _topSections ??= BuildTopSections();
 
 	// A section path the sidebar lists without a page of its own is only a redirect, so a route
 	// that is a page wins over one earlier in the sidebar that isn't.
@@ -154,9 +161,56 @@ internal sealed class RenderIndex
 		}
 	}
 
+	private List<NavSection> BuildTopSections()
+	{
+		var sections = new List<NavSection>();
+		foreach (NavigationNode node in _navigation?.Items ?? [])
+		{
+			if (PageRouteOf(node) is not { } route)
+			{
+				continue;
+			}
+
+			var links = new List<PageLink>();
+			foreach (NavigationNode child in node.Children)
+			{
+				if (PageRouteOf(child) is { } childRoute)
+				{
+					links.Add(new PageLink(child.Label, childRoute));
+				}
+			}
+
+			sections.Add(new NavSection(node, node.Label, route, links));
+		}
+
+		return sections;
+	}
+
+	// The node's own page, else the first page under it. A section route that isn't a page would
+	// only redirect, and a group without any page has nowhere to go.
+	private string? PageRouteOf(NavigationNode node)
+	{
+		if (!string.IsNullOrEmpty(node.Route) && PageRoutes.Contains(node.Route))
+		{
+			return node.Route;
+		}
+
+		foreach (NavigationNode child in node.Children)
+		{
+			if (PageRouteOf(child) is { } route)
+			{
+				return route;
+			}
+		}
+
+		return null;
+	}
+
 	private static PageLink Link(DocPage page) => new(page.FrontMatter.Title, page.Route);
 
 	private static PageLink? Link(BlogPostLink? post) => post is null ? null : new PageLink(post.Title, post.Route);
 }
 
 internal sealed record PageLink(string Title, string Route);
+
+internal sealed record NavSection(NavigationNode Node, string Label, string Route, IReadOnlyList<PageLink> Links);

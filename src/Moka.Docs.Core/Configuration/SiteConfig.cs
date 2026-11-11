@@ -1,3 +1,5 @@
+using Moka.Docs.Core.Theming;
+
 namespace Moka.Docs.Core.Configuration;
 
 /// <summary>
@@ -175,6 +177,12 @@ public sealed record ThemeOptions
 	public bool StyleSelector { get; init; } = MokaDefaults.ShowStyleSelector;
 
 	/// <summary>
+	///     Layout variants of the default theme's page parts: width, navbar, footer, "On this page",
+	///     breadcrumbs and the previous/next links. Every part defaults to <c>default</c>.
+	/// </summary>
+	public ThemeLayoutOptions Layout { get; init; } = new();
+
+	/// <summary>
 	///     How pages get the sidebar navigation: <c>auto</c> (the default), <c>inline</c> or
 	///     <c>shared</c>. <c>inline</c> writes the whole sidebar into every page. <c>shared</c> writes
 	///     it once, to <c>_theme/js/sidebar.js</c>, which every page loads; each page keeps the
@@ -241,6 +249,32 @@ public sealed record ThemeOptions
 	///     <c>rose</c>, <c>moka-red</c>. Defaults to <c>ocean</c>.
 	/// </summary>
 	public string DefaultColorTheme { get; init; } = "ocean";
+}
+
+/// <summary>
+///     The layout variant of each page part, set under <c>theme.options.layout</c>. Names come from
+///     <see cref="ThemeLayouts" />; an unknown name renders as <c>default</c> and the build warns
+///     about it. Only the default theme reads these.
+/// </summary>
+public sealed record ThemeLayoutOptions
+{
+	/// <summary>Page width. See <see cref="ThemeLayouts.Width" />.</summary>
+	public string Width { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The top bar. See <see cref="ThemeLayouts.Navbar" />.</summary>
+	public string Navbar { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The footer. See <see cref="ThemeLayouts.Footer" />.</summary>
+	public string Footer { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The "On this page" panel. See <see cref="ThemeLayouts.Toc" />.</summary>
+	public string Toc { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>Breadcrumbs. See <see cref="ThemeLayouts.Breadcrumbs" />.</summary>
+	public string Breadcrumbs { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The previous and next links. See <see cref="ThemeLayouts.PageNav" />.</summary>
+	public string PageNav { get; init; } = ThemeLayouts.Default;
 }
 
 /// <summary>

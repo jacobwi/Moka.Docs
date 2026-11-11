@@ -5,6 +5,26 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ New
+
+- **Page layout variants.** `theme.options.layout` picks a layout for six parts of the
+  default theme's pages, each on its own and with every style, preset and mode:
+  - `width`: `default`, `wide`, `full` or `boxed`
+  - `navbar`: `default`, `compact`, `floating`, `tabs` (a row of top-level sections) or
+    `autohide`
+  - `footer`: `default`, `minimal`, `columns` (links built from the sidebar) or `none`
+  - `toc` ("On this page"): `default`, `minimal`, `inline` (a box under the title) or
+    `floating` (a button that opens it over the page)
+  - `breadcrumbs`: `default`, `chevrons`, `pills`, `path` or `back`
+  - `pageNav`: `default`, `minimal` or `stacked`
+
+  Landing pages use the navbar and footer settings. Each part has a `MOKADOCS_LAYOUT_*`
+  environment variable, and the ASP.NET Core host has `MokaDocsOptions.Layout`. An
+  unknown name warns and renders as `default`. A site that sets nothing looks the same as
+  before.
+
 ## [1.8.0] - 2026-11-11
 
 ### 🔒 Security

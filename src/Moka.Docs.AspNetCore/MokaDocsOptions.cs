@@ -117,6 +117,13 @@ public sealed class MokaDocsOptions
 	public bool StyleSelector { get; set; } = true;
 
 	/// <summary>
+	///     The layout variant of each part of the pages: width, top bar, footer, "On this page" panel,
+	///     breadcrumbs and the previous/next links. Every part defaults to <c>"default"</c>. Unlike the
+	///     style, readers can't switch these.
+	/// </summary>
+	public MokaDocsLayoutOptions Layout { get; set; } = new();
+
+	/// <summary>
 	///     How pages get the sidebar: <c>"auto"</c> (the default), <c>"inline"</c> or <c>"shared"</c>.
 	///     <c>"inline"</c> writes the whole sidebar into every page. <c>"shared"</c> writes it once, to
 	///     <c>{BasePath}/_theme/js/sidebar.js</c>, which every page loads; a page holds only the

@@ -117,6 +117,7 @@ internal static class SiteConfigFactory
 					AccentColor = options.AccentColor,
 					Style = options.Style,
 					StyleSelector = options.StyleSelector,
+					Layout = CreateLayoutOptions(options.Layout),
 					Sidebar = options.Sidebar,
 					ShowEditLink = false, // no source repo in embedded mode
 					ShowLastUpdated = false,
@@ -183,6 +184,21 @@ internal static class SiteConfigFactory
 						return authors;
 					})
 			};
+
+	/// <summary>
+	///     The layout variants of <see cref="MokaDocsOptions.Layout" />, as written. The render phase
+	///     warns about an unknown name, and the theme renders that part as <c>default</c>.
+	/// </summary>
+	private static ThemeLayoutOptions CreateLayoutOptions(MokaDocsLayoutOptions layout) =>
+		new ThemeLayoutOptions
+		{
+			Width = layout.Width,
+			Navbar = layout.Navbar,
+			Footer = layout.Footer,
+			Toc = layout.Toc,
+			Breadcrumbs = layout.Breadcrumbs,
+			PageNav = layout.PageNav
+		};
 
 	/// <summary>
 	///     Whether <see cref="MokaDocsOptions.Plugins" /> declares the plugin with this id.

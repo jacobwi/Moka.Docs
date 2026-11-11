@@ -336,6 +336,83 @@ public sealed class SiteConfigReaderTests
 	}
 
 	[Fact]
+	public void Parse_ThemeLayout_ReadsEveryPartAsWritten()
+	{
+		const string yaml = """
+		                    site:
+		                      title: "Laid out"
+		                    theme:
+		                      options:
+		                        layout:
+		                          width: wide
+		                          navbar: Tabs
+		                          footer: columns
+		                          toc: floating
+		                          breadcrumbs: pills
+		                          pageNav: tbs
+		                    """;
+
+		SiteConfig config = SiteConfigReader.Parse(yaml);
+
+		config.Theme.Options.Layout.Should().Be(new ThemeLayoutOptions
+		{
+			Width = "wide",
+			Navbar = "Tabs",
+			Footer = "columns",
+			Toc = "floating",
+			Breadcrumbs = "pills",
+			PageNav = "tbs"
+		}, "names are resolved, and unknown ones reported, when the pages are rendered");
+		config.Warnings.Should().BeEmpty();
+	}
+
+	[Theory]
+	[InlineData("site:\n  title: Plain\n")]
+	[InlineData("site:\n  title: Plain\ntheme:\n  options:\n    style: moka\n")]
+	[InlineData("site:\n  title: Plain\ntheme:\n  options:\n    layout:\n")]
+	[InlineData("site:\n  title: Plain\ntheme:\n  options:\n    layout: {}\n")]
+	[InlineData("site:\n  title: Plain\ntheme:\n  options:\n    layout:\n      navbar: ~\n")]
+	public void Parse_NoThemeLayout_EveryPartIsTheDefault(string yaml)
+	{
+		ThemeLayoutOptions layout = SiteConfigReader.Parse(yaml).Theme.Options.Layout;
+
+		layout.Should().Be(new ThemeLayoutOptions());
+		new[] { layout.Width, layout.Navbar, layout.Footer, layout.Toc, layout.Breadcrumbs, layout.PageNav }
+			.Should().AllBe("default");
+	}
+
+	[Fact]
+	public void ToYaml_RoundTrip_KeepsTheChosenLayoutPartsAndOmitsTheDefaultOnes()
+	{
+		const string yaml = """
+		                    site:
+		                      title: "Laid out"
+		                    theme:
+		                      options:
+		                        layout:
+		                          width: default
+		                          navbar: tabs
+		                          pageNav: minimal
+		                    """;
+
+		string serialized = SiteConfigReader.ToYaml(SiteConfigReader.Parse(yaml));
+		SiteConfig reparsed = SiteConfigReader.Parse(serialized);
+
+		reparsed.Theme.Options.Layout.Should().Be(new ThemeLayoutOptions { Navbar = "tabs", PageNav = "minimal" });
+		serialized.Should().Contain("layout:").And.Contain("navbar: tabs").And.Contain("pageNav: minimal");
+		serialized.Should().NotContain("width:").And.NotContain("footer:").And.NotContain("breadcrumbs:");
+		reparsed.Warnings.Should().BeEmpty();
+	}
+
+	[Theory]
+	[InlineData("site:\n  title: Plain\n")]
+	[InlineData("site:\n  title: Plain\ntheme:\n  options:\n    layout:\n      width: default\n      navbar: DEFAULT\n      toc: ' default '\n")]
+	public void ToYaml_EveryLayoutPartDefault_OmitsTheLayoutBlock(string yaml)
+	{
+		SiteConfigReader.ToYaml(SiteConfigReader.Parse(yaml)).Should().NotContain("layout");
+	}
+
+	[Fact]
 	public void Minify_IsOffByDefaultAndRoundTripsWhenOn()
 	{
 		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");

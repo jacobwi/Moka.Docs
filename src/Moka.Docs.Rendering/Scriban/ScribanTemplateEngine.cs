@@ -20,6 +20,8 @@ namespace Moka.Docs.Rendering.Scriban;
 /// </summary>
 public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 {
+	private const int _footerColumnLimit = 4;
+	private const int _footerLinkLimit = 6;
 	private const int _outputLimit = 64 * 1024 * 1024;
 
 	private static readonly string _mokaVersion = ReadMokaVersion();
@@ -347,6 +349,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "code_style_selector", ctx.Config.Theme.Options.CodeStyleSelector },
 			{ "style", ThemeStyles.Resolve(ctx.Config.Theme.Options.Style) },
 			{ "style_selector", ctx.Config.Theme.Options.StyleSelector },
+			{ "layout", BuildLayoutObject(ctx.Config.Theme.Options.Layout) },
 			{ "show_feedback", ctx.Config.Theme.Options.ShowFeedback },
 			{ "show_dark_mode_toggle", ctx.Config.Theme.Options.ShowDarkModeToggle },
 			{ "show_animations", ctx.Config.Theme.Options.ShowAnimations },
@@ -393,6 +396,12 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		so.SetValue("breadcrumbs",
 			BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, index.PageRoutes, bp), false);
+
+		ThemeLayoutOptions layout = ctx.Config.Theme.Options.Layout;
+		so.SetValue("layout_tabs",
+			ThemeLayouts.Navbar.Resolve(layout.Navbar) == "tabs" ? BuildLayoutTabs(index, page.Route, bp) : [], false);
+		so.SetValue("footer_columns",
+			ThemeLayouts.Footer.Resolve(layout.Footer) == "columns" ? BuildFooterColumns(index, bp) : [], false);
 
 		string firstNavRoute = index.FirstSidebarRouteOtherThan(page.Route);
 		so.SetValue("first_nav_route", firstNavRoute.Length > 0 ? PrefixRoute(firstNavRoute, bp) : "", false);
@@ -615,6 +624,77 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		obj.SetValue("children", children, false);
 
 		return obj;
+	}
+
+	private static ScriptObject BuildLayoutObject(ThemeLayoutOptions layout) => new()
+	{
+		{ "width", ThemeLayouts.Width.Resolve(layout.Width) },
+		{ "navbar", ThemeLayouts.Navbar.Resolve(layout.Navbar) },
+		{ "footer", ThemeLayouts.Footer.Resolve(layout.Footer) },
+		{ "toc", ThemeLayouts.Toc.Resolve(layout.Toc) },
+		{ "breadcrumbs", ThemeLayouts.Breadcrumbs.Resolve(layout.Breadcrumbs) },
+		{ "page_nav", ThemeLayouts.PageNav.Resolve(layout.PageNav) }
+	};
+
+	private static ScriptArray BuildLayoutTabs(RenderIndex index, string route, string basePath)
+	{
+		IReadOnlySet<NavigationNode> ancestors = index.AncestorsOf(route);
+		var tabs = new ScriptArray();
+		foreach (NavSection section in index.TopSections)
+		{
+			bool isCurrent = ancestors.Contains(section.Node)
+			                 || string.Equals(section.Node.Route, route, StringComparison.OrdinalIgnoreCase)
+			                 || string.Equals(section.Route, route, StringComparison.OrdinalIgnoreCase);
+			tabs.Add(new ScriptObject
+			{
+				{ "label", section.Label },
+				{ "url", PrefixRoute(section.Route, basePath) },
+				{ "is_current", isCurrent }
+			});
+		}
+
+		return tabs;
+	}
+
+	// Sections become columns of their first entries. Top-level pages without entries under them
+	// share one column, first, so a flat sidebar still gets a footer column.
+	private static ScriptArray BuildFooterColumns(RenderIndex index, string basePath)
+	{
+		var columns = new ScriptArray();
+		List<PageLink> loose = index.TopSections
+			.Where(s => s.Links.Count == 0)
+			.Select(s => new PageLink(s.Label, s.Route))
+			.ToList();
+		if (loose.Count > 0)
+		{
+			columns.Add(FooterColumn("Docs", loose, basePath));
+		}
+
+		foreach (NavSection section in index.TopSections)
+		{
+			if (columns.Count == _footerColumnLimit)
+			{
+				break;
+			}
+
+			if (section.Links.Count > 0)
+			{
+				columns.Add(FooterColumn(section.Label, section.Links, basePath));
+			}
+		}
+
+		return columns;
+	}
+
+	private static ScriptObject FooterColumn(string title, IEnumerable<PageLink> links, string basePath)
+	{
+		var items = new ScriptArray();
+		foreach (PageLink link in links.Take(_footerLinkLimit))
+		{
+			items.Add(new ScriptObject { { "label", link.Title }, { "url", PrefixRoute(link.Route, basePath) } });
+		}
+
+		return new ScriptObject { { "title", title }, { "links", items } };
 	}
 
 	private static string? FirstRoute(List<NavigationNode> nodes)

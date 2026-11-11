@@ -51,6 +51,7 @@ public sealed class RenderPhase(
 		if (theme.IsEmbedded)
 		{
 			ReportUnknownStyle(context);
+			ReportUnknownLayoutVariants(context);
 		}
 
 		// Update the theme context with the current config, navigation, and version data
@@ -216,6 +217,35 @@ public sealed class RenderPhase(
 			context.Diagnostics.Warning(
 				$"Style '{style}' is not one of {string.Join(", ", ThemeStyles.Names)}; using '{ThemeStyles.Default}'",
 				Name);
+		}
+	}
+
+	/// <summary>
+	///     Warns about each <c>theme.options.layout</c> part that names no variant of the default
+	///     theme. That part renders with its default variant. A custom theme may define its own
+	///     variant names, so, like the style, it is only checked for the embedded theme.
+	/// </summary>
+	private void ReportUnknownLayoutVariants(BuildContext context)
+	{
+		ThemeLayoutOptions layout = context.Config.Theme.Options.Layout;
+		(ThemeLayoutPart Part, string Configured)[] parts =
+		[
+			(ThemeLayouts.Width, layout.Width),
+			(ThemeLayouts.Navbar, layout.Navbar),
+			(ThemeLayouts.Footer, layout.Footer),
+			(ThemeLayouts.Toc, layout.Toc),
+			(ThemeLayouts.Breadcrumbs, layout.Breadcrumbs),
+			(ThemeLayouts.PageNav, layout.PageNav)
+		];
+
+		foreach ((ThemeLayoutPart part, string configured) in parts)
+		{
+			if (!part.IsKnown(configured))
+			{
+				context.Diagnostics.Warning(
+					$"Layout {part.Key} '{configured}' is not one of {string.Join(", ", part.Names)}; using '{ThemeLayouts.Default}'",
+					Name);
+			}
 		}
 	}
 

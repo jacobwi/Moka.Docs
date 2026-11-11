@@ -53,6 +53,60 @@ public sealed class SiteConfigEnvironmentTests
 		config.Theme.Options.StyleSelector.Should().BeFalse();
 	}
 
+	private static Dictionary<string, string> LayoutParts(ThemeLayoutOptions layout) => new()
+	{
+		["WIDTH"] = layout.Width,
+		["NAVBAR"] = layout.Navbar,
+		["FOOTER"] = layout.Footer,
+		["TOC"] = layout.Toc,
+		["BREADCRUMBS"] = layout.Breadcrumbs,
+		["PAGE_NAV"] = layout.PageNav
+	};
+
+	[Theory]
+	[InlineData("WIDTH", "full")]
+	[InlineData("NAVBAR", "tabs")]
+	[InlineData("FOOTER", "columns")]
+	[InlineData("TOC", "floating")]
+	[InlineData("BREADCRUMBS", "pills")]
+	[InlineData("PAGE_NAV", "stacked")]
+	public void EnvironmentOverride_LayoutPart_AppliesWhenTheYamlHasNoThemeSection(string part, string value)
+	{
+		SiteConfig config = ParseWith("MOKADOCS_LAYOUT_" + part, value, "site:\n  title: Docs\n");
+
+		Dictionary<string, string> parts = LayoutParts(config.Theme.Options.Layout);
+		parts[part].Should().Be(value);
+		parts.Where(p => p.Key != part).Select(p => p.Value).Should().AllBe("default");
+	}
+
+	[Fact]
+	public void EnvironmentOverride_LayoutPart_AppliesWhenTheOptionsHaveNoLayoutSection()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_LAYOUT_NAVBAR", "autohide",
+			"site:\n  title: Docs\ntheme:\n  options:\n    style: moka\n");
+
+		config.Theme.Options.Layout.Navbar.Should().Be("autohide");
+		config.Theme.Options.Style.Should().Be("moka");
+	}
+
+	[Fact]
+	public void EnvironmentOverride_LayoutPart_WinsOverTheYamlAndLeavesTheOtherParts()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_LAYOUT_NAVBAR", "compact",
+			"site:\n  title: Docs\ntheme:\n  options:\n    layout:\n      navbar: tabs\n      footer: minimal\n");
+
+		config.Theme.Options.Layout.Navbar.Should().Be("compact");
+		config.Theme.Options.Layout.Footer.Should().Be("minimal");
+	}
+
+	[Fact]
+	public void EnvironmentOverride_LayoutPart_KeepsAnUnknownNameForTheWarning()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_LAYOUT_TOC", "Sidebar", "site:\n  title: Docs\n");
+
+		config.Theme.Options.Layout.Toc.Should().Be("Sidebar");
+	}
+
 	[Fact]
 	public void EnvironmentOverride_AppliesWhenTheYamlHasNoBuildSection()
 	{

@@ -14,6 +14,7 @@ The built-in theme includes:
 - **Responsive layout**: on screens 768px wide or less, the sidebar moves behind a menu button.
 - **Dark and light mode**: follows the system setting on a first visit, with a header toggle that remembers the reader's choice.
 - **Styles**: five whole looks (default, moka, minimal, classic and soft) that readers can switch between from the header. See [Styles](#styles).
+- **Page layouts**: variants for the page width, top bar, footer, "On this page" panel, breadcrumbs and previous/next links, set in `mokadocs.yaml`. See [Page Layout](#page-layout).
 - **Syntax highlighting**: done in the browser, with seven color themes.
 - **Search**: a dialog opened from the header button or with `Ctrl+K` / `Cmd+K`. It matches page titles, headings, tags and the first 300 characters of each page's text. See [Search](/guide/search).
 - **Table of contents**: built from the page's headings, highlighting the section in view.
@@ -216,6 +217,26 @@ theme:
 ```
 
 With the selector hidden, a style a reader picked earlier no longer applies.
+
+### Page Layout
+
+`layout` changes how six parts of the page are laid out, independent of the style and the colors: the page width, the top bar, the footer, the "On this page" panel, the breadcrumbs and the previous/next links. Set only the parts you want to change; the others keep their `default` variant.
+
+```yaml
+theme:
+  options:
+    layout:
+      width: wide          # default, wide, full or boxed
+      navbar: tabs         # default, compact, floating, tabs or autohide
+      footer: columns      # default, minimal, columns or none
+      toc: floating        # default, minimal, inline or floating
+      breadcrumbs: pills   # default, chevrons, pills, path or back
+      pageNav: minimal     # default, minimal or stacked
+```
+
+Only the default theme reads these. Readers can't switch layouts the way they switch styles: there is no header button, and every reader gets the layout you set. Landing pages use the `navbar` and `footer` settings too. The `show*` options still win, so `showBreadcrumbs: false` hides the breadcrumbs whatever `breadcrumbs` is set to.
+
+An unknown name renders that part as `default`, and the build reports a warning that `mokadocs validate` lists. [`options.layout`](/configuration/site-config#options.layout) describes every variant.
 
 ### Primary Color
 
@@ -544,6 +565,8 @@ The footer of the default layout contains:
 2. **Social links** from `theme.options.socialLinks`
 3. **"Built with MokaDocs"** branding with the MokaDocs version
 
+`theme.options.layout.footer` changes how these are laid out, on landing pages too, or removes the footer. See [Page Layout](#page-layout).
+
 ### Copyright Text
 
 Set the `copyright` field under `site:` in your `mokadocs.yaml`:
@@ -601,6 +624,15 @@ theme:
     # Look
     style: default                # default, moka, minimal, classic or soft
     styleSelector: true           # style button in the header
+
+    # Layout
+    layout:
+      width: default              # default, wide, full or boxed
+      navbar: default             # default, compact, floating, tabs or autohide
+      footer: default             # default, minimal, columns or none
+      toc: default                # default, minimal, inline or floating
+      breadcrumbs: default        # default, chevrons, pills, path or back
+      pageNav: default            # default, minimal or stacked
 
     # Colors
     primaryColor: "#0ea5e9"

@@ -70,6 +70,7 @@ internal sealed class ThemeOptionsDto
 	public bool? CodeStyleSelector { get; set; }
 	public string? Style { get; set; }
 	public bool? StyleSelector { get; set; }
+	public ThemeLayoutDto? Layout { get; set; }
 	public string? Sidebar { get; set; }
 	public int? SidebarInlineLimit { get; set; }
 	public bool? ShowFeedback { get; set; }
@@ -87,6 +88,17 @@ internal sealed class ThemeOptionsDto
 	public bool? ShowBuiltWith { get; set; }
 	public List<SocialLinkDto>? SocialLinks { get; set; }
 	public string? DefaultColorTheme { get; set; }
+}
+
+/// <summary>DTO for <c>theme.options.layout</c>.</summary>
+internal sealed class ThemeLayoutDto
+{
+	public string? Width { get; set; }
+	public string? Navbar { get; set; }
+	public string? Footer { get; set; }
+	public string? Toc { get; set; }
+	public string? Breadcrumbs { get; set; }
+	public string? PageNav { get; set; }
 }
 
 /// <summary>DTO for a social link.</summary>

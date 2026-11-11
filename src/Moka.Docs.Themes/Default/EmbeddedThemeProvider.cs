@@ -32,6 +32,8 @@ public static partial class EmbeddedThemeProvider
 	                                        --sidebar-width: 280px;
 	                                        --toc-width: 220px;
 	                                        --header-height: 60px;
+	                                        --header-offset: var(--header-height);
+	                                        --layout-max-width: 1440px;
 	                                        --content-max-width: 780px;
 	                                        --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 	                                        --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -122,7 +124,7 @@ public static partial class EmbeddedThemeProvider
 	                                    /* Reset */
 	                                    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-	                                    html { scroll-behavior: smooth; scroll-padding-top: calc(var(--header-height) + 1rem); }
+	                                    html { scroll-behavior: smooth; scroll-padding-top: calc(var(--header-offset) + 1rem); }
 
 	                                    body {
 	                                        font-family: var(--font-body);
@@ -151,7 +153,7 @@ public static partial class EmbeddedThemeProvider
 	                                        display: flex;
 	                                        align-items: center;
 	                                        justify-content: space-between;
-	                                        max-width: 1440px;
+	                                        max-width: var(--layout-max-width);
 	                                        margin: 0 auto;
 	                                        padding: 0 1.5rem;
 	                                        height: 100%;
@@ -453,7 +455,7 @@ public static partial class EmbeddedThemeProvider
 	                                    /* Layout */
 	                                    .site-container {
 	                                        display: flex;
-	                                        max-width: 1440px;
+	                                        max-width: var(--layout-max-width);
 	                                        margin: 0 auto;
 	                                        min-height: calc(100vh - var(--header-height) - 60px);
 	                                    }
@@ -461,9 +463,9 @@ public static partial class EmbeddedThemeProvider
 	                                    /* Sidebar */
 	                                    .sidebar {
 	                                        position: sticky;
-	                                        top: var(--header-height);
+	                                        top: var(--header-offset);
 	                                        width: var(--sidebar-width);
-	                                        height: calc(100vh - var(--header-height));
+	                                        height: calc(100vh - var(--header-offset));
 	                                        overflow-y: auto;
 	                                        padding: 1.5rem 1rem;
 	                                        border-right: 1px solid var(--color-border);
@@ -1344,9 +1346,9 @@ public static partial class EmbeddedThemeProvider
 	                                    /* ToC Sidebar - "On this page" */
 	                                    .toc-sidebar {
 	                                        position: sticky;
-	                                        top: var(--header-height);
+	                                        top: var(--header-offset);
 	                                        width: var(--toc-width);
-	                                        height: calc(100vh - var(--header-height));
+	                                        height: calc(100vh - var(--header-offset));
 	                                        overflow-y: auto;
 	                                        padding: 1.5rem 0 1.5rem 0;
 	                                        flex-shrink: 0;
@@ -1523,7 +1525,7 @@ public static partial class EmbeddedThemeProvider
 	                                        padding: 1.5rem;
 	                                    }
 	                                    .footer-inner {
-	                                        max-width: 1440px;
+	                                        max-width: var(--layout-max-width);
 	                                        margin: 0 auto;
 	                                        display: flex;
 	                                        justify-content: space-between;
@@ -1552,7 +1554,7 @@ public static partial class EmbeddedThemeProvider
 	                                        .toc-sidebar {
 	                                            display: none;
 	                                            position: fixed;
-	                                            top: var(--header-height);
+	                                            top: var(--header-offset);
 	                                            right: 0;
 	                                            bottom: 0;
 	                                            width: 280px;
@@ -1593,7 +1595,7 @@ public static partial class EmbeddedThemeProvider
 	                                    }
 
 	                                    @media (max-width: 768px) {
-	                                        .sidebar { display: none; position: fixed; top: var(--header-height); left: 0; bottom: 0; z-index: 50; background: var(--color-bg); }
+	                                        .sidebar { display: none; position: fixed; top: var(--header-offset); left: 0; bottom: 0; z-index: 50; background: var(--color-bg); }
 	                                        .sidebar.open { display: block; }
 	                                        .mobile-nav-toggle { display: flex; }
 	                                        .content { padding: 1.5rem 1rem; }
@@ -4763,6 +4765,26 @@ public static partial class EmbeddedThemeProvider
 	                                           });
 	                                       }
 
+	                                       // Auto-hiding navbar (layout.navbar: autohide). It stays while a menu in it is open,
+	                                       // while it has focus and while the mobile sidebar it toggles is open.
+	                                       (function() {
+	                                           var root = document.documentElement;
+	                                           var header = document.querySelector('.site-header');
+	                                           if (root.getAttribute('data-navbar') !== 'autohide' || !header) return;
+	                                           var lastY = window.scrollY;
+	                                           window.addEventListener('scroll', function() {
+	                                               var y = window.scrollY;
+	                                               if (Math.abs(y - lastY) < 8) return;
+	                                               var hide = y > lastY && y > header.offsetHeight
+	                                                   && !header.contains(document.activeElement)
+	                                                   && !header.querySelector('[aria-expanded="true"]')
+	                                                   && !document.querySelector('.sidebar.open');
+	                                               root.classList.toggle('navbar-hidden', hide);
+	                                               lastY = y;
+	                                           }, { passive: true });
+	                                           header.addEventListener('focusin', function() { root.classList.remove('navbar-hidden'); });
+	                                       })();
+
 	                                       // TOC toggle (mobile/tablet)
 	                                       var tocToggle = document.getElementById('tocToggle');
 	                                       var tocSidebar = document.getElementById('tocSidebar');
@@ -4883,7 +4905,7 @@ public static partial class EmbeddedThemeProvider
 	/// <summary>
 	///     Returns the embedded CSS content.
 	/// </summary>
-	public static string GetCss() => _embeddedCss + _stylesCss;
+	public static string GetCss() => _embeddedCss + _stylesCss + _layoutsCss;
 
 	/// <summary>
 	///     Returns the embedded JS content.
@@ -4894,7 +4916,7 @@ public static partial class EmbeddedThemeProvider
 
 	private const string _defaultLayout = """
 	                                      <!DOCTYPE html>
-	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme | html.escape }}" data-code-style="{{ theme.code_style | html.escape }}" data-style="{{ theme.style | html.escape }}"{{ if base_path != "" }} data-base-path="{{ base_path | html.escape }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
+	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme | html.escape }}" data-code-style="{{ theme.code_style | html.escape }}" data-style="{{ theme.style | html.escape }}"{{ if theme.layout.width != "default" }} data-width="{{ theme.layout.width | html.escape }}"{{ end }}{{ if theme.layout.navbar != "default" }} data-navbar="{{ theme.layout.navbar | html.escape }}"{{ end }}{{ if theme.layout.footer != "default" }} data-footer="{{ theme.layout.footer | html.escape }}"{{ end }}{{ if theme.layout.toc != "default" }} data-toc="{{ theme.layout.toc | html.escape }}"{{ end }}{{ if theme.layout.breadcrumbs != "default" }} data-breadcrumbs="{{ theme.layout.breadcrumbs | html.escape }}"{{ end }}{{ if theme.layout.page_nav != "default" }} data-page-nav="{{ theme.layout.page_nav | html.escape }}"{{ end }}{{ if base_path != "" }} data-base-path="{{ base_path | html.escape }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
 	                                      <head>
 	                                          <script>try{const s={{ if theme.style_selector }}localStorage.getItem('mokadocs-style')||{{ end }}'{{ theme.style }}';document.documentElement.setAttribute('data-style',s);const t=localStorage.getItem('mokadocs-theme')||(s==='moka'||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme | html.escape | string.escape }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style | html.escape | string.escape }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
@@ -5024,6 +5046,7 @@ public static partial class EmbeddedThemeProvider
 	                                                      </button>
 	                                                  </div>
 	                                              </div>
+	                                      """ + _headerTabs + """
 	                                          </header>
 
 	                                          <div class="site-container">
@@ -5075,7 +5098,16 @@ public static partial class EmbeddedThemeProvider
 	                                                      </div>
 	                                                      {{ end }}
 
+	                                                      {{ if page.show_toc && theme.layout.toc == "inline" }}
+	                                                      <details class="toc-inline" id="tocInline" open>
+	                                                          <summary>On this page</summary>
+	                                                          <nav class="toc" aria-label="On this page">
+	                                      """ + _tocList + """
+	                                                          </nav>
+	                                                      </details>
+	                                                      {{ end }}
 	                                                      {{ page.content }}
+	                                                      {{ if page.show_toc && theme.layout.toc == "inline" }}<script>(function(){var t=document.getElementById('tocInline'),h=t&&t.parentElement.querySelector(':scope > h1');if(h)h.after(t)})()</script>{{ end }}
 
 	                                                      {{ if edit_url }}
 	                                                      <div class="edit-link">
@@ -5107,44 +5139,16 @@ public static partial class EmbeddedThemeProvider
 	                                                  </article>
 	                                              </main>
 
-	                                              {{ if page.show_toc }}
+	                                              {{ if page.show_toc && theme.layout.toc != "inline" }}
 	                                              <aside class="toc-sidebar" id="tocSidebar">
 	                                                  <nav class="toc" aria-label="On this page">
 	                                                      <h4 class="toc-title">On this page</h4>
+	                                                      {{ if theme.layout.toc != "minimal" }}
 	                                                      <div class="toc-progress"><div class="toc-progress-bar" id="tocProgress"></div></div>
 	                                                      <a href="#" class="toc-back-to-top" id="tocBackToTop">&uarr; Top</a>
-	                                                      <ul class="toc-list">
-	                                                          {{ for entry in page.toc }}
-	                                                          {{ if entry.level <= theme.toc_depth }}
-	                                                          <li class="toc-item toc-level-{{ entry.level }}">
-	                                                              <a href="#{{ entry.id | html.escape }}">{{ entry.text | html.escape }}</a>
-	                                                              {{ if entry.children.size > 0 }}
-	                                                              <ul>
-	                                                                  {{ for child in entry.children }}
-	                                                                  {{ if child.level <= theme.toc_depth }}
-	                                                                  <li class="toc-item toc-level-{{ child.level }}">
-	                                                                      <a href="#{{ child.id | html.escape }}">{{ child.text | html.escape }}</a>
-	                                                                      {{ if child.children.size > 0 }}
-	                                                                      <ul>
-	                                                                          {{ for grandchild in child.children }}
-	                                                                          {{ if grandchild.level <= theme.toc_depth }}
-	                                                                          <li class="toc-item toc-level-{{ grandchild.level }}">
-	                                                                              <a href="#{{ grandchild.id | html.escape }}">{{ grandchild.text | html.escape }}</a>
-	                                                                          </li>
-	                                                                          {{ end }}
-	                                                                          {{ end }}
-	                                                                      </ul>
-	                                                                      {{ end }}
-	                                                                  </li>
-	                                                                  {{ end }}
-	                                                                  {{ end }}
-	                                                              </ul>
-	                                                              {{ end }}
-	                                                          </li>
-	                                                          {{ end }}
-	                                                          {{ end }}
-	                                                      </ul>
-	                                                      <div class="toc-counter" id="tocCounter"></div>
+	                                                      {{ end }}
+	                                      """ + _tocList + """
+	                                                      {{ if theme.layout.toc != "minimal" }}<div class="toc-counter" id="tocCounter"></div>{{ end }}
 	                                                  </nav>
 	                                              </aside>
 	                                              {{ end }}
@@ -5194,6 +5198,9 @@ public static partial class EmbeddedThemeProvider
 	                                          </nav>
 	                                          {{ end }}
 
+	                                          {{ if theme.layout.footer == "columns" }}
+	                                      """ + _columnsFooter + """
+	                                          {{ else if theme.layout.footer != "none" }}
 	                                          <footer class="site-footer">
 	                                              <div class="footer-inner">
 	                                                  {{ if site.copyright }}<span>{{ site.copyright }}</span>{{ end }}
@@ -5201,6 +5208,7 @@ public static partial class EmbeddedThemeProvider
 	                                                  {{ if theme.show_built_with != false }}<span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a> v{{ mokadocs_version }}</span>{{ end }}
 	                                              </div>
 	                                          </footer>
+	                                          {{ end }}
 
 	                                          {{ if search_enabled }}
 	                                          <div class="search-modal" id="searchModal" hidden>
@@ -5216,7 +5224,7 @@ public static partial class EmbeddedThemeProvider
 	                                          </div>
 	                                          {{ end }}
 
-	                                          {{ if page.show_toc }}
+	                                          {{ if page.show_toc && theme.layout.toc != "inline" }}
 	                                         <button class="toc-toggle-btn" id="tocToggle" aria-label="Toggle table of contents">
 	                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 	                                                 <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -5240,7 +5248,7 @@ public static partial class EmbeddedThemeProvider
 
 	private const string _landingLayout = """
 	                                      <!DOCTYPE html>
-	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme | html.escape }}" data-code-style="{{ theme.code_style | html.escape }}" data-style="{{ theme.style | html.escape }}"{{ if base_path != "" }} data-base-path="{{ base_path | html.escape }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
+	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme | html.escape }}" data-code-style="{{ theme.code_style | html.escape }}" data-style="{{ theme.style | html.escape }}"{{ if theme.layout.width != "default" }} data-width="{{ theme.layout.width | html.escape }}"{{ end }}{{ if theme.layout.navbar != "default" }} data-navbar="{{ theme.layout.navbar | html.escape }}"{{ end }}{{ if theme.layout.footer != "default" }} data-footer="{{ theme.layout.footer | html.escape }}"{{ end }}{{ if theme.layout.toc != "default" }} data-toc="{{ theme.layout.toc | html.escape }}"{{ end }}{{ if theme.layout.breadcrumbs != "default" }} data-breadcrumbs="{{ theme.layout.breadcrumbs | html.escape }}"{{ end }}{{ if theme.layout.page_nav != "default" }} data-page-nav="{{ theme.layout.page_nav | html.escape }}"{{ end }}{{ if base_path != "" }} data-base-path="{{ base_path | html.escape }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
 	                                      <head>
 	                                          <script>try{const s={{ if theme.style_selector }}localStorage.getItem('mokadocs-style')||{{ end }}'{{ theme.style }}';document.documentElement.setAttribute('data-style',s);const t=localStorage.getItem('mokadocs-theme')||(s==='moka'||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme | html.escape | string.escape }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style | html.escape | string.escape }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
@@ -5357,6 +5365,7 @@ public static partial class EmbeddedThemeProvider
 	                                                      {{ end }}
 	                                                  </div>
 	                                              </div>
+	                                      """ + _headerTabs + """
 	                                          </header>
 
 	                                          <!-- Hero Section -->
@@ -5408,10 +5417,14 @@ public static partial class EmbeddedThemeProvider
 	                                          {{ end }}
 
 	                                          <!-- Footer -->
+	                                          {{ if theme.layout.footer == "columns" }}
+	                                      """ + _columnsFooter + """
+	                                          {{ else if theme.layout.footer != "none" }}
 	                                          <footer class="landing-footer">
 	                                              {{ if theme.show_built_with != false }}<p>Built with <span class="landing-footer-heart">&#x2764;</span> using <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a> v{{ mokadocs_version }}</p>{{ end }}
 	                                              {{ if site.copyright }}<p style="margin-top:0.5rem;">{{ site.copyright }}</p>{{ end }}
 	                                          </footer>
+	                                          {{ end }}
 
 	                                          {{ if search_enabled }}
 	                                          <div id="searchModal" class="search-modal" hidden>
