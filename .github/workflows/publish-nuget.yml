@@ -23,8 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # nuget.org trusted publishing: the job trades GitHub's OIDC token for a one-hour API key,
-      # so no long-lived key is stored. The policy on nuget.org names this repository and file.
+      # The OIDC token nuget.org's trusted publishing trades for a push key.
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -61,21 +60,16 @@ jobs:
       - name: Pack
         run: dotnet pack MokaDocs.slnx --no-build -c Release -p:PackageVersion=${{ steps.version.outputs.version }} -o ./nupkgs
 
-      - name: Check the NuGet user
-        env:
-          NUGET_USER: ${{ secrets.NUGET_USER }}
-        run: |
-          if [ -z "$NUGET_USER" ]; then
-            echo "::error::Set the NUGET_USER repository secret to the nuget.org profile name that owns the packages."
-            exit 1
-          fi
-
-      # Right before the push: the key it returns is valid for one hour.
-      - name: NuGet login (OIDC)
-        id: login
+      # Trusted publishing: nuget.org trusts this repository and this workflow file, so no key is
+      # stored and nothing expires. Renaming this file means updating the nuget.org policy. The key
+      # lasts an hour, so the sign-in happens just before the push.
+      - name: Sign in to nuget.org
+        id: nuget
         uses: NuGet/login@v1
         with:
-          user: ${{ secrets.NUGET_USER }}
+          user: BCat
 
       - name: Push to NuGet.org
-        run: dotnet nuget push ./nupkgs/*.nupkg --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
