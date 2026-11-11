@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Package version (e.g. 1.0.0)'
+        description: 'Version of an existing v* tag to publish (e.g. 1.8.0)'
         required: true
 
 env:
@@ -23,8 +23,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # nuget.org trusted publishing: the job trades GitHub's OIDC token for a one-hour API key,
+      # so no long-lived key is stored. The policy on nuget.org names this repository and file.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # A manual run republishes a release, so it builds that release's tag, not the branch.
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/v{0}', inputs.version) || github.ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -38,7 +44,7 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
             echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
           fi
@@ -55,5 +61,21 @@ jobs:
       - name: Pack
         run: dotnet pack MokaDocs.slnx --no-build -c Release -p:PackageVersion=${{ steps.version.outputs.version }} -o ./nupkgs
 
+      - name: Check the NuGet user
+        env:
+          NUGET_USER: ${{ secrets.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "::error::Set the NUGET_USER repository secret to the nuget.org profile name that owns the packages."
+            exit 1
+          fi
+
+      # Right before the push: the key it returns is valid for one hour.
+      - name: NuGet login (OIDC)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push to NuGet.org
-        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
