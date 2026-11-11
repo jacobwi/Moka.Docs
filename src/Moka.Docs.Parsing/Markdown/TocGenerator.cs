@@ -1,7 +1,6 @@
 using System.Text;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using Moka.Docs.Core.Content;
 
 namespace Moka.Docs.Parsing.Markdown;
@@ -22,7 +21,7 @@ public sealed class TocGenerator
 
 		foreach (HeadingBlock block in document.DescendantsOfType<HeadingBlock>())
 		{
-			string text = ExtractHeadingText(block);
+			string text = InlineText.Of(block.Inline);
 			HtmlAttributes? attributes = block.TryGetAttributes();
 			string id = attributes?.Id ?? GenerateAnchorId(text);
 
@@ -45,43 +44,6 @@ public sealed class TocGenerator
 
 	#region Private Helpers
 
-	private static string ExtractHeadingText(HeadingBlock heading)
-	{
-		if (heading.Inline is null)
-		{
-			return "";
-		}
-
-		var text = new StringBuilder();
-		foreach (Inline inline in heading.Inline)
-		{
-			if (inline is LiteralInline literal)
-			{
-				text.Append(literal.Content);
-			}
-			else if (inline is CodeInline code)
-			{
-				text.Append(code.Content);
-			}
-			else if (inline is EmphasisInline emphasis)
-			{
-				foreach (Inline child in emphasis)
-				{
-					if (child is LiteralInline lit)
-					{
-						text.Append(lit.Content);
-					}
-				}
-			}
-		}
-
-		return text.ToString();
-	}
-
-	/// <summary>
-	///     Generates a URL-safe anchor ID from heading text.
-	///     Follows GitHub-style anchor generation.
-	/// </summary>
 	/// <summary>
 	///     Generates a URL-safe anchor ID from heading text.
 	///     Follows GitHub-style anchor generation.

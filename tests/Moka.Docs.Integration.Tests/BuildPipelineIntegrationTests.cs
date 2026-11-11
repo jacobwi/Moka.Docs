@@ -1,14 +1,13 @@
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.FeatureManagement;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
-using Moka.Docs.Core.Features;
+using Moka.Docs.Core.Diagnostics;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.CSharp;
 using Moka.Docs.Engine;
 using Moka.Docs.Parsing;
@@ -25,15 +24,6 @@ public sealed class BuildPipelineIntegrationTests
 		services.AddMokaDocsParsing();
 		services.AddMokaDocsCSharp();
 		services.AddMokaDocsEngine();
-
-		IConfigurationRoot featureConfig = new ConfigurationBuilder()
-			.AddInMemoryCollection(
-				MokaFeatureConfiguration.GetDefaults()
-					.ToDictionary(
-						kv => $"FeatureManagement:{kv.Key}",
-						kv => (string?)kv.Value.ToString()))
-			.Build();
-		services.AddFeatureManagement(featureConfig.GetSection("FeatureManagement"));
 
 		ServiceProvider provider = services.BuildServiceProvider();
 		return (provider.GetRequiredService<BuildPipeline>(), provider);
@@ -447,10 +437,10 @@ public sealed class BuildPipelineIntegrationTests
 		MockFileSystem fs = await BuildSiteAsync(config);
 
 		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
-		page.Should().Contain("""<link rel="canonical" href="https://user.github.io/Repo/guide/intro" />""");
+		page.Should().Contain("""<link rel="canonical" href="https://user.github.io/Repo/guide/intro/" />""");
 		page.Should().NotContain("/Repo/Repo/");
 		fs.File.ReadAllText("/project/_site/sitemap.xml")
-			.Should().Contain("<loc>https://user.github.io/Repo/guide/intro</loc>");
+			.Should().Contain("<loc>https://user.github.io/Repo/guide/intro/</loc>");
 		fs.File.ReadAllText("/project/_site/robots.txt")
 			.Should().Contain("Sitemap: https://user.github.io/Repo/sitemap.xml");
 	}
@@ -574,6 +564,100 @@ public sealed class BuildPipelineIntegrationTests
 
 		fs.File.ReadAllText("/project/_site/guide/intro/index.html")
 			.Should().Contain($"localStorage.getItem('mokadocs-color-theme')||{expectedInitial};");
+	}
+
+	[Fact]
+	public async Task FullPipeline_DefaultOptions_RenderTheStylePickerOnEveryLayout()
+	{
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\nlayout: landing\n---\n# Home\n") },
+			{ "/project/docs/guide/intro.md", new MockFileData("---\ntitle: Intro\n---\n# Intro\n") }
+		});
+		(BuildPipeline pipeline, _) = CreatePipeline(fs);
+		await pipeline.ExecuteAsync(new BuildContext
+		{
+			Config = MinimalConfig(),
+			FileSystem = fs,
+			RootDirectory = "/project",
+			OutputDirectory = "/project/_site"
+		});
+
+		foreach (string path in new[] { "/project/_site/index.html", "/project/_site/guide/intro/index.html" })
+		{
+			string page = fs.File.ReadAllText(path);
+			page.Should().Contain("data-style=\"default\"").And.Contain("<div class=\"style-selector\">");
+			foreach (string style in ThemeStyles.Names)
+			{
+				page.Should().Contain($"data-style-option=\"{style}\"");
+			}
+		}
+	}
+
+	[Fact]
+	public async Task FullPipeline_Style_IsSetBeforeTheStylesheetLoads()
+	{
+		// The stored or configured style has to be on <html> before first paint, or the page
+		// flashes in the default style.
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { Style = "Moka" } }
+		};
+
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		page.Should().Contain("data-style=\"moka\"");
+		const string bootstrap = "const s=localStorage.getItem('mokadocs-style')||'moka';document.documentElement.setAttribute('data-style',s);";
+		int script = page.IndexOf(bootstrap, StringComparison.Ordinal);
+		script.Should().BeGreaterThan(0);
+		script.Should().BeLessThan(page.IndexOf("<link rel=\"stylesheet\"", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task FullPipeline_MokaStyle_StartsDarkOnlyWhenTheReaderNeverChose()
+	{
+		MockFileSystem fs = await BuildSiteAsync(MinimalConfig());
+
+		// A stored mokadocs-theme wins; without one, Moka is dark and other styles follow the OS.
+		fs.File.ReadAllText("/project/_site/guide/intro/index.html").Should().Contain(
+			"const t=localStorage.getItem('mokadocs-theme')||(s==='moka'||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');");
+	}
+
+	[Fact]
+	public async Task FullPipeline_StyleSelectorOff_HidesThePickerAndIgnoresAStoredStyle()
+	{
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { Style = "classic", StyleSelector = false } }
+		};
+
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		page.Should().NotContain("class=\"style-selector\"").And.NotContain("mokadocs-style");
+		page.Should().Contain("const s='classic';").And.Contain("data-style=\"classic\"");
+	}
+
+	[Fact]
+	public async Task FullPipeline_UnknownStyle_IsReportedAndRendersTheDefault()
+	{
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { Style = "fancy" } }
+		};
+
+		BuildContext context = await DryRunAsync(config, new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\nHome") }
+		});
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		Diagnostic warning = context.Diagnostics.All.Should().ContainSingle(d => d.Source == "Render").Subject;
+		warning.Severity.Should().Be(DiagnosticSeverity.Warning);
+		warning.Message.Should().Contain("'fancy'");
+		fs.File.ReadAllText("/project/_site/guide/intro/index.html").Should().Contain("data-style=\"default\"")
+			.And.Contain("||'default';");
 	}
 
 	[Fact]

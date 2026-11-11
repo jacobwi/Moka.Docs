@@ -59,6 +59,7 @@ public sealed class ReflectionApiPagePhase(
 		}
 
 		var allTypes = context.ApiModel.Namespaces.SelectMany(n => n.Types).ToList();
+		ApiTypeRoutes routes = ApiTypeRoutes.For(allTypes);
 
 		// Generate API index page listing all namespaces and types
 		var indexHtml = new StringBuilder();
@@ -70,11 +71,12 @@ public sealed class ReflectionApiPagePhase(
 			indexHtml.AppendLine("<tbody>");
 			foreach (ApiType type in ns.Types)
 			{
-				string route = GetTypeRoute(ns, type);
+				string route = routes.Route(type);
 				string kindBadge = type.Kind.ToString().ToLowerInvariant();
 				string summary = ApiPageRenderer.RenderSummary(type, allTypes);
 				indexHtml.AppendLine("<tr>");
-				indexHtml.AppendLine($"<td><a href=\"{route}\">{HttpUtility.HtmlEncode(type.Name)}</a></td>");
+				indexHtml.AppendLine(
+					$"<td><a href=\"{HttpUtility.HtmlAttributeEncode(route)}\">{HttpUtility.HtmlEncode(routes.DisplayName(type))}</a></td>");
 				indexHtml.AppendLine($"<td><span class=\"api-badge api-badge-{kindBadge}\">{type.Kind}</span></td>");
 				indexHtml.AppendLine($"<td>{summary}</td>");
 				indexHtml.AppendLine("</tr>");
@@ -97,7 +99,7 @@ public sealed class ReflectionApiPagePhase(
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
 		foreach (ApiType type in ns.Types)
 		{
-			string route = GetTypeRoute(ns, type);
+			string route = routes.Route(type);
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
 			TableOfContents toc = ApiPageRenderer.BuildTocForType(type, allTypes);
 
@@ -105,7 +107,7 @@ public sealed class ReflectionApiPagePhase(
 			{
 				FrontMatter = new FrontMatter
 				{
-					Title = type.Name,
+					Title = routes.DisplayName(type),
 					Description = ApiDocText.ToPlainText(type.Documentation?.Summary) is { Length: > 0 } description
 						? description
 						: $"API documentation for {type.FullName}",
@@ -127,9 +129,5 @@ public sealed class ReflectionApiPagePhase(
 	///     The route of a type's page. The sidebar entries that <c>NavEntry.AutoGenerate</c> adds
 	///     link to it too, and the theme highlights the current page only on an exact match.
 	/// </summary>
-	internal static string GetTypeRoute(ApiNamespace ns, ApiType type) =>
-		$"/api/{ns.Name.Replace('.', '/')}/{SanitizeRoutePart(type.Name)}".ToLowerInvariant();
-
-	private static string SanitizeRoutePart(string name) =>
-		name.Replace('<', '-').Replace('>', '-').Replace('`', '-').TrimEnd('-');
+	internal static string GetTypeRoute(ApiNamespace ns, ApiType type) => ApiTypeRoutes.Route(ns, type);
 }

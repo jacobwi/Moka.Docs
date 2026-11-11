@@ -5,7 +5,7 @@ order: 4
 
 # Dev Server & Hot Reload
 
-`mokadocs serve` builds the site, serves the output folder on `localhost`, and rebuilds and reloads the browser when a file in the docs folder changes.
+`mokadocs serve` builds the site, serves the output folder on this machine only, and rebuilds and reloads the browser when a file in the docs folder changes.
 
 ## Starting the Dev Server
 
@@ -13,7 +13,7 @@ order: 4
 mokadocs serve
 ```
 
-The server listens on port 5080 by default: open `http://localhost:5080`. It opens your browser there unless you pass `--no-open`.
+The server listens on port 5080 by default: open `http://localhost:5080`. It opens your browser there unless you pass `--no-open`. `http://127.0.0.1:5080` works too, and on Windows `http://[::1]:5080`. When the system refuses one of those addresses, for example through a Windows URL reservation, the server answers on the rest and says so with `--verbose`.
 
 ### Options
 
@@ -55,16 +55,36 @@ In Git Bash on Windows, run `--base-path` commands with `MSYS_NO_PATHCONV=1`; se
 
 1. **File watching**: the server watches the `content.docs` folder, including subfolders, and the configuration file.
 2. **Debounce**: a rebuild starts 300 ms after the last change, so a save that fires several file system events causes one rebuild.
-3. **Rebuild**: the whole build pipeline runs again, writing to the output folder.
+3. **Rebuild**: the whole build pipeline runs again, writing to the output folder. One rebuild runs at a time. Changes saved while it runs start one more rebuild when it ends, which picks up all of them.
 4. **Reload**: after the rebuild, the server sends `reload` over a WebSocket to every connected browser. The terminal prints the warning and error counts and lists the errors, and `--verbose` lists the warnings too. A build that reports errors still reloads the browser. If the rebuild throws, the terminal shows `Build failed:` with the message and browsers aren't reloaded.
 5. **Browser script**: the server adds a small script before `</body>` in every HTML response. It connects to `ws://<host>/__mokadocs-ws`, reloads the page when it receives `reload`, and reconnects every second when the connection closes.
 
-Changes inside the output folder are ignored, and so are files and folders below the docs folder whose names start with `.`, such as `.git`.
+Changes inside the output folder and `.mokadocs` are ignored, and so are files and folders below the docs folder whose names start with `.`, such as `.git`.
+
+### Configuration Changes
+
+When `mokadocs.yaml` changes, the rebuild starts by reading it again. Everything that comes from it is set up again before the build: the theme and its parsed templates, the navigation, the versions and the plugins, so a plugin you add to `plugins` starts running, and a plugin loaded from a `path` is built and loaded again. Saving the file without changing it doesn't reload anything.
+
+A file that doesn't parse leaves the site as it was. The terminal prints the error and `Still serving the last good site`, and no rebuild runs, even for docs changes, until you fix the file and save it again.
+
+Some settings are fixed while `serve` runs. When the new file changes them, the terminal prints a line such as `build.basePath changed from '/' to '/docs', which takes a restart. Still using '/'.` and the old value stays until you restart:
+
+- `build.basePath`, which the server strips from request paths
+- `build.output`, the folder the server serves
+- `content.docs`, the folder it watches
+- the `mokadocs-repl` entry, since the REPL endpoint and its packages are set up at startup
+
+The port is a command-line option, so it can only change with a restart too. `--output` and `--base-path` keep overriding the file after a reload.
+
+### Polling
+
+Where the operating system can't watch a folder, such as on Linux past the inotify limits, `serve` logs a warning and checks the folder for changes every second instead. Set the `DOTNET_USE_POLLING_FILE_WATCHER` environment variable to `1` or `true` to poll from the start, which helps on network drives and some container mounts that don't report changes. When more changes arrive at once than the watcher can list, `serve` rebuilds anyway.
 
 ### What Isn't Picked Up
 
-- **Configuration changes**: saving `mokadocs.yaml` triggers a rebuild, but the rebuild uses the configuration loaded at startup. Restart `serve` to apply the change.
-- **Theme changes**: the theme and its parsed templates are cached for the life of the process, and a custom theme folder outside `content.docs` isn't watched. Restart `serve` after editing a theme.
+- **Some configuration settings**: `build.basePath`, `build.output`, `content.docs` and the `mokadocs-repl` entry need a restart. See [Configuration Changes](#configuration-changes).
+- **Theme changes**: the theme and its parsed templates are cached until `mokadocs.yaml` changes, and a custom theme folder outside `content.docs` isn't watched. Restart `serve` after editing a theme.
+- **Plugin source code**: a plugin loaded from a project `path` is built when `serve` starts and when `mokadocs.yaml` changes, not when its own files change.
 - **C# source files**: project folders aren't watched. After changing code, save any file in the docs folder to rebuild. A project whose `.cs` files changed is analyzed again, since its cache entry no longer matches.
 
 ### Output Folder Inside the Docs Folder
@@ -73,7 +93,7 @@ Changes inside the output folder are ignored, and so are files and folders below
 
 ## Static File Serving
 
-The server runs one build at startup and then serves files from the output folder. File responses carry `Cache-Control: no-cache, no-store, must-revalidate`, so the browser always fetches the latest build.
+The server runs one build at startup and then serves files from the output folder. File responses carry `Cache-Control: no-cache, no-store, must-revalidate`, so the browser always fetches the latest build. Files answer `GET` and `HEAD`; other methods get `405`.
 
 ### Clean URLs
 
@@ -98,18 +118,16 @@ With a base path (`build.basePath` or `--base-path`), the server removes the pre
 |-----------|--------------|
 | `.html`, `.htm` | `text/html; charset=utf-8` |
 | `.css` | `text/css; charset=utf-8` |
-| `.js` | `application/javascript; charset=utf-8` |
+| `.js`, `.mjs` | `application/javascript; charset=utf-8` |
 | `.json` | `application/json; charset=utf-8` |
 | `.xml` | `application/xml; charset=utf-8` |
 | `.txt` | `text/plain; charset=utf-8` |
+| `.yaml`, `.yml` | `application/yaml; charset=utf-8` |
 | `.svg` | `image/svg+xml` |
-| `.png`, `.gif`, `.webp` | `image/png`, `image/gif`, `image/webp` |
-| `.jpg`, `.jpeg` | `image/jpeg` |
-| `.ico` | `image/x-icon` |
-| `.woff`, `.woff2`, `.ttf` | `font/woff`, `font/woff2`, `font/ttf` |
-| `.eot` | `application/vnd.ms-fontobject` |
 | `.map` | `application/json` |
-| Anything else | `application/octet-stream` |
+| `.wasm` | `application/wasm` |
+| `.zip` | `application/zip` |
+| Anything else | The type ASP.NET Core's static file middleware uses, such as `image/png`, `image/avif`, `application/pdf`, `video/mp4`, `video/webm` and `application/manifest+json` for `.webmanifest`; `application/octet-stream` for an extension it doesn't know |
 
 ## 404 Page
 
@@ -119,13 +137,15 @@ The build generates `404.html` with the site title, a link back to the home page
 
 ## API Endpoints
 
-The server accepts `POST` requests on three endpoints. The same paths also work under the base path, so a site built with `--base-path /my-repo` can post to `/my-repo/api/feedback`.
+The server accepts `POST` requests on two endpoints. The same paths also work under the base path, so a site built with `--base-path /my-repo` can post to `/my-repo/api/feedback`.
 
 ### Request Rules
 
-Every `POST` to `/api/*` needs `Content-Type: application/json`. A browser request must also come from the server's own origin, `http://localhost:<port>`. A request whose `Origin` header names another origin (`http://127.0.0.1:5080` included), or whose `Sec-Fetch-Site` header is anything other than `same-origin` or `none`, gets `403`. Requests without those headers, such as from `curl`, are accepted.
+Every `POST` to `/api/*` needs `Content-Type: application/json`. A browser request must also come from the origin of the address it was sent to: `http://localhost:<port>`, `http://127.0.0.1:<port>` or, on Windows, `http://[::1]:<port>`, matching the request's `Host` header. A request whose `Origin` header names another origin (a page on `localhost` posting to `127.0.0.1` included), or whose `Sec-Fetch-Site` header is anything other than `same-origin` or `none`, gets `403`. Requests without those headers, such as from `curl`, are accepted.
 
-The server sends no CORS headers, and a preflight `OPTIONS` request gets a 404, so pages on other origins can't call these endpoints.
+The server sends no CORS headers, and a preflight `OPTIONS` request gets a `405`, so pages on other origins can't call these endpoints.
+
+A body that isn't JSON gets `400`. The REPL endpoint reads at most 64 KB of body and the feedback endpoint 4 KB, the same limits as the ASP.NET Core host; a longer body gets `413` without being read.
 
 ### REPL: `POST /api/repl/execute`
 
@@ -146,24 +166,7 @@ Content-Type: application/json
 
 `output` holds what the script wrote to the console, or its return value when it wrote nothing. Compilation and runtime errors come back in `error` with status 200. See [REPL plugin](/plugins/repl).
 
-### Blazor Preview: `POST /api/blazor/preview`
-
-Available when the `mokadocs-blazor-preview` plugin is declared. Without it, the endpoint returns `503` with `{"error": "Blazor preview service is not available."}`.
-
-The body carries Razor source, up to 50,000 characters. The server compiles it and renders the first component it finds to HTML.
-
-```
-POST /api/blazor/preview
-Content-Type: application/json
-
-{ "source": "<h1>Hello</h1>" }
-```
-
-```json
-{ "html": "<rendered HTML>", "error": "" }
-```
-
-Compilation and rendering errors come back in `error`. See [Blazor Component Preview](/plugins/blazor-preview).
+Runs happen one at a time, and up to four more wait their turn. Past that, the endpoint answers `429` with `{"error": "Too many snippets are waiting to run. Try again in a few seconds."}`.
 
 ### Feedback: `POST /api/feedback`
 
@@ -173,11 +176,11 @@ The default theme's "Was this page helpful?" widget posts here:
 { "page": "/guide/getting-started", "helpful": true }
 ```
 
-The server logs the vote at Information level, which only prints with `--verbose`, and replies `{"ok": true}`.
+The server logs the vote at Information level, which only prints with `--verbose`, and replies `{"ok": true}`. A vote without a page or a `helpful` value, or with a page over 1,024 characters or containing control characters, gets `400` with `{"ok": false}`.
 
 ## Port Selection
 
-The server starts listening after the initial build, and only on `localhost`. If it can't, for example because the port is in use, `serve` prints `Error: Can't listen on port 5080` with the reason from the operating system and exits with code 1. Then either:
+The server starts listening after the initial build, and only on the loopback addresses. If it can't, for example because the port is in use, `serve` prints `Error: Can't listen on port 5080` with the reason from the operating system and exits with code 1. Then either:
 
 - Pick another port with `--port`.
 - Stop the other process. On macOS and Linux, `lsof -i :5080` shows it; on Windows, `netstat -ano | findstr :5080` shows its process ID.
@@ -193,7 +196,7 @@ mokadocs serve --port 5081
 
 - Check that the file is inside the `content.docs` folder. See [What Isn't Picked Up](#what-isnt-picked-up) for changes that need a restart.
 - Check the terminal after the rebuild. Errors are always listed; run with `--verbose` to list warnings as well.
-- If no change triggers a rebuild, check that the file isn't inside the output folder or in a folder whose name starts with `.`.
+- If no change triggers a rebuild, check that the file isn't inside the output folder or in a folder whose name starts with `.`. On a network drive or a container mount, set `DOTNET_USE_POLLING_FILE_WATCHER=1` (see [Polling](#polling)).
 - Try a hard refresh in the browser (`Ctrl+Shift+R`, or `Cmd+Shift+R` on macOS).
 
 ### Slow Rebuilds

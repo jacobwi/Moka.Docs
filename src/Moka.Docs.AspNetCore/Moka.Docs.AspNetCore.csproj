@@ -17,7 +17,6 @@
     <ProjectReference Include="..\Moka.Docs.Rendering\Moka.Docs.Rendering.csproj" />
     <ProjectReference Include="..\Moka.Docs.Themes\Moka.Docs.Themes.csproj" />
     <ProjectReference Include="..\Moka.Docs.Plugins\Moka.Docs.Plugins.csproj" />
-    <ProjectReference Include="..\Moka.Docs.Search\Moka.Docs.Search.csproj" />
     <ProjectReference Include="..\Moka.Docs.Versioning\Moka.Docs.Versioning.csproj" />
   </ItemGroup>
 

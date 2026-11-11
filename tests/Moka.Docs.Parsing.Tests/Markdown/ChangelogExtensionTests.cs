@@ -52,4 +52,32 @@ public sealed class ChangelogExtensionTests
 
 		html.Should().Contain("changelog-badge-initial");
 	}
+
+	[Theory]
+	[InlineData("## v3.1.20251111093000", "patch")]
+	[InlineData("## v3.99999999999999999999.0", "minor")]
+	[InlineData("## v4.00000000000000000000.0000000000000000000000", "major")]
+	public void LongNumericVersionParts_DoNotThrow(string heading, string expected)
+	{
+		// int.Parse overflowed on a timestamp patch number, and the page was dropped.
+		string html = Render(heading + "\n\n### Fixed\n- Thing");
+
+		html.Should().Contain($"changelog-badge-{expected}\"");
+	}
+
+	[Theory]
+	[InlineData("2025-06-15", "June 15, 2025")]
+	[InlineData("2025-06", "June 2025")]
+	[InlineData("2025", "2025")]
+	[InlineData("2025-06-15T23:30:00+05:00", "June 15, 2025")]
+	[InlineData("2025-06-15T10:00:00Z", "June 15, 2025")]
+	[InlineData("11/12/2025", "11/12/2025")]
+	[InlineData("Q3 <soon>", "Q3 &lt;soon&gt;")]
+	public void ReleaseDate_IsReadAsIsoOnly(string date, string shown)
+	{
+		// A general parse read 2025-06 as June 1, 2025 and 11/12/2025 as a US date.
+		string html = Render($"## v1.2.3 - {date}\n\n### Fixed\n- Thing");
+
+		html.Should().Contain($"<span class=\"changelog-date\">{shown}</span>");
+	}
 }

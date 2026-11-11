@@ -21,9 +21,11 @@ order: 3
 Your page content starts here.
 ```
 
-The block is parsed as YAML. Quote string values that contain special characters. Keys MokaDocs doesn't know are ignored.
+Both `---` lines must start at the beginning of the line. Blank lines may come before the opening `---`, nothing else. An indented `---`, such as one inside a `description: |` block, is YAML text and doesn't end the block. A file whose opening `---` has no closing `---` gets a warning, and the whole file is read as Markdown.
 
-If the block isn't valid YAML, or a value has the wrong type (such as `order: first`, or `tags: api` where a list is expected), MokaDocs ignores the whole block and reports a warning that names the file. The page gets the defaults listed below, including the title "Untitled".
+The block is parsed as YAML. Quote string values that contain special characters. Keys are case sensitive. A key MokaDocs doesn't know, such as `titel` or `Title`, is ignored and reported as a warning with its line number, and so is an unknown key inside a `features` item.
+
+If the block isn't valid YAML, or a value has the wrong type (such as `order: first`, or `tags: api` where a list is expected), MokaDocs ignores the whole block and reports a warning that names the file, the line and column, and what YAML found wrong. The page gets the defaults listed below, including the title "Untitled". The block itself is never shown as page content.
 
 ---
 
@@ -164,7 +166,7 @@ A custom theme replaces these with the files in its `layouts/` folder: `layouts/
 
 Keywords for the page. They go into the search index, and the search box matches them: a tag match ranks below a match in a title or heading, and above a match in the page text. Tags are stored as written, and the search box ignores case when matching.
 
-The default theme doesn't display tags. A custom theme's templates can read them as `page.tags`.
+The default theme shows tags only on [blog posts](/guide/blog), where each one links to its tag page. A custom theme's templates can read them as `page.tags`.
 
 ```yaml
 ---
@@ -263,7 +265,7 @@ Set it to `false` for pages with few headings, or where a table of contents woul
 
 Whether a sidebar section starts expanded. It's read in two places:
 
-- The `index.md` of a top-level folder in auto-generated navigation. `expanded: false` starts that section collapsed.
+- The `index.md` of a folder in auto-generated navigation, at any depth, and below a `nav` item with `autoGenerate: true`. `expanded: false` starts that section collapsed.
 - A page that a `nav` item lists from its `path`, when that page has pages below it.
 
 ```yaml
@@ -303,13 +305,39 @@ route: "/faq"
 - A `nav` item that links to the page needs the new route as its `path`.
 - Relative Markdown links to the file, such as `[FAQ](../guides/faq.md)`, resolve to the file's location (`/guides/faq`), not to the override. Link to `/faq` instead.
 - If another page has the same route (ignoring case), the build warns that the pages share the route and writes only the last one.
+- The route becomes a folder in the output, so it can't contain `..` or `.` segments, a `?` query string, a `#` fragment, control characters, or characters Windows forbids in file names (`< > : " | * \`), and no segment may end with a dot or a space. Such a route is an error naming the file, and the page is built at its file path instead.
 
 ### `version`
 
-- **Type:** `string` (nullable)
+- **Type:** `string` or `list` of strings (nullable)
 - **Default:** `null`
 
-MokaDocs reads this key but doesn't act on it. A page with `version` is built and listed like any other page, whether or not versioning is enabled.
+The versions the page applies to. When [versioning](/advanced/versioning) is on, a page whose range doesn't include the version being built is left out of that version: no page, no sidebar entry, no search entry. With versioning off the key is ignored.
+
+```yaml
+---
+title: "Streaming API"
+version: ">=2.0"
+---
+```
+
+Ranges follow npm's syntax, plus NuGet intervals:
+
+| Range | Matches |
+|---|---|
+| `2.0`, `2.0.x` | every 2.0.* version |
+| `2`, `2.x` | every 2.* version |
+| `>=2.0`, `<3` | 2.0.0 and later, anything before 3.0.0 |
+| `>2.0`, `<=2.4` | from 2.1.0, through every 2.4.* version |
+| `^1.2`, `~1.2.3` | 1.2.0 up to 2.0.0, 1.2.3 up to 1.3.0 |
+| `1.0 - 2.0` | 1.0.0 through every 2.0.* version |
+| `>=1.0 <2.0` | both must match |
+| `1.x \|\| >=3.0` | either may match |
+| `[1.0,2.0)`, `(,3.0]`, `[2.0]` | NuGet intervals: brackets include the bound, parentheses leave it out |
+
+A list means any of its ranges, so `version: ["1.x", ">=3.0"]` is the same as `"1.x || >=3.0"`. Versions compare by major, minor and patch, and a prerelease suffix is ignored: the docs for 3.0.0-beta include a page marked `>=3.0`.
+
+The version being built is the number in its label (`v2.0` is 2.0.0). A label without one, such as `next`, uses the documented package's version instead, and when there's none, every page is kept. A range that can't be parsed is a warning naming the file, and the page is kept.
 
 ### `requires`
 
@@ -344,8 +372,8 @@ Flags only decide which pages are built. Turning one on doesn't switch on the fe
 
 | Default | Flags |
 |---|---|
-| On | `BackToTop`, `Breadcrumbs`, `CodeLanguageBadge`, `ColorThemeSelector`, `CopyButton`, `DarkModeToggle`, `FeedbackWidget`, `InheritDocResolution`, `InstallWidget`, `LastUpdated`, `LineNumbers`, `MinifyOutput`, `PrevNextNavigation`, `RobotsTxt`, `SearchBar`, `SearchIndex`, `Sitemap`, `TableOfContents`, `TypeDependencyGraph`, `VersionSelector`, `ViewSource` |
-| Off | `ShowBetaDocs`, `ShowCloudDocs`, `ShowInternalDocs`, `ShowPremiumDocs`, `AiSearch`, `Analytics`, `ApiAccess`, `AuditLog`, `BlazorPreview`, `ChangelogPlugin`, `Cloud`, `CodeStyleSelector`, `CodeThemeSelector`, `Contributors`, `CustomBranding`, `CustomDomain`, `EditLink`, `OpenApiPlugin`, `PageAnimations`, `PdfExport`, `PrivateRepo`, `ReplPlugin`, `SSOAuth`, `TeamCollaboration`, `WhiteLabel` |
+| On | `BackToTop`, `Breadcrumbs`, `CodeLanguageBadge`, `ColorThemeSelector`, `CopyButton`, `DarkModeToggle`, `FeedbackWidget`, `InheritDocResolution`, `InstallWidget`, `LastUpdated`, `LineNumbers`, `PrevNextNavigation`, `RobotsTxt`, `SearchBar`, `SearchIndex`, `Sitemap`, `TableOfContents`, `TypeDependencyGraph`, `VersionSelector`, `ViewSource` |
+| Off | `ShowBetaDocs`, `ShowCloudDocs`, `ShowInternalDocs`, `ShowPremiumDocs`, `AiSearch`, `Analytics`, `ApiAccess`, `AuditLog`, `BlazorPreview`, `ChangelogPlugin`, `Cloud`, `CodeStyleSelector`, `CodeThemeSelector`, `Contributors`, `CustomBranding`, `CustomDomain`, `EditLink`, `MinifyOutput`, `OpenApiPlugin`, `PageAnimations`, `PdfExport`, `PrivateRepo`, `ReplPlugin`, `SSOAuth`, `TeamCollaboration`, `WhiteLabel` |
 
 ### `features`
 
@@ -401,11 +429,63 @@ The heading above the landing layout's feature cards. The cards have no heading 
 
 A line of text under `featuresTitle`. Like the title, it only shows on a page with `features`.
 
+### Blog post keys
+
+These keys are read on the posts of a [blog](/guide/blog), the files under `features.blog.path`. Other pages accept them without a warning and ignore them.
+
+```yaml
+---
+title: "SampleLibrary v2.0 Released"
+date: 2026-03-15T09:30:00Z
+author: [jane, Guest Writer]
+summary: "Rectangles, safe division and a fluent result builder."
+tags: [release, v2.0]
+image: ./v2-cover.png
+---
+```
+
+#### `date`
+
+- **Type:** ISO 8601 date or date and time
+- **Default:** none
+
+When the post was published: `2026-03-15`, `2026-03-15T09:30`, `2026-03-15 09:30:00+02:00` or `2026-03-15T09:30:00Z`. A date without a time is midnight UTC, and a time without an offset is UTC. The post shows the day in its own offset. Posts are listed newest first by this date.
+
+A post without a date gets a warning and is dated by its last git commit, or by its file's modified time outside a git repository. Any other form, such as `03/15/2026`, is a warning too and is ignored.
+
+#### `author`
+
+- **Type:** `string` or `list` of `string`
+- **Default:** `[]`
+
+The post's authors. A name that is a key of `features.blog.authors` shows that author's name, link and avatar; any other name is shown as written. `authors` is accepted as well, and both lists are joined. An author written as a mapping (`name:` and `url:` under `author`) is a warning: define such authors once in `features.blog.authors`.
+
+#### `summary`
+
+- **Type:** `string`
+- **Default:** the first paragraph
+
+The text under the post's title on the index and tag pages, and the summary in the feeds. Without it, the build uses the post's first paragraph as plain text, cut at a word near 300 characters. A paragraph inside a list, a quote or a callout is used only when the post has none of its own.
+
+#### `image`
+
+- **Type:** `string`
+- **Default:** none
+
+A cover image, shown under the post's header and on its index card. A path relative to the post's file (`./cover.png`), a path from the site root (`/img/cover.png`) or an absolute URL. Local images in the docs folder are copied like any other image.
+
+#### `draft`
+
+- **Type:** `bool`
+- **Default:** `false`
+
+`draft: true` is the same as `visibility: draft`, on any page: the page is built only with `--draft`. A draft post is left out of the blog's lists unless the build includes drafts, and never reaches the feeds.
+
 ---
 
 ## Complete Example
 
-A page using most of the properties. `requires` is left out because it hides the page unless its flag is on, and `version` has no effect.
+A page using most of the properties. `requires` and `version` are left out because they hide the page unless its flag is on or its version is built.
 
 ```yaml
 ---
@@ -445,11 +525,16 @@ When front matter properties are omitted, the following defaults apply:
 | `toc` | `true` |
 | `expanded` | `true` |
 | `route` | Generated from the file path |
-| `version` | `null` (not used) |
+| `version` | `null` (every version) |
 | `requires` | `null` (no feature gate) |
 | `features` | `[]` (no feature cards) |
 | `featuresTitle` | `""` |
 | `featuresSubtitle` | `""` |
+| `date` | none (a blog post warns and uses its file's date) |
+| `author` / `authors` | `[]` |
+| `summary` | The first paragraph |
+| `image` | none |
+| `draft` | `false` |
 
 ## Tips
 

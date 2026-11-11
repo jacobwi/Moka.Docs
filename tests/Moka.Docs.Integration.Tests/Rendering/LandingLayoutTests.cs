@@ -74,4 +74,60 @@ public sealed class LandingLayoutTests
 			.And.Contain("<div class=\"landing-feature-name\">&lt;script&gt;alert(1)&lt;/script&gt;</div>")
 			.And.NotContain("<script>alert(1)</script>");
 	}
+
+	[Fact]
+	public async Task LandingPage_EscapesTheDescription()
+	{
+		// The hero subtitle wrote the description raw; the <title> next to it was escaped.
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(MockSite.Config(), new Dictionary<string, MockFileData>
+		{
+			["/project/docs/index.md"] = new("---\ntitle: Home\ndescription: \"Tools for <List> & <Map>\"\nlayout: landing\n---\nBody.\n")
+		});
+
+		string html = fs.File.ReadAllText("/project/_site/index.html");
+		html.Should().Contain("<p class=\"landing-hero-subtitle\">Tools for &lt;List&gt; &amp; &lt;Map&gt;</p>")
+			.And.NotContain("<List>");
+	}
+
+	[Fact]
+	public async Task GetStarted_LinksToTheFirstSidebarPageThatIsNotTheLandingPage()
+	{
+		// It used nav[0].route: here "/", the landing page itself. A group without a path has an
+		// empty route, which the template's ?? fallback didn't catch either.
+		SiteConfig config = MockSite.Config() with
+		{
+			Build = new BuildConfig { BasePath = "/Repo" },
+			Nav =
+			[
+				new NavItem { Label = "Home", Path = "/" },
+				new NavItem
+				{
+					Label = "Guide",
+					Children = [new NavItem { Label = "Intro", Path = "/guide/intro" }, new NavItem { Label = "Next", Path = "/guide/next" }]
+				}
+			]
+		};
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, new Dictionary<string, MockFileData>
+		{
+			["/project/docs/index.md"] = new("---\ntitle: Home\nlayout: landing\n---\nBody.\n"),
+			["/project/docs/guide/intro.md"] = new("---\ntitle: Intro\n---\nIntro.\n"),
+			["/project/docs/guide/next.md"] = new("---\ntitle: Next\n---\nNext.\n")
+		});
+
+		string html = fs.File.ReadAllText("/project/_site/index.html");
+		html.Should().Contain("<a class=\"landing-btn landing-btn-primary\" href=\"/Repo/guide/intro\">");
+	}
+
+	[Fact]
+	public async Task GetStarted_WithoutAnotherSidebarPage_FallsBackToDocs()
+	{
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(MockSite.Config(), new Dictionary<string, MockFileData>
+		{
+			["/project/docs/index.md"] = new("---\ntitle: Home\nlayout: landing\n---\nBody.\n")
+		});
+
+		string html = fs.File.ReadAllText("/project/_site/index.html");
+		html.Should().Contain("<a class=\"landing-btn landing-btn-primary\" href=\"/docs/\">");
+	}
 }

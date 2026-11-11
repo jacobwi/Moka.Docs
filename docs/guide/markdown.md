@@ -139,7 +139,7 @@ The most common fields:
 | `order` | number          | Sort order in the sidebar |
 | `tags`  | list of strings | Extra search keywords. Search matches them; the default theme does not show them. |
 
-Write `tags` as a YAML list. If the block does not parse (`tags: setup, yaml` is enough to break it), MokaDocs ignores the whole block, so the page loses its title too. The build reports a warning that names the file. [Front Matter](/configuration/front-matter) lists every field.
+Write `tags` as a YAML list. If the block does not parse (`tags: setup, yaml` is enough to break it), MokaDocs ignores the whole block, so the page loses its title too. The build reports a warning that names the file and the line. Misspelled keys get a warning with their line as well. [Front Matter](/configuration/front-matter) lists every field.
 
 ## Heading IDs
 
@@ -176,6 +176,8 @@ Check out the [API docs](./api-docs.md#configuration) for configuration options.
 ```
 
 Relative links and image paths are resolved at build time against the file that contains them, and written as links from the site root. In `docs/guide/markdown.md`, `./api-docs.md#configuration` becomes `/guide/api-docs#configuration`: the `.md` extension is dropped, and `index.md` stands for its folder. If the site has a `build.basePath`, it is added in front. Resolution works from file paths, so a link does not follow a `route:` override in the target page's front matter.
+
+The same applies to raw HTML in a Markdown file: relative URLs in `src`, `href`, `srcset` and `poster` attributes (and names ending in `src` or `href`, such as `data-src`) are resolved the same way, so `<img src="./diagram.png" width="400">` in `docs/guide/markdown.md` points at `/guide/diagram.png`. Code blocks, inline code, HTML comments and the contents of `script`, `style` and `textarea` elements are left as written.
 
 ## Syntax Highlighting
 
@@ -241,7 +243,7 @@ The title defaults to the type name.
 
 ### Custom Titles
 
-Text after the type replaces the title:
+Text after the type replaces the title. It's plain text, so `List<T> & friends` shows exactly as typed:
 
 ```markdown
 ::: tip Hot Tip

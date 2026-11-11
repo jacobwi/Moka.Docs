@@ -7,7 +7,7 @@ order: 1
 
 MokaDocs reads its settings from a `mokadocs.yaml` file at the root of your project. The file holds site metadata, content sources, theme settings, navigation, plugins and build options.
 
-Keys are camelCase. MokaDocs ignores keys it doesn't recognize and gives no warning, so a misspelled key has no effect.
+Keys are camelCase and case sensitive. A key MokaDocs doesn't recognize has no effect, and the build, `mokadocs validate` and `mokadocs doctor` warn about it with its line number, such as `unknown key 'build.basepath' (line 12); keys are case sensitive, did you mean 'basePath'?`. Keys under a plugin's `options` are not checked. A file that can't be read at all fails with the line and column of the problem and its cause.
 
 ## Configuration File Location
 
@@ -61,7 +61,9 @@ site:
   url: "https://docs.myproject.com"
 ```
 
-For a site served under a [`basePath`](#basepath), `url` can include the base path or leave it out. Both of these produce `https://user.github.io/Repo/guide` for the `/guide` page:
+Page URLs end with `/`, because each page is written as `{route}/index.html` and hosts such as GitHub Pages redirect the form without the slash. Path segments are percent-encoded, so a page from `Q&A.md` is listed as `https://docs.myproject.com/Q%26A/`.
+
+For a site served under a [`basePath`](#basepath), `url` can include the base path or leave it out. Both of these produce `https://user.github.io/Repo/guide/` for the `/guide` page:
 
 ```yaml
 site:
@@ -252,7 +254,7 @@ The `content` section tells MokaDocs where your Markdown files and C# projects a
 - **Type:** `string`
 - **Default:** `"./docs"`
 
-The folder that holds your Markdown files. MokaDocs reads every `.md` file in it and in its subfolders.
+The folder that holds your Markdown files. MokaDocs reads every `.md` file in it and in its subfolders; the extension matches in any letter case (`Readme.MD` too) on every operating system. Linked folders (symbolic links, junctions) are followed, except a link that points back at a folder it sits in, which is skipped with a warning instead of being read again and again. A folder that doesn't exist is an error.
 
 Files with these extensions are copied to the output at the same relative path: `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.avif`, `.ico`, `.pdf`, `.zip`, `.mp4`, `.webm`, `.css`, `.js`, `.json`, `.xml`, `.txt`, `.webmanifest`, `.woff`, `.woff2`, `.ttf` and `.eot`. The files `CNAME`, `_redirects` and `_headers` are copied too when they sit directly in the docs folder. Nothing inside the [`build.output`](#output) folder is read.
 
@@ -327,6 +329,72 @@ theme:
 - **Type:** `ThemeOptions`
 
 Settings for the theme's look and behavior. The options below are the complete set. A custom theme's templates receive the same values.
+
+#### `options.style`
+
+- **Type:** `string`
+- **Default:** `"default"`
+- **Values:** `default`, `moka`, `minimal`, `classic`, `soft`
+
+The whole look of the default theme: surfaces, borders, corner radii, shadows, fonts and spacing. It applies on top of the color preset, the code theme and the code frame, in light and dark mode. When [`styleSelector`](#options.styleselector) is on, readers can pick another style from the header.
+
+| Style | Look |
+|---|---|
+| `default` | The original look |
+| `moka` | Dense and dark first: near-black surfaces, borders tinted with the primary color, glow rings instead of shadows, uppercase micro-labels, monospace for technical text. Starts in dark mode until the reader uses the dark mode toggle |
+| `minimal` | Few borders and shadows, more whitespace, a reading column about 70 characters wide, plain sidebar links |
+| `classic` | Solid header bar, bordered sidebar and panels, small radii, dense striped tables, the system font |
+| `soft` | Rounded cards with soft shadows, tinted sections, pill-shaped highlights, roomier spacing |
+
+The name is matched without regard to case. An unknown name renders as `default`, and the build reports a warning (`mokadocs validate` lists it). See [Styles](/themes/customization#styles).
+
+```yaml
+theme:
+  options:
+    style: "moka"
+```
+
+#### `options.styleSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows a layout button in the header for picking one of the 5 styles. The choice is saved in `localStorage` and applied before the page is drawn. With `false`, every page uses [`style`](#options.style), including for readers who picked another style earlier.
+
+```yaml
+theme:
+  options:
+    styleSelector: false
+```
+
+#### `options.sidebar`
+
+- **Type:** `string`
+- **Default:** `"auto"`
+- **Values:** `auto`, `inline`, `shared`
+
+How pages get the sidebar navigation. `inline` writes the whole sidebar into every page; the pages need no JavaScript for it. `shared` writes it once, to `_theme/js/sidebar.js`, and every page loads that file with a hash of its content in the URL. A page then holds only the top-level entries and the entries along its own path, which is what readers without JavaScript and crawlers see. `auto` is `inline` up to [`sidebarInlineLimit`](#options.sidebarinlinelimit) entries and `shared` above that.
+
+On a site of 5000 pages, the inline sidebar was about 1.3 MB of every page and 6.5 GB in all. Shared, the pages are about 42 KB and the sidebar file 503 KB. The name is matched without regard to case; an unknown name works like `auto`, and the build reports a warning. Only the default theme can share its sidebar: a custom theme always gets it inline, with a warning when this is `shared`. See [Large Sidebars](/configuration/navigation#large-sidebars-inline-or-shared).
+
+```yaml
+theme:
+  options:
+    sidebar: shared
+```
+
+#### `options.sidebarInlineLimit`
+
+- **Type:** `int`
+- **Default:** `300`
+
+The most sidebar entries, links and section headings together, that [`sidebar: auto`](#options.sidebar) writes into every page. A bigger sidebar is shared. A negative value counts as `0`. At 300 entries, the inline sidebar adds about 80 KB to each page.
+
+```yaml
+theme:
+  options:
+    sidebarInlineLimit: 500
+```
 
 #### `options.primaryColor`
 
@@ -471,7 +539,15 @@ theme:
 - **Type:** `bool`
 - **Default:** `false`
 
-Not implemented yet. Setting it has no effect.
+Lists the people who committed to each Markdown page under the "Last updated" line, most commits first, each with their initials in a circle. The names come from the same `git log` that dates the pages, with the repository's `.mailmap` applied, and commits with the same email count as one person. Emails aren't shown, and nothing is fetched from the network.
+
+Turning it on makes the build read the docs folder's whole git history, since a page's first author is in its oldest commit. Renames aren't followed, so authors from before a file was moved are missing, and a shallow clone only knows the authors of its newest commit (see [Deployment](/advanced/deployment#last-updated-dates-in-ci)). Pages without git history, generated pages and the ASP.NET Core host show no contributors.
+
+```yaml
+theme:
+  options:
+    showContributors: true
+```
 
 #### `options.showFeedback`
 
@@ -556,7 +632,7 @@ theme:
 - **Type:** `bool`
 - **Default:** `true`
 
-Shows Previous and Next links at the bottom of pages that use the default layout.
+Shows Previous and Next links at the bottom of pages that use the default layout. They follow the sidebar from top to bottom, nested items included, and then go through the public pages the sidebar doesn't list, by `order` and route.
 
 ```yaml
 theme:
@@ -637,7 +713,7 @@ theme:
 - **Type:** `bool`
 - **Default:** `true`
 
-Shows the version dropdown in the header of pages that use the default layout. It appears only when [versioning](#versioning) is enabled with at least one version.
+Shows the version dropdown in the page header. It appears only when [versioning](#versioning) is enabled.
 
 ```yaml
 theme:
@@ -700,7 +776,7 @@ The `features` section turns optional site features on and configures them.
 
 ### `search`
 
-The build writes `search-index.json` with each page's title, headings, tags and the first 300 characters of its text, and the theme searches that file in the browser. See [Search](/guide/search).
+The build writes `search-index.json` with each page's title, tags and the first 300 characters of its text, and each heading with the first 300 characters of the text under it and the words of the code blocks there. The theme searches that file in the browser. See [Search](/guide/search).
 
 #### `search.enabled`
 
@@ -709,12 +785,7 @@ The build writes `search-index.json` with each page's title, headings, tags and 
 
 When `false`, no search index is written, and pages get no search button, search dialog or Ctrl/Cmd+K shortcut.
 
-#### `search.provider`
-
-- **Type:** `string`
-- **Default:** `"flexsearch"`
-
-Reserved; has no effect. The built-in search described above is the only one.
+The built-in search described above is the only one. `search.provider` was accepted by earlier versions and never did anything; it is no longer read, and a config that still sets it gets a warning.
 
 ```yaml
 features:
@@ -724,21 +795,22 @@ features:
 
 ### `versioning`
 
-Adds a version dropdown to the header. One build produces one site: MokaDocs doesn't check out branches or build other versions, so you build and deploy each version yourself. See [Versioning](/advanced/versioning).
+Adds a version dropdown to the header, and when versions name a git branch or tag, has `mokadocs build` build each of them into its own folder of the site. See [Versioning](/advanced/versioning).
 
 #### `versioning.enabled`
 
 - **Type:** `bool`
 - **Default:** `false`
 
-Turns on the version dropdown. It appears on pages that use the default layout, as long as `versions` has at least one entry and `theme.options.showVersionSelector` is on.
+Turns versioning on. With no `versions` listed, the site has one version, labelled from your package version (`v1.8` for 1.8.0), and the dropdown shows it. Hide the dropdown with `theme.options.showVersionSelector: false`.
 
 #### `versioning.strategy`
 
 - **Type:** `string`
 - **Default:** `"directory"`
+- **Values:** `directory`, `dropdown-only`
 
-Reserved; has no effect.
+`directory` builds every version that names a `branch` or `tag` into `{output}/{slug}/`, and the default version at the site root too. `dropdown-only` builds the working tree only and lists the other versions in the dropdown, for versions you build and deploy yourself. A config whose versions name no ref builds like `dropdown-only`.
 
 #### `versioning.versions`
 
@@ -750,48 +822,143 @@ The versions listed in the dropdown, in this order.
 ##### `versions[].label`
 
 - **Type:** `string`
+- **Default:** derived
 
-The text shown in the dropdown. The version's URL slug comes from it: lowercased, with spaces turned into `-` and characters other than letters, digits, `.` and `-` removed. `v2.0 LTS` becomes `v2.0-lts`.
+The text shown in the dropdown. Leave it out and the label is `v{major}.{minor}` of the documented package's version, from the first packable project in `content.projects` (its `Version`, `VersionPrefix` or `PackageVersion`, or the nearest `Directory.Build.props` that sets one). A version built from a ref reads it from that ref. When no version is set anywhere, the label is the ref name, or `latest`.
+
+The version's URL slug and folder name come from the label: lowercased, with spaces turned into `-` and characters other than letters, digits, `.` and `-` removed. `v2.0 LTS` becomes `v2.0-lts`.
+
+##### `versions[].tag`
+
+- **Type:** `string` (nullable)
+- **Default:** `null`
+
+A git tag to build this version from. Wins over `branch` when both are set.
 
 ##### `versions[].branch`
 
 - **Type:** `string` (nullable)
 - **Default:** `null`
 
-Reserved; has no effect.
+A git branch to build this version from: the local branch, else `origin/{branch}`. The checked-out branch is built from the working tree, uncommitted changes included. A version with neither `tag` nor `branch` is built from the working tree too.
 
 ##### `versions[].default`
 
 - **Type:** `bool`
 - **Default:** `false`
 
-The dropdown links a version with `default: true` to the site root (`{basePath}/`) and gives it a "latest" badge. Every other version links to `{basePath}/{slug}/`.
-
-The dropdown's button shows the current version: the first entry with `default: true`, or when there is none, the first entry that isn't a prerelease, or else the first entry.
+The default version is also built at the site root, and the dropdown links to it there and gives it a "latest" badge. It's the first entry with `default: true`, or when there is none, the first entry that isn't a prerelease, or else the first entry.
 
 ##### `versions[].prerelease`
 
 - **Type:** `bool`
 - **Default:** `false`
 
-Adds a "pre" badge in the dropdown. It also counts when the current version is picked, as described under `default`. It has no other effect.
+Adds a "pre" badge in the dropdown, and counts when the default version is picked. A derived label whose package version has a suffix such as `-beta` is a prerelease too.
 
 ```yaml
 features:
   versioning:
     enabled: true
     versions:
-      - label: "v3.0"
-        default: true
-      - label: "v3.1-beta"
+      - label: next
+        branch: main
         prerelease: true
-      - label: "v2.0"
-      - label: "v1.0"
+      - tag: v3.0.0
+        default: true
+      - tag: v2.0.0
 ```
 
 ### `blog`
 
-Reserved; has no effect. See [Blog](/guide/blog).
+Turns a folder of Markdown files into a blog: a paginated index of the posts, newest first, a page per tag, an RSS or Atom feed and one sidebar entry. See [Blog](/guide/blog) for the posts' front matter and what the build generates.
+
+```yaml
+features:
+  blog:
+    enabled: true
+    title: "News"
+    description: "Releases and notes from the team"
+    postsPerPage: 10
+    feed: [rss, atom]
+    authors:
+      jane:
+        name: "Jane Doe"
+        url: "https://github.com/jane"
+        avatar: "img/jane.png"
+```
+
+#### `blog.enabled`
+
+- **Type:** `bool`
+- **Default:** `false`
+
+Builds the blog. Without it, the posts folder builds like any other section.
+
+#### `blog.path`
+
+- **Type:** `string`
+- **Default:** `"blog"`
+
+The folder under `content.docs` that holds the posts. Every `.md` file below it, in subfolders too, is a post. Its `index.md` is not a post: its text appears on the index page above the posts. Posts keep the route of their file, so `docs/blog/hello.md` is at `/blog/hello`. A path outside the docs folder is a warning and `blog` is used.
+
+#### `blog.route`
+
+- **Type:** `string`
+- **Default:** `/` followed by `path`
+
+Where the index page goes. The other generated pages and the feeds go below it: `{route}/page/2`, `{route}/tags`, `{route}/tags/{tag}`, `{route}/rss.xml`. A route that can't be a folder, or `/`, is a warning and the default is used.
+
+#### `blog.title`
+
+- **Type:** `string`
+- **Default:** `"Blog"`
+
+The index page's heading, the label of the blog's sidebar entry when the sidebar is built from folders, and part of the feeds' title.
+
+#### `blog.description`
+
+- **Type:** `string`
+- **Default:** `""`
+
+Shown under the index page's heading and used as the feeds' description. When empty, the index page uses the `description` of the posts folder's `index.md`, and the feeds use `site.description`.
+
+#### `blog.postsPerPage`
+
+- **Type:** `int`
+- **Default:** `10`
+
+Posts on each index page and tag page. More posts go to `{route}/page/2` and on. A value below 1 is a warning and 10 is used.
+
+#### `blog.sidebarPosts`
+
+- **Type:** `int`
+- **Default:** `5`
+
+How many of the latest posts the blog's sidebar entry lists, newest first. `0` lists none, so the entry only links to the index page.
+
+#### `blog.feed`
+
+- **Type:** `string` or `list`
+- **Default:** `rss`
+
+Which feeds to write: `rss` (`{route}/rss.xml`, RSS 2.0), `atom` (`{route}/atom.xml`) or both, as `[rss, atom]` or `rss, atom`. `none` or `[]` writes no feed. An unknown name is a warning.
+
+Feeds list the 20 latest posts with their summaries, and need absolute links: without `site.url` the build warns and writes no feed. Every page links each feed from its head with `<link rel="alternate">`, so browsers and feed readers find it.
+
+#### `blog.authors`
+
+- **Type:** map of author key to `name`, `url` and `avatar`
+- **Default:** none
+
+Authors defined once and named by key in a post's `author` front matter. Keys match without regard to case. `name` defaults to the key. `avatar` is an absolute URL or a path from the site root; `img/jane.png` and `/img/jane.png` both mean the file at `/img/jane.png`. A post author that is no key is shown as written.
+
+#### `blog.showAuthors`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows the authors on the index pages and posts. The feeds name them either way.
 
 ---
 
@@ -821,7 +988,7 @@ A name that matches none of them is skipped. `mokadocs build` only mentions it w
 - **Type:** `string` (nullable)
 - **Default:** `null`
 
-Not supported. No MokaDocs host loads plugin assemblies, so `path` is ignored and an entry with only a `path` loads nothing. `mokadocs validate` and `mokadocs doctor` warn when it is set.
+A plugin of your own: a `.dll`, a project that `mokadocs` builds with `dotnet build -c Release`, or a folder holding either, relative to this file. The entry takes the plugin whose id is `name` from that assembly, and a path that doesn't load is a build error. An entry with a `path` and no `name` loads nothing, and `mokadocs validate` and `mokadocs doctor` warn about it. See [Loading a Plugin from a Path](/plugins/overview#loading-a-plugin-from-a-path).
 
 ### `plugins[].options`
 
@@ -847,7 +1014,7 @@ Warnings and errors a plugin reports during the build, and a plugin that throws,
 
 ## `nav` Section
 
-The `nav` section defines the sidebar by hand. When it is present, it replaces the generated sidebar. Without it, MokaDocs builds the sidebar from the docs folder, with one entry for each top-level folder or page. In that generated sidebar, a section's `index.md` can set `expanded: false` to start the section collapsed. See [Navigation & Sidebar](/configuration/navigation).
+The `nav` section defines the sidebar by hand. When it is present, it replaces the generated sidebar. Without it, MokaDocs builds the sidebar from the docs folder as a tree: every folder is a section, titled by its `index.md`, and the API type pages are grouped by namespace. In that generated sidebar, a section's `index.md` can set `expanded: false` to start the section collapsed. See [Navigation & Sidebar](/configuration/navigation).
 
 Each entry is a `NavItem`.
 
@@ -867,7 +1034,7 @@ The route this item links to, such as `"/guides/getting-started"`. A leading `/`
 
 When an item has a `path` and no `children`, MokaDocs fills in its children from your pages: every public page exactly one route segment below `path`, sorted by front matter `order` and then by title. `path: /guides` picks up `/guides/intro` but not `/guides/advanced/tuning`. Each child gets its own children the same way, so `/guides/advanced/tuning` shows up under `/guides/advanced` when that page exists (from `guides/advanced/index.md`, for example).
 
-API type pages live at `/api/{namespace}/{type}`, more than one segment below `/api`, so `path: /api` gets no children and stays a single link to the API index.
+API type pages live at `/api/{namespace}/{type}`, more than one segment below `/api`, so `path: /api` gets no children and stays a single link to the API index. Add [`autoGenerate: true`](#nav.autogenerate) to list the namespaces and their types.
 
 ### `nav[].icon`
 
@@ -916,7 +1083,20 @@ Makes an item with children start expanded. A section that contains the current 
 - **Type:** `bool`
 - **Default:** `false`
 
-Not implemented yet. To list pages under an item, give it a [`path`](#nav.path) and no `children`.
+Lists everything below [`path`](#nav.path) as a tree, the way the sidebar is built without a `nav` section: every folder becomes a section (labeled by its `index.md`, or by the folder name), and under `/api` the type pages are grouped by namespace, each namespace starting collapsed. Entries are sorted by front matter `order`, then title. Ignored when the item has `children`.
+
+```yaml
+nav:
+  - label: "Guides"
+    path: /guides
+    autoGenerate: true
+  - label: "API Reference"
+    path: /api
+    icon: code
+    autoGenerate: true
+```
+
+The sidebar renders three levels, counting the item's own. Pages below the third level are listed after their third-level folder, labeled with the folders they are in, such as `Hooks / Events`.
 
 ### `nav[].children`
 
@@ -964,7 +1144,13 @@ The `build` section controls how the final output is generated.
 
 The folder the site is written to, and the one you deploy. The `--output` option of `mokadocs build` and `mokadocs serve` overrides it, and a relative `--output` value also resolves against the configuration file's folder.
 
-The build deletes the output folder first when [`clean`](#clean) is on, and `mokadocs clean` always deletes it. To protect your sources, `mokadocs build`, `serve` and `clean` stop with an error when the output folder is the project folder (the one holding `mokadocs.yaml`), the docs folder, or a folder that contains either. `mokadocs validate` reports the same error. A folder inside the docs folder, such as `./docs/_site`, is allowed, and MokaDocs doesn't read it as content.
+The build deletes the output folder first when [`clean`](#clean) is on, and `mokadocs clean` always deletes it. To protect your sources, `mokadocs build`, `serve` and `clean` stop with an error when the output folder is, or contains, the project folder (the one holding `mokadocs.yaml`), the docs folder, the folder of a [`content.projects`](#projects) entry, a custom [`theme.name`](#name) folder, or the source file of [`site.logo`](#logo) or [`site.favicon`](#favicon). `mokadocs validate` and `mokadocs doctor` report the same error. A folder inside the docs folder or inside a project, such as `./docs/_site`, is allowed, and MokaDocs doesn't read it as content.
+
+Every build writes a one-line `.mokadocs-output` file into the output folder. Before deleting an existing output folder that is not empty, the build and `mokadocs clean` check for that file (or for the `_theme/css/main.css` older versions wrote) and stop with an error when it is missing, since MokaDocs did not create that folder. Point `output` at a new folder, or empty the folder yourself once.
+
+Every file is written inside the output folder. A page whose route would land outside it is reported as an error and skipped, and so is a file a plugin asks to write there.
+
+Paths in `mokadocs.yaml` (`content.docs`, `content.projects[].path`, `theme.name`, `build.output`, `site.logo`, `site.favicon`) can use `\` or `/`; MokaDocs reads both as `/`, so the same file works on Windows, Linux and macOS.
 
 ```yaml
 build:
@@ -1000,9 +1186,18 @@ build:
 ### `minify`
 
 - **Type:** `bool`
-- **Default:** `true`
+- **Default:** `false`
 
-Not implemented yet. MokaDocs doesn't minify its output, whatever this is set to.
+When `true`, the build writes smaller files. In HTML pages (`404.html` included), each run of whitespace becomes one character (a line break when the run had one) and comments are removed, except conditional comments such as `<!--[if IE]>`. Tags and the contents of `pre`, `code`, `textarea`, `script` and `style` elements are written as they are, so code blocks keep their layout. The default theme's `main.css` loses its comments and the spaces it doesn't need, and `main.js` its comments and indentation; its line breaks stay. A custom theme's files are copied as they are.
+
+On this repository's documentation it cut the HTML from 8.96 MB to 6.05 MB (1.48 MB to 1.37 MB gzipped), `main.css` from 167 KB to 142 KB and `main.js` from 50 KB to 36 KB. Most hosts compress files anyway, so the saving on the wire is smaller than on disk. The `?v=` hash on the theme's URLs is computed from the files as written, minified or not.
+
+```yaml
+build:
+  minify: true
+```
+
+In the ASP.NET Core host, set `MokaDocsOptions.Minify`.
 
 ### `sitemap`
 
@@ -1040,6 +1235,18 @@ build:
   cache: true
 ```
 
+### `strict`
+
+- **Type:** `bool`
+- **Default:** `false`
+
+When `true`, warnings fail the build: `mokadocs build` exits 1 and `mokadocs validate` exits 2 when the build reports any warning, such as a broken front matter block, an unknown configuration key or a sidebar entry that matches no page. Errors always fail the build. The `--warnings-as-errors` option of `build` and `validate` does the same for one run, which suits a CI job. `mokadocs serve` ignores this setting.
+
+```yaml
+build:
+  strict: true
+```
+
 ---
 
 ## `cloud` Section
@@ -1067,6 +1274,10 @@ MOKADOCS_PRIMARY_COLOR="#7c3aed" MOKADOCS_SHOW_FEEDBACK=false mokadocs build
 | Variable | Config key |
 |---|---|
 | `MOKADOCS_THEME_NAME` | `theme.name` |
+| `MOKADOCS_STYLE` | `theme.options.style` |
+| `MOKADOCS_SHOW_STYLE_SELECTOR` | `theme.options.styleSelector` |
+| `MOKADOCS_SIDEBAR` | `theme.options.sidebar` |
+| `MOKADOCS_SIDEBAR_INLINE_LIMIT` | `theme.options.sidebarInlineLimit` |
 | `MOKADOCS_PRIMARY_COLOR` | `theme.options.primaryColor` |
 | `MOKADOCS_CODE_THEME` | `theme.options.codeTheme` |
 | `MOKADOCS_CODE_STYLE` | `theme.options.codeStyle` |
@@ -1075,6 +1286,7 @@ MOKADOCS_PRIMARY_COLOR="#7c3aed" MOKADOCS_SHOW_FEEDBACK=false mokadocs build
 | `MOKADOCS_SHOW_COLOR_THEME_SELECTOR` | `theme.options.colorThemes` |
 | `MOKADOCS_SHOW_EDIT_LINK` | `theme.options.showEditLink` |
 | `MOKADOCS_SHOW_LAST_UPDATED` | `theme.options.showLastUpdated` |
+| `MOKADOCS_SHOW_CONTRIBUTORS` | `theme.options.showContributors` |
 | `MOKADOCS_SHOW_FEEDBACK` | `theme.options.showFeedback` |
 | `MOKADOCS_SHOW_ANIMATIONS` | `theme.options.showAnimations` |
 | `MOKADOCS_SHOW_BUILT_WITH` | `theme.options.showBuiltWith` |
@@ -1088,8 +1300,8 @@ MOKADOCS_PRIMARY_COLOR="#7c3aed" MOKADOCS_SHOW_FEEDBACK=false mokadocs build
 | `MOKADOCS_SHOW_LINE_NUMBERS` | `theme.options.showLineNumbers` |
 | `MOKADOCS_SHOW_VERSION_SELECTOR` | `theme.options.showVersionSelector` |
 | `MOKADOCS_SEARCH_ENABLED` | `features.search.enabled` |
-| `MOKADOCS_SEARCH_PROVIDER` | `features.search.provider` (reserved) |
 | `MOKADOCS_CLEAN_OUTPUT` | `build.clean` |
+| `MOKADOCS_MINIFY_OUTPUT` | `build.minify` |
 | `MOKADOCS_GENERATE_SITEMAP` | `build.sitemap` |
 | `MOKADOCS_GENERATE_ROBOTS` | `build.robots` |
 | `MOKADOCS_ENABLE_CLOUD_FEATURES` | `cloud.enabled` (reserved) |
@@ -1142,6 +1354,8 @@ content:
 theme:
   name: "default"
   options:
+    style: "default"
+    styleSelector: true
     primaryColor: "#0ea5e9"
     accentColor: "#f59e0b"
     codeTheme: "catppuccin-mocha"

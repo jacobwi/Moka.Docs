@@ -9,6 +9,7 @@ using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Diagnostics;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Parsing.Markdown;
+using Moka.Docs.Plugins;
 using Spectre.Console;
 
 namespace Moka.Docs.Cli.Commands;
@@ -86,7 +87,7 @@ internal static class DoctorCommand
 
 				CheckBrokenLinks(markdownFiles, rootDir, docsDir, outcome, report);
 				CheckFrontMatter(markdownFiles, rootDir, docsDir, fix, verbose, report);
-				CheckOrphanImages(markdownFiles, docsDir, outputDir, rootDir, config, report);
+				CheckOrphanImages(markdownFiles, docsDir, outputDir, rootDir, config, outcome, report);
 				CheckPlugins(config, outcome, report);
 				CheckSearch(config, outcome, report);
 				CheckApiCoverage(config, outcome, verbose, report);
@@ -110,7 +111,19 @@ internal static class DoctorCommand
 		try
 		{
 			SiteConfig config = new SiteConfigReader(new FileSystem()).Read(configPath);
-			report.Pass("Configuration", $"{Path.GetFileName(configPath)} found and valid");
+			if (config.Warnings.Count == 0)
+			{
+				report.Pass("Configuration", $"{Path.GetFileName(configPath)} found and valid");
+				return config;
+			}
+
+			report.Warn("Configuration",
+				$"{Path.GetFileName(configPath)} loaded, but {config.Warnings.Count} key(s) are not settings");
+			foreach (string warning in config.Warnings)
+			{
+				Report.Detail(warning);
+			}
+
 			return config;
 		}
 		catch (FileNotFoundException)
@@ -279,70 +292,43 @@ internal static class DoctorCommand
 		BuildContext context = outcome.Context;
 
 		// Routes the build actually produced: markdown pages (honouring route: overrides and
-		// feature gating), generated API pages and plugin pages alike.
-		var targets = new HashSet<string>(
-			context.Pages
-				.Where(p => p.FrontMatter.Visibility != PageVisibility.Draft)
-				.Select(p => DoctorChecks.NormalizeRoute(p.Route)),
-			StringComparer.OrdinalIgnoreCase);
-		DoctorChecks.AddSectionAncestors(targets);
+		// feature gating), generated API pages and plugin pages alike, plus the files it copies.
+		IEnumerable<string> otherTargets = context.DiscoveredAssetFiles
+			.Select(asset => "/" + asset.Replace('\\', '/'))
+			.Concat(context.BrandAssetFiles.Keys)
+			.Concat(_generatedTargets)
+			// Files phases and plugins stage for the output, such as the blog's feeds.
+			.Concat(context.DeferredOutputFiles.Keys.Select(file => "/" + file.Replace('\\', '/')));
 
-		foreach (string asset in context.DiscoveredAssetFiles)
+		IEnumerable<MarkdownSource> sources = markdownFiles.Select(file => new MarkdownSource(
+			Path.GetRelativePath(rootDir, file), Path.GetRelativePath(docsDir, file), File.ReadAllText(file)));
+
+		LinkCheckResult links = DoctorChecks.CheckLinks(context.Pages, otherTargets, sources);
+
+		if (links.Broken.Count == 0)
 		{
-			targets.Add(DoctorChecks.NormalizeRoute("/" + asset.Replace('\\', '/')));
+			report.Pass("Broken Links", "No broken internal links found");
 		}
-
-		foreach (string url in context.BrandAssetFiles.Keys.Concat(_generatedTargets))
+		else
 		{
-			targets.Add(DoctorChecks.NormalizeRoute(url));
-		}
-
-		var draftRoutes = new HashSet<string>(
-			context.Pages
-				.Where(p => p.FrontMatter.Visibility == PageVisibility.Draft)
-				.Select(p => DoctorChecks.NormalizeRoute(p.Route)),
-			StringComparer.OrdinalIgnoreCase);
-
-		var broken = new List<string>();
-		foreach (string file in markdownFiles)
-		{
-			string relFile = Path.GetRelativePath(rootDir, file);
-			string pathInDocs = Path.GetRelativePath(docsDir, file);
-			foreach (MarkdownLink link in DoctorChecks.FindLinks(File.ReadAllText(file)))
+			report.Fail("Broken Links", $"{links.Broken.Count} broken internal link(s) found");
+			foreach (string entry in links.Broken)
 			{
-				// Relative links are checked where the build sends them: it resolves them
-				// against the file, the same way RelativeLinks does here.
-				bool rootRelative = DoctorChecks.IsRootRelative(link.Url);
-				string? target = rootRelative ? link.Url : RelativeLinks.ToRootRelative(link.Url, pathInDocs);
-				if (target is null)
-				{
-					continue;
-				}
-
-				string route = DoctorChecks.NormalizeRoute(target);
-				if (targets.Contains(route))
-				{
-					continue;
-				}
-
-				string note = draftRoutes.Contains(route) ? ", links to a draft page"
-					: link.IsImage ? ", image"
-					: "";
-				string written = rootRelative ? "" : $", written as {link.Url}";
-				broken.Add($"{route} ({relFile}:{link.Line}{note}{written})");
+				Report.Detail(entry);
 			}
 		}
 
-		if (broken.Count == 0)
+		if (links.BrokenAnchors.Count == 0)
 		{
-			report.Pass("Broken Links", "No broken internal links found");
-			return;
+			report.Pass("Anchors", "Every #anchor link matches an id on its page");
 		}
-
-		report.Fail("Broken Links", $"{broken.Count} broken internal link(s) found");
-		foreach (string entry in broken)
+		else
 		{
-			Report.Detail(entry);
+			report.Warn("Anchors", $"{links.BrokenAnchors.Count} link(s) to an anchor that doesn't exist");
+			foreach (string entry in links.BrokenAnchors)
+			{
+				Report.Detail(entry);
+			}
 		}
 	}
 
@@ -392,7 +378,7 @@ internal static class DoctorCommand
 	}
 
 	private static void CheckOrphanImages(string[] markdownFiles, string docsDir, string outputDir, string rootDir,
-		SiteConfig config, Report report)
+		SiteConfig config, DryRunOutcome outcome, Report report)
 	{
 		if (markdownFiles.Length == 0)
 		{
@@ -447,6 +433,21 @@ internal static class DoctorCommand
 			referenced.Add(Path.GetFullPath(Path.Combine(docsDir, asset.PublishUrl.TrimStart('/'))));
 		}
 
+		// Blog cover images come from front matter and avatars from mokadocs.yaml, not from page text.
+		IEnumerable<(string Url, string Dir)> blogImages = outcome.Context.Pages
+			.Where(p => p.FrontMatter.Image is not null && p.SourcePath is not null)
+			.Select(p => (p.FrontMatter.Image!, Path.GetDirectoryName(Path.Combine(docsDir, p.SourcePath!))!))
+			.Concat(config.Features.Blog.Authors.Values
+				.Where(a => a.Avatar is not null)
+				.Select(a => ("/" + a.Avatar!.TrimStart('.', '/'), docsDir)));
+		foreach ((string url, string dir) in blogImages)
+		{
+			if (ResolveLocalReference(url, docsDir, dir) is { } resolved)
+			{
+				referenced.Add(resolved);
+			}
+		}
+
 		var orphans = images.Where(img => !referenced.Contains(Path.GetFullPath(img))).ToList();
 
 		if (orphans.Count == 0)
@@ -467,6 +468,17 @@ internal static class DoctorCommand
 		if (config.Plugins.Count == 0)
 		{
 			report.Pass("Plugins", "No plugins declared");
+			return;
+		}
+
+		if (outcome.PluginLoadFailures.Count > 0)
+		{
+			report.Fail("Plugins", $"{outcome.PluginLoadFailures.Count} plugin(s) failed to load from their path");
+			foreach (PluginLoadFailure failure in outcome.PluginLoadFailures)
+			{
+				Report.Detail(failure.Message);
+			}
+
 			return;
 		}
 
@@ -496,24 +508,24 @@ internal static class DoctorCommand
 			return;
 		}
 
-		var loaded = new HashSet<string>(outcome.LoadedPluginIds, StringComparer.OrdinalIgnoreCase);
-		var failed = config.Plugins
-			.Select(p => p.Name)
-			.Where(name => !string.IsNullOrWhiteSpace(name) && !loaded.Contains(name))
-			.ToList();
+		List<PluginDeclaration> failed = DoctorChecks.FindPluginsThatFailedToInitialize(config.Plugins,
+			outcome.RegisteredPluginIds, outcome.LoadedPluginIds, outcome.PluginLoadFailures);
 
 		if (failed.Count > 0)
 		{
 			report.Warn("Plugins", $"{failed.Count} plugin(s) failed to initialize - run mokadocs validate -v");
-			foreach (string? name in failed)
+			foreach (PluginDeclaration declaration in failed)
 			{
-				Report.Detail(name!);
+				Report.Detail(declaration.Name!);
 			}
 
 			return;
 		}
 
-		report.Pass("Plugins", $"{config.Plugins.Count} plugin(s) declared and loaded");
+		int fromPath = config.Plugins.Count(p => !string.IsNullOrWhiteSpace(p.Path));
+		report.Pass("Plugins", fromPath == 0
+			? $"{config.Plugins.Count} plugin(s) declared and loaded"
+			: $"{config.Plugins.Count} plugin(s) declared and loaded, {fromPath} from a path");
 	}
 
 	private static void CheckSearch(SiteConfig config, DryRunOutcome outcome, Report report)

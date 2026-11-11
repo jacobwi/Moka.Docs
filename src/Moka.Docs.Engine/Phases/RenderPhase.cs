@@ -1,11 +1,14 @@
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
+using Moka.Docs.Core.Navigation;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Core.Theming;
 using Moka.Docs.Rendering.Scriban;
 using Moka.Docs.Themes;
+using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Engine.Phases;
 
@@ -17,6 +20,9 @@ public sealed class RenderPhase(
 	ThemeResolver themeResolver,
 	ILogger<RenderPhase> logger) : IBuildPhase
 {
+	/// <summary>Where a shared sidebar is written, relative to the output directory.</summary>
+	public const string SidebarScriptPath = "_theme/js/sidebar.js";
+
 	/// <inheritdoc />
 	public string Name => "Render";
 
@@ -42,6 +48,10 @@ public sealed class RenderPhase(
 
 		ReportUnknownLayouts(context, themeContext);
 		ReportUnknownSocialIcons(context);
+		if (theme.IsEmbedded)
+		{
+			ReportUnknownStyle(context);
+		}
 
 		// Update the theme context with the current config, navigation, and version data
 		var renderContext = new ThemeRenderContext
@@ -50,13 +60,15 @@ public sealed class RenderPhase(
 			Navigation = context.Navigation,
 			Templates = themeContext.Templates,
 			Partials = themeContext.Partials,
-			CssFiles = themeContext.CssFiles,
-			JsFiles = themeContext.JsFiles,
+			CssFiles = VersionedAssetUrls(themeContext.CssFiles, theme, context),
+			JsFiles = VersionedAssetUrls(themeContext.JsFiles, theme, context),
 			AllPages = context.Pages,
 			Versions = context.Versions,
 			CurrentVersion = context.CurrentVersion,
 			PackageInfo = context.PackageInfo,
-			BrandAssetFiles = context.BrandAssetFiles
+			BrandAssetFiles = context.BrandAssetFiles,
+			Blog = context.Blog,
+			SidebarScriptUrl = ShareSidebar(context, theme, ct)
 		};
 
 		int rendered = 0;
@@ -73,7 +85,7 @@ public sealed class RenderPhase(
 
 			try
 			{
-				string html = templateEngine.RenderPage(page, renderContext);
+				string html = templateEngine.RenderPage(page, renderContext, ct);
 
 				// Replace the page content with the fully rendered HTML
 				context.Pages[i] = page with
@@ -86,6 +98,10 @@ public sealed class RenderPhase(
 				};
 
 				rendered++;
+			}
+			catch (OperationCanceledException) when (ct.IsCancellationRequested)
+			{
+				throw;
 			}
 			catch (Exception ex)
 			{
@@ -108,6 +124,99 @@ public sealed class RenderPhase(
 
 		logger.LogInformation("Rendered {Count} pages with theme templates", rendered);
 		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	///     Decides between an inline and a shared sidebar (<c>theme.options.sidebar</c>). A shared
+	///     sidebar is rendered once and staged as <see cref="SidebarScriptPath" />; the result is its
+	///     URL with a content hash, or <c>null</c> for an inline sidebar.
+	/// </summary>
+	/// <remarks>
+	///     Every page used to hold the whole sidebar: 5012 pages with an entry each wrote 8.4 GB.
+	///     The file is written by <c>OutputPhase</c> with the other staged files, after the clean and
+	///     not at all in a dry run.
+	/// </remarks>
+	private string? ShareSidebar(BuildContext context, ResolvedTheme theme, CancellationToken ct)
+	{
+		ThemeOptions options = context.Config.Theme.Options;
+		if (!SidebarModes.IsKnown(options.Sidebar))
+		{
+			context.Diagnostics.Warning(
+				$"Sidebar mode '{options.Sidebar}' is not one of {string.Join(", ", SidebarModes.Names)}; using '{SidebarModes.Auto}'",
+				Name);
+		}
+
+		string mode = SidebarModes.Resolve(options.Sidebar);
+		int entries = CountEntries(context.Navigation?.Items ?? []);
+		if (mode == SidebarModes.Inline || (mode == SidebarModes.Auto && entries <= options.SidebarInlineLimit))
+		{
+			return null;
+		}
+
+		if (!theme.IsEmbedded)
+		{
+			if (mode == SidebarModes.Shared)
+			{
+				context.Diagnostics.Warning(
+					$"Theme '{context.Config.Theme.Name}' has no shared sidebar, so every page holds the whole sidebar",
+					Name);
+			}
+
+			return null;
+		}
+
+		var sidebarContext = new ThemeRenderContext
+		{
+			Config = context.Config,
+			Navigation = context.Navigation,
+			Templates = [],
+			Partials = [],
+			AllPages = context.Pages
+		};
+
+		string html;
+		try
+		{
+			html = templateEngine.RenderSidebar(EmbeddedThemeProvider.GetSidebarTemplate(), sidebarContext, ct);
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (Exception ex)
+		{
+			context.Diagnostics.Warning(
+				$"The shared sidebar could not be rendered, so every page holds the whole sidebar: {ex.Message}", Name);
+			return null;
+		}
+
+		byte[] script = new UTF8Encoding(false).GetBytes(EmbeddedThemeProvider.CreateSidebarScript(html));
+		context.DeferredOutputFiles[SidebarScriptPath] = script;
+		logger.LogInformation("The sidebar has {Entries} entries: written once to {Path} ({Bytes} bytes) for every page",
+			entries, SidebarScriptPath, script.Length);
+
+		return "/" + SidebarScriptPath + "?v=" + ThemeAssetPhase.ContentHash(script);
+	}
+
+	private static int CountEntries(List<NavigationNode> nodes) => nodes.Sum(n => 1 + CountEntries(n.Children));
+
+	private static List<string> VersionedAssetUrls(List<string> urls, ResolvedTheme theme, BuildContext context) =>
+		urls.Select(url => ThemeAssetPhase.VersionedUrl(url, theme, context)).ToList();
+
+	/// <summary>
+	///     Warns when <c>theme.options.style</c> names no style of the default theme. Pages
+	///     render with the default style then. A custom theme may define its own style names, so
+	///     it is only checked for the embedded theme.
+	/// </summary>
+	private void ReportUnknownStyle(BuildContext context)
+	{
+		string style = context.Config.Theme.Options.Style;
+		if (!ThemeStyles.IsKnown(style))
+		{
+			context.Diagnostics.Warning(
+				$"Style '{style}' is not one of {string.Join(", ", ThemeStyles.Names)}; using '{ThemeStyles.Default}'",
+				Name);
+		}
 	}
 
 	/// <summary>

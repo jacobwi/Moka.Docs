@@ -28,6 +28,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 	private const string _defaultRoutePrefix = "/python-api";
 	private const string _defaultDocstringFormat = "google";
 	private const string _pythonScriptResourceName = "mokadocs_python_analyzer.py";
+	private static readonly TimeSpan _analyzerTimeout = TimeSpan.FromMinutes(10);
 	private string _docstringFormat = _defaultDocstringFormat;
 	private string _label = _defaultLabel;
 	private string _pythonPath = "python3";
@@ -214,40 +215,39 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 		foreach (string python in pythonCandidates)
 		{
-			string args = $"\"{scriptPath}\" \"{sourceDir}\" --output \"{outputPath}\" --format {docstringFormat}";
-
-			var psi = new ProcessStartInfo(python, args)
+			// ArgumentList, not one quoted string: a source path ending in a separator ("./src/"
+			// becomes "C:\...\src\") escaped its closing quote on Windows and swallowed the
+			// arguments after it.
+			var psi = new ProcessStartInfo(python) { WorkingDirectory = sourceDir };
+			foreach (string argument in (string[]) [scriptPath, sourceDir, "--output", outputPath, "--format", docstringFormat])
 			{
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true,
-				WorkingDirectory = sourceDir
-			};
+				psi.ArgumentList.Add(argument);
+			}
 
 			try
 			{
-				using var proc = Process.Start(psi);
-				if (proc is null)
+				ChildProcessResult result = await ChildProcessRunner.RunAsync(psi, _analyzerTimeout, ct);
+				if (result.TimedOut)
 				{
-					continue; // Python not found, try next candidate
+					context.LogError(
+						$"mokadocs-python-api: the Python analyzer did not finish within {_analyzerTimeout.TotalMinutes:0} " +
+						$"minutes and was stopped (source: {sourceDir}).");
+					return false;
 				}
 
-				string stdout = await proc.StandardOutput.ReadToEndAsync(ct);
-				string stderr = await proc.StandardError.ReadToEndAsync(ct);
-				await proc.WaitForExitAsync(ct);
-
-				if (proc.ExitCode != 0)
+				string stdout = result.Output;
+				string stderr = result.Error;
+				if (result.ExitCode != 0)
 				{
 					// Exit code 9009 (Windows) or 127 (Linux) = command not found.
 					// Try the next Python candidate instead of reporting a hard failure.
-					if (proc.ExitCode is 9009 or 127)
+					if (result.ExitCode is 9009 or 127)
 					{
 						continue;
 					}
 
 					context.LogError(
-						$"mokadocs-python-api: Python analyzer exited with code {proc.ExitCode}.\n" +
+						$"mokadocs-python-api: Python analyzer exited with code {result.ExitCode}.\n" +
 						(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr));
 					return false;
 				}
@@ -291,6 +291,8 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 	private void GeneratePages(ApiReference apiRef, BuildContext buildContext, IPluginContext context)
 	{
+		Dictionary<ApiType, string> routes = BuildTypeRoutes(apiRef);
+
 		// Generate index page
 		var indexHtml = new StringBuilder();
 		indexHtml.AppendLine($"<h1>{WebUtility.HtmlEncode(_label)}</h1>");
@@ -304,7 +306,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 
 			foreach (ApiType type in ns.Types)
 			{
-				string route = BuildTypeRoute(ns.Name, type);
+				string route = routes[type];
 				string kindBadge = type.Kind.ToString().ToLowerInvariant();
 				string summary = type.Documentation?.Summary ?? "";
 				indexHtml.AppendLine("<tr>");
@@ -342,7 +344,7 @@ public sealed class PythonApiPlugin : IMokaPlugin
 		foreach (ApiNamespace ns in apiRef.Namespaces)
 		foreach (ApiType type in ns.Types)
 		{
-			string route = BuildTypeRoute(ns.Name, type);
+			string route = routes[type];
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
 			TableOfContents toc = ApiPageRenderer.BuildTocForType(type);
 
@@ -372,20 +374,49 @@ public sealed class PythonApiPlugin : IMokaPlugin
 			$"{apiRef.Namespaces.Count} module(s) at {_routePrefix}");
 	}
 
-	private string BuildTypeRoute(string namespaceName, ApiType type)
+	/// <summary>
+	///     Gives every type page its route: a module's functions at <c>{prefix}/{module path}</c>,
+	///     a class at <c>{prefix}/{module path}/{name}</c>.
+	/// </summary>
+	/// <remarks>
+	///     Those two shapes overlap: class <c>Calc</c> in package <c>mypkg</c> and the functions of
+	///     module <c>mypkg.calc</c> both want <c>mypkg/calc</c>, and routes are lowercase, so classes
+	///     <c>Calc</c> and <c>CALC</c> share one too. One page used to overwrite the other. Module
+	///     pages claim their routes first, since a module path is what readers type, and a class
+	///     that finds its route taken gets <c>-2</c>, <c>-3</c> and so on, in the analyzer's order.
+	/// </remarks>
+	private Dictionary<ApiType, string> BuildTypeRoutes(ApiReference apiRef)
 	{
-		string nsPath = namespaceName.Replace('.', '/');
+		var routes = new Dictionary<ApiType, string>(ReferenceEqualityComparer.Instance);
+		var taken = new HashSet<string>(StringComparer.Ordinal) { _routePrefix.ToLowerInvariant() };
+		List<(ApiNamespace Namespace, ApiType Type)> types = apiRef.Namespaces
+			.SelectMany(ns => ns.Types.Select(type => (ns, type)))
+			.ToList();
 
-		// The analyzer puts a module's functions on a synthetic type named after the module
-		// and marked with a "module" attribute. At {module}/{name} it collided with a class of
-		// the same name (calculator.py defining Calculator), and one of the two pages was lost.
-		// The module's own path is free, so the functions page lives there.
-		if (type.Attributes.Any(a => a.Name == "module"))
+		foreach ((ApiNamespace ns, ApiType type) in types.Where(t => IsModuleType(t.Type)))
 		{
-			return $"{_routePrefix}/{nsPath}".ToLowerInvariant();
+			routes[type] = Claim(taken, $"{_routePrefix}/{ns.Name.Replace('.', '/')}".ToLowerInvariant());
 		}
 
-		string safeName = type.Name.Replace('<', '-').Replace('>', '-');
-		return $"{_routePrefix}/{nsPath}/{safeName}".ToLowerInvariant();
+		foreach ((ApiNamespace ns, ApiType type) in types.Where(t => !IsModuleType(t.Type)))
+		{
+			string safeName = type.Name.Replace('<', '-').Replace('>', '-');
+			routes[type] = Claim(taken, $"{_routePrefix}/{ns.Name.Replace('.', '/')}/{safeName}".ToLowerInvariant());
+		}
+
+		return routes;
+	}
+
+	private static bool IsModuleType(ApiType type) => type.Attributes.Any(a => a.Name == "module");
+
+	private static string Claim(HashSet<string> taken, string route)
+	{
+		string candidate = route;
+		for (int n = 2; !taken.Add(candidate); n++)
+		{
+			candidate = $"{route}-{n}";
+		}
+
+		return candidate;
 	}
 }

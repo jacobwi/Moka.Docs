@@ -3,15 +3,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Abstractions;
 using System.Net;
-using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Moka.Blazor.Repl.Compiler;
 using Moka.Docs.Core;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Pipeline;
-using Moka.Docs.Engine;
-using Moka.Docs.Plugins;
 using Moka.Docs.Serve;
 using Moka.Docs.Versioning;
 using Spectre.Console;
@@ -66,15 +61,15 @@ internal static class ServeCommand
 			AnsiConsole.WriteLine();
 
 			string resolvedConfigPath = ConfigPath.Resolve(configPath);
-			string rootDir = Path.GetDirectoryName(resolvedConfigPath)!;
+			var source = new ConfigSource(resolvedConfigPath, output, basePath);
+			string rootDir = source.RootDirectory;
 
-			// Load config
+			// Load config, with the CLI overrides applied
 			SiteConfig config;
+			string configText;
 			try
 			{
-				var fs = new FileSystem();
-				var reader = new SiteConfigReader(fs);
-				config = reader.Read(resolvedConfigPath);
+				(config, configText) = BuildSession.Read(source);
 				AnsiConsole.MarkupLine(
 					$"[green]Config:[/] {Path.GetFileName(resolvedConfigPath)} - \"{Markup.Escape(config.Site.Title)}\"");
 			}
@@ -90,47 +85,30 @@ internal static class ServeCommand
 				return 1;
 			}
 
-			// Apply CLI overrides
-			if (output is not null)
-			{
-				config = config with { Build = config.Build with { Output = output } };
-			}
-
-			if (basePath is not null)
-			{
-				config = config with
-				{
-					Build = config.Build with { BasePath = SiteConfigReader.NormalizeBasePath(basePath) }
-				};
-			}
-
 			string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
 			string docsDir = Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs));
 
-			// Set up DI (reuse BuildCommand's service setup for plugins)
-			await using ServiceProvider provider = BuildCommand.BuildServices(config, verbose);
-			BuildPipeline pipeline = provider.GetRequiredService<BuildPipeline>();
-			ILoggerFactory loggerFactory = provider.GetRequiredService<ILoggerFactory>();
+			// The services and plugins come from mokadocs.yaml and are rebuilt when it changes; the
+			// server, the watcher and the REPL live as long as the command and log through their own factory.
+			await using BuildSession session = await BuildSession.StartAsync(source, config, configText, verbose, ct);
+			using ILoggerFactory loggerFactory = BuildCommand.CreateLoggerFactory(verbose);
 
-			// Initialize plugins
-			await BuildCommand.InitializePluginsAsync(provider, pipeline);
-
-			// Resolve version data
-			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
+			if (VersionedBuild.ServeNotice(config) is { } versionNotice)
+			{
+				AnsiConsole.MarkupLine($"[dim]{Markup.Escape(versionNotice)}[/]");
+			}
 
 			// Run initial build
-			if (!await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft, verbose))
+			if (!await RunBuildAsync(session, outputDir, draft, verbose))
 			{
 				return 1;
 			}
 
 			ILogger<DevServer> serverLogger = loggerFactory.CreateLogger<DevServer>();
 
-			// The REPL and Blazor preview endpoints run code sent to them, so they only exist
-			// when the site declares the plugin that uses them. They used to be started for
-			// every site.
-			PluginDeclaration? replPlugin = config.Plugins.FirstOrDefault(p =>
-				string.Equals(p.Name, "mokadocs-repl", StringComparison.OrdinalIgnoreCase));
+			// The REPL endpoint runs code sent to it, so it only exists when the site declares the
+			// plugin that uses it. It used to be started for every site.
+			PluginDeclaration? replPlugin = FindReplDeclaration(config);
 			// Snippets run in a `mokadocs repl-worker` process that is killed when a run times out.
 			// In-process, a snippet that never returned kept running until serve exited.
 			using ReplExecutionService? replService = replPlugin is null
@@ -145,82 +123,7 @@ internal static class ServeCommand
 				_ = replService.WarmUpAsync(ct);
 			}
 
-			ILogger<BlazorPreviewService> blazorLogger = loggerFactory.CreateLogger<BlazorPreviewService>();
-			var compilationService = new RoslynCompilationService(new HttpClient());
-
-			// Load assemblies and extra usings configured in the blazor-preview plugin options
-			PluginDeclaration? blazorPlugin = config.Plugins.FirstOrDefault(p =>
-				string.Equals(p.Name, "mokadocs-blazor-preview", StringComparison.OrdinalIgnoreCase));
-
-			var blazorExtraUsings = new List<string>();
-			var blazorRuntimeDlls = new List<string>();
-			if (blazorPlugin is not null)
-			{
-				// references: list of directories or DLL paths to add as Roslyn references
-				if (blazorPlugin.Options.TryGetValue("references", out object? refsObj)
-				    && refsObj is IEnumerable<object> refList)
-				{
-					foreach (string refEntry in refList.Select(o => o.ToString()!)
-						         .Where(s => !string.IsNullOrWhiteSpace(s)))
-					{
-						string resolvedRef = Path.GetFullPath(Path.Combine(rootDir, refEntry));
-
-						// If it's a directory, load all *.dll files from it
-						if (Directory.Exists(resolvedRef))
-						{
-							foreach (string dll in Directory.GetFiles(resolvedRef, "*.dll"))
-							{
-								try
-								{
-									compilationService.AddReference(MetadataReference.CreateFromFile(dll));
-									blazorRuntimeDlls.Add(dll);
-								}
-								catch (Exception ex)
-								{
-									AnsiConsole.MarkupLine(
-										$"[yellow]Blazor preview:[/] Could not load reference {Markup.Escape(dll)}: {Markup.Escape(ex.Message)}");
-								}
-							}
-
-							AnsiConsole.MarkupLine(
-								$"[blue]Blazor preview:[/] Loaded references from [bold]{Markup.Escape(resolvedRef)}[/]");
-						}
-						else if (File.Exists(resolvedRef))
-						{
-							try
-							{
-								compilationService.AddReference(MetadataReference.CreateFromFile(resolvedRef));
-								blazorRuntimeDlls.Add(resolvedRef);
-								AnsiConsole.MarkupLine(
-									$"[blue]Blazor preview:[/] Loaded reference [bold]{Markup.Escape(Path.GetFileName(resolvedRef))}[/]");
-							}
-							catch (Exception ex)
-							{
-								AnsiConsole.MarkupLine(
-									$"[yellow]Blazor preview:[/] Could not load reference {Markup.Escape(resolvedRef)}: {Markup.Escape(ex.Message)}");
-							}
-						}
-					}
-				}
-
-				// usings: list of extra @using directives to inject into each preview
-				if (blazorPlugin.Options.TryGetValue("usings", out object? usingsObj)
-				    && usingsObj is IEnumerable<object> usingsList)
-				{
-					blazorExtraUsings.AddRange(
-						usingsList.Select(o => o.ToString()!).Where(s => !string.IsNullOrWhiteSpace(s)));
-				}
-			}
-
-			BlazorPreviewService? blazorPreviewService = blazorPlugin is null
-				? null
-				: new BlazorPreviewService(
-					compilationService, loggerFactory, blazorLogger,
-					blazorExtraUsings.Count > 0 ? blazorExtraUsings : null,
-					blazorRuntimeDlls.Count > 0 ? blazorRuntimeDlls : null);
-
-			using var server = new DevServer(serverLogger, outputDir, port, replService, blazorPreviewService,
-				config.Build.BasePath);
+			using var server = new DevServer(serverLogger, outputDir, port, replService, config.Build.BasePath);
 			try
 			{
 				await server.StartAsync();
@@ -263,23 +166,37 @@ internal static class ServeCommand
 			}
 
 			// Start file watcher
+			using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 			ILogger<FileWatcher> watcherLogger = loggerFactory.CreateLogger<FileWatcher>();
 			using var watcher = new FileWatcher(watcherLogger);
 
 			watcher.OnChanged += async () =>
 			{
 				AnsiConsole.MarkupLine("[yellow]Changes detected, rebuilding...[/]");
-				if (await RunBuildAsync(pipeline, config, rootDir, outputDir, versionManager, draft, verbose))
+				ConfigReload reload = await session.ReloadIfChangedAsync(true, cts.Token);
+				BuildSession.Print(reload, "Still serving the last good site");
+				if (reload.Outcome == ConfigReloadOutcome.Failed)
+				{
+					return;
+				}
+
+				if (reload.Outcome == ConfigReloadOutcome.Reloaded
+				    && !SameReplSettings(replPlugin, FindReplDeclaration(session.Config)))
+				{
+					AnsiConsole.MarkupLine(
+						"[yellow]The mokadocs-repl entry changed, which takes a restart: the REPL endpoint keeps the settings serve started with.[/]");
+				}
+
+				if (await RunBuildAsync(session, outputDir, draft, verbose))
 				{
 					await server.NotifyReloadAsync();
 					AnsiConsole.MarkupLine("[green]Rebuild complete - browser reloaded[/]");
 				}
 			};
 
-			watcher.Start(docsDir, resolvedConfigPath, [outputDir]);
+			watcher.Start(docsDir, resolvedConfigPath, BuildCommand.WatchIgnoredDirectories(rootDir, outputDir));
 
 			// Wait for Ctrl+C
-			using var cts = new CancellationTokenSource();
 			Console.CancelKeyPress += (_, e) =>
 			{
 				e.Cancel = true;
@@ -303,32 +220,27 @@ internal static class ServeCommand
 		return command;
 	}
 
-	private static async Task<bool> RunBuildAsync(
-		BuildPipeline pipeline, SiteConfig config, string rootDir, string outputDir, VersionManager versionManager,
-		bool includeDrafts, bool verbose)
+	private static async Task<bool> RunBuildAsync(BuildSession session, string outputDir, bool includeDrafts,
+		bool verbose)
 	{
 		var sw = Stopwatch.StartNew();
+		SiteConfig config = session.Config;
 
 		var context = new BuildContext
 		{
 			Config = config,
 			FileSystem = new FileSystem(),
-			RootDirectory = rootDir,
+			RootDirectory = session.RootDirectory,
 			OutputDirectory = outputDir,
 			IncludeDrafts = includeDrafts,
 			UseCache = config.Build.Cache
 		};
 
-		// Wire version data
-		if (versionManager.IsEnabled)
-		{
-			context.Versions.AddRange(versionManager.Versions);
-			context.CurrentVersion = versionManager.DefaultVersion;
-		}
+		session.VersionManager.ApplyTo(context);
 
 		try
 		{
-			await pipeline.ExecuteAsync(context);
+			await session.Pipeline.ExecuteAsync(context);
 			sw.Stop();
 			AnsiConsole.MarkupLine(context.Diagnostics.HasErrors
 				? $"[red]Build finished with errors in {sw.Elapsed.TotalSeconds:F2}s[/]"
@@ -345,6 +257,34 @@ internal static class ServeCommand
 			return false;
 		}
 	}
+
+	private static PluginDeclaration? FindReplDeclaration(SiteConfig config) =>
+		config.Plugins.FirstOrDefault(p => string.Equals(p.Name, "mokadocs-repl", StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	///     Whether two <c>mokadocs-repl</c> entries set the REPL up the same way: both missing, or
+	///     both present with the same options. The endpoint and its packages are set up once, when
+	///     serve starts.
+	/// </summary>
+	internal static bool SameReplSettings(PluginDeclaration? started, PluginDeclaration? current) =>
+		(started, current) switch
+		{
+			(null, null) => true,
+			({ } a, { } b) => Describe(a.Options) == Describe(b.Options),
+			_ => false
+		};
+
+	private static string Describe(object? value) => value switch
+	{
+		null => "~",
+		string text => "\"" + text + "\"",
+		IDictionary<string, object> map => "{" + string.Join(",",
+			map.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => e.Key + ":" + Describe(e.Value))) + "}",
+		IDictionary<object, object> map => "{" + string.Join(",",
+			map.OrderBy(e => e.Key.ToString(), StringComparer.Ordinal).Select(e => e.Key + ":" + Describe(e.Value))) + "}",
+		IEnumerable<object> items => "[" + string.Join(",", items.Select(Describe)) + "]",
+		_ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""
+	};
 
 	/// <summary>
 	///     The command for a REPL worker: this executable again, running the hidden

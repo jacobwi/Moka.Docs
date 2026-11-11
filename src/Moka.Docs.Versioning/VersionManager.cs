@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
+using Moka.Docs.Core.Pipeline;
 
 namespace Moka.Docs.Versioning;
 
@@ -100,6 +101,55 @@ public sealed class VersionManager
 		return definition?.Branch;
 	}
 
+	/// <summary>
+	///     Fills in <see cref="BuildContext.Versions" /> and <see cref="BuildContext.CurrentVersion" /> for a
+	///     build of the working tree, when versioning is enabled in the context's configuration.
+	/// </summary>
+	/// <remarks>
+	///     <list type="bullet">
+	///         <item>
+	///             <description>
+	///                 A version without a label, or the single version a config with no <c>versions</c>
+	///                 stands for, is labelled <c>v{major}.{minor}</c> from the documented package's
+	///                 version (<see cref="VersionDefinition.Label" />). One built from a git ref takes
+	///                 the version in that ref, read from git without a checkout.
+	///             </description>
+	///         </item>
+	///         <item>
+	///             <description>
+	///                 The current version is the one the working tree is: the default version when
+	///                 it has no ref or names the checked-out branch, else the first such version, else
+	///                 the default.
+	///             </description>
+	///         </item>
+	///         <item>
+	///             <description>
+	///                 Problems with the version list, such as an unknown strategy, are added to the
+	///                 context's diagnostics as warnings. Git refs that don't exist are not reported
+	///                 here; <see cref="VersionedBuildOrchestrator.CheckRefs" /> does that.
+	///             </description>
+	///         </item>
+	///     </list>
+	/// </remarks>
+	/// <param name="context">The build about to run.</param>
+	public void ApplyTo(BuildContext context)
+	{
+		ArgumentNullException.ThrowIfNull(context);
+
+		SiteConfig config = context.Config;
+		if (!config.Features.Versioning.Enabled)
+		{
+			return;
+		}
+
+		GitRepository? git = VersionPlan.NamesRefs(config) ? GitRepository.Open(context.RootDirectory) : null;
+		VersionPlan plan = VersionPlan.Create(config, context.FileSystem, context.RootDirectory, null, git, false);
+		plan.ReportTo(context.Diagnostics);
+
+		context.Versions.AddRange(plan.Versions.Select(v => v.Version));
+		context.CurrentVersion = plan.Current?.Version;
+	}
+
 	private static List<DocVersion> BuildVersionList(VersioningFeatureConfig config)
 	{
 		if (!config.Enabled || config.Versions.Count == 0)
@@ -119,7 +169,7 @@ public sealed class VersionManager
 	/// <summary>
 	///     Generates a URL-safe slug from a version label.
 	/// </summary>
-	private static string GenerateSlug(string label)
+	internal static string GenerateSlug(string label)
 	{
 		// Simple slug: lowercase, replace spaces with hyphens, strip non-alphanumeric except dots and hyphens
 		string slug = label.Trim().ToLowerInvariant().Replace(' ', '-');

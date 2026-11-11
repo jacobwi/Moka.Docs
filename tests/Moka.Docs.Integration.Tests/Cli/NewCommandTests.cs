@@ -69,6 +69,21 @@ public sealed class NewCommandTests
 	}
 
 	[Fact]
+	public void PluginProject_IsLoadableByTheCliWithoutShippingMokaDocs()
+	{
+		// The CLI supplies Moka.Docs.Plugins; a copy in the plugin's output is never used.
+		string project = NewCommand.BuildPluginProject("Moka.Docs.Plugins.Footer", "9.8.7");
+
+		project.Should().Contain("<TargetFramework>net9.0</TargetFramework>")
+			.And.Contain("<EnableDynamicLoading>true</EnableDynamicLoading>")
+			.And.Contain("<RestoreEnablePackagePruning>true</RestoreEnablePackagePruning>")
+			.And.Contain("<PackageReference Include=\"Moka.Docs.Plugins\" Version=\"9.8.7\" ExcludeAssets=\"runtime\" />");
+		NewCommand.BuildPluginClass("Moka.Docs.Plugins.Footer", "FooterPlugin", "Footer", "mokadocs-footer", "/footer")
+			.Should().Contain("Route = \"/footer\"").And.Contain("public string Id => \"mokadocs-footer\";")
+			.And.NotContain("TODO");
+	}
+
+	[Fact]
 	public void CardTemplate_UsesOnlyIconsAndVariantsThatRender()
 	{
 		// It used variant="outlined" and "filled" and the icons square and palette. None of them

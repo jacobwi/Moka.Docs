@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Pipeline;
 
@@ -25,6 +26,8 @@ public sealed class BuildPipeline(
 		logger.LogInformation("Starting build pipeline with {PhaseCount} phases", orderedPhases.Count);
 
 		bool pluginHookExecuted = false;
+		var timings = new List<PhaseTiming>(orderedPhases.Count + 1);
+		var total = Stopwatch.StartNew();
 
 		foreach (IBuildPhase phase in orderedPhases)
 		{
@@ -36,14 +39,35 @@ public sealed class BuildPipeline(
 			if (!pluginHookExecuted && phase.Order >= 500 && PluginHook is not null)
 			{
 				logger.LogInformation("Executing plugin hook");
+				long hookStart = Stopwatch.GetTimestamp();
 				await PluginHook(context, ct);
+				timings.Add(new PhaseTiming("Plugins", Stopwatch.GetElapsedTime(hookStart)));
 				pluginHookExecuted = true;
 			}
 
 			logger.LogInformation("Executing phase: {PhaseName} (order {Order})", phase.Name, phase.Order);
+			long start = Stopwatch.GetTimestamp();
 			await phase.ExecuteAsync(context, ct);
+			TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+			timings.Add(new PhaseTiming(phase.Name, elapsed));
+			logger.LogInformation("Phase {PhaseName} took {Milliseconds:F0} ms", phase.Name, elapsed.TotalMilliseconds);
 		}
 
-		logger.LogInformation("Build pipeline complete");
+		total.Stop();
+		logger.LogInformation("Build pipeline complete in {Milliseconds:F0} ms ({Timings})",
+			total.Elapsed.TotalMilliseconds,
+			string.Join(", ", timings.Select(t => $"{t.Name} {t.Elapsed.TotalMilliseconds:F0} ms")));
+		LastTimings = timings;
 	}
+
+	/// <summary>
+	///     How long each phase (and the plugin hook, as <c>Plugins</c>) took in the most recent
+	///     completed run, in execution order. Empty before the first run.
+	/// </summary>
+	public IReadOnlyList<PhaseTiming> LastTimings { get; private set; } = [];
 }
+
+/// <summary>The wall-clock time one build phase took.</summary>
+/// <param name="Name">The phase name, or <c>Plugins</c> for the plugin hook.</param>
+/// <param name="Elapsed">How long it ran.</param>
+public readonly record struct PhaseTiming(string Name, TimeSpan Elapsed);

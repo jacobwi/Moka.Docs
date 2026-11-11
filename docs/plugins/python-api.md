@@ -32,6 +32,8 @@ Run `mokadocs build`. The plugin:
 
 1. Extracts its bundled analyzer script (`mokadocs_python_analyzer.py`) to a uniquely named file in the system temp directory, which it deletes afterwards.
 2. Runs the script with Python: `python <script> <source_dir> --output <json> --format google`.
+   An analyzer still running after 10 minutes, or when the build is cancelled, is
+   stopped along with any process it started.
 3. Deserializes the JSON into the same `ApiReference` model used by C# docs.
 4. Generates an index page plus one page per type with the shared `ApiPageRenderer`.
 
@@ -39,7 +41,7 @@ Pages appear at `/python-api` by default (configurable via `routePrefix`).
 
 Problems show up as build diagnostics: a missing `source` option, a source
 directory that doesn't exist, Python not being found, or the analyzer failing
-are errors (so `mokadocs build` exits with code 1). Files with syntax errors and
+or timing out are errors (so `mokadocs build` exits with code 1). Files with syntax errors and
 a source directory with no public types are warnings.
 
 ---
@@ -82,8 +84,11 @@ Module names come from file paths relative to `source`. With
 `calculator` and `src/mylib/utils/io.py` is `utils.io`. To get the package
 name into module names, point `source` at the parent directory. A package's
 `__init__.py` belongs to the package's module (`utils/__init__.py` is
-`utils`), but an `__init__.py` directly inside `source` becomes a module named
-`__init__`.
+`utils`), and an `__init__.py` directly inside `source` takes that folder's
+name (`src/mylib/__init__.py` is `mylib`). Other modules keep their names, so
+`calculator` stays `calculator`, not `mylib.calculator`.
+
+`source` may end in a path separator: `./src/mylib/` works like `./src/mylib`.
 
 ### `label`
 
@@ -100,6 +105,13 @@ leading `/` is added. Routes are lowercase:
 - A module's functions: `{routePrefix}/{module path}`
 
 The module path is the module name with dots replaced by slashes.
+
+Two pages can want the same route: class `Calc` in `mypkg/__init__.py` and the
+functions of `mypkg/calc.py` both map to `{routePrefix}/mypkg/calc`, and since
+routes are lowercase, so do classes `Calc` and `CALC` in one module. The
+module's functions page keeps the route, and the class gets `-2` added
+(`{routePrefix}/mypkg/calc-2`), then `-3` for a third, in the order the
+analyzer lists them.
 
 Don't use `/api` on a site that also lists C# projects in `content.projects`.
 The C# API reference uses `/api` for its index page, the two index pages

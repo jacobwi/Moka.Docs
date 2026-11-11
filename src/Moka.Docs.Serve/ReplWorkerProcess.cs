@@ -10,6 +10,13 @@ namespace Moka.Docs.Serve;
 /// </summary>
 internal sealed class ReplWorkerProcess : IDisposable
 {
+	/// <summary>
+	///     The longest line read from the worker, in characters. A result carries at most 100,000
+	///     characters each of output and error, and JSON can escape a character as six.
+	/// </summary>
+	internal const int MaxMessageLength = 4 * 1024 * 1024;
+
+	private readonly BoundedLineReader _lines;
 	private readonly ILogger _logger;
 	private readonly Process _process;
 
@@ -17,10 +24,27 @@ internal sealed class ReplWorkerProcess : IDisposable
 	{
 		_process = process;
 		_logger = logger;
+		_lines = new BoundedLineReader(process.StandardOutput, MaxMessageLength);
 	}
 
 	/// <summary>The worker's process id.</summary>
 	internal int ProcessId => _process.Id;
+
+	/// <summary>Whether the worker has exited, for example from a timer a snippet left behind.</summary>
+	internal bool HasExited
+	{
+		get
+		{
+			try
+			{
+				return _process.HasExited;
+			}
+			catch (InvalidOperationException)
+			{
+				return true;
+			}
+		}
+	}
 
 	/// <summary>
 	///     Starts a worker, sends it the references and waits until it reports ready.
@@ -37,6 +61,7 @@ internal sealed class ReplWorkerProcess : IDisposable
 		startInfo.StandardInputEncoding = new UTF8Encoding(false);
 		startInfo.StandardOutputEncoding = new UTF8Encoding(false);
 		startInfo.StandardErrorEncoding = new UTF8Encoding(false);
+		ReplWorkerEnvironment.RemoveHotReloadVariables(startInfo.Environment);
 
 		Process process = Process.Start(startInfo)
 		                  ?? throw new InvalidOperationException($"'{startInfo.FileName}' did not start.");
@@ -60,9 +85,12 @@ internal sealed class ReplWorkerProcess : IDisposable
 			(ReplWorkerMessage? ready, ReplWorkerStatus status) = await worker.ReceiveAsync(startupTimeout, ct);
 			if (ready?.Type != ReplWorkerMessage.ReadyType)
 			{
-				throw new InvalidOperationException(status == ReplWorkerStatus.TimedOut
-					? $"it did not report ready within {startupTimeout.TotalSeconds:0} seconds"
-					: $"it exited with code {worker.WaitForExitCode()?.ToString() ?? "unknown"}");
+				throw new InvalidOperationException(status switch
+				{
+					ReplWorkerStatus.TimedOut => $"it did not report ready within {startupTimeout.TotalSeconds:0} seconds",
+					ReplWorkerStatus.Oversized => "it wrote a line longer than the protocol allows",
+					_ => $"it exited with code {worker.WaitForExitCode()?.ToString() ?? "unknown"}"
+				});
 			}
 
 			return worker;
@@ -86,8 +114,8 @@ internal sealed class ReplWorkerProcess : IDisposable
 		}
 		catch (IOException)
 		{
-			// The pipe broke: the worker is gone.
-			return (null, ReplWorkerStatus.Exited);
+			// The pipe broke: the worker was gone before it got the snippet.
+			return (null, ReplWorkerStatus.NotSent);
 		}
 
 		(ReplWorkerMessage? message, ReplWorkerStatus status) = await ReceiveAsync(timeout, ct);
@@ -172,16 +200,22 @@ internal sealed class ReplWorkerProcess : IDisposable
 
 			// WaitAsync instead of cancelling the read: cancelling a pipe read isn't reliable on
 			// every platform, and a worker that times out is killed, which ends the read anyway.
-			Task<string?> read = _process.StandardOutput.ReadLineAsync(CancellationToken.None).AsTask();
+			Task<(string? Line, bool TooLong)> read = _lines.ReadLineAsync();
 			string? line;
+			bool tooLong;
 			try
 			{
-				line = await read.WaitAsync(remaining, ct);
+				(line, tooLong) = await read.WaitAsync(remaining, ct);
 			}
 			catch (TimeoutException)
 			{
 				_ = read.ContinueWith(static t => t.Exception, TaskContinuationOptions.OnlyOnFaulted);
 				return (null, ReplWorkerStatus.TimedOut);
+			}
+
+			if (tooLong)
+			{
+				return (null, ReplWorkerStatus.Oversized);
 			}
 
 			if (line is null)
@@ -211,5 +245,11 @@ internal enum ReplWorkerStatus
 	TimedOut,
 
 	/// <summary>The worker process ended before answering.</summary>
-	Exited
+	Exited,
+
+	/// <summary>The worker had exited before the request could be sent.</summary>
+	NotSent,
+
+	/// <summary>The worker wrote a line longer than <see cref="ReplWorkerProcess.MaxMessageLength" />.</summary>
+	Oversized
 }

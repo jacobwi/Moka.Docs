@@ -34,9 +34,12 @@ internal sealed class SourceLinkMap
 				return null;
 			}
 
+			// GetString throws for a number or an object, and one bad entry must not cost the others.
 			foreach (JsonProperty property in documents.EnumerateObject())
 			{
-				if (property.Value.GetString() is { Length: > 0 } url && TryCreateEntry(property.Name, url) is { } entry)
+				if (property.Value.ValueKind == JsonValueKind.String
+				    && property.Value.GetString() is { Length: > 0 } url
+				    && TryCreateEntry(property.Name, url) is { } entry)
 				{
 					entries.Add(entry);
 				}

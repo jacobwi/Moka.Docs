@@ -27,8 +27,6 @@ content:
       label: "CSharp"
     - path: ./src/Moka.Docs.Serve/Moka.Docs.Serve.csproj
       label: "Serve"
-    - path: ./src/Moka.Docs.Search/Moka.Docs.Search.csproj
-      label: "Search"
     - path: ./src/Moka.Docs.Themes/Moka.Docs.Themes.csproj
       label: "Themes"
     - path: ./src/Moka.Docs.Versioning/Moka.Docs.Versioning.csproj
@@ -49,9 +47,6 @@ features:
     enabled: true
   versioning:
     enabled: true
-    versions:
-      - label: "v1.8"
-        default: true
 
 plugins:
   - name: mokadocs-repl

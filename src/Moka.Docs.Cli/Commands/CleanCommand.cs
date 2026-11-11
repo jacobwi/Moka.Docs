@@ -61,10 +61,13 @@ internal static class CleanCommand
 	/// <returns>0 on success, 1 when a directory is unsafe to delete or could not be deleted.</returns>
 	internal static int Clean(string rootDir, SiteConfig config)
 	{
-		string outputDir = Path.GetFullPath(Path.Combine(rootDir, config.Build.Output));
-		string docsDir = Path.GetFullPath(Path.Combine(rootDir, config.Content.Docs));
+		string root = Path.GetFullPath(rootDir);
+		string outputDir = Path.GetFullPath(Path.Combine(root, config.Build.Output));
 
-		string? conflict = OutputDirectoryGuard.FindConflict(rootDir, docsDir, outputDir);
+		// The same checks the build makes before its own clean step, so clean can't delete a
+		// folder the build would refuse to.
+		string? conflict = OutputDirectoryGuard.FindConflict(config, root, outputDir)
+		                   ?? OutputDirectoryGuard.FindForeignContent(new FileSystem(), outputDir);
 		if (conflict is not null)
 		{
 			AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(conflict)}");

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.StaticFiles;
 using Moka.Docs.Core.Diagnostics;
 
 namespace Moka.Docs.AspNetCore;
@@ -26,6 +27,7 @@ public sealed class InMemorySite
 /// <param name="ContentType">The MIME content type (e.g., "text/html").</param>
 public sealed record SiteFile(byte[] Content, string ContentType)
 {
+	private static readonly FileExtensionContentTypeProvider _staticFileTypes = new();
 	private readonly byte[] _content = Content;
 	private readonly string _etag = CreateETag(Content);
 
@@ -50,7 +52,12 @@ public sealed record SiteFile(byte[] Content, string ContentType)
 	private static string CreateETag(byte[] content) =>
 		"\"" + Convert.ToHexStringLower(SHA256.HashData(content).AsSpan(0, 16)) + "\"";
 
-	/// <summary>Content type mappings for common file extensions.</summary>
+	/// <summary>
+	///     The content type for a file extension. Text types the build writes carry a UTF-8
+	///     charset; everything else comes from ASP.NET Core's static file map, which knows
+	///     <c>.pdf</c>, <c>.mp4</c>, <c>.avif</c> and the rest that went out as
+	///     <c>application/octet-stream</c>.
+	/// </summary>
 	internal static string GetContentType(string extension)
 	{
 		return extension.ToLowerInvariant() switch
@@ -60,22 +67,18 @@ public sealed record SiteFile(byte[] Content, string ContentType)
 			".js" => "application/javascript; charset=utf-8",
 			".json" => "application/json; charset=utf-8",
 			".svg" => "image/svg+xml",
-			".png" => "image/png",
-			".jpg" or ".jpeg" => "image/jpeg",
-			".gif" => "image/gif",
-			".ico" => "image/x-icon",
-			".woff" => "font/woff",
-			".woff2" => "font/woff2",
-			".ttf" => "font/ttf",
-			".eot" => "application/vnd.ms-fontobject",
 			".xml" => "application/xml",
 			".txt" => "text/plain; charset=utf-8",
 			".yaml" or ".yml" => "application/yaml; charset=utf-8",
-			".webp" => "image/webp",
+			".zip" => "application/zip",
+			// ASP.NET Core's map has it from .NET 10 on.
+			".avif" => "image/avif",
 			// The Blazor preview host's runtime. Browsers only compile WebAssembly while it
 			// downloads when the response says application/wasm.
 			".wasm" => "application/wasm",
-			_ => "application/octet-stream"
+			_ => _staticFileTypes.TryGetContentType("x" + extension, out string? contentType)
+				? contentType
+				: "application/octet-stream"
 		};
 	}
 }

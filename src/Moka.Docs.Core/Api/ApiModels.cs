@@ -10,6 +10,12 @@ public sealed record ApiReference
 
 	/// <summary>Source assembly names that were analyzed.</summary>
 	public List<string> Assemblies { get; init; } = [];
+
+	/// <summary>
+	///     Problems the analysis found that left documentation out, such as a doc comment that isn't
+	///     well-formed XML. The build reports each one as a warning.
+	/// </summary>
+	public List<string> Warnings { get; init; } = [];
 }
 
 /// <summary>
@@ -55,6 +61,14 @@ public sealed record ApiType
 
 	/// <summary>Whether the type is a record.</summary>
 	public bool IsRecord { get; init; }
+
+	/// <summary>
+	///     The declaration as C# writes it, without attributes, such as
+	///     <c>public readonly record struct Money(decimal Amount, string Currency)</c> or
+	///     <c>public delegate TResult Transform&lt;in T, out TResult&gt;(T input)</c>. When it's <c>null</c>,
+	///     the page puts one together from the other properties.
+	/// </summary>
+	public string? Signature { get; init; }
 
 	/// <summary>Generic type parameters.</summary>
 	public List<ApiTypeParameter> TypeParameters { get; init; } = [];
@@ -186,8 +200,19 @@ public sealed record ApiMember
 	/// <summary>Whether the member is sealed.</summary>
 	public bool IsSealed { get; init; }
 
-	/// <summary>Whether this is an extension method.</summary>
+	/// <summary>
+	///     Whether this is an extension method declared with <c>this</c> on its first parameter. Members of a
+	///     C# 14 <c>extension</c> block are described by <see cref="Extension" /> instead.
+	/// </summary>
 	public bool IsExtensionMethod { get; init; }
+
+	/// <summary>
+	///     The <c>extension</c> block that declares the member, for a member of a C# 14 extension block;
+	///     otherwise <c>null</c>. Such a member is an instance extension member unless <see cref="IsStatic" />
+	///     is set, and its <see cref="Parameters" /> and <see cref="TypeParameters" /> are its own, without the
+	///     block's receiver and type parameters.
+	/// </summary>
+	public ApiExtensionBlock? Extension { get; init; }
 
 	/// <summary>Parameters for methods and indexers.</summary>
 	public List<ApiParameter> Parameters { get; init; } = [];
@@ -269,6 +294,42 @@ public sealed record ApiParameter
 
 	/// <summary>Whether the parameter type is nullable.</summary>
 	public bool IsNullable { get; init; }
+}
+
+/// <summary>
+///     A C# 14 extension block, such as <c>extension(Shape shape) { ... }</c>, shared by the members it
+///     declares.
+/// </summary>
+public sealed record ApiExtensionBlock
+{
+	/// <summary>
+	///     The block's declaration as C# writes it, without namespaces, for example
+	///     <c>extension(ref Point point)</c> or
+	///     <c>extension&lt;T&gt;(List&lt;T&gt; list) where T : IComparable&lt;T&gt;</c>.
+	/// </summary>
+	public required string Signature { get; init; }
+
+	/// <summary>
+	///     The receiver parameter. Its name is empty when the block leaves it out, as a block with only
+	///     static members may: <c>extension(Shape)</c>.
+	/// </summary>
+	public required ApiParameter Receiver { get; init; }
+
+	/// <summary>The block's type parameters, with their constraints.</summary>
+	public List<ApiTypeParameter> TypeParameters { get; init; } = [];
+
+	/// <summary>
+	///     The block's documentation: its summary, the <c>&lt;param&gt;</c> for the receiver and a
+	///     <c>&lt;typeparam&gt;</c> for each type parameter.
+	/// </summary>
+	public XmlDocBlock? Documentation { get; init; }
+
+	/// <summary>
+	///     The documentation ID the compiler gives the block, such as
+	///     <c>T:MyLib.ShapeExtensions.&lt;G&gt;$4B0A9C.&lt;M&gt;$1F2E3D</c>. The compiler documents the block's
+	///     members on its grouping type, <c>&lt;G&gt;$4B0A9C</c>, which blocks for one receiver type share.
+	/// </summary>
+	public string? DocumentationId { get; init; }
 }
 
 /// <summary>

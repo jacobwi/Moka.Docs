@@ -520,13 +520,22 @@ public sealed class ChangelogPlugin : IMokaPlugin
 	                                             toggleIcon.innerHTML = chevronSvg;
 	                                             header.appendChild(toggleIcon);
 
-	                                             // Collapse all except the first entry
+	                                             // Collapse all except the first entry. An open entry has no height
+	                                             // limit: scrollHeight is 0 inside a hidden tab, which left the first
+	                                             // release 1px tall there, and a measured height clips content that
+	                                             // grows later (images loading).
 	                                             if (index > 0) {
 	                                                 entry.classList.add('changelog-collapsed');
 	                                                 body.style.maxHeight = '0';
 	                                             } else {
-	                                                 body.style.maxHeight = body.scrollHeight + 'px';
+	                                                 body.style.maxHeight = 'none';
 	                                             }
+
+	                                             body.addEventListener('transitionend', function(e) {
+	                                                 if (e.propertyName === 'max-height' && !entry.classList.contains('changelog-collapsed')) {
+	                                                     body.style.maxHeight = 'none';
+	                                                 }
+	                                             });
 
 	                                             header.addEventListener('click', function() {
 	                                                 var isCollapsed = entry.classList.contains('changelog-collapsed');
@@ -535,6 +544,9 @@ public sealed class ChangelogPlugin : IMokaPlugin
 	                                                     body.style.maxHeight = body.scrollHeight + 'px';
 	                                                     body.style.opacity = '1';
 	                                                 } else {
+	                                                     // Start from a pixel height so the close animates; 'none' to 0 does not.
+	                                                     body.style.maxHeight = body.scrollHeight + 'px';
+	                                                     void body.offsetHeight;
 	                                                     entry.classList.add('changelog-collapsed');
 	                                                     body.style.maxHeight = '0';
 	                                                     body.style.opacity = '0';

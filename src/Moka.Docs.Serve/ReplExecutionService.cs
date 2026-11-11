@@ -22,6 +22,7 @@ public sealed class ReplExecutionService : IDisposable
 	private readonly List<string> _temporaryDirectories = [];
 	private readonly Func<ProcessStartInfo>? _workerStartInfo;
 	private bool _disposed;
+	private int _pendingRuns;
 
 	/// <summary>
 	///     Script options for in-process runs, with the default imports plus loaded packages and
@@ -49,7 +50,9 @@ public sealed class ReplExecutionService : IDisposable
 	/// <param name="workerStartInfo">
 	///     Returns the command for a process that calls <see cref="ReplWorker.RunAsync" /> with its
 	///     standard input and output, such as <c>mokadocs repl-worker</c>. Called for every worker
-	///     started. Redirection settings are applied by the service.
+	///     started. Redirection settings are applied by the service, which also removes the variables
+	///     <c>dotnet watch</c> and hot reload agents set (<c>DOTNET_STARTUP_HOOKS</c>,
+	///     <c>DOTNET_MODIFIABLE_ASSEMBLIES</c>, <c>DOTNET_WATCH*</c>, <c>ASPNETCORE_AUTO_RELOAD_*</c>).
 	/// </param>
 	public ReplExecutionService(ILogger<ReplExecutionService> logger, Func<ProcessStartInfo> workerStartInfo)
 		: this(logger)
@@ -62,6 +65,12 @@ public sealed class ReplExecutionService : IDisposable
 
 	/// <summary>How long a new worker may take to load .NET, Roslyn and the references.</summary>
 	internal TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+	/// <summary>How many runs may wait while one runs before <see cref="ExecuteAsync" /> refuses more.</summary>
+	internal int MaxWaitingRuns { get; init; } = 4;
+
+	/// <summary>Runs in progress or waiting for their turn.</summary>
+	internal int PendingRuns => Volatile.Read(ref _pendingRuns);
 
 	/// <summary>The current worker's process id, or <c>null</c> when none is running.</summary>
 	internal int? WorkerProcessId => _worker?.ProcessId;
@@ -171,9 +180,14 @@ public sealed class ReplExecutionService : IDisposable
 	/// <summary>
 	///     Executes the given C# code and returns the result.
 	/// </summary>
+	/// <remarks>
+	///     Runs happen one at a time. Up to <see cref="MaxWaitingRuns" /> more wait their turn; past
+	///     that, the call throws instead of queueing without limit.
+	/// </remarks>
 	/// <param name="code">The C# source code to execute.</param>
 	/// <param name="ct">Cancellation token.</param>
 	/// <returns>The execution result containing output and/or error messages.</returns>
+	/// <exception cref="ReplQueueFullException">Too many runs are already waiting.</exception>
 	public async Task<ReplResult> ExecuteAsync(string code, CancellationToken ct = default)
 	{
 		if (ReplScriptRunner.Validate(code) is { } invalid)
@@ -181,11 +195,26 @@ public sealed class ReplExecutionService : IDisposable
 			return invalid;
 		}
 
-		_logger.LogDebug("REPL: Executing {Length} characters of code", code.Length);
+		// Each waiting run can hold the gate for the whole timeout, so an unbounded queue let a
+		// page full of Run clicks, or a script, keep requests open for minutes.
+		if (Interlocked.Increment(ref _pendingRuns) > MaxWaitingRuns + 1)
+		{
+			Interlocked.Decrement(ref _pendingRuns);
+			throw new ReplQueueFullException();
+		}
 
-		return _workerStartInfo is null
-			? await ExecuteInProcessAsync(code, ct)
-			: await ExecuteInWorkerAsync(code, ct);
+		try
+		{
+			_logger.LogDebug("REPL: Executing {Length} characters of code", code.Length);
+
+			return _workerStartInfo is null
+				? await ExecuteInProcessAsync(code, ct)
+				: await ExecuteInWorkerAsync(code, ct);
+		}
+		finally
+		{
+			Interlocked.Decrement(ref _pendingRuns);
+		}
 	}
 
 	/// <inheritdoc />
@@ -248,59 +277,97 @@ public sealed class ReplExecutionService : IDisposable
 		{
 			ObjectDisposedException.ThrowIf(_disposed, this);
 
-			try
+			// A worker can exit between runs, for example from a timer the last snippet left
+			// behind. Sending it the next snippet reported that exit as the new snippet's doing.
+			for (int attempt = 1; ; attempt++)
 			{
-				_worker ??= await StartWorkerAsync(ct);
-			}
-			catch (Exception ex) when (IsStartFailure(ex))
-			{
-				_logger.LogWarning("REPL: the worker process failed to start: {Message}", ex.Message);
-				return new ReplResult { Error = $"The REPL worker process failed to start: {ex.Message}" };
-			}
-
-			ReplResult? result;
-			ReplWorkerStatus status;
-			try
-			{
-				(result, status) = await _worker.ExecuteAsync(code, Timeout, ct);
-			}
-			catch (OperationCanceledException) when (ct.IsCancellationRequested)
-			{
-				// The snippet is still running and its answer would reach the next run's read, or
-				// that read would fail on the one still pending. A new worker has nothing in flight.
-				_worker.Kill();
-				DiscardWorker();
-				throw;
-			}
-
-			switch (status)
-			{
-				case ReplWorkerStatus.Completed:
-					return result!;
-
-				case ReplWorkerStatus.TimedOut:
-					// Killing the process is the only thing that stops code which never yields. A
-					// cancellation token only stopped the wait, and the loop kept running.
-					_logger.LogWarning("REPL: Execution timed out after {Timeout}s; restarting the worker",
-						Timeout.TotalSeconds);
-					_worker.Kill();
+				if (_worker is { HasExited: true })
+				{
+					_logger.LogDebug("REPL: the worker exited between runs; starting a new one");
 					DiscardWorker();
-					return TimedOut();
+				}
 
-				default:
-					int? exitCode = _worker.WaitForExitCode();
+				ReplWorkerProcess worker;
+				try
+				{
+					worker = _worker ??= await StartWorkerAsync(ct);
+				}
+				catch (Exception ex) when (IsStartFailure(ex))
+				{
+					_logger.LogWarning("REPL: the worker process failed to start: {Message}", ex.Message);
+					return new ReplResult { Error = $"The REPL worker process failed to start: {ex.Message}" };
+				}
+
+				(ReplResult? result, ReplWorkerStatus status) = await RunInWorkerAsync(worker, code, ct);
+				if (status == ReplWorkerStatus.NotSent && attempt == 1)
+				{
 					DiscardWorker();
-					return new ReplResult
-					{
-						Error = exitCode is null
-							? "The code ended the REPL process."
-							: $"The code ended the REPL process (exit code {exitCode})."
-					};
+					continue;
+				}
+
+				return result ?? ReportFailedRun(worker, status);
 			}
 		}
 		finally
 		{
 			_gate.Release();
+		}
+	}
+
+	private async Task<(ReplResult? Result, ReplWorkerStatus Status)> RunInWorkerAsync(ReplWorkerProcess worker,
+		string code, CancellationToken ct)
+	{
+		try
+		{
+			return await worker.ExecuteAsync(code, Timeout, ct);
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			// The snippet is still running and its answer would reach the next run's read, or
+			// that read would fail on the one still pending. A new worker has nothing in flight.
+			worker.Kill();
+			DiscardWorker();
+			throw;
+		}
+	}
+
+	/// <summary>Replaces a worker whose run didn't complete and says why. The caller holds the gate.</summary>
+	private ReplResult ReportFailedRun(ReplWorkerProcess worker, ReplWorkerStatus status)
+	{
+		switch (status)
+		{
+			case ReplWorkerStatus.TimedOut:
+				// Killing the process is the only thing that stops code which never yields. A
+				// cancellation token only stopped the wait, and the loop kept running.
+				_logger.LogWarning("REPL: Execution timed out after {Timeout}s; restarting the worker",
+					Timeout.TotalSeconds);
+				worker.Kill();
+				DiscardWorker();
+				return TimedOut();
+
+			case ReplWorkerStatus.Oversized:
+				_logger.LogWarning("REPL: the worker wrote a line over {Limit} characters; restarting it",
+					ReplWorkerProcess.MaxMessageLength);
+				worker.Kill();
+				DiscardWorker();
+				return new ReplResult
+				{
+					Error = "The code wrote too much to the REPL process's standard output, so the process was stopped."
+				};
+
+			case ReplWorkerStatus.NotSent:
+				DiscardWorker();
+				return new ReplResult { Error = "The REPL process exited before it could run the code." };
+
+			default:
+				int? exitCode = worker.WaitForExitCode();
+				DiscardWorker();
+				return new ReplResult
+				{
+					Error = exitCode is null
+						? "The code ended the REPL process."
+						: $"The code ended the REPL process (exit code {exitCode})."
+				};
 		}
 	}
 

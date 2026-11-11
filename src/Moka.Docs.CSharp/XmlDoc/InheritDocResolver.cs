@@ -68,11 +68,16 @@ public sealed class InheritDocResolver
 
 		public Resolution(IEnumerable<ApiType> types)
 		{
-			foreach (ApiType type in types)
+			List<ApiType> all = types.ToList();
+			ApiTypeRoutes routes = ApiTypeRoutes.For(all);
+			foreach (ApiType type in all)
 			{
-				_byTypeKey.TryAdd(TypeKey(type.FullName), type);
+				// The documentation ID, not the full name: the reflection host's full names leave type
+				// parameters out, so Ns.Base<int> and Ns.Outer<int>.Inner found nothing.
+				string key = routes.DocumentationId(type);
+				_byTypeKey.TryAdd(key, type);
 
-				string simpleName = type.TypeParameters.Count > 0 ? $"{type.Name}`{type.TypeParameters.Count}" : type.Name;
+				string simpleName = key[(key.LastIndexOf('.') + 1)..];
 				if (!_bySimpleName.TryGetValue(simpleName, out List<ApiType>? sameName))
 				{
 					sameName = [];
@@ -96,7 +101,7 @@ public sealed class InheritDocResolver
 				return own;
 			}
 
-			XmlDocBlock? inherited = FromCref(own?.InheritDocCref)
+			XmlDocBlock? inherited = FromCref(own?.InheritDocCref, out _)
 			                         ?? Ancestors(type).Select(TypeDoc).FirstOrDefault(HasSummary);
 
 			_inProgress.Remove(type);
@@ -118,15 +123,16 @@ public sealed class InheritDocResolver
 				return own;
 			}
 
-			XmlDocBlock? inherited = FromCref(own?.InheritDocCref) ?? FromAncestors(owner, member);
+			ApiMember? source;
+			XmlDocBlock? inherited = FromCref(own?.InheritDocCref, out source) ?? FromAncestors(owner, member, out source);
 
 			_inProgress.Remove(member);
-			resolved = Merge(own, inherited);
+			resolved = Merge(own, RenameParameters(inherited, source, member));
 			_memberDocs[member] = resolved;
 			return resolved;
 		}
 
-		private XmlDocBlock? FromAncestors(ApiType owner, ApiMember member)
+		private XmlDocBlock? FromAncestors(ApiType owner, ApiMember member, out ApiMember? source)
 		{
 			foreach (ApiType ancestor in Ancestors(owner))
 			{
@@ -134,11 +140,50 @@ public sealed class InheritDocResolver
 				    && MemberDoc(ancestor, match) is { } doc
 				    && HasSummary(doc))
 				{
+					source = match;
 					return doc;
 				}
 			}
 
+			source = null;
 			return null;
+		}
+
+		/// <summary>
+		///     Gives inherited <c>&lt;param&gt;</c> and <c>&lt;typeparam&gt;</c> docs the names the inheriting
+		///     member uses, matched by position. An override that renamed a parameter used to lose its
+		///     description, because the docs are keyed by the base member's names.
+		/// </summary>
+		private static XmlDocBlock? RenameParameters(XmlDocBlock? doc, ApiMember? source, ApiMember target)
+		{
+			if (doc is null || source is null)
+			{
+				return doc;
+			}
+
+			return doc with
+			{
+				Parameters = Rename(doc.Parameters, source.Parameters.Select(p => p.Name), target.Parameters.Select(p => p.Name)),
+				TypeParameters = Rename(doc.TypeParameters, source.TypeParameters.Select(p => p.Name),
+					target.TypeParameters.Select(p => p.Name))
+			};
+		}
+
+		private static Dictionary<string, string> Rename(
+			Dictionary<string, string> docs,
+			IEnumerable<string> sourceNames,
+			IEnumerable<string> targetNames)
+		{
+			List<string> from = sourceNames.ToList();
+			List<string> to = targetNames.ToList();
+			var renamed = new Dictionary<string, string>(StringComparer.Ordinal);
+			foreach ((string name, string text) in docs)
+			{
+				int position = from.IndexOf(name);
+				renamed[position >= 0 && position < to.Count ? to[position] : name] = text;
+			}
+
+			return renamed;
 		}
 
 		/// <summary>
@@ -187,17 +232,23 @@ public sealed class InheritDocResolver
 		///     Takes the documentation the cref names. The cref used to be ignored, so the docs came
 		///     from a same-named base member or from nowhere.
 		/// </summary>
-		private XmlDocBlock? FromCref(string? cref)
+		private XmlDocBlock? FromCref(string? cref, out ApiMember? source)
 		{
+			source = null;
+
 			// "!:" marks a cref Roslyn could not bind, which names nothing to look up.
-			if (string.IsNullOrEmpty(cref) || MemberIdParser.Parse(cref) is not { } id || id.Kind == MemberIdKind.Error)
+			if (string.IsNullOrEmpty(cref)
+			    || MemberIdParser.Parse(MemberIdParser.WithoutExtensionTypes(cref)) is not { } id
+			    || id.Kind == MemberIdKind.Error)
 			{
 				return null;
 			}
 
+			string? grouping = MemberIdParser.ExtensionGroupingName(cref);
 			if (id.Kind == MemberIdKind.Type)
 			{
-				return Find(id.FullName) is { } type ? TypeDoc(type) : null;
+				// An extension block's ID would otherwise name its static class.
+				return grouping is null && Find(id.FullName) is { } type ? TypeDoc(type) : null;
 			}
 
 			if (id.ContainingType is null || Find(id.ContainingType) is not { } owner)
@@ -205,12 +256,13 @@ public sealed class InheritDocResolver
 				return null;
 			}
 
-			return FindMember(owner, id) is { } member ? MemberDoc(owner, member) : null;
+			source = FindMember(owner, id, grouping);
+			return source is not null ? MemberDoc(owner, source) : null;
 		}
 
 		/// <summary>
-		///     Looks a type reference up by full name, then by simple name when the reference is
-		///     unqualified and exactly one type carries that name.
+		///     Looks a type reference up by its full documentation ID, then by simple name when the
+		///     reference is unqualified and exactly one type carries that name.
 		/// </summary>
 		/// <remarks>
 		///     Each project is compiled on its own, so a type defined in another analyzed
@@ -323,7 +375,7 @@ public sealed class InheritDocResolver
 			return sameCount;
 		}
 
-		private static ApiMember? FindMember(ApiType type, MemberIdInfo id)
+		private static ApiMember? FindMember(ApiType type, MemberIdInfo id, string? extensionGrouping)
 		{
 			// Documentation IDs append a method's generic arity ("Map``1") and call an indexer "Item".
 			string name = id.Name.Split('`')[0];
@@ -341,6 +393,7 @@ public sealed class InheritDocResolver
 
 			return type.Members.FirstOrDefault(member =>
 				member.Kind == wanted.Kind
+				&& (extensionGrouping is null || MemberIdParser.IsInExtensionGrouping(member, extensionGrouping))
 				&& (wanted.Name is null || member.Name == wanted.Name)
 				&& (member.Kind is ApiMemberKind.Field or ApiMemberKind.Event or ApiMemberKind.Property
 				    || member.Parameters.Count == parameterCount));

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Moka.Docs.Core.Theming;
 
 namespace Moka.Docs.AspNetCore;
 
@@ -24,6 +25,12 @@ public sealed class MokaDocsOptions
 	///     Relative paths are resolved from the application's content root.
 	///     If null, only API reference pages are generated.
 	/// </summary>
+	/// <remarks>
+	///     The build reads Markdown and the asset types the site publishes, skipping dot folders
+	///     other than <c>.well-known</c>. App settings and build output (<c>appsettings*.json</c>,
+	///     <c>*.deps.json</c>, <c>*.runtimeconfig.json</c>, <c>*.dll</c>, <c>*.pdb</c>, and the
+	///     <c>bin</c>, <c>obj</c> and <c>node_modules</c> folders) are left out with a warning.
+	/// </remarks>
 	public string? DocsPath { get; set; }
 
 	/// <summary>
@@ -92,6 +99,36 @@ public sealed class MokaDocsOptions
 
 	/// <summary>Accent theme color (CSS hex).</summary>
 	public string AccentColor { get; set; } = "#f59e0b";
+
+	/// <summary>
+	///     Appearance style the pages start with: <c>"default"</c>, <c>"moka"</c>, <c>"minimal"</c>,
+	///     <c>"classic"</c> or <c>"soft"</c>. Default: <c>"default"</c>. An unknown name renders as
+	///     <c>"default"</c>, and the build logs a warning.
+	/// </summary>
+	/// <remarks>
+	///     <c>"moka"</c> starts in dark mode for a reader who has never used the dark mode toggle.
+	/// </remarks>
+	public string Style { get; set; } = ThemeStyles.Default;
+
+	/// <summary>
+	///     Whether the header has a button for picking another style. The reader's pick is saved in
+	///     the browser and wins over <see cref="Style" />. Default: true.
+	/// </summary>
+	public bool StyleSelector { get; set; } = true;
+
+	/// <summary>
+	///     How pages get the sidebar: <c>"auto"</c> (the default), <c>"inline"</c> or <c>"shared"</c>.
+	///     <c>"inline"</c> writes the whole sidebar into every page. <c>"shared"</c> writes it once, to
+	///     <c>{BasePath}/_theme/js/sidebar.js</c>, which every page loads; a page holds only the
+	///     top-level entries and the ones along its own path, for readers without JavaScript.
+	///     <c>"auto"</c> is inline up to 300 sidebar entries and shared above. An unknown name means
+	///     <c>"auto"</c>, and the build logs a warning.
+	/// </summary>
+	/// <remarks>
+	///     The shared file is served like the rest of the site, with an <c>ETag</c>. Its URL carries a
+	///     hash of its content, so a rebuild that changes the sidebar changes the URL too.
+	/// </remarks>
+	public string Sidebar { get; set; } = SidebarModes.Auto;
 
 	/// <summary>
 	///     Version label shown in the version selector in the header (e.g., "v2.0").
@@ -169,13 +206,20 @@ public sealed class MokaDocsOptions
 	public bool CacheOutput { get; set; } = true;
 
 	/// <summary>
+	///     Whether to minify the pages and the theme's CSS and JS, like <c>build.minify</c> in
+	///     <c>mokadocs.yaml</c>: whitespace collapsed and comments removed. Default: false.
+	/// </summary>
+	public bool Minify { get; set; }
+
+	/// <summary>
 	///     Whether to build the site in the background as soon as the application has started,
 	///     so the first reader doesn't wait for the build. Default: true. Ignored when
 	///     <see cref="CacheOutput" /> is false, and when <c>MapMokaDocs</c> is never called.
 	/// </summary>
 	/// <remarks>
 	///     The build starts from <c>IHostApplicationLifetime.ApplicationStarted</c>, after every
-	///     endpoint is mapped. A failed build is logged, and the first request tries again.
+	///     endpoint is mapped. A failed build is logged once, requests get <c>503</c>, and the
+	///     first request after 5 seconds tries again.
 	/// </remarks>
 	public bool BuildOnStartup { get; set; } = true;
 
@@ -209,14 +253,19 @@ public sealed class MokaDocsOptions
 
 	/// <summary>
 	///     Whether the code execution endpoint of <see cref="EnableRepl" /> is mapped outside the
-	///     Development environment and runs code for requests from other machines. Default: false,
-	///     which maps it in Development only and answers callers on a loopback address only, as
-	///     <c>mokadocs serve</c> listens on localhost only.
+	///     Development environment and runs code for requests from other machines or through a
+	///     proxy. Default: false, which maps it in Development only and runs code only for
+	///     requests from a loopback address, with a <c>Host</c> of <c>localhost</c>, a name under
+	///     <c>.localhost</c> or a loopback address, and no <c>Forwarded</c>,
+	///     <c>X-Forwarded-For</c> or <c>X-Forwarded-Host</c> header, as <c>mokadocs serve</c>
+	///     listens on this machine only.
 	/// </summary>
 	/// <remarks>
 	///     The endpoint compiles and runs any C# it receives, as the user the application runs
 	///     as. Anyone who can reach it can run code on the server. Turn this on only behind
-	///     authorization, for example <c>app.MapMokaDocs().RequireAuthorization("Admins")</c>.
+	///     authorization, for example <c>app.MapMokaDocs().RequireAuthorization("Admins")</c>. A
+	///     reverse proxy on the same machine needs it too, because the proxy makes every caller
+	///     look local.
 	/// </remarks>
 	public bool AllowRemoteRepl { get; set; }
 
@@ -229,13 +278,21 @@ public sealed class MokaDocsOptions
 	///     The process must call <c>ReplWorker.RunAsync</c> with its standard input and output,
 	///     as <see cref="MokaDocsReplWorker.TryRunAsync" /> does. The service adds the
 	///     <c>MOKADOCS_REPL_WORKER</c> and <c>MOKADOCS_REPL_PARENT_PID</c> environment variables
-	///     and the redirection settings. When this is set, the REPL doesn't check that
+	///     and the redirection settings, and removes <c>DOTNET_STARTUP_HOOKS</c> and the variables
+	///     <c>dotnet watch</c> sets for hot reload. When this is set, the REPL doesn't check that
 	///     Program.cs calls <see cref="MokaDocsReplWorker.TryRunAsync" />.
 	/// </remarks>
 	public Func<System.Diagnostics.ProcessStartInfo>? ReplWorkerStartInfo { get; set; }
 
 	/// <summary>Copyright text shown in the footer.</summary>
 	public string? Copyright { get; set; }
+
+	/// <summary>
+	///     The blog: posts in a folder under <see cref="DocsPath" />, a paginated index, tag pages
+	///     and a sidebar entry. <c>null</c> (the default) builds no blog, and the folder's files are
+	///     ordinary pages.
+	/// </summary>
+	public MokaDocsBlogOptions? Blog { get; set; }
 
 	/// <summary>
 	///     Navigation items to show in the sidebar.
@@ -262,13 +319,13 @@ public sealed class NavEntry
 	public bool Expanded { get; set; }
 
 	/// <summary>
-	///     Whether to list the API reference under this entry: each namespace, with its types.
-	///     Applies when <see cref="Path" /> is <c>/api</c>, where the API pages are generated.
+	///     Whether to list everything below <see cref="Path" /> as a tree, as <c>mokadocs</c> does for
+	///     a site without a <c>nav:</c> list: each folder is a section, and under <c>/api</c> each
+	///     namespace is a section holding its types.
 	/// </summary>
 	/// <remarks>
-	///     An entry for any other path lists the pages one route segment below it, whether or
-	///     not this is set. Type pages sit several segments below <c>/api</c>, so without this an
-	///     API entry has no children.
+	///     Without it, an entry lists the pages one route segment below its path. Type pages sit
+	///     several segments below <c>/api</c>, so an API entry without it has no children.
 	/// </remarks>
 	public bool AutoGenerate { get; set; }
 }

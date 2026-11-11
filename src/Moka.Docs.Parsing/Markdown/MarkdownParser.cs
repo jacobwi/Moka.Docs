@@ -13,6 +13,11 @@ namespace Moka.Docs.Parsing.Markdown;
 ///     Parses a Markdown file into a <see cref="MarkdownParseResult" /> containing
 ///     front matter, rendered HTML, plain text, and a table of contents.
 /// </summary>
+/// <remarks>
+///     <see cref="Parse(string, string)" /> is safe to call from several threads at once, and the
+///     same input always renders the same HTML: tab and code group ids come from the page path
+///     and their position, not from a counter.
+/// </remarks>
 public sealed class MarkdownParser
 {
 	private readonly FrontMatterExtractor _frontMatterExtractor;
@@ -57,6 +62,7 @@ public sealed class MarkdownParser
 		if (sourcePath is not null)
 		{
 			RelativeLinks.Rewrite(document, sourcePath);
+			GroupIds.ScopeToPage(document, sourcePath);
 		}
 
 		// Step 3: Generate ToC
@@ -77,6 +83,7 @@ public sealed class MarkdownParser
 		{
 			FrontMatter = fmResult.FrontMatter,
 			FrontMatterError = fmResult.Error,
+			Warnings = fmResult.Warnings,
 			Html = html,
 			PlainText = plainText,
 			TableOfContents = toc
@@ -89,8 +96,11 @@ public sealed class MarkdownParser
 	{
 		MarkdownPipelineBuilder builder = new MarkdownPipelineBuilder()
 			.UseAdvancedExtensions() // Tables, footnotes, task lists, auto-links, etc.
-			.UseYamlFrontMatter()
 			.UseEmojiAndSmiley();
+
+		// No UseYamlFrontMatter: FrontMatterExtractor has already taken the front matter off, and
+		// Markdig's version would read a body that opens with a --- rule as a second YAML block
+		// and drop everything up to the next ---.
 
 		// Admonitions (::: note, ::: tip Custom Title, ...). This must be registered
 		// rather than left to Markdig's built-in CustomContainers, which renders
@@ -136,50 +146,21 @@ public sealed class MarkdownParser
 
 		foreach (Block block in document.AllDescendants())
 		{
-			if (block is ParagraphBlock paragraph && paragraph.Inline is not null)
+			ContainerInline? inline = block switch
 			{
-				foreach (Inline inline in paragraph.Inline)
-				{
-					AppendInlineText(sb, inline);
-				}
+				ParagraphBlock paragraph => paragraph.Inline,
+				HeadingBlock heading => heading.Inline,
+				_ => null
+			};
 
-				sb.AppendLine();
-			}
-			else if (block is HeadingBlock heading && heading.Inline is not null)
+			if (inline is not null)
 			{
-				foreach (Inline inline in heading.Inline)
-				{
-					AppendInlineText(sb, inline);
-				}
-
+				InlineText.Append(sb, inline);
 				sb.AppendLine();
 			}
 		}
 
 		return sb.ToString().Trim();
-	}
-
-	private static void AppendInlineText(StringBuilder sb, Inline inline)
-	{
-		switch (inline)
-		{
-			case LiteralInline literal:
-				sb.Append(literal.Content);
-				break;
-			case CodeInline code:
-				sb.Append(code.Content);
-				break;
-			case ContainerInline container:
-				foreach (Inline child in container)
-				{
-					AppendInlineText(sb, child);
-				}
-
-				break;
-			case LineBreakInline:
-				sb.Append(' ');
-				break;
-		}
 	}
 
 	#endregion
@@ -216,4 +197,10 @@ public sealed record MarkdownParseResult
 
 	/// <summary>Why the front matter block could not be read, or <c>null</c> when it was fine or absent.</summary>
 	public string? FrontMatterError { get; init; }
+
+	/// <summary>
+	///     Problems that did not stop the page from building, such as an unknown front matter key
+	///     or a front matter block without its closing <c>---</c>. Messages do not name the file.
+	/// </summary>
+	public IReadOnlyList<string> Warnings { get; init; } = [];
 }

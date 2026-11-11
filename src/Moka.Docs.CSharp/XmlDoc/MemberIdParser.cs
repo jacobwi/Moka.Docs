@@ -1,3 +1,6 @@
+using System.Text.RegularExpressions;
+using Moka.Docs.Core.Api;
+
 namespace Moka.Docs.CSharp.XmlDoc;
 
 /// <summary>
@@ -30,8 +33,57 @@ namespace Moka.Docs.CSharp.XmlDoc;
 ///         </item>
 ///     </list>
 /// </remarks>
-public static class MemberIdParser
+public static partial class MemberIdParser
 {
+	/// <summary>
+	///     The extension grouping type a member ID names. The compiler documents a member of a C# 14
+	///     extension block on a nested grouping type with an unspeakable name, shared by the blocks for one
+	///     receiver type: <c>P:MyLib.ShapeExtensions.&lt;G&gt;$4B0A9C.Perimeter</c>.
+	/// </summary>
+	/// <param name="memberId">A member ID or cref.</param>
+	/// <returns>The grouping type's name, such as <c>&lt;G&gt;$4B0A9C</c>, or <c>null</c> when the ID names none.</returns>
+	public static string? ExtensionGroupingName(string memberId) =>
+		ExtensionGroupingRegex().Match(NameOf(memberId)) is { Success: true } match ? match.Groups[1].Value : null;
+
+	/// <summary>
+	///     Whether a member belongs to an extension block documented under the grouping type
+	///     <paramref name="groupingName" />, judged by <see cref="ApiExtensionBlock.DocumentationId" />. A block
+	///     without a documentation ID could be under any grouping type.
+	/// </summary>
+	/// <param name="member">The member.</param>
+	/// <param name="groupingName">A name from <see cref="ExtensionGroupingName" />.</param>
+	/// <returns>Whether the member could be the one an ID with that grouping type names.</returns>
+	public static bool IsInExtensionGrouping(ApiMember member, string groupingName) =>
+		member.Extension is { } block
+		&& (block.DocumentationId is null || block.DocumentationId.Contains($".{groupingName}.", StringComparison.Ordinal));
+
+	/// <summary>
+	///     Removes the extension grouping and marker types from a member ID, so that it names the
+	///     static class that declares the extension block:
+	///     <c>P:MyLib.ShapeExtensions.&lt;G&gt;$4B0A9C.Perimeter</c> becomes
+	///     <c>P:MyLib.ShapeExtensions.Perimeter</c>. Any other ID is returned unchanged.
+	/// </summary>
+	/// <param name="memberId">A member ID or cref.</param>
+	/// <returns>The ID without the compiler's extension types.</returns>
+	public static string WithoutExtensionTypes(string memberId)
+	{
+		string name = NameOf(memberId);
+		return ExtensionTypeSegmentRegex().Replace(name, "") + memberId[name.Length..];
+	}
+
+	// Only the name part can hold the compiler's types; a parameter list names the receiver's type instead.
+	private static string NameOf(string memberId)
+	{
+		int parenIndex = memberId.IndexOf('(');
+		return parenIndex >= 0 ? memberId[..parenIndex] : memberId;
+	}
+
+	[GeneratedRegex(@"\.<[GM]>\$[^.]*")]
+	private static partial Regex ExtensionTypeSegmentRegex();
+
+	[GeneratedRegex(@"\.(<G>\$[^.]*)")]
+	private static partial Regex ExtensionGroupingRegex();
+
 	/// <summary>
 	///     Parses a member ID string into its components.
 	/// </summary>
@@ -120,6 +172,9 @@ public static class MemberIdParser
 		{
 			return "";
 		}
+
+		// An extension member reads as a member of its static class, not of "<G>$4B0A9C".
+		cref = WithoutExtensionTypes(cref);
 
 		// Strip prefix
 		string body = cref.Length > 2 && cref[1] == ':' ? cref[2..] : cref;

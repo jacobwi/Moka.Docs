@@ -647,7 +647,9 @@ def file_to_module_name(source_dir: Path, py_file: Path) -> str:
         parts = parts[:-1]
     else:
         parts[-1] = parts[-1].removesuffix(".py")
-    return ".".join(parts) if parts else rel.stem
+    # An __init__.py directly in source_dir is the package that folder holds, so it takes
+    # the folder's name rather than "__init__".
+    return ".".join(parts) if parts else source_dir.name
 
 
 def analyze_directory(source_dir: str) -> AnalysisResult:

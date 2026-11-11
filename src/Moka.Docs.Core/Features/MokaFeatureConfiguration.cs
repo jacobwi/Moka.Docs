@@ -46,7 +46,7 @@ public static class MokaFeatureConfiguration
 			[MokaFeatureFlags.VersionSelector] = MokaDefaults.ShowVersionSelector,
 			[MokaFeatureFlags.LastUpdated] = MokaDefaults.ShowLastUpdated,
 			[MokaFeatureFlags.EditLink] = MokaDefaults.ShowEditLink,
-			[MokaFeatureFlags.Contributors] = false,
+			[MokaFeatureFlags.Contributors] = MokaDefaults.ShowContributors,
 			[MokaFeatureFlags.PageAnimations] = MokaDefaults.ShowAnimations,
 
 			// Code Block Features
@@ -70,7 +70,7 @@ public static class MokaFeatureConfiguration
 			[MokaFeatureFlags.Sitemap] = MokaDefaults.GenerateSitemap,
 			[MokaFeatureFlags.RobotsTxt] = MokaDefaults.GenerateRobots,
 			[MokaFeatureFlags.SearchIndex] = MokaDefaults.SearchEnabled,
-			[MokaFeatureFlags.MinifyOutput] = true,
+			[MokaFeatureFlags.MinifyOutput] = MokaDefaults.MinifyOutput,
 
 			// Documentation Gating - OFF (hide premium docs from public builds)
 			[MokaFeatureFlags.ShowCloudDocs] = false,

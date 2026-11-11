@@ -7,8 +7,8 @@ using Markdig.Syntax;
 namespace Moka.Docs.Parsing.Markdown;
 
 /// <summary>
-///     Markdig extension that renders fenced code blocks with the "csharp-repl" (or "csharp repl")
-///     language as interactive REPL containers with a <c>data-repl="true"</c> attribute.
+///     Markdig extension that renders <c>csharp-repl</c>, <c>cs-repl</c>, <c>csharp repl</c> and
+///     <c>cs repl</c> fenced code blocks as interactive REPL containers with a <c>data-repl="true"</c> attribute.
 ///     The REPL plugin later enhances these with Run buttons and output panels.
 /// </summary>
 /// <remarks>
@@ -62,6 +62,11 @@ public sealed class ReplExtension : IMarkdownExtension
 internal sealed class ReplCodeBlockRenderer(HtmlObjectRenderer<CodeBlock>? innerRenderer)
 	: HtmlObjectRenderer<CodeBlock>
 {
+	private static readonly HashSet<string> _csharpLanguages = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"csharp", "cs", "c#"
+	};
+
 	private readonly HtmlObjectRenderer<CodeBlock> _innerRenderer = innerRenderer ?? new CodeBlockRenderer();
 
 	protected override void Write(HtmlRenderer renderer, CodeBlock block)
@@ -77,14 +82,29 @@ internal sealed class ReplCodeBlockRenderer(HtmlObjectRenderer<CodeBlock>? inner
 		}
 	}
 
-	private static bool IsRepl(FencedCodeBlock block)
+	/// <summary>
+	///     Whether a fence is a REPL block: <c>csharp-repl</c> or <c>cs-repl</c>, or a C# fence whose
+	///     arguments start with the word <c>repl</c> (<c>csharp repl</c>, <c>cs repl title="x"</c>).
+	/// </summary>
+	internal static bool IsRepl(FencedCodeBlock block)
 	{
 		string info = block.Info?.Trim() ?? "";
-		// Match "csharp-repl", "csharp repl", "cs-repl", "cs repl"
-		return string.Equals(info, "csharp-repl", StringComparison.OrdinalIgnoreCase)
-		       || string.Equals(info, "csharp repl", StringComparison.OrdinalIgnoreCase)
-		       || string.Equals(info, "cs-repl", StringComparison.OrdinalIgnoreCase)
-		       || string.Equals(info, "cs repl", StringComparison.OrdinalIgnoreCase);
+		if (string.Equals(info, "csharp-repl", StringComparison.OrdinalIgnoreCase)
+		    || string.Equals(info, "cs-repl", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		// Markdig splits the info string at the first space, so "csharp repl" arrives as
+		// Info "csharp" and Arguments "repl"; comparing Info with "csharp repl" never matched.
+		if (!_csharpLanguages.Contains(info))
+		{
+			return false;
+		}
+
+		ReadOnlySpan<char> arguments = (block.Arguments ?? "").AsSpan().TrimStart();
+		return arguments.StartsWith("repl", StringComparison.OrdinalIgnoreCase)
+		       && (arguments.Length == 4 || char.IsWhiteSpace(arguments[4]));
 	}
 
 	private static void WriteReplBlock(HtmlRenderer renderer, FencedCodeBlock block)

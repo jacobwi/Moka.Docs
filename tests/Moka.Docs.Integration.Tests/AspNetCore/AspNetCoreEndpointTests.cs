@@ -75,8 +75,10 @@ public sealed class AspNetCoreEndpointTests : IDisposable
 	}
 
 	[Fact]
-	public async Task StaticAsset_KeepsItsMaxAge()
+	public async Task StaticAsset_IsRevalidatedWithItsETag()
 	{
+		// Theme CSS and scripts have no hash in their URLs. With a day of max-age, readers got new
+		// pages with the old theme for up to 24 hours after an upgrade.
 		await using DocsTestHost host = await StartAsync();
 		InMemorySite site = await host.Docs.GetSiteAsync(Ct);
 		string css = site.Files.Keys.First(key => key.EndsWith(".css", StringComparison.Ordinal));
@@ -84,9 +86,27 @@ public sealed class AspNetCoreEndpointTests : IDisposable
 		HttpResponseMessage response = await host.GetAsync("/docs/" + css);
 
 		response.StatusCode.Should().Be(HttpStatusCode.OK);
-		response.Headers.CacheControl!.Public.Should().BeTrue();
-		response.Headers.CacheControl.MaxAge.Should().Be(TimeSpan.FromDays(1));
+		response.Headers.CacheControl!.NoCache.Should().BeTrue();
+		response.Headers.CacheControl.MaxAge.Should().BeNull();
 		response.Headers.ETag!.Tag.Should().Be(site.Files[css].ETag);
+		(await host.GetAsync("/docs/" + css, site.Files[css].ETag)).StatusCode.Should().Be(HttpStatusCode.NotModified);
+	}
+
+	[Theory]
+	[InlineData(".pdf", "application/pdf")]
+	[InlineData(".mp4", "video/mp4")]
+	[InlineData(".webm", "video/webm")]
+	[InlineData(".avif", "image/avif")]
+	[InlineData(".webmanifest", "application/manifest+json")]
+	[InlineData(".zip", "application/zip")]
+	[InlineData(".wasm", "application/wasm")]
+	[InlineData(".css", "text/css; charset=utf-8")]
+	[InlineData(".JS", "application/javascript; charset=utf-8")]
+	[InlineData(".unknown-type", "application/octet-stream")]
+	public void SiteFile_ContentType_CoversTheAssetTypesTheSitePublishes(string extension, string contentType)
+	{
+		// These went out as application/octet-stream, so browsers downloaded a PDF or video instead of showing it.
+		SiteFile.GetContentType(extension).Should().Be(contentType);
 	}
 
 	[Fact]

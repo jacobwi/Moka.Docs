@@ -30,7 +30,6 @@ theme:
 features:
   search:
     enabled: true
-    provider: pagefind
   versioning:
     enabled: true
     strategy: dropdown-only
@@ -43,6 +42,21 @@ features:
       - label: "v3.0-beta"
         branch: dev
         prerelease: true
+  blog:
+    enabled: true
+    title: "SampleLibrary Blog"
+    description: "Release notes and tutorials for SampleLibrary"
+    postsPerPage: 2
+    sidebarPosts: 3
+    feed: [rss, atom]
+    authors:
+      team:
+        name: "MokaDocs Team"
+        url: "https://github.com/jacobwi/Moka.Docs"
+        avatar: "blog/authors/team.svg"
+      sam:
+        name: "Sam Sample"
+        avatar: "blog/authors/sam.svg"
 
 plugins:
   - name: mokadocs-repl

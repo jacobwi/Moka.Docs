@@ -1,4 +1,5 @@
 using System.IO.Abstractions;
+using System.Security;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Configuration;
@@ -57,7 +58,9 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 
 		foreach (DocPage page in context.Pages)
 		{
-			if (page.FrontMatter.Visibility != PageVisibility.Public)
+			// Output skips pages whose route can't be served; listing them would point crawlers at 404s.
+			if (page.FrontMatter.Visibility != PageVisibility.Public
+			    || !OutputPaths.IsWritable(fs, outputDir, page.Route))
 			{
 				continue;
 			}
@@ -66,7 +69,7 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 			string lastmod = page.LastModified?.ToString("yyyy-MM-dd") ?? "";
 
 			sb.AppendLine("  <url>");
-			sb.AppendLine($"    <loc>{url}</loc>");
+			sb.AppendLine($"    <loc>{SecurityElement.Escape(url)}</loc>");
 			if (!string.IsNullOrEmpty(lastmod))
 			{
 				sb.AppendLine($"    <lastmod>{lastmod}</lastmod>");
@@ -93,7 +96,7 @@ public sealed class PostProcessPhase(ILogger<PostProcessPhase> logger) : IBuildP
 		// Only point at a sitemap this build actually writes.
 		if (config.Build.Sitemap && !string.IsNullOrWhiteSpace(config.Site.Url))
 		{
-			sb.AppendLine($"Sitemap: {SiteUrls.Absolute(config.Site.Url, config.Build.BasePath, "/sitemap.xml")}");
+			sb.AppendLine($"Sitemap: {SiteUrls.AbsoluteFile(config.Site.Url, config.Build.BasePath, "/sitemap.xml")}");
 		}
 
 		string path = fs.Path.Combine(outputDir, "robots.txt");

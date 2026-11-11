@@ -170,6 +170,29 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 			return "";
 		}
 
+		return Fingerprint(CSharpProjectInfo.DefaultSourceFiles(sourceDirectory), projectInputs, includeInternals);
+	}
+
+	/// <summary>
+	///     Fingerprints every file the analyzer reads for a project: the source files its <c>Compile</c>
+	///     items name, linked files outside its folder included, and its other inputs such as the .csproj,
+	///     Directory.Build.props, obj/project.assets.json and reference assemblies.
+	/// </summary>
+	/// <param name="project">The project, from <see cref="CSharpProjectInfo.Load" />.</param>
+	/// <param name="includeInternals">Whether internal types are included, which changes the output.</param>
+	/// <returns>A hex digest.</returns>
+	/// <remarks>
+	///     It takes the same file list the analyzer reads. Walking the project folder instead missed edits
+	///     to linked files and counted files a <c>&lt;Compile Remove&gt;</c> leaves out.
+	/// </remarks>
+	public static string ComputeFingerprint(CSharpProjectInfo project, bool includeInternals) =>
+		Fingerprint(project.SourceFiles, project.InputFiles, includeInternals);
+
+	private static string Fingerprint(
+		IEnumerable<string> sourceFiles,
+		IEnumerable<string> projectInputs,
+		bool includeInternals)
+	{
 		var sb = new StringBuilder();
 		sb.Append("internals=").Append(includeInternals).Append('\n');
 
@@ -178,11 +201,7 @@ public sealed class BuildCache(ILogger<BuildCache> logger)
 
 		// Only the source files used to count, so enabling ImplicitUsings, restoring a package or
 		// building a referenced project kept serving the model from before the change.
-		var files = Directory.GetFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories)
-			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-				StringComparison.Ordinal))
-			.Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-				StringComparison.Ordinal))
+		var files = sourceFiles
 			.Concat(projectInputs.Distinct(StringComparer.OrdinalIgnoreCase))
 			.OrderBy(f => f, StringComparer.Ordinal)
 			.ToList();

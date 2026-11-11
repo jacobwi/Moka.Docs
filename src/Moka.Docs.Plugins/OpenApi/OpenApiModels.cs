@@ -33,6 +33,15 @@ public sealed class OpenApiSpec
 	public Dictionary<string, string> TagDescriptions { get; } = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
+	///     The <c>externalDocs</c> of the tags declared in the document's top-level <c>tags</c> list, keyed by
+	///     tag name without regard to case.
+	/// </summary>
+	public Dictionary<string, OpenApiExternalDocs> TagExternalDocs { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>The document's own <c>externalDocs</c>, or <c>null</c> when it has none.</summary>
+	public OpenApiExternalDocs? ExternalDocs { get; set; }
+
+	/// <summary>
 	///     The servers the API is available at: the <c>servers</c> list of OpenAPI 3.x, or the URLs built
 	///     from <c>host</c>, <c>basePath</c> and <c>schemes</c> in 2.0. Empty when the document names none.
 	/// </summary>
@@ -49,6 +58,18 @@ public sealed class OpenApiSpec
 	///     the document sets none. An operation's own <see cref="OpenApiEndpoint.Security" /> replaces it.
 	/// </summary>
 	public List<OpenApiSecurityRequirement> Security { get; } = [];
+
+	/// <summary>
+	///     The operations of OpenAPI 3.1's <c>webhooks</c>: requests the API sends rather than receives. Each
+	///     one's <see cref="OpenApiEndpoint.Path" /> is the webhook's name.
+	/// </summary>
+	public List<OpenApiEndpoint> Webhooks { get; } = [];
+
+	/// <summary>
+	///     What the parser could not read as written: references that resolve to nothing in the document,
+	///     and schemas cut short because they nest or reference each other past the parser's limits.
+	/// </summary>
+	public List<string> Warnings { get; } = [];
 }
 
 /// <summary>
@@ -64,6 +85,18 @@ public sealed class OpenApiServer
 
 	/// <summary>The variables of the URL template, in document order.</summary>
 	public List<OpenApiServerVariable> Variables { get; } = [];
+}
+
+/// <summary>
+///     A link to documentation outside the OpenAPI document: an <c>externalDocs</c> object.
+/// </summary>
+public sealed class OpenApiExternalDocs
+{
+	/// <summary>The URL as the document writes it. Only an http or https URL is shown as a link.</summary>
+	public string Url { get; set; } = "";
+
+	/// <summary>Human-readable description (CommonMark).</summary>
+	public string Description { get; set; } = "";
 }
 
 /// <summary>
@@ -204,6 +237,15 @@ public sealed class OpenApiEndpoint
 	///     or <c>null</c> when it has none. An empty list means the operation needs no authentication.
 	/// </summary>
 	public List<OpenApiSecurityRequirement>? Security { get; set; }
+
+	/// <summary>
+	///     The operation's own <c>servers</c>, else its path's, which replace the document's
+	///     <see cref="OpenApiSpec.Servers" />; <c>null</c> when neither lists any. OpenAPI 2.0 has none.
+	/// </summary>
+	public List<OpenApiServer>? Servers { get; set; }
+
+	/// <summary>The operation's <c>externalDocs</c>, or <c>null</c> when it has none.</summary>
+	public OpenApiExternalDocs? ExternalDocs { get; set; }
 }
 
 /// <summary>
@@ -309,6 +351,9 @@ public sealed class OpenApiSchema
 	///     <c>Dictionary&lt;string, int&gt;</c>.
 	/// </summary>
 	public OpenApiSchema? AdditionalProperties { get; set; }
+
+	/// <summary>The schema's <c>externalDocs</c>, or <c>null</c> when it has none.</summary>
+	public OpenApiExternalDocs? ExternalDocs { get; set; }
 
 	/// <summary>
 	///     Returns a concise display string for this schema (e.g. <c>string</c>,

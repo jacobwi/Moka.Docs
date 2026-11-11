@@ -28,6 +28,12 @@ public sealed record SiteConfig
 
 	/// <summary>Build options.</summary>
 	public BuildConfig Build { get; init; } = new();
+
+	/// <summary>
+	///     Problems found while reading mokadocs.yaml that did not stop it from loading, such as
+	///     unknown keys, each naming its line. The build reports them as warnings.
+	/// </summary>
+	public IReadOnlyList<string> Warnings { get; init; } = [];
 }
 
 /// <summary>
@@ -137,8 +143,13 @@ public sealed record ThemeOptions
 	/// <summary>Show last-updated timestamp on pages.</summary>
 	public bool ShowLastUpdated { get; init; } = MokaDefaults.ShowLastUpdated;
 
-	/// <summary>Show contributor avatars on pages.</summary>
-	public bool ShowContributors { get; init; }
+	/// <summary>
+	///     Show the people who committed to each Markdown page, under the "Last updated" date. The
+	///     names come from the same <c>git log</c> as the dates, with the repository's
+	///     <c>.mailmap</c> applied and one entry per email. Off by default; turning it on makes the
+	///     build read the docs folder's whole history.
+	/// </summary>
+	public bool ShowContributors { get; init; } = MokaDefaults.ShowContributors;
 
 	/// <summary>Show color theme preset selector in the header.</summary>
 	public bool ColorThemes { get; init; } = MokaDefaults.ShowColorThemeSelector;
@@ -151,6 +162,36 @@ public sealed record ThemeOptions
 
 	/// <summary>Show code block style selector in the header.</summary>
 	public bool CodeStyleSelector { get; init; } = MokaDefaults.ShowCodeStyleSelector;
+
+	/// <summary>
+	///     Appearance style of the default theme: <c>default</c>, <c>moka</c>, <c>minimal</c>,
+	///     <c>classic</c> or <c>soft</c>. Readers can pick another one when
+	///     <see cref="StyleSelector" /> is on. An unknown name renders as <c>default</c> and the
+	///     build warns about it.
+	/// </summary>
+	public string Style { get; init; } = MokaDefaults.Style;
+
+	/// <summary>Show the appearance style selector in the header. Default is true.</summary>
+	public bool StyleSelector { get; init; } = MokaDefaults.ShowStyleSelector;
+
+	/// <summary>
+	///     How pages get the sidebar navigation: <c>auto</c> (the default), <c>inline</c> or
+	///     <c>shared</c>. <c>inline</c> writes the whole sidebar into every page. <c>shared</c> writes
+	///     it once, to <c>_theme/js/sidebar.js</c>, which every page loads; each page keeps the
+	///     top-level entries and the ones along its own path for readers without JavaScript.
+	///     <c>auto</c> is <c>inline</c> up to <see cref="SidebarInlineLimit" /> entries and
+	///     <c>shared</c> above. An unknown name means <c>auto</c>, and the build warns about it.
+	/// </summary>
+	/// <remarks>
+	///     Only the default theme can share its sidebar. A custom theme always gets it inline.
+	/// </remarks>
+	public string Sidebar { get; init; } = MokaDefaults.Sidebar;
+
+	/// <summary>
+	///     Most sidebar entries (links and section headings) the <c>auto</c> sidebar mode writes into
+	///     every page. Default is 300.
+	/// </summary>
+	public int SidebarInlineLimit { get; init; } = MokaDefaults.SidebarInlineLimit;
 
 	/// <summary>Show the "Was this page helpful?" feedback widget.</summary>
 	public bool ShowFeedback { get; init; } = MokaDefaults.ShowFeedbackWidget;
@@ -234,7 +275,12 @@ public sealed record NavItem
 	/// <summary>Sort order within its parent section. Lower values appear first. Default is 0.</summary>
 	public int Order { get; init; }
 
-	/// <summary>Auto-generate children from C# projects.</summary>
+	/// <summary>
+	///     Lists the pages below <see cref="Path" /> as a tree, the way the sidebar is built when
+	///     there is no <c>nav:</c> list: folders become sections and API types are grouped by
+	///     namespace. Ignored when <see cref="Children" /> is not empty. Without it, an item lists
+	///     the pages one route segment below its path.
+	/// </summary>
 	public bool AutoGenerate { get; init; }
 
 	/// <summary>Child navigation items.</summary>
@@ -262,8 +308,12 @@ public sealed record SearchFeatureConfig
 	/// <summary>Whether search is enabled.</summary>
 	public bool Enabled { get; init; } = MokaDefaults.SearchEnabled;
 
-	/// <summary>Search provider: "pagefind", "flexsearch", or "custom".</summary>
-	public string Provider { get; init; } = MokaDefaults.SearchProvider;
+	/// <summary>
+	///     Not used. Search always uses the built-in <c>search-index.json</c> and the theme's script,
+	///     and <c>features.search.provider</c> in mokadocs.yaml is ignored with a warning.
+	/// </summary>
+	[Obsolete("Search has no providers; this value is ignored. It will be removed in 2.0.")]
+	public string Provider { get; init; } = "flexsearch";
 }
 
 /// <summary>Versioning feature configuration.</summary>
@@ -272,7 +322,11 @@ public sealed record VersioningFeatureConfig
 	/// <summary>Whether versioning is enabled.</summary>
 	public bool Enabled { get; init; }
 
-	/// <summary>Versioning strategy: "directory" or "dropdown-only".</summary>
+	/// <summary>
+	///     Versioning strategy. <c>directory</c>, the default, has <c>mokadocs build</c> build every
+	///     version that names a git branch or tag into its own folder. <c>dropdown-only</c> builds the
+	///     working tree alone and only lists the other versions.
+	/// </summary>
 	public string Strategy { get; init; } = "directory";
 
 	/// <summary>Version definitions.</summary>
@@ -282,11 +336,17 @@ public sealed record VersioningFeatureConfig
 /// <summary>A version definition for multi-version documentation.</summary>
 public sealed record VersionDefinition
 {
-	/// <summary>Display label (e.g., "v2.0").</summary>
+	/// <summary>
+	///     Display label (e.g., "v2.0"). When empty, the label is <c>v{major}.{minor}</c> of the
+	///     documented package's version.
+	/// </summary>
 	public required string Label { get; init; }
 
-	/// <summary>Git branch for this version.</summary>
+	/// <summary>Git branch this version is built from.</summary>
 	public string? Branch { get; init; }
+
+	/// <summary>Git tag this version is built from. Wins over <see cref="Branch" /> when both are set.</summary>
+	public string? Tag { get; init; }
 
 	/// <summary>Whether this is the default version.</summary>
 	public bool Default { get; init; }
@@ -298,14 +358,75 @@ public sealed record VersionDefinition
 /// <summary>Blog feature configuration.</summary>
 public sealed record BlogFeatureConfig
 {
+	/// <summary>The folder under the docs folder that holds the posts when <see cref="Path" /> is not set.</summary>
+	public const string DefaultPath = "blog";
+
+	/// <summary>Posts per index page when <see cref="PostsPerPage" /> is not set.</summary>
+	public const int DefaultPostsPerPage = 10;
+
+	/// <summary>Latest posts listed under the blog's sidebar entry when <see cref="SidebarPosts" /> is not set.</summary>
+	public const int DefaultSidebarPosts = 5;
+
 	/// <summary>Whether the blog is enabled.</summary>
 	public bool Enabled { get; init; }
 
+	/// <summary>
+	///     Folder under the docs folder that holds the posts, such as <c>blog</c>. Every Markdown
+	///     file below it is a post except its <c>index.md</c>, which becomes the introduction of
+	///     the blog's index page. Posts keep the route of their file.
+	/// </summary>
+	public string Path { get; init; } = DefaultPath;
+
+	/// <summary>
+	///     Route of the blog's index page, under which the build also writes the page list
+	///     (<c>{route}/page/2</c>), the tag pages (<c>{route}/tags/{tag}</c>) and the feeds.
+	///     <c>null</c> uses <c>/</c> followed by <see cref="Path" />.
+	/// </summary>
+	public string? Route { get; init; }
+
+	/// <summary>Title of the blog's index page, sidebar entry and feeds. Default: <c>Blog</c>.</summary>
+	public string Title { get; init; } = "Blog";
+
+	/// <summary>Text under the index page title and the description of the feeds.</summary>
+	public string Description { get; init; } = "";
+
 	/// <summary>Number of posts per page.</summary>
-	public int PostsPerPage { get; init; } = 10;
+	public int PostsPerPage { get; init; } = DefaultPostsPerPage;
+
+	/// <summary>
+	///     How many of the latest posts the blog's sidebar entry lists, newest first. 0 lists none,
+	///     so the entry only links to the index page.
+	/// </summary>
+	public int SidebarPosts { get; init; } = DefaultSidebarPosts;
+
+	/// <summary>
+	///     Feed formats to write: <c>rss</c> (<c>{route}/rss.xml</c>) and <c>atom</c>
+	///     (<c>{route}/atom.xml</c>), lower case as written. Empty writes no feed. Feeds need
+	///     <c>site.url</c>.
+	/// </summary>
+	public List<string> Feeds { get; init; } = ["rss"];
+
+	/// <summary>
+	///     Post authors defined once, keyed by the name a post's <c>author</c> front matter uses.
+	///     A name that is no key here is shown as written.
+	/// </summary>
+	public Dictionary<string, BlogAuthor> Authors { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>Show author information on posts.</summary>
 	public bool ShowAuthors { get; init; } = true;
+}
+
+/// <summary>An author of blog posts, defined once under <c>features.blog.authors</c>.</summary>
+public sealed record BlogAuthor
+{
+	/// <summary>The name shown on posts and in feeds.</summary>
+	public required string Name { get; init; }
+
+	/// <summary>A page about the author, such as a profile. <c>null</c> for none.</summary>
+	public string? Url { get; init; }
+
+	/// <summary>An image of the author: an absolute URL, or a path from the site root. <c>null</c> for none.</summary>
+	public string? Avatar { get; init; }
 }
 
 /// <summary>Plugin declaration in configuration.</summary>
@@ -361,8 +482,11 @@ public sealed record BuildConfig
 	/// <summary>Clean output directory before build.</summary>
 	public bool Clean { get; init; } = MokaDefaults.CleanOutput;
 
-	/// <summary>Minify HTML/CSS/JS in output.</summary>
-	public bool Minify { get; init; } = true;
+	/// <summary>
+	///     Minify the HTML pages and the default theme's CSS and JS: whitespace collapsed and comments
+	///     removed. Off by default.
+	/// </summary>
+	public bool Minify { get; init; } = MokaDefaults.MinifyOutput;
 
 	/// <summary>Generate sitemap.xml.</summary>
 	public bool Sitemap { get; init; } = MokaDefaults.GenerateSitemap;
@@ -372,6 +496,12 @@ public sealed record BuildConfig
 
 	/// <summary>Cache intermediate results for faster rebuilds.</summary>
 	public bool Cache { get; init; } = true;
+
+	/// <summary>
+	///     Treat warnings as errors, so <c>mokadocs build</c> exits 1 when the build reports any
+	///     warning (the <c>--warnings-as-errors</c> option does the same for one run).
+	/// </summary>
+	public bool Strict { get; init; }
 
 	/// <summary>
 	///     Base path for the generated site when deployed to a subdirectory.

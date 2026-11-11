@@ -68,6 +68,25 @@ public sealed class BlazorPreviewScaffoldTests : IDisposable
 		File.ReadAllText(Path.Combine(host, "wwwroot", "index.html")).Should().Contain("_content/Contoso.Widgets/");
 	}
 
+	[Fact]
+	public async Task LibraryThatIsNotAPackageSpec_IsIgnoredWithAWarningAndNeverWritten()
+	{
+		// The library option went into the scaffolded csproj as it was, so a quote in it wrote
+		// MSBuild XML that dotnet publish would run.
+		string host = FakePublishedHost(Path.Combine(".mokadocs", "preview-host"));
+		const string library = "Evil\" /><Target Name=\"X\" BeforeTargets=\"Build\"><Exec Command=\"echo pwned\" /></Target><PackageReference Include=\"A@1.0";
+
+		DryRunOutcome outcome = await BuildAsync(new Dictionary<string, object> { ["library"] = library });
+
+		outcome.Context.Diagnostics.All.Should().ContainSingle(d => d.Source == "mokadocs-blazor-preview")
+			.Which.Message.Should().Contain("is not a NuGet package id");
+		string csproj = File.ReadAllText(Path.Combine(host, "DocsPreviewHost.csproj"));
+		csproj.Should().NotContain("Evil").And.NotContain("<Target Name").And.NotContain("<Exec");
+		Regex.Matches(csproj, "<PackageReference ").Should().HaveCount(3);
+		File.ReadAllText(Path.Combine(host, "wwwroot", "index.html")).Should().NotContain("Evil");
+		Directory.Exists(Path.Combine(_root, "preview-host")).Should().BeFalse();
+	}
+
 	private string FakePublishedHost(string relativeDirectory)
 	{
 		string host = Path.Combine(_root, relativeDirectory);

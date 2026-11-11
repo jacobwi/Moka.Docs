@@ -68,7 +68,7 @@ Each release heading follows the format:
 ```
 
 - **Version.** The leading `v` is optional, and the version is always displayed with a `v` in front. Write it as a single bare word: `## Unreleased` shows as `vUnreleased`, and `## [1.0.0]` shows as `v[1.0.0]`.
-- **Date.** The date is optional. Put a space before the hyphen that starts it (an em dash also works), so prerelease versions such as `1.0.0-beta.2` keep their hyphen. A date that parses is displayed as `June 15, 2025`; anything else is shown as written.
+- **Date.** The date is optional. Put a space before the hyphen that starts it (an em dash also works), so prerelease versions such as `1.0.0-beta.2` keep their hyphen. Dates are read in ISO form only: `2025-06-15` (a time such as `2025-06-15T10:00:00Z` may follow) is displayed as `June 15, 2025`, `2025-06` as `June 2025`, and `2025` as `2025`. Anything else, including `11/12/2025`, is shown as written.
 - **Other `##` lines.** A `##` heading that doesn't fit this format, such as `## Version 1.5`, is ignored, and the categories under it are added to the release above it.
 
 ### Release Types

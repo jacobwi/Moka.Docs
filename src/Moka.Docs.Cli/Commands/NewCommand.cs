@@ -299,64 +299,19 @@ internal static class NewCommand
 				return 0;
 			}
 
-			// ── .csproj ──
-			// A package reference at the tool's own version. The project references this
-			// used to write were relative to the MokaDocs source tree, so the scaffold only
-			// built when generated inside a clone of this repository.
-			string csproj = $"""
-			                 <Project Sdk="Microsoft.NET.Sdk">
-
-			                   <PropertyGroup>
-			                     <TargetFramework>net9.0</TargetFramework>
-			                     <RootNamespace>{projectName}</RootNamespace>
-			                     <ImplicitUsings>enable</ImplicitUsings>
-			                     <Nullable>enable</Nullable>
-			                   </PropertyGroup>
-
-			                   <ItemGroup>
-			                     <PackageReference Include="Moka.Docs.Plugins" Version="{CliVersion.Current}" />
-			                   </ItemGroup>
-
-			                 </Project>
-			                 """;
-
+			string kebab = ToKebabCase(name);
 			EnsureDirectoryAndWrite(
 				Path.Combine(projectDir, $"{projectName}.csproj"),
-				csproj);
-
-			// ── Plugin class ──
-			string pluginClass = $$"""
-			                       using Moka.Docs.Core.Pipeline;
-			                       using Moka.Docs.Plugins;
-
-			                       namespace {{projectName}};
-
-			                       /// <summary>
-			                       ///     A custom MokaDocs plugin.
-			                       /// </summary>
-			                       public sealed class {{className}} : IMokaPlugin
-			                       {
-			                           public string Id => "{{pluginId}}";
-			                           public string Name => "{{pascal}}";
-			                           public string Version => "1.0.0";
-
-			                           public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
-			                           {
-			                               context.LogInfo($"{Name} plugin initialized.");
-			                               return Task.CompletedTask;
-			                           }
-
-			                           public Task ExecuteAsync(IPluginContext context, BuildContext buildContext, CancellationToken ct = default)
-			                           {
-			                               // TODO: Implement plugin logic here.
-			                               return Task.CompletedTask;
-			                           }
-			                       }
-			                       """;
-
+				BuildPluginProject(projectName, CliVersion.Current));
 			EnsureDirectoryAndWrite(
 				Path.Combine(projectDir, $"{className}.cs"),
-				pluginClass);
+				BuildPluginClass(projectName, className, pascal, pluginId, "/" + kebab));
+
+			string declaredPath = Path.GetRelativePath(Directory.GetCurrentDirectory(), projectDir).Replace('\\', '/');
+			if (!Path.IsPathRooted(declaredPath) && !declaredPath.StartsWith('.'))
+			{
+				declaredPath = "./" + declaredPath;
+			}
 
 			AnsiConsole.MarkupLine(
 				$"[green]Created:[/] {Markup.Escape(Path.Combine(projectDir, $"{projectName}.csproj"))}");
@@ -364,13 +319,105 @@ internal static class NewCommand
 			AnsiConsole.WriteLine();
 			AnsiConsole.MarkupLine($"Plugin id: [bold]{Markup.Escape(pluginId)}[/]");
 			AnsiConsole.MarkupLine(
-				"[dim]The mokadocs CLI loads only its built-in plugins. Run this one from a host that " +
-				"registers it as an IMokaPlugin and declares its id under plugins.[/]");
+				"Declare it in mokadocs.yaml, with the path relative to that file. mokadocs builds the project " +
+				"when it loads the plugin:");
+			AnsiConsole.WriteLine();
+			AnsiConsole.WriteLine("plugins:");
+			AnsiConsole.WriteLine($"  - name: {pluginId}");
+			AnsiConsole.WriteLine($"    path: {DoctorChecks.QuoteYamlScalar(declaredPath)}");
 			return 0;
 		});
 
 		return command;
 	}
+
+	/// <summary>
+	///     The project file of a new plugin: a net9.0 library, which both the net9.0 and the
+	///     net10.0 build of mokadocs can load, referencing <c>Moka.Docs.Plugins</c> at the tool's
+	///     own version.
+	/// </summary>
+	/// <remarks>
+	///     <para>
+	///         The project references this used to write were relative to the MokaDocs source tree,
+	///         so the scaffold only built when generated inside a clone of this repository.
+	///     </para>
+	///     <para>
+	///         Package pruning is on, as it is by default only for net10.0 projects: without it the
+	///         restore also fetched packages the framework already has, such as System.Memory, which
+	///         Roslyn lists for net9.0.
+	///     </para>
+	/// </remarks>
+	internal static string BuildPluginProject(string projectName, string mokaDocsVersion) =>
+		$"""
+		 <Project Sdk="Microsoft.NET.Sdk">
+
+		   <PropertyGroup>
+		     <TargetFramework>net9.0</TargetFramework>
+		     <RootNamespace>{projectName}</RootNamespace>
+		     <ImplicitUsings>enable</ImplicitUsings>
+		     <Nullable>enable</Nullable>
+		     <EnableDynamicLoading>true</EnableDynamicLoading>
+		     <RestoreEnablePackagePruning>true</RestoreEnablePackagePruning>
+		     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+		   </PropertyGroup>
+
+		   <ItemGroup>
+		     <!-- mokadocs supplies Moka.Docs.Plugins when it loads the plugin, so its files stay out of the build output. -->
+		     <PackageReference Include="Moka.Docs.Plugins" Version="{mokaDocsVersion}" ExcludeAssets="runtime" />
+		   </ItemGroup>
+
+		 </Project>
+		 """;
+
+	/// <summary>
+	///     The starter plugin class. It adds a page at <paramref name="route" /> that shows its
+	///     <c>message</c> option, so a site that declares it shows the plugin working.
+	/// </summary>
+	internal static string BuildPluginClass(string projectName, string className, string displayName,
+		string pluginId, string route) =>
+		$$"""
+		  using System.Net;
+		  using Moka.Docs.Core.Content;
+		  using Moka.Docs.Core.Pipeline;
+		  using Moka.Docs.Plugins;
+
+		  namespace {{projectName}};
+
+		  /// <summary>
+		  ///     A MokaDocs plugin. It adds the page {{route}}, which shows the message option.
+		  /// </summary>
+		  public sealed class {{className}} : IMokaPlugin
+		  {
+		      private string _message = "Hello from {{displayName}}.";
+
+		      public string Id => "{{pluginId}}";
+		      public string Name => "{{displayName}}";
+		      public string Version => "1.0.0";
+
+		      public Task InitializeAsync(IPluginContext context, CancellationToken ct = default)
+		      {
+		          if (context.Options.TryGetValue("message", out object? message) && message is string text)
+		          {
+		              _message = text;
+		          }
+
+		          return Task.CompletedTask;
+		      }
+
+		      public Task ExecuteAsync(IPluginContext context, BuildContext buildContext, CancellationToken ct = default)
+		      {
+		          buildContext.Pages.Add(new DocPage
+		          {
+		              Route = "{{route}}",
+		              FrontMatter = new FrontMatter { Title = Name },
+		              Content = new PageContent { Html = $"<p>{WebUtility.HtmlEncode(_message)}</p>", PlainText = _message }
+		          });
+
+		          context.LogInfo($"{Name} added the page {{route}}");
+		          return Task.CompletedTask;
+		      }
+		  }
+		  """;
 
 	// ────────────────────────── mokadocs new component ───────────────────────────
 

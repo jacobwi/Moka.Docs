@@ -95,6 +95,15 @@ public sealed class CSharpProjectInfo
 	public IReadOnlyList<string> ReferencePaths { get; init; } = [];
 
 	/// <summary>
+	///     The C# files the project compiles, sorted: the SDK's default <c>**/*.cs</c> glob (unless
+	///     <c>EnableDefaultItems</c> or <c>EnableDefaultCompileItems</c> is false, and without <c>bin</c>,
+	///     <c>obj</c>, dot folders and <c>DefaultItemExcludes</c>), then the unconditional
+	///     <c>&lt;Compile Include&gt;</c> and <c>&lt;Compile Remove&gt;</c> items in order. An included file
+	///     can be outside the project folder.
+	/// </summary>
+	public IReadOnlyList<string> SourceFiles { get; init; } = [];
+
+	/// <summary>
 	///     Every file whose change can change the analysis besides the source files: the .csproj,
 	///     each place a Directory.Build.props could be, the assets file and the reference
 	///     assemblies. Files that do not exist are listed too, so creating one is noticed.
@@ -151,9 +160,18 @@ public sealed class CSharpProjectInfo
 			NullableContext = ParseNullable(reader.Get("Nullable")),
 			SharedFrameworks = GetSharedFrameworks(sdk, targetFramework, assets, importedItems.Concat(projectItems)),
 			ReferencePaths = referencePaths,
+			SourceFiles = GetSourceFiles(reader, projectDirectory, importedItems, projectItems),
 			InputFiles = inputs.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
 		};
 	}
+
+	/// <summary>
+	///     The <c>.cs</c> files below a folder that the SDK compiles by default, sorted. Folders named
+	///     <c>bin</c> or <c>obj</c> and folders whose name starts with a dot are skipped, wherever they are.
+	/// </summary>
+	/// <param name="directory">The folder to search.</param>
+	/// <returns>Full paths of the files.</returns>
+	public static IReadOnlyList<string> DefaultSourceFiles(string directory) => CompileItems.DefaultSourceFiles(directory);
 
 	#region Settings
 
@@ -209,6 +227,20 @@ public sealed class CSharpProjectInfo
 			})
 			.Distinct(StringComparer.Ordinal)
 			.ToList();
+	}
+
+	private static List<string> GetSourceFiles(
+		ProjectFileReader reader,
+		string projectDirectory,
+		List<ProjectItem> importedItems,
+		List<ProjectItem> projectItems)
+	{
+		bool enableDefaultItems = !IsFalse(reader.Get("EnableDefaultItems")) && !IsFalse(reader.Get("EnableDefaultCompileItems"));
+		return CompileItems.Resolve(projectDirectory, CompileItemsOf(importedItems), CompileItemsOf(projectItems),
+			enableDefaultItems, reader.Get("DefaultItemExcludes"));
+
+		static IEnumerable<CompileItem> CompileItemsOf(List<ProjectItem> items) =>
+			items.Where(item => item.ItemType == "Compile").Select(item => new CompileItem(item.Include, item.Exclude, item.Remove));
 	}
 
 	private static void ApplyUsingItems(IEnumerable<ProjectItem> items, List<GlobalUsing> usings)
@@ -295,6 +327,8 @@ public sealed class CSharpProjectInfo
 
 	private static bool IsTrue(string? value) => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 
+	private static bool IsFalse(string? value) => string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+
 	private static IEnumerable<string> AncestorDirectories(string directory)
 	{
 		for (string? current = Path.TrimEndingDirectorySeparator(directory);
@@ -314,7 +348,13 @@ public sealed class CSharpProjectInfo
 
 	#region Project files
 
-	private sealed record ProjectItem(string ItemType, string? Include, string? Remove, bool IsStatic, string? Alias);
+	private sealed record ProjectItem(
+		string ItemType,
+		string? Include,
+		string? Remove,
+		bool IsStatic,
+		string? Alias,
+		string? Exclude = null);
 
 	private sealed record GlobalUsing(string Namespace, bool IsStatic, string? Alias);
 
@@ -384,7 +424,8 @@ public sealed class CSharpProjectInfo
 							Metadata(item, "Include"),
 							Metadata(item, "Remove"),
 							IsTrue(Metadata(item, "Static")),
-							Metadata(item, "Alias"))));
+							Metadata(item, "Alias"),
+							Metadata(item, "Exclude"))));
 						break;
 
 					case "Import" when ResolveImport(element, directory) is { } imported:

@@ -20,7 +20,7 @@ public interface IBuildPhase
 }
 ```
 
-Phases run one after another and read and write the same `BuildContext`. A phase that hits a problem records a [diagnostic](#diagnostics) and lets the build continue. The exception is a `build.output` that is, or contains, the project folder or the docs folder: the build stops before deleting anything.
+Phases run one after another and read and write the same `BuildContext`. A phase that hits a problem records a [diagnostic](#diagnostics) and lets the build continue. The exception is a `build.output` that is, or contains, the project folder, the docs folder, a `content.projects` folder, a custom theme folder or a logo or favicon source, or a non-empty folder MokaDocs did not create: the build stops before deleting anything.
 
 The pipeline also has a plugin hook. It runs once, just before the first phase with an order of 500 or higher.
 
@@ -31,16 +31,21 @@ The pipeline also has a plugin hook. It runs once, just before the first phase w
 | 200 | `DiscoveryPhase` | Lists Markdown files and static assets under `content.docs`, skipping anything inside `build.output`. Checks which `content.projects` files exist and resolves `site.logo` and `site.favicon` |
 | 300 | `CSharpAnalysisPhase` | Reads the `.cs` files of each configured project with Roslyn, using the settings and references from its project files, or loads the result from the build cache. Adds the `/api` index page and one page per type, and reads the package name and version from the first project that produces a package |
 | 400 | `MarkdownParsePhase` | Turns each Markdown file into a `DocPage`: front matter, HTML, table of contents and route |
+| 450 | `VersionGatePhase` | Removes pages whose front matter `version` range doesn't include the version being built. Does nothing without versioning |
 | | Plugin hook | Runs the plugins declared under `plugins:` in `mokadocs.yaml` |
 | 500 | `FeatureGatePhase` | Removes pages whose `requires` feature flag is disabled |
+| 550 | `BlogPhase` | With `features.blog.enabled`: adds a header to each post, generates the blog's index, tags and tag pages, and stages its feeds for `OutputPhase`. See [Blog](/guide/blog) |
 | 600 | `NavigationBuildPhase` | Builds the sidebar tree from the `nav` section, or from page routes when there is no `nav` |
-| 700 | `SearchIndexPhase` | Creates a search entry for each page and for each heading in its table of contents. Skipped when `features.search.enabled` is false |
+| 650 | `BlogNavigationPhase` | Lists the latest posts under the blog's sidebar entry |
+| 700 | `SearchIndexPhase` | Creates a search entry for each page and for each heading in its table of contents, with the text and code words under that heading. Skipped when `features.search.enabled` is false |
 | 900 | `RenderPhase` | Renders each page through its layout template |
-| 1100 | `OutputPhase` | Checks the output directory and duplicate routes, deletes the output directory when `build.clean` is on, then writes pages, section redirect pages, `404.html`, `.nojekyll`, `search-index.json`, static assets and files registered by plugins |
-| 1150 | `ThemeAssetPhase` | Writes the default theme's `_theme/css/main.css` and `_theme/js/main.js`, or copies a custom theme's `css/`, `js/` and `assets/` folders into `_theme/` |
+| 1100 | `OutputPhase` | Checks the output directory and duplicate routes, deletes the output directory when `build.clean` is on, then writes pages, section redirect pages, `404.html`, `.nojekyll`, `search-index.json`, static assets and files registered by plugins. With `build.minify`, pages and `404.html` are minified as they are written |
+| 1150 | `ThemeAssetPhase` | Writes the default theme's `_theme/css/main.css` and `_theme/js/main.js` (minified with `build.minify`), or copies a custom theme's `css/`, `js/` and `assets/` folders into `_theme/` |
 | 1200 | `PostProcessPhase` | Writes `sitemap.xml` (only when `site.url` is set) and `robots.txt` |
 
-`--verbose` logs each phase by its `Name` as it starts: `Discovery`, `CSharpAnalysis`, `MarkdownParse`, `FeatureGate`, `NavigationBuild`, `SearchIndex`, `Render`, `Output`, `ThemeAssets` and `PostProcess`.
+`--verbose` logs each phase by its `Name` as it starts and how long it took when it ends: `Discovery`, `CSharpAnalysis`, `MarkdownParse`, `FeatureGate`, `Blog`, `NavigationBuild`, `BlogNavigation`, `SearchIndex`, `Render`, `Output`, `ThemeAssets` and `PostProcess`. A last line lists every phase with its time, the plugin hook as `Plugins`. `BuildPipeline.LastTimings` holds the same numbers for a host that wants them.
+
+`MarkdownParsePhase` parses files in parallel, and `OutputPhase` writes pages in parallel when the build runs on the real disk. Pages and diagnostics are still added in discovery order, and pages sharing a route still leave the last one written, so the output is the same as a sequential build.
 
 A few details the table leaves out:
 
@@ -108,9 +113,10 @@ public sealed class BuildContext
 | `Pages` | `CSharpAnalysisPhase`, `MarkdownParsePhase`, plugins | `FeatureGatePhase` removes pages. `RenderPhase` replaces each page's `Content.Html` with the fully rendered document |
 | `ApiModel` | `CSharpAnalysisPhase` | All analyzed projects merged by namespace, with `<inheritdoc/>` resolved. The ASP.NET Core host sets it before the build starts |
 | `PackageInfo` | `CSharpAnalysisPhase` | `Name` and `Version` from the first packable project's `.csproj`, shown by the NuGet install widget on `/api` |
-| `Navigation` | `NavigationBuildPhase` | The sidebar tree |
+| `Navigation` | `NavigationBuildPhase` | The sidebar tree. `BlogNavigationPhase` fills in the blog's entry |
+| `Blog` | `BlogPhase` | The blog's listed posts (newest first), tags, generated page routes and feeds. Null when the blog is off |
 | `SearchIndex` | `SearchIndexPhase` | Null when search is disabled |
-| `CurrentVersion`, `Versions` | Host | The CLI fills them from `features.versioning` when versioning is enabled |
+| `CurrentVersion`, `Versions` | Host | The CLI fills them from `features.versioning` when versioning is enabled (`VersionManager.ApplyTo`), or per version in a [versioned build](/advanced/versioning#building-several-versions) |
 | `Diagnostics` | Any phase or plugin | See [Diagnostics](#diagnostics) |
 | `DiscoveredMarkdownFiles` | `DiscoveryPhase` | Paths relative to `content.docs` |
 | `DiscoveredProjectFiles` | `DiscoveryPhase` | Absolute paths of the `content.projects` files that exist |
@@ -165,12 +171,14 @@ public sealed record LandingFeature
 }
 ```
 
-- `FrontMatter` has only the properties above. Front matter keys MokaDocs doesn't recognize are ignored, and there is no collection of custom fields.
+- `FrontMatter` has only the properties above. Front matter keys MokaDocs doesn't recognize are left out with a warning, and there is no collection of custom fields.
 - `PageContent` has `Html` and `PlainText`. After `MarkdownParsePhase`, `Html` is the page body; after `RenderPhase` it's the whole HTML document. `PlainText` feeds the search index.
 - `TableOfContents.Entries` is a list of `TocEntry` records with `Level`, `Text`, `Id` and `Children`.
-- `Route` comes from the file path (`guide/intro.md` becomes `/guide/intro`, and `index.md` takes its folder's route) unless front matter sets `route`. A `route` value always gets a leading slash and loses any trailing slash. `OutputPhase` writes each page to `{route}/index.html`.
-- Front matter that isn't valid YAML, or has a value of the wrong type, is ignored with a warning. The page is then titled `Untitled` and the front matter block stays in its content.
+- `Route` comes from the file path (`guide/intro.md` becomes `/guide/intro`, and `index.md` takes its folder's route) unless front matter sets `route`. Only the trailing `.md` is removed, in any case. A `route` value always gets a leading slash and loses any trailing slash, and one that could not be written as a folder (`..`, `?`, `#`, characters Windows forbids) is an error and is ignored. `OutputPhase` writes each page to `{route}/index.html`, and refuses any path that would land outside the output directory.
+- Front matter that isn't valid YAML, or has a value of the wrong type, is ignored with a warning that names the line and column. The page is then titled `Untitled`. Unknown front matter keys are warnings too.
+- A Markdown file that can't be read or parsed is an error naming the file and the cause, and the page is left out.
 - `LastModified` is the date of the last git commit that changed the Markdown file, read with one `git log` for the whole docs folder. It falls back to the file's last write time on disk for uncommitted or untracked files, when git isn't available, and for builds over a non-physical file system such as the ASP.NET Core host's. Generated pages have none.
+- `Contributors` lists the authors of the file's commits, most commits first, from the same `git log` (with `.mailmap` applied, one entry per email). It's read only when `theme.options.showContributors` is on, because it needs the whole history rather than each file's newest commit.
 
 ### NavigationNode
 
@@ -191,6 +199,8 @@ public sealed record NavigationNode
 
 The tree is built once per build, not once per page, so the engine never sets `IsActive`. The template engine works out the current page while rendering and exposes it as `is_active` and `has_active_child` on each `nav` item. It also turns `Icon` into SVG markup. An icon name that isn't in MokaDocs' icon set renders nothing, and `NavigationBuildPhase` records a warning for it. See [Navigation](/configuration/navigation) for how the tree is built.
 
+With a [shared sidebar](/configuration/navigation#large-sidebars-inline-or-shared), `RenderPhase` renders the sidebar once with no current page, through `ScribanTemplateEngine.RenderSidebar`, and stages it as `_theme/js/sidebar.js` in `DeferredOutputFiles`. Pages then get a `nav` with only the top-level entries and the entries along their own path, and its URL as `sidebar_script`.
+
 ### SearchEntry
 
 An entry in the search index.
@@ -201,13 +211,14 @@ public sealed record SearchEntry
     public required string Title { get; init; }      // page title
     public string? Section { get; init; }            // heading text, on heading entries
     public required string Route { get; init; }      // "/guide/intro" or "/guide/intro#setup"
-    public required string Content { get; init; }    // page plain text, empty on heading entries
+    public required string Content { get; init; }    // page plain text, or the text under the heading
+    public string? Code { get; init; }               // words from code blocks, null when there are none
     public string Category { get; init; } = "Documentation";   // "Documentation" or "API Reference"
     public List<string> Tags { get; init; } = [];    // front matter tags, on page entries
 }
 ```
 
-Each page gets one entry, plus one entry per heading with an anchor route. `OutputPhase` writes the index to `search-index.json` with short keys (`t`, `s`, `r`, `c`, `g`, `k`), adds the base path to each route and keeps the first 300 characters of `Content`. See [Search](/guide/search).
+Each page gets one entry, plus one entry per heading with an anchor route (one per member on an API type page). `SearchIndexPhase` splits the page body at its headings to give each heading entry the text and code words of its section. `OutputPhase` writes the index to `search-index.json` with short keys (`t`, `s`, `r`, `c`, `x`, `g`, `k`), adds the base path to each route and keeps the first 300 characters of `Content`. See [Search](/guide/search).
 
 ### ApiType
 
@@ -251,6 +262,8 @@ When the theme has no layout with that name, the page uses `default` instead, an
 
 When a layout has a syntax error or throws while rendering, the page is written without the layout, and `RenderPhase` records an error: one per distinct message, with the number of pages it affected and an example route.
 
+Scriban's own loop and string limits are off, so a sidebar with thousands of entries and a page of several megabytes render in full. A layout that is still rendering one page after 30 seconds, or writes more than 64 million characters for it, is stopped with that error instead, which catches a template loop that never ends.
+
 ### Template Variables
 
 | Variable | Contents |
@@ -258,18 +271,23 @@ When a layout has a syntax error or throws while rendering, the page is written 
 | `page` | The page being rendered (fields below) |
 | `site` | Values from `site:` in `mokadocs.yaml` (fields below) |
 | `theme` | Values from `theme.options` (fields below) |
-| `nav` | Sidebar items with `label`, `route`, `icon` (SVG markup), `expanded`, `is_active`, `has_active_child`, `has_children`, `has_page` and `children` |
+| `nav` | Sidebar items with `label`, `route`, `icon` (SVG markup), `expanded`, `is_active`, `has_active_child`, `has_children`, `has_page` and `children`. With a shared sidebar, only the top-level items and the items along the path to the page |
+| `sidebar_script` | URL of the shared sidebar script, base path and `?v=` hash included, or an empty string when the sidebar is inline |
 | `breadcrumbs` | Trail items with `label`, `url`, `is_current` and `has_page`, starting with Home |
-| `prev_page`, `next_page` | `title` and `route` of the previous and next page, when there is one |
+| `prev_page`, `next_page` | `title` and `route` of the previous and next page, when there is one. The order follows `nav` depth first, then the public pages it doesn't list by `order` and route. Only pages with the default layout take part. On a blog post they are the next newer and older post, and the blog's generated pages have neither |
+| `blog` | `enabled`, `title`, `route` (base path included) and `feeds`, each with `format` (`rss` or `atom`), `type` (the media type), `title` and `url` (absolute). Empty values without a blog; `feeds` is empty without `site.url` |
+| `first_nav_route` | The first route in `nav` order that isn't this page, preferring one that has a page, base path included. Empty when there is none. The landing layout's Get Started button links to it |
 | `base_path` | `build.basePath`, or an empty string for a site at the root |
 | `search_enabled` | True when `features.search.enabled` and `theme.options.showSearch` are both true |
-| `css_files`, `js_files` | Theme stylesheet and script URLs, base path included |
+| `css_files`, `js_files` | Theme stylesheet and script URLs, base path included, each ending in `?v=` and a hash of the file |
 | `partials` | The theme's partials as raw strings, keyed by file name |
-| `versions` | Configured versions with `label`, `slug`, `is_default` and `is_prerelease`. Empty without versioning |
+| `versions` | Configured versions with `label`, `slug`, `is_default`, `is_prerelease`, `is_current` and `url`, the link from this page: the same page in that version when it has one, else its home page. Empty without versioning |
 | `current_version` | Label of the version being built, or an empty string |
 | `package` | `name` and `version` from the first C# project. Only set when a project was analyzed |
 | `edit_url` | The "Edit this page" URL. Only set when `site.editLink` is configured, `theme.options.showEditLink` is true and the page has a source file, so generated pages have none |
 | `mokadocs_version` | The MokaDocs version, such as `1.6.0` |
+
+Values are raw text unless a field says it holds HTML. The default layouts pass every value they write into an attribute through `html.escape`, so a route or label with `"` or `<` in it can't end the attribute early.
 
 `page` fields:
 
@@ -277,21 +295,23 @@ When a layout has a syntax error or throws while rendering, the page is written 
 |-------|----------|
 | `page.title`, `page.description` | Front matter values |
 | `page.meta_description` | `description`, or `site.description` when the page has none |
-| `page.canonical_url` | Absolute URL built from `site.url`, the base path and the route. Empty without `site.url` |
-| `page.content` | The page HTML, with root-relative links prefixed by the base path |
+| `page.canonical_url` | Absolute URL built from `site.url`, the base path and the route, with each segment percent-encoded and a trailing `/`. Empty without `site.url` |
+| `page.content` | The page HTML, with the base path added to root-relative URLs in `href`, `src` and `srcset` attributes, quoted or not |
 | `page.route` | The route, base path included |
 | `page.toc` | Headings with `level`, `text`, `id` and `children` |
 | `page.show_toc` | True when front matter `toc` and `theme.options.showTableOfContents` are true and the page has headings |
 | `page.tags`, `page.layout` | Front matter values |
 | `page.source_path` | Path relative to `content.docs` with forward slashes, empty for generated pages |
 | `page.last_modified` | The date as `yyyy-MM-dd`, or an empty string |
+| `page.contributors` | The people who committed to the page's file, most commits first, each with `name`, `initials` (up to two letters) and `commits`. Empty unless `theme.options.showContributors` is on |
 | `page.is_api`, `page.is_api_index` | Whether the page was generated by C# analysis, and whether it is `/api` |
 | `page.features` | Cards from the `features` front matter, each with `title`, `description`, `icon`, `icon_svg` (SVG markup when `icon` names a bundled icon, otherwise empty) and `link` (a link starting with `/` includes the base path). Text is not escaped |
 | `page.features_title`, `page.features_subtitle` | Front matter `featuresTitle` and `featuresSubtitle`, not escaped |
+| `page.is_blog_post` | Whether the page is a listed blog post. The default layout labels its previous and next links "Newer post" and "Older post" then |
 
 `site` fields: `title`, `description`, `url`, `copyright` (with `{year}` replaced), `logo` and `favicon` (the raw values from `mokadocs.yaml`), `logo_url` and `favicon_url` (resolved URLs, with the base path added for local files, or empty when a local file is missing), and `repo_url` (`site.editLink.repo`).
 
-`theme` fields: `primary_color`, `accent_color`, `code_theme`, `code_style`, `default_color_theme`, `initial_color_theme` (the preset applied on a first visit, empty when none is), `toc_depth`, `social_links` (each with `icon`, `url` and `icon_svg`), and one boolean per option: `color_themes`, `code_theme_selector`, `code_style_selector`, `show_edit_link`, `show_last_updated`, `show_feedback`, `show_dark_mode_toggle`, `show_animations`, `show_search`, `show_table_of_contents`, `show_prev_next`, `show_breadcrumbs`, `show_back_to_top`, `show_copy_button`, `show_line_numbers`, `show_version_selector` and `show_built_with`.
+`theme` fields: `primary_color`, `accent_color`, `code_theme`, `code_style`, `style` (the configured style in lower case, `default` when it names none), `default_color_theme`, `initial_color_theme` (the preset applied on a first visit, empty when none is), `toc_depth`, `social_links` (each with `icon`, `url` and `icon_svg`), and one boolean per option: `color_themes`, `code_theme_selector`, `code_style_selector`, `style_selector`, `show_edit_link`, `show_last_updated`, `show_contributors`, `show_feedback`, `show_dark_mode_toggle`, `show_animations`, `show_search`, `show_table_of_contents`, `show_prev_next`, `show_breadcrumbs`, `show_back_to_top`, `show_copy_button`, `show_line_numbers`, `show_version_selector` and `show_built_with`.
 
 There is no variable for the search index. The default theme's script fetches `{base_path}/search-index.json` when the search dialog opens.
 

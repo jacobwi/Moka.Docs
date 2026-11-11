@@ -19,7 +19,6 @@ concurrency:
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-test:
@@ -27,14 +26,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history: the docs site dates each page from its last commit, and a shallow
           # clone gives every page the date of the latest commit.
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           # Both are required: the solution multi-targets net9.0;net10.0.
           dotnet-version: |
@@ -42,19 +41,19 @@ jobs:
             10.0.x
 
       - name: Restore
-        run: dotnet restore MokaDocs.sln
+        run: dotnet restore MokaDocs.slnx
 
       - name: Build
-        run: dotnet build MokaDocs.sln --no-restore --configuration Release -warnaserror
+        run: dotnet build MokaDocs.slnx --no-restore --configuration Release -warnaserror
 
       - name: Test
         # No --report-trx-filename: a fixed name made all five test projects write the same
         # file, so the uploaded artifact held only whichever finished last. The default name
         # is unique per project and target framework.
-        run: dotnet test MokaDocs.sln --no-build --configuration Release --report-trx
+        run: dotnet test MokaDocs.slnx --no-build --configuration Release --report-trx
 
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results
@@ -64,9 +63,11 @@ jobs:
         run: dotnet run --project src/Moka.Docs.Cli --configuration Release --framework net9.0 -- build --output ./docs/_site --base-path /Moka.Docs
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs/_site/
+          # v4 and later leave dotfiles out by default, and the site ships .nojekyll.
+          include-hidden-files: true
 
   deploy-docs:
     name: Deploy to GitHub Pages
@@ -80,4 +81,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

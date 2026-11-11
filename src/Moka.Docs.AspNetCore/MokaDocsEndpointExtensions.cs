@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -95,12 +96,29 @@ public static class MokaDocsEndpointExtensions
 
 	private static async Task ServeDocsAsync(HttpContext context, MokaDocsService docsService)
 	{
-		InMemorySite site = await docsService.GetSiteAsync(context.RequestAborted);
+		HttpResponse response = context.Response;
+		bool writeBody = !HttpMethods.IsHead(context.Request.Method);
+
+		MokaDocsService.SiteResult result = await docsService.GetSiteOrFailureAsync(context.RequestAborted);
+		if (result.Site is not { } site)
+		{
+			// The service logged the failure once; an exception here would log it again for every request.
+			response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+			response.Headers.RetryAfter = Math.Ceiling(docsService.FailureRetryDelay.TotalSeconds)
+				.ToString(CultureInfo.InvariantCulture);
+			response.Headers.CacheControl = "no-store";
+			response.ContentType = "text/plain; charset=utf-8";
+			if (writeBody)
+			{
+				await response.WriteAsync("The documentation failed to build. The application's log has the error.",
+					context.RequestAborted);
+			}
+
+			return;
+		}
 
 		string requestPath = (context.GetRouteValue("path") as string)?.Trim('/') ?? "";
 		SiteFile? file = ResolveFile(site, requestPath);
-		HttpResponse response = context.Response;
-		bool writeBody = !HttpMethods.IsHead(context.Request.Method);
 
 		if (file is null)
 		{
@@ -121,12 +139,10 @@ public static class MokaDocsEndpointExtensions
 			return;
 		}
 
-		// Static assets are cached for a day. Everything else, pages and the search index
-		// included, changes with each rebuild, so browsers revalidate it with the ETag.
+		// No URL carries a content hash, so a day of max-age kept the old theme CSS and scripts
+		// next to new pages after an upgrade. Revalidating costs a 304 per file.
 		response.Headers.ETag = file.ETag;
-		response.Headers.CacheControl = IsStaticAsset(Path.GetExtension(requestPath))
-			? "public, max-age=86400"
-			: "no-cache";
+		response.Headers.CacheControl = "no-cache";
 
 		if (IsNotModified(context.Request, file.ETag))
 		{
@@ -188,18 +204,5 @@ public static class MokaDocsEndpointExtensions
 		}
 
 		return null;
-	}
-
-	/// <summary>
-	///     Returns true for file extensions that should receive cache headers.
-	/// </summary>
-	private static bool IsStaticAsset(string extension)
-	{
-		return extension.ToLowerInvariant() switch
-		{
-			".css" or ".js" or ".woff" or ".woff2" or ".ttf" or ".eot" => true,
-			".png" or ".jpg" or ".jpeg" or ".gif" or ".svg" or ".ico" or ".webp" => true,
-			_ => false
-		};
 	}
 }

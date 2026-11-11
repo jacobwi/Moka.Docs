@@ -44,9 +44,14 @@ build finds one, the plugin:
    project with a PackageReference to `Moka.Blazor.Repl.Host`. With `library`
    set, the project goes in `./preview-host/` and also references your library.
    Without it, the project goes in `./.mokadocs/preview-host/`.
-2. Runs `dotnet publish -c Release -f net10.0` on that project, unless its
-   publish output is newer than all of its files (files under `bin/`, `obj/`
-   and `publish-output/` don't count).
+2. Runs `dotnet publish -c Release -f net10.0` on that project, unless it was
+   published after the last change to its files (files under `bin/`, `obj/`
+   and `publish-output/` don't count) and to the source files of the projects
+   it references with `ProjectReference`. A successful publish writes
+   `publish-output/net10.0/.mokadocs-published`, which records when it
+   started. A publish that runs past `publishTimeout` (10 minutes by default)
+   is stopped along with every process it started, and the build reports an
+   error.
 3. Copies the published `wwwroot` to `_site/_preview-wasm/`.
 4. Compiles every ` ```blazor-preview ` block with Roslyn against the preview
    host's `bin/Release` assemblies and writes one `.dll` per block to
@@ -123,6 +128,13 @@ The build also renders each compiled component to static HTML inside a
 render only has stub `IJSRuntime` and `NavigationManager` services. When it throws (for
 example, because the component injects another service), the build reports a
 warning and the fallback shows the error message. The iframe is not affected.
+
+The render waits up to `renderTimeout` (5 seconds by default) for the
+component's async work to finish. A component that is still rendering after
+that, such as a timer that calls `StateHasChanged` forever, keeps the HTML it
+had at that point, and the build reports a warning that names the page. One
+that blocks a lifecycle method gets an empty fallback and the same warning.
+Either way the build carries on.
 
 ---
 
@@ -217,6 +229,12 @@ plugins:
       # in-development library while the preview-host uses a stable NuGet version.
       references:
         - ../src/MyLibrary/bin/Debug/net10.0
+
+      # Optional - seconds dotnet publish of the preview host may take (default 600)
+      publishTimeout: 600
+
+      # Optional - seconds the static <noscript> render of one preview may take (default 5)
+      renderTimeout: 5
 ```
 
 ### `library`
@@ -232,6 +250,11 @@ the scaffolded project references only `Moka.Blazor.Repl.Host`, which is
 enough for plain Razor, and it goes in `./.mokadocs/preview-host/` unless
 `previewHost` names another folder. Once the project exists, change the
 library version in its `.csproj`.
+
+The value must be a NuGet package id (letters, digits, and `.`, `-` or `_`
+between them) with an optional version, floating version (`1.*`) or version
+range (`[1.0,2.0)`) after the `@`. Anything else is ignored with a warning, so
+it never reaches the generated project file.
 
 ### `previewHost`
 
@@ -275,12 +298,31 @@ version.
 Same-named assemblies in these directories **override** the preview-host
 copies, so a `MyLibrary.dll` here wins over the one in the preview host's bin.
 Assemblies that belong to the .NET shared framework the tool runs on are
-skipped, since the compiler already references them.
+skipped, since the compiler already references them. The plugin asks the
+runtime where it would load each name from, so this works wherever .NET is
+installed (Program Files, `~/.dotnet`, snap, Homebrew or a custom
+`DOTNET_ROOT`).
 
 References only change compilation and the static `<noscript>` render. The
 iframe still runs the library version published with the preview host, so a
 block that uses APIs missing from that version compiles but can fail in the
-browser.
+browser. For the same reason, rebuilding a `references` folder doesn't
+republish the preview host; a library the host itself references with
+`ProjectReference` does.
+
+### `publishTimeout`
+
+Seconds the `dotnet publish` of the preview host may run. Default: `600`. The
+first publish restores the WebAssembly packages, so raise it on a slow
+connection. Past the limit the plugin stops `dotnet publish` and every process
+it started, and reports an error. Cancelling the build (Ctrl+C) stops it the
+same way.
+
+### `renderTimeout`
+
+Seconds the static `<noscript>` render of one preview may take. Default: `5`.
+See [How interactive previews work](#how-interactive-previews-work) for what
+happens to a component that takes longer.
 
 ---
 
@@ -399,20 +441,6 @@ The hash is the first 12 hex characters of the SHA-256 of the block's source.
 
 If the preview host also has a `publish-output/wwwroot/` folder, the plugin
 copies that one instead of `publish-output/net10.0/wwwroot/`.
-
----
-
-## `mokadocs serve` endpoint
-
-While `mokadocs-blazor-preview` is declared, `mokadocs serve` also accepts
-`POST /api/blazor/preview` with the JSON body `{"source": "..."}`. It compiles
-the component in the dev server process and returns server-rendered HTML as
-`{"html": "...", "error": "..."}`. Nothing in the generated pages calls it.
-
-The endpoint follows the same rules as the [REPL endpoint](/plugins/repl#security):
-it needs `Content-Type: application/json`, rejects browser requests from other
-origins with a 403, and answers 503 when the plugin isn't declared. The
-component code runs unsandboxed in the dev server process.
 
 ---
 

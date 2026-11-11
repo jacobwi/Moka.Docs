@@ -2,7 +2,8 @@
 title: "Tutorial: Building a Shape Calculator"
 description: "A step-by-step tutorial for building a shape area calculator with SampleLibrary"
 date: 2026-03-10
-author: MokaDocs Team
+author: team
+summary: "Build a console app that creates shapes, calculates their areas and handles errors without exceptions."
 tags: [tutorial, beginner, shapes]
 icon: book-open
 ---

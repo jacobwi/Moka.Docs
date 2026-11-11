@@ -40,8 +40,8 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 	{
 		var result = new DiscoveryResult();
 
-		// Discover Markdown files
 		string docsPath = ResolvePath(fs, rootDirectory, config.Content.Docs);
+		result.DocsDirectory = docsPath;
 
 		// Nothing under the build output may be discovered. Users reasonably point
 		// build.output at a path inside content.docs (./docs/_site), and without this
@@ -50,18 +50,35 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 		string outputPath = ResolvePath(fs, rootDirectory, config.Build.Output);
 		if (fs.Directory.Exists(docsPath))
 		{
-			var mdFiles = fs.Directory
-				.GetFiles(docsPath, "*.md", SearchOption.AllDirectories)
+			List<string> files = CollectFiles(fs, docsPath, outputPath, result.Warnings)
 				.Where(f => !IsUnder(fs, f, outputPath))
+				.ToList();
+
+			// ".md" in any case on every OS. The glob this replaced matched Readme.MD on Windows
+			// and macOS but not on Linux, so the same checkout built different sites.
+			var mdFiles = files
+				.Where(f => string.Equals(fs.Path.GetExtension(f), ".md", StringComparison.OrdinalIgnoreCase))
 				.Select(f => fs.Path.GetRelativePath(docsPath, f))
 				.Order(StringComparer.OrdinalIgnoreCase)
 				.ToList();
 
 			result.MarkdownFiles.AddRange(mdFiles);
 			logger.LogInformation("Discovered {Count} Markdown files in {Path}", mdFiles.Count, docsPath);
+
+			var assetFiles = files
+				.Where(f => _assetExtensions.Contains(fs.Path.GetExtension(f))
+				            || (_rootHostFiles.Contains(fs.Path.GetFileName(f))
+				                && string.Equals(fs.Path.GetDirectoryName(f), docsPath, StringComparison.OrdinalIgnoreCase)))
+				.Select(f => fs.Path.GetRelativePath(docsPath, f))
+				.Order(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+
+			result.AssetFiles.AddRange(assetFiles);
+			logger.LogInformation("Discovered {Count} asset files", assetFiles.Count);
 		}
 		else
 		{
+			result.DocsDirectoryMissing = true;
 			logger.LogWarning("Documentation directory not found: {Path}", docsPath);
 		}
 
@@ -80,25 +97,100 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 			}
 		}
 
-		// Discover static assets in docs directory
-		if (fs.Directory.Exists(docsPath))
-		{
-			var assetFiles = fs.Directory
-				.GetFiles(docsPath, "*", SearchOption.AllDirectories)
-				.Where(f => _assetExtensions.Contains(fs.Path.GetExtension(f))
-				            || (_rootHostFiles.Contains(fs.Path.GetFileName(f))
-				                && string.Equals(fs.Path.GetDirectoryName(f), docsPath, StringComparison.OrdinalIgnoreCase)))
-				.Where(f => !IsUnder(fs, f, outputPath))
-				.Select(f => fs.Path.GetRelativePath(docsPath, f))
-				.Order(StringComparer.OrdinalIgnoreCase)
-				.ToList();
-
-			result.AssetFiles.AddRange(assetFiles);
-			logger.LogInformation("Discovered {Count} asset files", assetFiles.Count);
-		}
-
 		return result;
 	}
+
+	/// <summary>
+	///     Every file under the docs folder, following directory links unless one points back at
+	///     a folder it sits in.
+	/// </summary>
+	/// <remarks>
+	///     A link such as <c>docs/loop</c> pointing at <c>docs</c> made the recursive glob walk the
+	///     same folder again and again until the path got too long, building the same pages dozens
+	///     of times. Each folder carries the real paths of the folders above it, and a link whose
+	///     target is one of them, or holds one of them, is reported and skipped.
+	/// </remarks>
+	private static List<string> CollectFiles(IFileSystem fs, string docsPath, string outputPath, List<string> warnings)
+	{
+		StringComparison comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+			? StringComparison.OrdinalIgnoreCase
+			: StringComparison.Ordinal;
+		string output = fs.Path.TrimEndingDirectorySeparator(fs.Path.GetFullPath(outputPath));
+		var files = new List<string>();
+		string root = fs.Path.TrimEndingDirectorySeparator(fs.Path.GetFullPath(docsPath));
+		Walk(root, [root]);
+		return files;
+
+		void Walk(string directory, List<string> realChain)
+		{
+			if (directory.Equals(output, StringComparison.OrdinalIgnoreCase))
+			{
+				return;
+			}
+
+			string[] entries;
+			string[] subdirectories;
+			try
+			{
+				entries = fs.Directory.GetFiles(directory);
+				subdirectories = fs.Directory.GetDirectories(directory);
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				warnings.Add($"Skipped '{fs.Path.GetRelativePath(docsPath, directory)}': {ex.Message}");
+				return;
+			}
+
+			files.AddRange(entries);
+
+			foreach (string subdirectory in subdirectories.Order(StringComparer.Ordinal))
+			{
+				string real = fs.Path.Combine(realChain[^1], fs.Path.GetFileName(subdirectory));
+				IDirectoryInfo info = fs.DirectoryInfo.New(subdirectory);
+				if (info.LinkTarget is not null)
+				{
+					string shown = fs.Path.GetRelativePath(docsPath, subdirectory);
+					if (ResolveLink(fs, info) is not { } target)
+					{
+						warnings.Add($"Skipped '{shown}': it is a link whose target does not exist");
+						continue;
+					}
+
+					if (realChain.Any(ancestor => IsSameOrBelow(ancestor, target, comparison)))
+					{
+						warnings.Add(
+							$"Skipped '{shown}': it links to '{target}', which contains it, so following it would loop forever");
+						continue;
+					}
+
+					real = target;
+				}
+
+				Walk(subdirectory, [.. realChain, real]);
+			}
+		}
+	}
+
+	private static string? ResolveLink(IFileSystem fs, IDirectoryInfo link)
+	{
+		try
+		{
+			IFileSystemInfo? target = link.ResolveLinkTarget(true);
+			return target is { Exists: true }
+				? fs.Path.TrimEndingDirectorySeparator(fs.Path.GetFullPath(target.FullName))
+				: null;
+		}
+		catch (IOException)
+		{
+			return null;
+		}
+	}
+
+	private static bool IsSameOrBelow(string path, string directory, StringComparison comparison) =>
+		path.Equals(directory, comparison)
+		|| (path.Length > directory.Length
+		    && path.StartsWith(directory, comparison)
+		    && (path[directory.Length] == '/' || path[directory.Length] == '\\'));
 
 	/// <summary>
 	///     Whether a discovered file sits inside the given directory.
@@ -146,6 +238,15 @@ public sealed class DiscoveryResult
 
 	/// <summary>Asset file paths relative to the docs directory.</summary>
 	public List<string> AssetFiles { get; } = [];
+
+	/// <summary>The resolved <c>content.docs</c> directory.</summary>
+	public string DocsDirectory { get; set; } = "";
+
+	/// <summary>Whether the <c>content.docs</c> directory does not exist.</summary>
+	public bool DocsDirectoryMissing { get; set; }
+
+	/// <summary>Problems found while scanning, such as directory links that loop.</summary>
+	public List<string> Warnings { get; } = [];
 
 	/// <summary>Total number of discovered files.</summary>
 	public int TotalCount => MarkdownFiles.Count + ProjectFiles.Count + AssetFiles.Count;

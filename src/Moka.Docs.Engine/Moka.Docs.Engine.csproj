@@ -22,4 +22,8 @@
     <PackageReference Include="System.IO.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.Integration.Tests" />
+  </ItemGroup>
+
 </Project>

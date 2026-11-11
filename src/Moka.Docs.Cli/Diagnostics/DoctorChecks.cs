@@ -1,9 +1,14 @@
 using System.Globalization;
+using System.Net;
+using System.Text.RegularExpressions;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Core.Content;
+using Moka.Docs.Parsing.Markdown;
+using Moka.Docs.Plugins;
 
 namespace Moka.Docs.Cli.Diagnostics;
 
@@ -17,6 +22,10 @@ internal static class DoctorChecks
 		.UseAdvancedExtensions()
 		.UseYamlFrontMatter()
 		.Build();
+
+	private static readonly Regex _idAttribute = new(
+		"""(?<=\s)(?:id|name)\s*=\s*(?:"(?<dq>[^"]*)"|'(?<sq>[^']*)')""",
+		RegexOptions.Compiled);
 
 	#region Links
 
@@ -70,6 +79,157 @@ internal static class DoctorChecks
 		}
 
 		return path.Length == 0 ? "/" : path;
+	}
+
+	/// <summary>
+	///     Checks every link in <paramref name="sources" /> against what the build produced.
+	/// </summary>
+	/// <remarks>
+	///     <list type="bullet">
+	///         <item>
+	///             Paths are compared ordinally. Static hosts on Linux serve <c>/guide</c> and
+	///             <c>/Guide</c> as different files, and the case-insensitive match this replaced
+	///             passed links that 404 once deployed. A link that only differs in case says so.
+	///         </item>
+	///         <item>
+	///             A <c>#fragment</c> pointing at a page must match an <c>id</c> (or an
+	///             <c>&lt;a name&gt;</c>) in that page's rendered HTML, which covers heading ids,
+	///             explicit ids and the theme's own anchors. <c>#top</c> always works.
+	///         </item>
+	///     </list>
+	/// </remarks>
+	/// <param name="pages">The pages the build produced (drafts included, so links to them can say so).</param>
+	/// <param name="otherTargets">Other root-relative URLs that exist: assets, brand files, generated files.</param>
+	/// <param name="sources">The Markdown files to check.</param>
+	/// <returns>Broken links and links to anchors that don't exist, ready to print.</returns>
+	internal static LinkCheckResult CheckLinks(IReadOnlyCollection<DocPage> pages, IEnumerable<string> otherTargets,
+		IEnumerable<MarkdownSource> sources)
+	{
+		var published = pages.Where(p => p.FrontMatter.Visibility != PageVisibility.Draft).ToList();
+
+		var targets = new HashSet<string>(published.Select(p => NormalizeRoute(p.Route)), StringComparer.Ordinal);
+		AddSectionAncestors(targets);
+		foreach (string target in otherTargets)
+		{
+			targets.Add(NormalizeRoute(target));
+		}
+
+		var spellings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		foreach (string target in targets.Order(StringComparer.Ordinal))
+		{
+			spellings.TryAdd(target, target);
+		}
+
+		var draftRoutes = new HashSet<string>(
+			pages.Where(p => p.FrontMatter.Visibility == PageVisibility.Draft).Select(p => NormalizeRoute(p.Route)),
+			StringComparer.OrdinalIgnoreCase);
+
+		var pageByRoute = new Dictionary<string, DocPage>(StringComparer.Ordinal);
+		foreach (DocPage page in published)
+		{
+			pageByRoute[NormalizeRoute(page.Route)] = page;
+		}
+
+		var routeBySource = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		foreach (DocPage page in published.Where(p => !string.IsNullOrEmpty(p.SourcePath)))
+		{
+			routeBySource[page.SourcePath!.Replace('\\', '/')] = NormalizeRoute(page.Route);
+		}
+
+		var idsByRoute = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+		var result = new LinkCheckResult();
+
+		foreach (MarkdownSource source in sources)
+		{
+			foreach (MarkdownLink link in FindLinks(source.Markdown))
+			{
+				int hash = link.Url.IndexOf('#');
+				string fragment = hash >= 0 ? link.Url[(hash + 1)..] : "";
+
+				string route;
+				string written;
+				if (link.Url.StartsWith('#'))
+				{
+					if (!routeBySource.TryGetValue(source.PathInDocs.Replace('\\', '/'), out string? own))
+					{
+						continue;
+					}
+
+					route = own;
+					written = "";
+				}
+				else
+				{
+					bool rootRelative = IsRootRelative(link.Url);
+					string? target = rootRelative
+						? link.Url
+						: RelativeLinks.ToRootRelative(link.Url, source.PathInDocs);
+					if (target is null)
+					{
+						continue;
+					}
+
+					route = NormalizeRoute(target);
+					written = rootRelative ? "" : $", written as {link.Url}";
+				}
+
+				string where = $"{source.DisplayPath}:{link.Line}";
+				if (!targets.Contains(route))
+				{
+					string note = spellings.TryGetValue(route, out string? actual)
+						? $", differs only in case from {actual}"
+						: draftRoutes.Contains(route) ? ", links to a draft page"
+						: link.IsImage ? ", image"
+						: "";
+					result.Broken.Add($"{route} ({where}{note}{written})");
+					continue;
+				}
+
+				if (fragment.Length == 0 || fragment == "top" || !pageByRoute.TryGetValue(route, out DocPage? targetPage))
+				{
+					continue;
+				}
+
+				if (!idsByRoute.TryGetValue(route, out HashSet<string>? ids))
+				{
+					ids = ElementIds(targetPage.Content.Html);
+					idsByRoute[route] = ids;
+				}
+
+				string decoded = DecodeFragment(fragment);
+				if (!ids.Contains(decoded))
+				{
+					result.BrokenAnchors.Add($"{route}#{decoded} ({where}{written}): no heading or element on that page has this id");
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/// <summary>Every <c>id</c> and anchor <c>name</c> in an HTML document, entity-decoded.</summary>
+	internal static HashSet<string> ElementIds(string html)
+	{
+		var ids = new HashSet<string>(StringComparer.Ordinal);
+		foreach (Match match in _idAttribute.Matches(html))
+		{
+			string value = match.Groups["dq"].Success ? match.Groups["dq"].Value : match.Groups["sq"].Value;
+			ids.Add(WebUtility.HtmlDecode(value));
+		}
+
+		return ids;
+	}
+
+	private static string DecodeFragment(string fragment)
+	{
+		try
+		{
+			return Uri.UnescapeDataString(fragment);
+		}
+		catch (UriFormatException)
+		{
+			return fragment;
+		}
 	}
 
 	/// <summary>
@@ -215,7 +375,9 @@ internal static class DoctorChecks
 
 	/// <summary>
 	///     Declared plugin names that match no registered plugin id. Matching is
-	///     case-insensitive, the same rule <c>PluginHost</c> uses when loading.
+	///     case-insensitive, the same rule <c>PluginHost</c> uses when loading. Declarations with
+	///     a <c>path</c> are left out: they are matched against their own assembly, and the build
+	///     reports when that fails.
 	/// </summary>
 	internal static List<string> FindUnknownPlugins(IEnumerable<PluginDeclaration> declared,
 		IEnumerable<string> registeredIds)
@@ -223,6 +385,7 @@ internal static class DoctorChecks
 		var known = new HashSet<string>(registeredIds, StringComparer.OrdinalIgnoreCase);
 
 		return declared
+			.Where(p => string.IsNullOrWhiteSpace(p.Path))
 			.Select(p => p.Name)
 			.Where(name => !string.IsNullOrWhiteSpace(name) && !known.Contains(name))
 			.Select(name => name!)
@@ -230,8 +393,8 @@ internal static class DoctorChecks
 	}
 
 	/// <summary>
-	///     Declarations the plugin host skips without reporting anything: entries that set
-	///     <c>path</c>, which no host reads, and entries with no name.
+	///     Declarations the plugin host skips without reporting anything: entries with no name,
+	///     path or not.
 	/// </summary>
 	internal static List<string> FindIgnoredPluginDeclarations(IEnumerable<PluginDeclaration> declared)
 	{
@@ -240,20 +403,37 @@ internal static class DoctorChecks
 
 		foreach (PluginDeclaration declaration in declared)
 		{
-			if (!string.IsNullOrWhiteSpace(declaration.Path))
+			if (string.IsNullOrWhiteSpace(declaration.Name))
 			{
-				problems.Add(
-					$"plugins[{index}]: path '{declaration.Path}' is ignored, the mokadocs CLI cannot load plugin assemblies");
-			}
-			else if (string.IsNullOrWhiteSpace(declaration.Name))
-			{
-				problems.Add($"plugins[{index}] has no name");
+				problems.Add(string.IsNullOrWhiteSpace(declaration.Path)
+					? $"plugins[{index}] has no name"
+					: $"plugins[{index}] has no name, so nothing is loaded from '{declaration.Path}'. Set it to the plugin's id");
 			}
 
 			index++;
 		}
 
 		return problems;
+	}
+
+	/// <summary>
+	///     Declarations that loaded and matched a plugin, but whose plugin is not among the loaded
+	///     ones: its <c>InitializeAsync</c> threw. Path declarations that failed to load are left
+	///     out, since the build reports those as errors.
+	/// </summary>
+	internal static List<PluginDeclaration> FindPluginsThatFailedToInitialize(IEnumerable<PluginDeclaration> declared,
+		IEnumerable<string> registeredIds, IEnumerable<string> loadedIds, IEnumerable<PluginLoadFailure> loadFailures)
+	{
+		var registered = new HashSet<string>(registeredIds, StringComparer.OrdinalIgnoreCase);
+		var loaded = new HashSet<string>(loadedIds, StringComparer.OrdinalIgnoreCase);
+		var failed = loadFailures.Select(f => (f.Name, f.Path)).ToHashSet();
+
+		return declared
+			.Where(p => !string.IsNullOrWhiteSpace(p.Name) && !loaded.Contains(p.Name))
+			.Where(p => string.IsNullOrWhiteSpace(p.Path)
+				? registered.Contains(p.Name!)
+				: !failed.Contains((p.Name!, p.Path)))
+			.ToList();
 	}
 
 	#endregion
@@ -322,6 +502,22 @@ internal static class DoctorChecks
 	}
 
 	#endregion
+}
+
+/// <summary>A Markdown file whose links are checked.</summary>
+/// <param name="DisplayPath">The path shown in reports, relative to the project.</param>
+/// <param name="PathInDocs">The path relative to the docs folder, used to resolve relative links.</param>
+/// <param name="Markdown">The file's content.</param>
+internal readonly record struct MarkdownSource(string DisplayPath, string PathInDocs, string Markdown);
+
+/// <summary>What <see cref="DoctorChecks.CheckLinks" /> found.</summary>
+internal sealed class LinkCheckResult
+{
+	/// <summary>Links whose target page or file doesn't exist.</summary>
+	public List<string> Broken { get; } = [];
+
+	/// <summary>Links whose page exists but whose <c>#fragment</c> matches no id on it.</summary>
+	public List<string> BrokenAnchors { get; } = [];
 }
 
 /// <summary>A link or image found in a Markdown document.</summary>

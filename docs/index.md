@@ -20,7 +20,7 @@ features:
     description: Automatic light and dark mode with system preference detection and manual toggle support.
   - icon: "v2"
     title: Versioning
-    description: A version dropdown linking to the docs you publish for each release.
+    description: Every release built from its git tag into one site, with a dropdown that keeps your page.
   - icon: "⚙"
     title: Plugins
     description: Built-in plugins for runnable C#, Blazor previews, changelogs, OpenAPI specs and Python APIs.
@@ -79,7 +79,7 @@ mokadocs serve
 - [Mermaid Diagrams](/guide/diagrams) - Flowcharts, sequence diagrams, class diagrams
 - [Interactive REPL](/plugins/repl) - Run C# code blocks from the page while the dev server is running. A deployed static site can't run them
 - [Blazor Preview](/plugins/blazor-preview) - Live preview Blazor components in docs
-- [Versioning](/advanced/versioning) - A header dropdown linking to the doc versions you build and deploy
+- [Versioning](/advanced/versioning) - Build each release from its git tag or branch into one site, with a version dropdown
 - [Themes](/themes/customization) - Theme options, or your own layouts and CSS in a theme folder
 :::
 
@@ -95,8 +95,9 @@ mokadocs serve
 | `Moka.Docs.CSharp` | Roslyn-based C# API analysis |
 | `Moka.Docs.Themes` | The built-in theme and custom theme loading |
 | `Moka.Docs.Plugins` | Plugin system and built-in plugins |
-| `Moka.Docs.Serve` | Dev server with hot reload, plus the REPL and Blazor preview endpoints |
-| `Moka.Docs.Versioning` | Builds the version list for the header version dropdown |
+| `Moka.Docs.Serve` | Dev server with hot reload, plus the REPL endpoint |
+| `Moka.Docs.Versioning` | Version labels and the multi-version build that checks out each git ref |
 | `Moka.Docs.AspNetCore` | Builds and serves docs inside an ASP.NET Core app (`AddMokaDocs`, `MapMokaDocs`) |
 | `Moka.Docs.Cloud` | Services that check the `cloud:` settings. Nothing in the CLI or the build calls them |
-| `Moka.Docs.Search` | Empty placeholder. Search index generation lives in `Moka.Docs.Engine` |
+
+`Moka.Docs.Search` was an empty placeholder (its `AddMokaDocsSearch()` registered nothing) and 1.8.0 was its last release. Search index generation is part of `Moka.Docs.Engine`; remove the package reference and the `AddMokaDocsSearch()` call if you have them.

@@ -80,7 +80,6 @@ public sealed class SiteConfigReaderTests
 		                    features:
 		                      search:
 		                        enabled: true
-		                        provider: flexsearch
 		                      versioning:
 		                        enabled: true
 		                        strategy: dropdown-only
@@ -115,7 +114,7 @@ public sealed class SiteConfigReaderTests
 		                    build:
 		                      output: ./dist
 		                      clean: false
-		                      minify: false
+		                      minify: true
 		                      sitemap: false
 		                      robots: false
 		                      cache: false
@@ -172,7 +171,6 @@ public sealed class SiteConfigReaderTests
 
 		// Features
 		config.Features.Search.Enabled.Should().BeTrue();
-		config.Features.Search.Provider.Should().Be("flexsearch");
 		config.Features.Versioning.Enabled.Should().BeTrue();
 		config.Features.Versioning.Strategy.Should().Be("dropdown-only");
 		config.Features.Versioning.Versions.Should().HaveCount(2);
@@ -197,7 +195,7 @@ public sealed class SiteConfigReaderTests
 		// Build
 		config.Build.Output.Should().Be("./dist");
 		config.Build.Clean.Should().BeFalse();
-		config.Build.Minify.Should().BeFalse();
+		config.Build.Minify.Should().BeTrue();
 		config.Build.Sitemap.Should().BeFalse();
 		config.Build.Robots.Should().BeFalse();
 		config.Build.Cache.Should().BeFalse();
@@ -288,6 +286,64 @@ public sealed class SiteConfigReaderTests
 		reparsed.Content.Docs.Should().Be("./my-docs");
 		reparsed.Theme.Options.PrimaryColor.Should().Be("#123456");
 		reparsed.Build.Output.Should().Be("./output");
+	}
+
+	[Fact]
+	public void Parse_ThemeStyle_ReadsTheStyleAndTheSelector()
+	{
+		const string yaml = """
+		                    site:
+		                      title: "Styled"
+		                    theme:
+		                      options:
+		                        style: moka
+		                        styleSelector: false
+		                    """;
+
+		SiteConfig config = SiteConfigReader.Parse(yaml);
+
+		config.Theme.Options.Style.Should().Be("moka");
+		config.Theme.Options.StyleSelector.Should().BeFalse();
+	}
+
+	[Fact]
+	public void Parse_NoThemeStyle_UsesTheDefaultStyleWithTheSelectorShown()
+	{
+		SiteConfig config = SiteConfigReader.Parse("site:\n  title: Plain\n");
+
+		config.Theme.Options.Style.Should().Be("default");
+		config.Theme.Options.StyleSelector.Should().BeTrue();
+	}
+
+	[Fact]
+	public void ToYaml_RoundTrip_KeepsAChosenStyleAndOmitsTheDefaults()
+	{
+		const string yaml = """
+		                    site:
+		                      title: "Styled"
+		                    theme:
+		                      options:
+		                        style: soft
+		                        styleSelector: false
+		                    """;
+
+		SiteConfig reparsed = SiteConfigReader.Parse(SiteConfigReader.ToYaml(SiteConfigReader.Parse(yaml)));
+		string defaults = SiteConfigReader.ToYaml(SiteConfigReader.Parse("site:\n  title: Plain\n"));
+
+		reparsed.Theme.Options.Style.Should().Be("soft");
+		reparsed.Theme.Options.StyleSelector.Should().BeFalse();
+		defaults.Should().NotContain("style:").And.NotContain("styleSelector");
+	}
+
+	[Fact]
+	public void Minify_IsOffByDefaultAndRoundTripsWhenOn()
+	{
+		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
+		SiteConfig on = SiteConfigReader.Parse("site:\n  title: Small\nbuild:\n  minify: true\n");
+
+		defaults.Build.Minify.Should().BeFalse();
+		SiteConfigReader.ToYaml(defaults).Should().NotContain("minify");
+		SiteConfigReader.Parse(SiteConfigReader.ToYaml(on)).Build.Minify.Should().BeTrue();
 	}
 
 	// ── SiteAssetReference parsing ────────────────────────────────────────────

@@ -48,13 +48,16 @@ public sealed class CSharpAnalysisPhase(
 			string projectPath = context.FileSystem.Path.GetFullPath(
 				context.FileSystem.Path.Combine(context.RootDirectory, project.Path));
 
+			// An error, not a warning: the site would otherwise ship without that project's API
+			// reference and the build would still exit 0.
 			if (!context.FileSystem.File.Exists(projectPath))
 			{
-				context.Diagnostics.Warning($"Project file not found: {project.Path}", Name);
+				context.Diagnostics.Error(
+					$"Project file not found: {project.Path} (looked for {projectPath}). Its API reference was not generated.",
+					Name);
 				continue;
 			}
 
-			string projectDir = context.FileSystem.Path.GetDirectoryName(projectPath) ?? "";
 			string assemblyName = project.Label ?? context.FileSystem.Path.GetFileNameWithoutExtension(projectPath);
 
 			try
@@ -66,7 +69,7 @@ public sealed class CSharpAnalysisPhase(
 				// Roslyn analysis dominates build time, so a cache hit here is most of the
 				// difference between a warm and a cold build.
 				string fingerprint = context.UseCache
-					? BuildCache.ComputeFingerprint(projectDir, projectInfo.InputFiles, project.IncludeInternals)
+					? BuildCache.ComputeFingerprint(projectInfo, project.IncludeInternals)
 					: "";
 
 				ApiReference? apiRef = context.UseCache && fingerprint.Length > 0
@@ -84,12 +87,19 @@ public sealed class CSharpAnalysisPhase(
 					}
 				}
 
+				foreach (string warning in apiRef.Warnings)
+				{
+					context.Diagnostics.Warning($"{assemblyName}: {warning}", Name);
+				}
+
 				allNamespaces.AddRange(apiRef.Namespaces);
 				allAssemblies.AddRange(apiRef.Assemblies);
 			}
 			catch (Exception ex)
 			{
-				context.Diagnostics.Warning($"Failed to analyze {assemblyName}: {ex.Message}", Name);
+				context.Diagnostics.Error(
+					$"Failed to analyze {assemblyName} ({project.Path}): {ex.GetType().Name}: {ex.Message}. Its API reference was not generated.",
+					Name);
 				logger.LogWarning(ex, "Failed to analyze project: {Path}", project.Path);
 			}
 		}
@@ -148,10 +158,7 @@ public sealed class CSharpAnalysisPhase(
 			string csprojContent = context.FileSystem.File.ReadAllText(projectPath);
 			var doc = XDocument.Parse(csprojContent);
 
-			// Look for PackageId, then AssemblyName, then fall back to file name
-			string packageId = doc.Descendants("PackageId").FirstOrDefault()?.Value
-			                   ?? doc.Descendants("AssemblyName").FirstOrDefault()?.Value
-			                   ?? context.FileSystem.Path.GetFileNameWithoutExtension(projectPath);
+			string packageId = ResolvePackageId(context.FileSystem, projectPath, doc);
 
 			// The project file first, then Directory.Build.props files above it. Projects that set
 			// the version once in Directory.Build.props, as this repo does, used to show 1.0.0.
@@ -168,6 +175,100 @@ public sealed class CSharpAnalysisPhase(
 			logger.LogWarning(ex, "Failed to extract package metadata from {Path}", projectPath);
 			return null;
 		}
+	}
+
+	/// <summary>
+	///     The <c>PackageId</c>, else the <c>AssemblyName</c>, else the project file name. A value built from
+	///     other properties, such as <c>$(MSBuildProjectName)</c>, is filled in from the project file and the
+	///     <c>Directory.Build.props</c> files above it; one that still names an unknown property is skipped.
+	/// </summary>
+	/// <remarks>
+	///     The widget used to print <c>$(MSBuildProjectName)</c> as the package to install.
+	/// </remarks>
+	private static string ResolvePackageId(IFileSystem fs, string projectPath, XDocument doc)
+	{
+		string projectName = fs.Path.GetFileNameWithoutExtension(projectPath);
+		foreach (string property in new[] { "PackageId", "AssemblyName" })
+		{
+			string? raw = doc.Descendants(property).FirstOrDefault()?.Value.Trim();
+			if (raw is { Length: > 0 } && ExpandProperties(fs, projectPath, projectName, raw, 0) is { Length: > 0 } value)
+			{
+				return value;
+			}
+		}
+
+		return projectName;
+	}
+
+	private static string? ExpandProperties(IFileSystem fs, string projectPath, string projectName, string value, int depth)
+	{
+		if (!value.Contains("$(", StringComparison.Ordinal))
+		{
+			return value;
+		}
+
+		if (depth > 8)
+		{
+			return null;
+		}
+
+		var sb = new StringBuilder(value.Length);
+		int index = 0;
+		while (index < value.Length)
+		{
+			int start = value.IndexOf("$(", index, StringComparison.Ordinal);
+			if (start < 0)
+			{
+				sb.Append(value, index, value.Length - index);
+				break;
+			}
+
+			int end = value.IndexOf(')', start + 2);
+			if (end < 0)
+			{
+				return null;
+			}
+
+			string name = value[(start + 2)..end].Trim();
+			string? replacement = name.Equals("MSBuildProjectName", StringComparison.OrdinalIgnoreCase)
+				? projectName
+				: ReadRawProjectProperty(fs, projectPath, name) is { } raw
+					? ExpandProperties(fs, projectPath, projectName, raw, depth + 1)
+					: name.Equals("AssemblyName", StringComparison.OrdinalIgnoreCase)
+						? projectName
+						: null;
+			if (replacement is null)
+			{
+				return null;
+			}
+
+			sb.Append(value, index, start - index).Append(replacement);
+			index = end + 1;
+		}
+
+		return sb.ToString().Trim();
+	}
+
+	/// <summary>
+	///     Like <see cref="ReadProjectProperty" />, but keeps values built from other properties.
+	/// </summary>
+	private static string? ReadRawProjectProperty(IFileSystem fs, string projectPath, string name)
+	{
+		if (TryParseXml(fs, projectPath) is { } project && ReadProperty(project, name, true) is { } value)
+		{
+			return value;
+		}
+
+		for (string? dir = fs.Path.GetDirectoryName(projectPath); dir is not null; dir = fs.Path.GetDirectoryName(dir))
+		{
+			string props = fs.Path.Combine(dir, "Directory.Build.props");
+			if (fs.File.Exists(props) && TryParseXml(fs, props) is { } doc && ReadProperty(doc, name, true) is { } inherited)
+			{
+				return inherited;
+			}
+		}
+
+		return null;
 	}
 
 	/// <summary>
@@ -289,7 +390,7 @@ public sealed class CSharpAnalysisPhase(
 	///     Reads the last unconditional definition of a property, skipping values built from other
 	///     properties such as <c>$(Major).1</c>.
 	/// </summary>
-	private static string? ReadProperty(XDocument doc, string name)
+	private static string? ReadProperty(XDocument doc, string name, bool keepReferences = false)
 	{
 		string? value = doc.Root?.Elements()
 			.Where(e => e.Name.LocalName == "PropertyGroup" && e.Attribute("Condition") is null)
@@ -297,7 +398,7 @@ public sealed class CSharpAnalysisPhase(
 			.LastOrDefault(e => e.Name.LocalName == name && e.Attribute("Condition") is null)
 			?.Value.Trim();
 
-		return string.IsNullOrEmpty(value) || value.Contains("$(") ? null : value;
+		return string.IsNullOrEmpty(value) || (!keepReferences && value.Contains("$(")) ? null : value;
 	}
 
 	private static void GenerateApiPages(BuildContext context)
@@ -309,6 +410,7 @@ public sealed class CSharpAnalysisPhase(
 
 		// Collect all types across namespaces for cref links and type dependency graph lookups
 		var allTypes = context.ApiModel.Namespaces.SelectMany(n => n.Types).ToList();
+		ApiTypeRoutes routes = ApiTypeRoutes.For(allTypes);
 
 		// Generate API index page listing all namespaces and types
 		var indexHtml = new StringBuilder();
@@ -320,12 +422,13 @@ public sealed class CSharpAnalysisPhase(
 			indexHtml.AppendLine("<tbody>");
 			foreach (ApiType type in ns.Types)
 			{
-				string route = $"/api/{ns.Name.Replace('.', '/')}/{type.Name}".ToLowerInvariant();
+				string route = routes.Route(type);
 				string kindBadge = type.Kind.ToString().ToLowerInvariant();
 				// Resolved like the type page: raw <see cref> anchors had no href in this table.
 				string summary = ApiPageRenderer.RenderSummary(type, allTypes);
 				indexHtml.AppendLine("<tr>");
-				indexHtml.AppendLine($"<td><a href=\"{route}\">{HttpUtility.HtmlEncode(type.Name)}</a></td>");
+				indexHtml.AppendLine(
+					$"<td><a href=\"{HttpUtility.HtmlAttributeEncode(route)}\">{HttpUtility.HtmlEncode(routes.DisplayName(type))}</a></td>");
 				indexHtml.AppendLine($"<td><span class=\"api-badge api-badge-{kindBadge}\">{type.Kind}</span></td>");
 				indexHtml.AppendLine($"<td>{summary}</td>");
 				indexHtml.AppendLine("</tr>");
@@ -355,15 +458,14 @@ public sealed class CSharpAnalysisPhase(
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
 		foreach (ApiType type in ns.Types)
 		{
-			string safeName = SanitizeRoutePart(type.Name);
-			string route = $"/api/{ns.Name.Replace('.', '/')}/{safeName}".ToLowerInvariant();
+			string route = routes.Route(type);
 			string apiHtml = ApiPageRenderer.RenderType(type, allTypes);
 			TableOfContents toc = ApiPageRenderer.BuildTocForType(type, allTypes);
 			var page = new DocPage
 			{
 				FrontMatter = new FrontMatter
 				{
-					Title = type.Name,
+					Title = routes.DisplayName(type),
 					Description = ApiDocText.ToPlainText(type.Documentation?.Summary) is { Length: > 0 } description
 						? description
 						: $"API documentation for {type.FullName}",
@@ -382,7 +484,4 @@ public sealed class CSharpAnalysisPhase(
 			context.Pages.Add(page);
 		}
 	}
-
-	private static string SanitizeRoutePart(string name) =>
-		name.Replace('<', '-').Replace('>', '-').Replace('`', '-').TrimEnd('-');
 }

@@ -21,6 +21,8 @@ internal static class ReplScriptRunner
 	/// <summary>The most console output kept per run, in characters.</summary>
 	internal const int MaxOutputLength = 100_000;
 
+	private static readonly SemaphoreSlim _consoleGate = new(1, 1);
+
 	/// <summary>The imports and references every snippet starts with.</summary>
 	internal static ScriptOptions DefaultOptions { get; } = ScriptOptions.Default
 		.WithImports(
@@ -75,6 +77,57 @@ internal static class ReplScriptRunner
 	/// </summary>
 	internal static async Task<ReplResult> RunAsync(string code, ScriptOptions options, CancellationToken ct)
 	{
+		Script<object> script = CSharpScript.Create(code, options);
+		try
+		{
+			ImmutableArray<Diagnostic> diagnostics = script.Compile(ct);
+			var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+			if (errors.Count > 0)
+			{
+				return new ReplResult { Error = Truncate(string.Join("\n", errors.Select(e => e.GetMessage()))) };
+			}
+		}
+		catch (CompilationErrorException ex)
+		{
+			return new ReplResult { Error = Truncate(ex.Message) };
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			return new ReplResult { Error = Truncate($"Runtime error: {ex.Message}") };
+		}
+
+		// Console.Out belongs to the whole process. Two in-process runs at once each restored what
+		// the other had set, which left it pointing at a writer nobody reads.
+		await _consoleGate.WaitAsync(ct);
+		try
+		{
+			return await RunCompiledAsync(script, ct);
+		}
+		finally
+		{
+			_consoleGate.Release();
+		}
+	}
+
+	/// <summary>
+	///     Cuts <paramref name="text" /> to <see cref="MaxOutputLength" /> characters with the same
+	///     note as console output. A snippet's value and an exception's message used to come back
+	///     whole: returning a 150 MB string took the parent to 2.4 GB.
+	/// </summary>
+	internal static string Truncate(string text)
+	{
+		if (text.Length <= MaxOutputLength)
+		{
+			return text;
+		}
+
+		var cut = new StringBuilder(MaxOutputLength + 64);
+		AppendUpTo(cut, text, MaxOutputLength);
+		return cut.Append(TruncatedNote(MaxOutputLength)).ToString();
+	}
+
+	private static async Task<ReplResult> RunCompiledAsync(Script<object> script, CancellationToken ct)
+	{
 		TextWriter originalOut = Console.Out;
 		TextWriter originalError = Console.Error;
 		var output = new BoundedWriter(MaxOutputLength);
@@ -85,15 +138,6 @@ internal static class ReplScriptRunner
 			Console.SetOut(output);
 			Console.SetError(errorOutput);
 
-			Script<object> script = CSharpScript.Create(code, options);
-			ImmutableArray<Diagnostic> diagnostics = script.Compile(ct);
-
-			var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-			if (errors.Count > 0)
-			{
-				return new ReplResult { Error = string.Join("\n", errors.Select(e => e.GetMessage())) };
-			}
-
 			ScriptState<object> state = await script.RunAsync(cancellationToken: ct);
 
 			string text = output.ToString();
@@ -101,7 +145,7 @@ internal static class ReplScriptRunner
 			// A snippet that ends in an expression and prints nothing shows the expression's value.
 			if (state.ReturnValue is not null && text.Length == 0)
 			{
-				text = state.ReturnValue.ToString() ?? "";
+				text = Truncate(state.ReturnValue.ToString() ?? "");
 			}
 
 			string errorText = errorOutput.ToString();
@@ -114,17 +158,31 @@ internal static class ReplScriptRunner
 		}
 		catch (CompilationErrorException ex)
 		{
-			return new ReplResult { Error = ex.Message };
+			return new ReplResult { Error = Truncate(ex.Message) };
 		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
-			return new ReplResult { Error = $"Runtime error: {ex.Message}" };
+			return new ReplResult { Error = Truncate($"Runtime error: {ex.Message}") };
 		}
 		finally
 		{
 			Console.SetOut(originalOut);
 			Console.SetError(originalError);
 		}
+	}
+
+	private static string TruncatedNote(int limit) => $"\n[Output truncated after {limit} characters.]";
+
+	/// <summary>Appends up to <paramref name="room" /> characters without splitting a surrogate pair.</summary>
+	private static void AppendUpTo(StringBuilder builder, ReadOnlySpan<char> value, int room)
+	{
+		int length = Math.Clamp(room, 0, value.Length);
+		if (length > 0 && length < value.Length && char.IsHighSurrogate(value[length - 1]))
+		{
+			length--;
+		}
+
+		builder.Append(value[..length]);
 	}
 
 	/// <summary>
@@ -147,7 +205,7 @@ internal static class ReplScriptRunner
 		public override void Write(ReadOnlySpan<char> buffer) => Append(buffer);
 
 		public override string ToString() =>
-			_truncated ? $"{_text}\n[Output truncated after {limit} characters.]" : _text.ToString();
+			_truncated ? _text + TruncatedNote(limit) : _text.ToString();
 
 		private void Append(ReadOnlySpan<char> value)
 		{
@@ -158,7 +216,7 @@ internal static class ReplScriptRunner
 				return;
 			}
 
-			_text.Append(value[..Math.Max(room, 0)]);
+			AppendUpTo(_text, value, room);
 			_truncated = true;
 		}
 	}

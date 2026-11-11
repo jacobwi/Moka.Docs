@@ -33,7 +33,7 @@ internal static class OpenApiTypeLinks
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
 		foreach (ApiType type in ns.Types)
 		{
-			routes[type.Name] = routes.ContainsKey(type.Name) ? null : TypeRoute(ns, type);
+			routes[type.Name] = routes.ContainsKey(type.Name) ? null : ApiTypeRoutes.Route(ns, type);
 		}
 
 		// Only routes a page was generated for: a link that 404s is worse than plain text.
@@ -48,15 +48,5 @@ internal static class OpenApiTypeLinks
 		}
 
 		return links;
-	}
-
-	/// <summary>
-	///     The route of a type page, as <c>CSharpAnalysisPhase</c> and the ASP.NET Core host's
-	///     <c>ReflectionApiPagePhase</c> build it. The render phase adds the base path to it.
-	/// </summary>
-	private static string TypeRoute(ApiNamespace ns, ApiType type)
-	{
-		string name = type.Name.Replace('<', '-').Replace('>', '-').Replace('`', '-').TrimEnd('-');
-		return $"/api/{ns.Name.Replace('.', '/')}/{name}".ToLowerInvariant();
 	}
 }

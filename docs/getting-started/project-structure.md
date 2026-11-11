@@ -78,7 +78,7 @@ How the fields behave:
 - In the generated sidebar, a section shows the `icon` from its `index.md`, and pages nested in a section show their own.
 - `expanded` is read from a section's `index.md`. A section that contains the current page always opens. When `mokadocs.yaml` has a `nav:` list, the `expanded` value on each nav item applies instead.
 - `route` gets a leading slash when it has none and loses a trailing one. When two pages end up with the same route, the build warns and only the last one is written.
-- `version` is parsed but has no effect. See [Versioning](/advanced/versioning).
+- `version` limits the page to the versions in its range when versioning is on. See [Versioning](/advanced/versioning).
 
 See [Front Matter](/configuration/front-matter) for the full reference.
 

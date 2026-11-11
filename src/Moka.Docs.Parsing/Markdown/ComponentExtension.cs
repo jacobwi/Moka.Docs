@@ -85,19 +85,13 @@ public sealed class LinkCardsBlock(BlockParser parser) : ContainerBlock(parser);
 /// <summary>
 ///     Represents a code-group container with tabbed code blocks.
 /// </summary>
-public sealed class CodeGroupBlock : ContainerBlock
+public sealed class CodeGroupBlock(BlockParser parser) : ContainerBlock(parser)
 {
-	private static int _counter;
-
-	/// <summary>Creates the block and assigns it the next <see cref="GroupId" />.</summary>
-	/// <param name="parser">The parser that opened the block.</param>
-	public CodeGroupBlock(BlockParser parser) : base(parser)
-	{
-		GroupId = $"codegroup-{Interlocked.Increment(ref _counter)}";
-	}
-
-	/// <summary>Unique ID for tab linking.</summary>
-	public string GroupId { get; set; }
+	/// <summary>
+	///     ID linking the group's tabs, unique within the page. The parser derives it from the
+	///     line the group opens on; <see cref="MarkdownParser" /> then adds a key for the page.
+	/// </summary>
+	public string GroupId { get; set; } = "codegroup";
 }
 
 #endregion
@@ -201,6 +195,7 @@ public sealed class ComponentParser : BlockParser
 			},
 			"code-group" => new CodeGroupBlock(this)
 			{
+				GroupId = $"codegroup-{processor.LineIndex + 1}",
 				Span = new SourceSpan(start, line.End),
 				Column = processor.Column
 			},
@@ -343,11 +338,14 @@ public sealed class CardRenderer : HtmlObjectRenderer<CardBlock>
 	/// <inheritdoc />
 	protected override void Write(HtmlRenderer renderer, CardBlock block)
 	{
-		string variant = block.Variant;
-		string variantClass = variant != "default" ? $" component-card-{variant}" : "";
-
 		renderer.EnsureLine();
-		renderer.Write($"<div class=\"component-card{variantClass}\">");
+		renderer.Write("<div class=\"component-card");
+		if (block.Variant != "default")
+		{
+			renderer.Write(" component-card-").WriteEscape(block.Variant);
+		}
+
+		renderer.Write("\">");
 		renderer.WriteLine();
 
 		if (!string.IsNullOrEmpty(block.Title))
@@ -363,7 +361,7 @@ public sealed class CardRenderer : HtmlObjectRenderer<CardBlock>
 				renderer.Write($"<span class=\"component-card-icon\">{svg}</span>");
 			}
 
-			renderer.Write($"<span class=\"component-card-title\">{block.Title}</span>");
+			renderer.Write("<span class=\"component-card-title\">").WriteEscape(block.Title).Write("</span>");
 			renderer.Write("</div>");
 			renderer.WriteLine();
 		}
@@ -497,16 +495,6 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 		renderer.WriteLine();
 	}
 
-	/// <summary>The text of an inline and its children, without markup.</summary>
-	private static string PlainText(Inline inline) => inline switch
-	{
-		LiteralInline literal => literal.Content.ToString(),
-		CodeInline code => code.Content,
-		ContainerInline container => string.Concat(container.Select(PlainText)),
-		LineBreakInline => " ",
-		_ => ""
-	};
-
 	private static string EscapeHtml(string text) =>
 		text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
@@ -519,7 +507,7 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 			return;
 		}
 
-		html.Append(EscapeHtml(PlainText(inline)));
+		html.Append(EscapeHtml(InlineText.Of(inline)));
 	}
 
 	private static void RenderLinkCard(HtmlRenderer renderer, ListItemBlock item)
@@ -541,7 +529,7 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 					if (inline is LinkInline link && !afterLink)
 					{
 						href = link.Url;
-						title = PlainText(link);
+						title = InlineText.Of(link);
 						afterLink = true;
 					}
 					else if (afterLink)
@@ -574,7 +562,7 @@ public sealed class LinkCardsRenderer : HtmlObjectRenderer<LinkCardsBlock>
 			return;
 		}
 
-		renderer.Write($"<a class=\"component-link-card\" href=\"{href}\">");
+		renderer.Write("<a class=\"component-link-card\" href=\"").WriteEscapeUrl(href).Write("\">");
 		renderer.WriteLine();
 		renderer.Write("<div class=\"component-link-card-content\">");
 		renderer.WriteLine();
@@ -606,8 +594,6 @@ public sealed class CodeGroupRenderer : HtmlObjectRenderer<CodeGroupBlock>
 	/// <inheritdoc />
 	protected override void Write(HtmlRenderer renderer, CodeGroupBlock block)
 	{
-		string groupId = block.GroupId;
-
 		// Collect code blocks and their titles
 		var codeBlocks = new List<(string Title, FencedCodeBlock Code)>();
 
@@ -630,7 +616,7 @@ public sealed class CodeGroupRenderer : HtmlObjectRenderer<CodeGroupBlock>
 		}
 
 		renderer.EnsureLine();
-		renderer.Write($"<div class=\"tabs component-code-group\" data-tab-group=\"{groupId}\">");
+		renderer.Write("<div class=\"tabs component-code-group\" data-tab-group=\"").WriteEscape(block.GroupId).Write("\">");
 		renderer.WriteLine();
 
 		// Tab headers
@@ -642,7 +628,8 @@ public sealed class CodeGroupRenderer : HtmlObjectRenderer<CodeGroupBlock>
 			string active = i == 0 ? " active" : "";
 			string selected = i == 0 ? "true" : "false";
 			renderer.Write(
-				$"<button class=\"tab-header{active}\" role=\"tab\" aria-selected=\"{selected}\" data-tab-index=\"{i}\">{codeBlocks[i].Title}</button>");
+				$"<button class=\"tab-header{active}\" role=\"tab\" aria-selected=\"{selected}\" data-tab-index=\"{i}\">");
+			renderer.WriteEscape(codeBlocks[i].Title).Write("</button>");
 			renderer.WriteLine();
 		}
 

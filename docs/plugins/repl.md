@@ -15,7 +15,7 @@ REPL blocks render as read-only, syntax-highlighted code with a toolbar undernea
 
 ## Markdown Syntax
 
-Use the `csharp-repl` language identifier on fenced code blocks to mark them as runnable. The aliases `cs-repl`, `csharp repl` and `cs repl` also work, in any letter case.
+Use the `csharp-repl` language identifier on fenced code blocks to mark them as runnable. The aliases `cs-repl`, `csharp repl`, `cs repl` and `c# repl` also work, in any letter case, and anything after `repl` (such as a `title="..."`) is allowed.
 
 ````markdown
 ```csharp-repl
@@ -66,7 +66,7 @@ When the reader clicks Run, the script:
 `mokadocs serve` and the ASP.NET Core host run code. Their `/api/repl/execute` endpoint hands the code to `ReplExecutionService`, which:
 
 1. Rejects empty code and code longer than 10,000 characters
-2. Sends the code to a worker process, started with the loaded packages and project assemblies and started again whenever the previous worker was stopped. Under `serve` the worker is `mokadocs repl-worker`, a hidden command. In the ASP.NET Core host it is the app's own executable, which `MokaDocsReplWorker.TryRunAsync()` turns into a worker
+2. Sends the code to a worker process, started with the loaded packages and project assemblies and started again whenever the previous worker was stopped. Under `serve` the worker is `mokadocs repl-worker`, a hidden command. In the ASP.NET Core host it is the app's own executable, which `MokaDocsReplWorker.TryRunAsync()` turns into a worker. The worker doesn't inherit `DOTNET_STARTUP_HOOKS` or the variables `dotnet watch` sets for hot reload (see [Under dotnet watch](/guide/aspnetcore#under-dotnet-watch))
 3. In the worker, redirects `Console.Out` and `Console.Error`, compiles the code as a Roslyn `CSharpScript` with the default imports plus those references, and runs it
 4. Returns JSON with `output` and `error` fields
 
@@ -86,7 +86,9 @@ The output panel uses a monospace font and scrolls once its content passes 300px
 
 Each run gets 5 seconds, compile included. When a run takes longer, `serve` kills the worker process, answers `Execution timed out after 5 seconds.`, and starts a new worker for the next run, which takes about a second. An infinite loop stops with it.
 
-A snippet that ends the process, for example with `Environment.Exit`, gets `The code ended the REPL process (exit code N).`, and the next run starts a new worker the same way. See [Security](#security).
+A snippet that ends the process, for example with `Environment.Exit`, gets `The code ended the REPL process (exit code N).`, and the next run starts a new worker the same way. A worker that ends between runs, for example from a timer an earlier snippet left behind, is replaced before the next run, which then gets its own result. See [Security](#security).
+
+Runs happen one at a time. Up to four more wait their turn; past that, the endpoint answers `429` and the output panel shows `Too many snippets are waiting to run.`
 
 ### Console Output Capture
 
@@ -212,7 +214,7 @@ These limits do apply:
 
 - **Size limit.** Code longer than 10,000 characters is rejected before it is compiled.
 - **Timeout.** A run that takes longer than 5 seconds kills the worker process, loops included.
-- **Output limit.** Output past 100,000 characters is cut off with a note.
+- **Output limit.** Output past 100,000 characters is cut off with a note. The same limit applies to a snippet's value and to error messages. A snippet that writes straight to the worker's standard output (`Console.OpenStandardOutput()`) and sends a line of more than about 4 million characters gets its worker stopped, with `The code wrote too much to the REPL process's standard output`.
 - **No input.** `Console.ReadLine()` returns `null`.
 - **Fresh script per run.** Variables don't carry over between runs, even on the same code block. Static state in loaded package or project assemblies lasts until the worker is replaced after a timeout or crash, or until the server stops.
 - **Tied to the server.** The worker exits when `serve` exits, even if `serve` is killed while a snippet is running.

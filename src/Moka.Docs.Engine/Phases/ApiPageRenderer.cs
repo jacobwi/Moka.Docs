@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Web;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Content;
+using Moka.Docs.Core.Search;
 
 namespace Moka.Docs.Engine.Phases;
 
@@ -133,7 +134,8 @@ public static partial class ApiPageRenderer
 		#endregion
 
 		// Signature
-		string declaration = WithAttributes(type.Attributes, IsPython(type), type.IsObsolete, BuildTypeSignature(type));
+		string declaration = WithAttributes(type.Attributes, IsPython(type), type.IsObsolete,
+			type.Signature ?? BuildTypeSignature(type));
 		sb.AppendLine($"<pre class=\"api-signature\"><code class=\"language-csharp\">{Esc(declaration)}</code></pre>");
 
 		// Namespace
@@ -198,6 +200,11 @@ public static partial class ApiPageRenderer
 			RenderMemberSection(sb, title, SectionMembers(type, kinds), type, links);
 		}
 
+		foreach (ApiExtensionGroup group in ExtensionGroups(type))
+		{
+			RenderExtensionGroup(sb, group, type, links);
+		}
+
 		#endregion
 
 		#region Inherited Members and Extension Methods
@@ -233,7 +240,7 @@ public static partial class ApiPageRenderer
 
 		#region Type Dependency Graph
 
-		string? mermaidDiagram = BuildTypeDependencyGraph(type, allTypes ?? []);
+		string? mermaidDiagram = BuildTypeDependencyGraph(type, allTypes ?? [], relations);
 		if (mermaidDiagram is not null)
 		{
 			sb.AppendLine("<details class=\"type-graph\">");
@@ -291,11 +298,17 @@ public static partial class ApiPageRenderer
 			return;
 		}
 
+		string sectionId = title.ToLowerInvariant().Replace(' ', '-');
+		sb.AppendLine($"<h2 id=\"{sectionId}\">{Esc(title)}</h2>");
+		RenderMembers(sb, members, parentType, links);
+	}
+
+	private static void RenderMembers(StringBuilder sb, List<ApiMember> members, ApiType parentType,
+		ApiCrefResolver links)
+	{
 		IReadOnlyDictionary<ApiMember, string> anchors = links.GetAnchors(parentType);
 		bool python = IsPython(parentType);
 
-		string sectionId = title.ToLowerInvariant().Replace(' ', '-');
-		sb.AppendLine($"<h2 id=\"{sectionId}\">{Esc(title)}</h2>");
 		sb.AppendLine(
 			"<div class=\"table-responsive\"><table class=\"api-member-table\"><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>");
 
@@ -399,30 +412,8 @@ public static partial class ApiPageRenderer
 				foreach (ApiParameter param in member.Parameters)
 				{
 					string desc = links.ResolveHtml(doc.Parameters.GetValueOrDefault(param.Name) ?? "", parentType);
-					var modifiers = new List<string>();
-					if (param.IsRef)
-					{
-						modifiers.Add("ref");
-					}
-
-					if (param.IsOut)
-					{
-						modifiers.Add("out");
-					}
-
-					if (param.IsIn)
-					{
-						modifiers.Add("in");
-					}
-
-					if (param.IsParams)
-					{
-						modifiers.Add("params");
-					}
-
-					string mod = modifiers.Count > 0 ? string.Join(" ", modifiers) + " " : "";
 					sb.AppendLine(
-						$"<tr><td><code>{Esc(param.Name)}</code></td><td><code>{Esc(mod + param.Type)}</code></td><td>{desc}</td></tr>");
+						$"<tr><td><code>{Esc(param.Name)}</code></td><td><code>{Esc(ParameterModifiers(param) + param.Type)}</code></td><td>{desc}</td></tr>");
 				}
 
 				sb.AppendLine("</tbody></table></div>");
@@ -483,6 +474,32 @@ public static partial class ApiPageRenderer
 		#endregion
 	}
 
+	private static string ParameterModifiers(ApiParameter param)
+	{
+		var modifiers = new List<string>();
+		if (param.IsRef)
+		{
+			modifiers.Add("ref");
+		}
+
+		if (param.IsOut)
+		{
+			modifiers.Add("out");
+		}
+
+		if (param.IsIn)
+		{
+			modifiers.Add("in");
+		}
+
+		if (param.IsParams)
+		{
+			modifiers.Add("params");
+		}
+
+		return modifiers.Count > 0 ? string.Join(" ", modifiers) + " " : "";
+	}
+
 	private static void RenderTypeParameterTable(StringBuilder sb, List<ApiTypeParameter> typeParameters,
 		XmlDocBlock? documentation, ApiType parentType, ApiCrefResolver links)
 	{
@@ -515,7 +532,7 @@ public static partial class ApiPageRenderer
 	///     The members of one section, in the order the page lists them.
 	/// </summary>
 	private static List<ApiMember> SectionMembers(ApiType type, ApiMemberKind[] kinds) =>
-		type.Members.Where(m => kinds.Contains(m.Kind)).OrderBy(m => m.Name).ToList();
+		type.Members.Where(m => m.Extension is null && kinds.Contains(m.Kind)).OrderBy(m => m.Name).ToList();
 
 	/// <summary>
 	///     The id of the section heading that lists members of <paramref name="kind" />.
@@ -539,19 +556,20 @@ public static partial class ApiPageRenderer
 		var used = new HashSet<string>(BuildTocForType(type).Entries.Select(e => e.Id), StringComparer.Ordinal);
 		bool python = IsPython(type);
 
-		foreach ((string _, ApiMemberKind[] kinds) in _memberSections)
-		{
-			foreach (ApiMember member in SectionMembers(type, kinds).Where(m => HasDetails(m, python)))
-			{
-				string baseId = (member.Kind == ApiMemberKind.Constructor ? type.Name : member.Name).ToLowerInvariant();
-				string id = baseId;
-				for (int n = 2; !used.Add(id); n++)
-				{
-					id = $"{baseId}-{n}";
-				}
+		IEnumerable<ApiMember> pageOrder = _memberSections
+			.SelectMany(section => SectionMembers(type, section.Kinds))
+			.Concat(ExtensionGroups(type).SelectMany(group => group.Members));
 
-				anchors[member] = id;
+		foreach (ApiMember member in pageOrder.Where(m => HasDetails(m, python)))
+		{
+			string baseId = (member.Kind == ApiMemberKind.Constructor ? type.Name : member.Name).ToLowerInvariant();
+			string id = baseId;
+			for (int n = 2; !used.Add(id); n++)
+			{
+				id = $"{baseId}-{n}";
 			}
+
+			anchors[member] = id;
 		}
 
 		return anchors;
@@ -592,7 +610,7 @@ public static partial class ApiPageRenderer
 		_ => member.Name
 	};
 
-	private static string OperatorName(ApiMember member)
+	internal static string OperatorName(ApiMember member)
 	{
 		string target = ShortTypeName(member.ReturnType ?? "");
 		return member.Name switch
@@ -700,7 +718,12 @@ public static partial class ApiPageRenderer
 	{
 		var sb = new StringBuilder();
 
-		sb.Append(type.Accessibility.ToString().ToLowerInvariant().Replace("protectedinternal", "protected internal"));
+		sb.Append(type.Accessibility switch
+		{
+			ApiAccessibility.ProtectedInternal => "protected internal",
+			ApiAccessibility.PrivateProtected => "private protected",
+			_ => type.Accessibility.ToString().ToLowerInvariant()
+		});
 		sb.Append(' ');
 
 		if (type.IsStatic)
@@ -755,23 +778,38 @@ public static partial class ApiPageRenderer
 	///     Builds a Mermaid class diagram showing the type's inheritance and interface relationships.
 	///     Returns null if the diagram would only contain the type itself (no meaningful relationships).
 	/// </summary>
-	private static string? BuildTypeDependencyGraph(ApiType type, IReadOnlyList<ApiType> allTypes)
+	/// <remarks>
+	///     Nodes get plain ids (<c>T0</c>, <c>T1</c>) and the type name as their label. Type names used to be
+	///     the ids, with the namespace cut at the last dot, so <c>System.IEquatable&lt;MyLib.Money&gt;</c>
+	///     became a node called <c>Money~</c> and the type seemed to implement itself.
+	/// </remarks>
+	private static string? BuildTypeDependencyGraph(ApiType type, IReadOnlyList<ApiType> allTypes, ApiTypeRelations relations)
 	{
 		const int maxNodes = 20;
 
-		// Collect all nodes and edges for the graph
-		var nodes = new HashSet<string> { type.Name };
+		string self = NameWithTypeParameters(type);
+		var nodes = new List<string> { self };
 		var edges = new List<(string From, string To, string Label, string Arrow)>();
+
+		void AddEdge(string from, string to, string label, string arrow)
+		{
+			foreach (string node in new[] { from, to })
+			{
+				if (!nodes.Contains(node))
+				{
+					nodes.Add(node);
+				}
+			}
+
+			edges.Add((from, to, label, arrow));
+		}
 
 		// Base type (skip Object - not meaningful)
 		if (type.BaseType is not null && type.BaseType != "Object" && type.BaseType != "object")
 		{
-			string baseShort = GetShortTypeName(type.BaseType);
-			nodes.Add(baseShort);
-			edges.Add((type.Name, baseShort, "inherits", "--|>"));
+			AddEdge(self, ShortTypeName(type.BaseType), "inherits", "--|>");
 		}
 
-		// Implemented interfaces
 		foreach (string iface in type.ImplementedInterfaces)
 		{
 			if (nodes.Count >= maxNodes)
@@ -779,9 +817,7 @@ public static partial class ApiPageRenderer
 				break;
 			}
 
-			string ifaceShort = GetShortTypeName(iface);
-			nodes.Add(ifaceShort);
-			edges.Add((type.Name, ifaceShort, "implements", "..|>"));
+			AddEdge(self, ShortTypeName(iface), "implements", "..|>");
 		}
 
 		// Derived types - types that list this type as their base
@@ -792,10 +828,9 @@ public static partial class ApiPageRenderer
 				break;
 			}
 
-			if (other.BaseType is not null && GetShortTypeName(other.BaseType) == type.Name)
+			if (!ReferenceEquals(other, type) && other.BaseType is not null && NamesType(other.BaseType, other, type, relations))
 			{
-				nodes.Add(other.Name);
-				edges.Add((other.Name, type.Name, "inherits", "--|>"));
+				AddEdge(NameWithTypeParameters(other), self, "inherits", "--|>");
 			}
 		}
 
@@ -809,10 +844,9 @@ public static partial class ApiPageRenderer
 					break;
 				}
 
-				if (other.ImplementedInterfaces.Any(i => GetShortTypeName(i) == type.Name))
+				if (!ReferenceEquals(other, type) && other.ImplementedInterfaces.Any(i => NamesType(i, other, type, relations)))
 				{
-					nodes.Add(other.Name);
-					edges.Add((other.Name, type.Name, "implements", "..|>"));
+					AddEdge(NameWithTypeParameters(other), self, "implements", "..|>");
 				}
 			}
 		}
@@ -823,51 +857,100 @@ public static partial class ApiPageRenderer
 			return null;
 		}
 
-		// Build the Mermaid class diagram
 		var sb = new StringBuilder();
 		sb.AppendLine("classDiagram");
+		for (int i = 0; i < nodes.Count; i++)
+		{
+			sb.AppendLine($"    class T{i}[\"{MermaidLabel(nodes[i])}\"]");
+		}
 
 		// Highlight the current type with a style directive
-		sb.AppendLine($"    style {EscapeMermaidId(type.Name)} fill:#f9f,stroke:#333,stroke-width:2px");
+		sb.AppendLine("    style T0 fill:#f9f,stroke:#333,stroke-width:2px");
 
-		// Render edges
 		foreach ((string from, string to, string label, string arrow) in edges)
 		{
-			sb.AppendLine($"    {EscapeMermaidId(from)} {arrow} {EscapeMermaidId(to)} : {label}");
+			sb.AppendLine($"    T{nodes.IndexOf(from)} {arrow} T{nodes.IndexOf(to)} : {label}");
 		}
 
 		return sb.ToString();
 	}
 
-	/// <summary>
-	///     Extracts the short type name, stripping namespace prefixes and generic arity suffixes.
-	///     E.g., "System.Collections.Generic.List&lt;T&gt;" becomes "List&lt;T&gt;".
-	/// </summary>
-	private static string GetShortTypeName(string fullName)
+	private static string NameWithTypeParameters(ApiType type) =>
+		type.TypeParameters.Count == 0
+			? type.Name
+			: $"{type.Name}<{string.Join(", ", type.TypeParameters.Select(tp => tp.Name))}>";
+
+	// Whether a base type or interface reference on another type names the type, whatever type arguments it
+	// passes. Matching the bare name made every System.Exception subclass derive from a documented Exception.
+	private static bool NamesType(string reference, ApiType from, ApiType type, ApiTypeRelations relations)
 	{
-		// Strip namespace
-		int dotIndex = fullName.LastIndexOf('.');
-		string name = dotIndex >= 0 ? fullName[(dotIndex + 1)..] : fullName;
-		return name;
+		if (!IsPython(type) && !IsPython(from))
+		{
+			return relations.Names(reference, from, type);
+		}
+
+		string name = ShortTypeName(reference);
+		int open = name.IndexOf('<');
+		return (open >= 0 ? name[..open] : name).Trim() == type.Name;
 	}
 
 	/// <summary>
-	///     Escapes a type name for use as a Mermaid node identifier.
-	///     Mermaid doesn't allow angle brackets or special characters in bare identifiers.
+	///     A node label in Mermaid's entity syntax, which the diagram shows as written. The text sits in
+	///     a <c>pre</c> element, so it can't hold raw HTML either.
 	/// </summary>
-	private static string EscapeMermaidId(string name)
+	private static string MermaidLabel(string name)
 	{
-		// Replace characters that break Mermaid syntax with safe alternatives
-		return name
-			.Replace("<", "~")
-			.Replace(">", "~")
-			.Replace(" ", "_");
+		var sb = new StringBuilder(name.Length);
+		foreach (char c in name)
+		{
+			sb.Append(c switch
+			{
+				'<' => "#lt;",
+				'>' => "#gt;",
+				'"' => "#quot;",
+				'#' => "#35;",
+				'&' => "#amp;",
+				_ => c.ToString()
+			});
+		}
+
+		return sb.ToString();
 	}
 
 	private static string Esc(string text) => HttpUtility.HtmlEncode(text);
 
 	[GeneratedRegex(@"\b(?:[A-Za-z_][A-Za-z0-9_]*\.)+(?=[A-Za-z_])")]
 	private static partial Regex NamespaceQualifierRegex();
+
+	/// <summary>
+	///     The search entries for the members on a type's page: one per member, in page order, linked to
+	///     its detail block (or its section when it has none), with its summary as plain text.
+	/// </summary>
+	/// <param name="type">The type whose page it is.</param>
+	/// <param name="route">The page's route.</param>
+	/// <param name="title">The page's title.</param>
+	/// <returns>The entries; none for a type from the Python plugin, whose pages are laid out differently.</returns>
+	public static IReadOnlyList<SearchEntry> BuildMemberSearchEntries(ApiType type, string route, string title)
+	{
+		if (IsPython(type))
+		{
+			return [];
+		}
+
+		IReadOnlyDictionary<ApiMember, string> anchors = AssignMemberAnchors(type);
+		return _memberSections
+			.SelectMany(section => SectionMembers(type, section.Kinds))
+			.Concat(ExtensionGroups(type).SelectMany(group => group.Members))
+			.Select(member => new SearchEntry
+			{
+				Title = title,
+				Section = MemberTitle(member, type, false),
+				Route = $"{route}#{(anchors.TryGetValue(member, out string? anchor) ? anchor : MemberSectionId(type, member))}",
+				Content = ApiDocText.ToPlainText(member.Documentation?.Summary),
+				Category = "API Reference"
+			})
+			.ToList();
+	}
 
 	/// <summary>
 	///     A type's summary as HTML for a listing such as the API index page, with its <c>cref</c>
@@ -912,35 +995,40 @@ public static partial class ApiPageRenderer
 			entries.Add(new TocEntry { Level = 2, Text = "Inheritance", Id = "inheritance" });
 		}
 
-		if (type.Members.Any(m => m.Kind == ApiMemberKind.Constructor))
+		// Extension block members have sections of their own.
+		List<ApiMember> members = type.Members.Where(m => m.Extension is null).ToList();
+
+		if (members.Any(m => m.Kind == ApiMemberKind.Constructor))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Constructors", Id = "constructors" });
 		}
 
-		if (type.Members.Any(m => m.Kind is ApiMemberKind.Property or ApiMemberKind.Indexer))
+		if (members.Any(m => m.Kind is ApiMemberKind.Property or ApiMemberKind.Indexer))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Properties", Id = "properties" });
 		}
 
-		if (type.Members.Any(m => m.Kind == ApiMemberKind.Method))
+		if (members.Any(m => m.Kind == ApiMemberKind.Method))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Methods", Id = "methods" });
 		}
 
-		if (type.Members.Any(m => m.Kind == ApiMemberKind.Event))
+		if (members.Any(m => m.Kind == ApiMemberKind.Event))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Events", Id = "events" });
 		}
 
-		if (type.Members.Any(m => m.Kind == ApiMemberKind.Field))
+		if (members.Any(m => m.Kind == ApiMemberKind.Field))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Fields", Id = "fields" });
 		}
 
-		if (type.Members.Any(m => m.Kind == ApiMemberKind.Operator))
+		if (members.Any(m => m.Kind == ApiMemberKind.Operator))
 		{
 			entries.Add(new TocEntry { Level = 2, Text = "Operators", Id = "operators" });
 		}
+
+		entries.AddRange(ExtensionGroups(type).Select(group => new TocEntry { Level = 2, Text = group.Title, Id = group.Id }));
 
 		ApiTypeRelations relations = ApiTypeRelations.For(allTypes);
 		if (relations.InheritedMembers(type).Count > 0)
@@ -948,9 +1036,10 @@ public static partial class ApiPageRenderer
 			entries.Add(new TocEntry { Level = 2, Text = "Inherited Members", Id = _inheritedMembersId });
 		}
 
-		if (relations.ExtensionMethods(type).Count > 0)
+		IReadOnlyList<ApiExtensionMember> extensions = relations.ExtensionMembers(type);
+		if (extensions.Count > 0)
 		{
-			entries.Add(new TocEntry { Level = 2, Text = "Extension Methods", Id = _extensionMethodsId });
+			entries.Add(new TocEntry { Level = 2, Text = ExtensionSectionTitle(extensions), Id = _extensionMethodsId });
 		}
 
 		if (type.Documentation?.Examples is { Count: > 0 })

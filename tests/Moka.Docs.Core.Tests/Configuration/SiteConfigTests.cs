@@ -30,7 +30,7 @@ public sealed class SiteConfigTests
 		config.Theme.Name.Should().Be("default");
 		config.Theme.Options.PrimaryColor.Should().Be(MokaDefaults.PrimaryColor);
 		config.Build.Clean.Should().BeTrue();
-		config.Build.Minify.Should().BeTrue();
+		config.Build.Minify.Should().BeFalse();
 		config.Build.Sitemap.Should().BeTrue();
 		config.Plugins.Should().BeEmpty();
 		config.Nav.Should().BeEmpty();

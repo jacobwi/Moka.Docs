@@ -220,4 +220,87 @@ public sealed class FileDiscoveryServiceTests
 
 		result.AssetFiles.Should().BeEquivalentTo("CNAME", "_redirects");
 	}
+
+	[Fact]
+	public void Discover_MarkdownExtensionInAnyCase_IsAPage()
+	{
+		// The "*.md" glob is case sensitive on Linux: Readme.MD was a page on Windows only.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/Readme.MD", new MockFileData("# Readme") },
+			{ "/project/docs/guide/Notes.Md", new MockFileData("# Notes") },
+			{ "/project/docs/guide/notes.mdx", new MockFileData("not markdown for us") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig());
+
+		result.MarkdownFiles.Select(f => f.Replace('\\', '/'))
+			.Should().BeEquivalentTo("index.md", "Readme.MD", "guide/Notes.Md");
+	}
+
+	[Fact]
+	public void Discover_MissingDocsFolder_IsReported()
+	{
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/mokadocs.yaml", new MockFileData("site:\n  title: T\n") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig(docs: "./documentation"));
+
+		result.DocsDirectoryMissing.Should().BeTrue();
+		result.DocsDirectory.Should().EndWith("documentation");
+		new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance)
+			.Discover("/project", CreateConfig(docs: "."))
+			.DocsDirectoryMissing.Should().BeFalse();
+	}
+
+	[Fact]
+	public void Discover_ADirectoryLinkBackToAnAncestor_IsSkippedWithAWarning()
+	{
+		// A link docs/guide/loop -> docs built 82 pages from 2, walking the loop until the path
+		// got too long, and said nothing.
+		string root = Path.Combine(Path.GetTempPath(), "mokadocs-discovery-" + Guid.NewGuid().ToString("N"));
+		string docs = Path.Combine(root, "docs");
+		Directory.CreateDirectory(Path.Combine(docs, "guide"));
+		Directory.CreateDirectory(Path.Combine(root, "shared"));
+		File.WriteAllText(Path.Combine(docs, "index.md"), "# Home");
+		File.WriteAllText(Path.Combine(docs, "guide", "intro.md"), "# Intro");
+		File.WriteAllText(Path.Combine(root, "shared", "faq.md"), "# FAQ");
+		try
+		{
+			try
+			{
+				Directory.CreateSymbolicLink(Path.Combine(docs, "guide", "loop"), docs);
+				Directory.CreateSymbolicLink(Path.Combine(docs, "shared"), Path.Combine(root, "shared"));
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				Assert.Skip($"This machine does not allow creating symbolic links ({ex.Message})");
+			}
+
+			var fs = new System.IO.Abstractions.FileSystem();
+			var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+			DiscoveryResult result = service.Discover(root, CreateConfig());
+
+			result.MarkdownFiles.Select(f => f.Replace('\\', '/'))
+				.Should().BeEquivalentTo("index.md", "guide/intro.md", "shared/faq.md");
+			result.Warnings.Should().ContainSingle().Which.Should().Contain("loop");
+		}
+		finally
+		{
+			foreach (string link in new[] { Path.Combine(docs, "guide", "loop"), Path.Combine(docs, "shared") })
+			{
+				if (Directory.Exists(link))
+				{
+					Directory.Delete(link);
+				}
+			}
+
+			Directory.Delete(root, true);
+		}
+	}
 }

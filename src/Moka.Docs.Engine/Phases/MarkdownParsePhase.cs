@@ -26,75 +26,160 @@ public sealed class MarkdownParsePhase(
 		string docsPath = context.FileSystem.Path.GetFullPath(
 			context.FileSystem.Path.Combine(context.RootDirectory, context.Config.Content.Docs));
 
-		IReadOnlyDictionary<string, DateTimeOffset> commitDates = await ReadCommitDatesAsync(context, docsPath, ct);
+		GitFileHistory history = await ReadGitHistoryAsync(context, docsPath, ct);
 
-		foreach (string relativePath in context.DiscoveredMarkdownFiles)
+		List<string> files = context.DiscoveredMarkdownFiles;
+		var parsed = new ParsedFile[files.Count];
+
+		// The real disk is read in parallel too. MockFileSystem, used by the ASP.NET Core host,
+		// is read up front on this thread and only the parsing runs in parallel.
+		bool concurrentReads = context.FileSystem is FileSystem;
+		string?[] preloaded = new string?[files.Count];
+		if (!concurrentReads)
 		{
-			ct.ThrowIfCancellationRequested();
+			for (int i = 0; i < files.Count; i++)
+			{
+				preloaded[i] = TryRead(context, docsPath, files[i], out Exception? readError);
+				if (readError is not null)
+				{
+					parsed[i] = new ParsedFile(null, null, readError);
+				}
+			}
+		}
 
-			string fullPath = context.FileSystem.Path.Combine(docsPath, relativePath);
+		Parallel.For(0, files.Count, new ParallelOptions { CancellationToken = ct }, i =>
+		{
+			if (parsed[i] is not null)
+			{
+				return;
+			}
+
+			Exception? readError = null;
+			string? markdown = concurrentReads
+				? TryRead(context, docsPath, files[i], out readError)
+				: preloaded[i];
+			if (markdown is null)
+			{
+				parsed[i] = new ParsedFile(null, null, readError);
+				return;
+			}
+
 			try
 			{
-				string markdown = context.FileSystem.File.ReadAllText(fullPath);
-				MarkdownParseResult result = markdownParser.Parse(markdown, relativePath);
-				if (result.FrontMatterError is { } frontMatterError)
-				{
-					// The page used to become "Untitled" with its front matter printed as
-					// content, and nothing said why.
-					context.Diagnostics.Warning(
-						$"{relativePath}: front matter could not be read and was ignored ({frontMatterError})", Name);
-				}
-
-				string route = BuildRoute(relativePath, result.FrontMatter);
-
-				string gitPath = relativePath.Replace(context.FileSystem.Path.DirectorySeparatorChar, '/');
-				DateTimeOffset? lastModified = commitDates.TryGetValue(gitPath, out DateTimeOffset committed)
-					? committed
-					: GetLastModified(context, fullPath);
-
-				var page = new DocPage
-				{
-					FrontMatter = result.FrontMatter,
-					Content = new PageContent
-					{
-						Html = result.Html,
-						PlainText = result.PlainText
-					},
-					TableOfContents = result.TableOfContents,
-					SourcePath = relativePath,
-					Route = route,
-					Origin = PageOrigin.Markdown,
-					LastModified = lastModified
-				};
-
-				context.Pages.Add(page);
+				MarkdownParseResult result = markdownParser.Parse(markdown, files[i]);
+				DateTimeOffset? modified = concurrentReads ? GetLastModified(context, docsPath, files[i]) : null;
+				parsed[i] = new ParsedFile(result, modified, null);
 			}
 			catch (Exception ex)
 			{
-				context.Diagnostics.Warning($"Failed to parse {relativePath}: {ex.Message}", Name);
-				logger.LogWarning(ex, "Failed to parse Markdown file: {Path}", relativePath);
+				parsed[i] = new ParsedFile(null, null, ex);
 			}
+		});
+
+		// Pages and diagnostics are added in discovery order, so the output does not depend on
+		// which thread finished first.
+		for (int i = 0; i < files.Count; i++)
+		{
+			AddPage(context, docsPath, files[i], parsed[i], history, concurrentReads);
 		}
 
 		logger.LogInformation("Parsed {Count} Markdown pages", context.Pages.Count);
 	}
 
+	private void AddPage(BuildContext context, string docsPath, string relativePath, ParsedFile parsed,
+		GitFileHistory history, bool modifiedTimeRead)
+	{
+		if (parsed.Result is not { } result)
+		{
+			// A page that fails to parse is missing from the site, which is broken output.
+			string reason = parsed.Error?.Message ?? "unknown error";
+			context.Diagnostics.Error($"{relativePath}: the page could not be parsed and was left out ({reason})",
+				Name);
+			logger.LogWarning(parsed.Error, "Failed to parse Markdown file: {Path}", relativePath);
+			return;
+		}
+
+		if (result.FrontMatterError is { } frontMatterError)
+		{
+			// The page used to become "Untitled" with its front matter printed as
+			// content, and nothing said why.
+			context.Diagnostics.Warning(
+				$"{relativePath}: front matter could not be read and was ignored ({frontMatterError})", Name);
+		}
+
+		foreach (string warning in result.Warnings)
+		{
+			context.Diagnostics.Warning($"{relativePath}: {warning}", Name);
+		}
+
+		FrontMatter frontMatter = result.FrontMatter;
+		if (!string.IsNullOrWhiteSpace(frontMatter.Route) && FindRouteOverrideProblem(frontMatter.Route) is { } problem)
+		{
+			context.Diagnostics.Error(
+				$"{relativePath}: front matter route '{frontMatter.Route}' is not allowed ({problem}); " +
+				"the page uses its file path instead", Name);
+			frontMatter = frontMatter with { Route = null };
+		}
+
+		string route = BuildRoute(relativePath, frontMatter);
+
+		string gitPath = relativePath.Replace('\\', '/');
+		DateTimeOffset? lastModified = history.Dates.TryGetValue(gitPath, out DateTimeOffset committed)
+			? committed
+			: modifiedTimeRead
+				? parsed.LastModified
+				: GetLastModified(context, docsPath, relativePath);
+
+		context.Pages.Add(new DocPage
+		{
+			FrontMatter = frontMatter,
+			Content = new PageContent
+			{
+				Html = result.Html,
+				PlainText = result.PlainText
+			},
+			TableOfContents = result.TableOfContents,
+			SourcePath = relativePath,
+			Route = route,
+			Origin = PageOrigin.Markdown,
+			LastModified = lastModified,
+			Contributors = history.Authors.TryGetValue(gitPath, out IReadOnlyList<PageContributor>? contributors)
+				? contributors
+				: []
+		});
+	}
+
 	/// <summary>
-	///     Last commit dates for the docs folder's files, or an empty map when they can't come
-	///     from git. Pages missing from the map use their file's modified time.
+	///     Explains why a front matter <c>route:</c> can't be used, or returns <c>null</c>. A route
+	///     becomes a folder under the output directory, so <c>..</c> segments, characters that
+	///     some operating system forbids in file names, query strings and fragments are refused.
 	/// </summary>
-	private async Task<IReadOnlyDictionary<string, DateTimeOffset>> ReadCommitDatesAsync(
-		BuildContext context, string docsPath, CancellationToken ct)
+	/// <param name="route">The route as written in front matter.</param>
+	/// <returns>The reason, or <c>null</c> when the route is fine.</returns>
+	public static string? FindRouteOverrideProblem(string route)
+	{
+		string trimmed = route.Trim();
+		return OutputPaths.FindUnsafeRouteProblem(trimmed) ?? OutputPaths.FindNonPortableRouteProblem(trimmed);
+	}
+
+	/// <summary>
+	///     Last commit dates for the docs folder's files, and their authors when
+	///     <c>theme.options.showContributors</c> is on, or empty maps when they can't come from git.
+	///     Pages missing from the dates use their file's modified time.
+	/// </summary>
+	private async Task<GitFileHistory> ReadGitHistoryAsync(BuildContext context, string docsPath, CancellationToken ct)
 	{
 		// Git reads the real disk. The ASP.NET Core host builds over an in-memory file system whose
 		// paths don't exist there, and could even match an unrelated folder that does.
 		if (context.FileSystem is not FileSystem || context.DiscoveredMarkdownFiles.Count == 0
 		                                         || !context.FileSystem.Directory.Exists(docsPath))
 		{
-			return new Dictionary<string, DateTimeOffset>();
+			return GitFileHistory.Empty;
 		}
 
-		return await GitCommitDates.ReadAsync(docsPath, logger, ct);
+		var wanted = context.DiscoveredMarkdownFiles.Select(f => f.Replace('\\', '/')).ToList();
+		return await GitCommitDates.ReadHistoryAsync(docsPath, logger, ct, wanted,
+			context.Config.Theme.Options.ShowContributors);
 	}
 
 	/// <summary>
@@ -114,10 +199,15 @@ public sealed class MarkdownParsePhase(
 			return custom;
 		}
 
-		// Convert file path to URL route
-		string route = "/" + relativePath
-			.Replace('\\', '/')
-			.Replace(".md", "", StringComparison.OrdinalIgnoreCase);
+		// Only the extension goes. Removing ".md" anywhere turned notes.md-old/page.md into
+		// /notes-old/page.
+		string path = relativePath.Replace('\\', '/');
+		if (path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+		{
+			path = path[..^3];
+		}
+
+		string route = "/" + path;
 
 		// index.md → parent directory route
 		if (route.EndsWith("/index", StringComparison.OrdinalIgnoreCase))
@@ -133,11 +223,25 @@ public sealed class MarkdownParsePhase(
 		return route;
 	}
 
-	private static DateTimeOffset? GetLastModified(BuildContext context, string fullPath)
+	private static string? TryRead(BuildContext context, string docsPath, string relativePath, out Exception? error)
+	{
+		error = null;
+		try
+		{
+			return context.FileSystem.File.ReadAllText(context.FileSystem.Path.Combine(docsPath, relativePath));
+		}
+		catch (Exception ex)
+		{
+			error = ex;
+			return null;
+		}
+	}
+
+	private static DateTimeOffset? GetLastModified(BuildContext context, string docsPath, string relativePath)
 	{
 		try
 		{
-			IFileInfo info = context.FileSystem.FileInfo.New(fullPath);
+			IFileInfo info = context.FileSystem.FileInfo.New(context.FileSystem.Path.Combine(docsPath, relativePath));
 			return info.Exists ? new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero) : null;
 		}
 		catch
@@ -145,4 +249,6 @@ public sealed class MarkdownParsePhase(
 			return null;
 		}
 	}
+
+	private sealed record ParsedFile(MarkdownParseResult? Result, DateTimeOffset? LastModified, Exception? Error);
 }

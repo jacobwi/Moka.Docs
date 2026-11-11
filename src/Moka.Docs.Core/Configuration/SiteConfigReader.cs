@@ -1,4 +1,6 @@
 using System.IO.Abstractions;
+using Moka.Docs.Core.Theming;
+using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -9,6 +11,11 @@ namespace Moka.Docs.Core.Configuration;
 /// </summary>
 public sealed class SiteConfigReader
 {
+	private static readonly IDeserializer _deserializer = new DeserializerBuilder()
+		.WithNamingConvention(CamelCaseNamingConvention.Instance)
+		.IgnoreUnmatchedProperties()
+		.Build();
+
 	private readonly IFileSystem _fileSystem;
 
 	/// <summary>
@@ -56,19 +63,21 @@ public sealed class SiteConfigReader
 	{
 		try
 		{
-			IDeserializer deserializer = new DeserializerBuilder()
-				.WithNamingConvention(CamelCaseNamingConvention.Instance)
-				.IgnoreUnmatchedProperties()
-				.Build();
-
-			SiteConfigDto dto = deserializer.Deserialize<SiteConfigDto>(yaml)
+			SiteConfigDto dto = _deserializer.Deserialize<SiteConfigDto>(yaml)
 			                    ?? throw new SiteConfigException("Configuration file is empty.");
 
-			return MapFromDto(dto, yamlDir);
+			return MapFromDto(dto, yamlDir) with
+			{
+				Warnings = YamlConfigChecks.FindUnknownKeys(yaml, typeof(SiteConfigDto))
+			};
 		}
 		catch (SiteConfigException)
 		{
 			throw;
+		}
+		catch (YamlException ex)
+		{
+			throw new SiteConfigException($"Failed to parse configuration: {YamlConfigChecks.Describe(ex)}", ex);
 		}
 		catch (Exception ex)
 		{
@@ -157,10 +166,10 @@ public sealed class SiteConfigReader
 
 		return new ContentConfig
 		{
-			Docs = dto.Docs ?? "./docs",
+			Docs = NormalizeSeparators(dto.Docs) ?? "./docs",
 			Projects = dto.Projects?.Select(p => new ProjectSource
 			{
-				Path = p.Path ?? "",
+				Path = NormalizeSeparators(p.Path) ?? "",
 				Label = p.Label,
 				IncludeInternals = p.IncludeInternals
 			}).ToList() ?? []
@@ -177,7 +186,7 @@ public sealed class SiteConfigReader
 
 		return new ThemeConfig
 		{
-			Name = MokaDefaults.ResolveString("THEME_NAME", dto.Name, MokaDefaults.ThemeName),
+			Name = NormalizeSeparators(MokaDefaults.ResolveString("THEME_NAME", dto.Name, MokaDefaults.ThemeName))!,
 			Options = new ThemeOptions
 				{
 					PrimaryColor = MokaDefaults.ResolveString(
@@ -189,7 +198,8 @@ public sealed class SiteConfigReader
 						"SHOW_EDIT_LINK", o.ShowEditLink, MokaDefaults.ShowEditLink),
 					ShowLastUpdated = MokaDefaults.ResolveBool(
 						"SHOW_LAST_UPDATED", o.ShowLastUpdated, MokaDefaults.ShowLastUpdated),
-					ShowContributors = o.ShowContributors ?? false,
+					ShowContributors = MokaDefaults.ResolveBool(
+						"SHOW_CONTRIBUTORS", o.ShowContributors, MokaDefaults.ShowContributors),
 					ColorThemes = MokaDefaults.ResolveBool(
 						"SHOW_COLOR_THEME_SELECTOR", o.ColorThemes, MokaDefaults.ShowColorThemeSelector),
 					CodeThemeSelector = MokaDefaults.ResolveBool(
@@ -198,6 +208,14 @@ public sealed class SiteConfigReader
 						"CODE_STYLE", o.CodeStyle, MokaDefaults.CodeStyle),
 					CodeStyleSelector = MokaDefaults.ResolveBool(
 						"SHOW_CODE_STYLE_SELECTOR", o.CodeStyleSelector, MokaDefaults.ShowCodeStyleSelector),
+					Style = MokaDefaults.ResolveString(
+						"STYLE", o.Style, MokaDefaults.Style),
+					StyleSelector = MokaDefaults.ResolveBool(
+						"SHOW_STYLE_SELECTOR", o.StyleSelector, MokaDefaults.ShowStyleSelector),
+					Sidebar = MokaDefaults.ResolveString(
+						"SIDEBAR", o.Sidebar, MokaDefaults.Sidebar),
+					SidebarInlineLimit = Math.Max(0, MokaDefaults.ResolveInt(
+						"SIDEBAR_INLINE_LIMIT", o.SidebarInlineLimit, MokaDefaults.SidebarInlineLimit)),
 					ShowFeedback = MokaDefaults.ResolveBool(
 						"SHOW_FEEDBACK", o.ShowFeedback, MokaDefaults.ShowFeedbackWidget),
 					ShowDarkModeToggle = MokaDefaults.ResolveBool(
@@ -262,9 +280,7 @@ public sealed class SiteConfigReader
 			Search = new SearchFeatureConfig
 			{
 				Enabled = MokaDefaults.ResolveBool(
-					"SEARCH_ENABLED", s.Enabled, MokaDefaults.SearchEnabled),
-				Provider = MokaDefaults.ResolveString(
-					"SEARCH_PROVIDER", s.Provider, MokaDefaults.SearchProvider)
+					"SEARCH_ENABLED", s.Enabled, MokaDefaults.SearchEnabled)
 			},
 			Versioning = dto.Versioning is { } v
 				? new VersioningFeatureConfig
@@ -275,6 +291,7 @@ public sealed class SiteConfigReader
 					{
 						Label = vd.Label ?? "",
 						Branch = vd.Branch,
+						Tag = vd.Tag,
 						Default = vd.Default,
 						Prerelease = vd.Prerelease
 					}).ToList() ?? []
@@ -284,11 +301,49 @@ public sealed class SiteConfigReader
 				? new BlogFeatureConfig
 				{
 					Enabled = b.Enabled ?? false,
-					PostsPerPage = b.PostsPerPage ?? 10,
-					ShowAuthors = b.ShowAuthors ?? true
+					PostsPerPage = b.PostsPerPage ?? BlogFeatureConfig.DefaultPostsPerPage,
+					ShowAuthors = b.ShowAuthors ?? true,
+					Path = NormalizeSeparators(b.Path) ?? BlogFeatureConfig.DefaultPath,
+					Route = b.Route,
+					Title = string.IsNullOrWhiteSpace(b.Title) ? "Blog" : b.Title.Trim(),
+					Description = b.Description?.Trim() ?? "",
+					SidebarPosts = b.SidebarPosts ?? BlogFeatureConfig.DefaultSidebarPosts,
+					Feeds = b.Feed is null ? ["rss"] : MapBlogFeeds(b.Feed),
+					Authors = MapBlogAuthors(b.Authors)
 				}
 				: new BlogFeatureConfig()
 		};
+	}
+
+	// "rss", "rss, atom" or a YAML list. "none" or false turns the feeds off. Unknown names are kept
+	// so the blog phase can name them in a warning.
+	private static List<string> MapBlogFeeds(object feed)
+	{
+		IEnumerable<string> names = feed is IEnumerable<object> list
+			? list.Select(item => item?.ToString() ?? "")
+			: (feed.ToString() ?? "").Split(',');
+
+		return names
+			.Select(name => name.Trim().ToLowerInvariant())
+			.Where(name => name.Length > 0 && name is not ("none" or "false" or "off" or "no"))
+			.Distinct()
+			.ToList();
+	}
+
+	private static Dictionary<string, BlogAuthor> MapBlogAuthors(Dictionary<string, BlogAuthorDto>? authors)
+	{
+		var mapped = new Dictionary<string, BlogAuthor>(StringComparer.OrdinalIgnoreCase);
+		foreach ((string key, BlogAuthorDto? author) in authors ?? [])
+		{
+			mapped[key] = new BlogAuthor
+			{
+				Name = string.IsNullOrWhiteSpace(author?.Name) ? key : author.Name.Trim(),
+				Url = string.IsNullOrWhiteSpace(author?.Url) ? null : author.Url.Trim(),
+				Avatar = string.IsNullOrWhiteSpace(author?.Avatar) ? null : author.Avatar.Trim()
+			};
+		}
+
+		return mapped;
 	}
 
 	private static List<PluginDeclaration> MapPlugins(List<PluginDeclarationDto>? dtos)
@@ -336,15 +391,17 @@ public sealed class SiteConfigReader
 
 		return new BuildConfig
 		{
-			Output = dto.Output ?? "./_site",
+			Output = NormalizeSeparators(dto.Output) ?? "./_site",
 			Clean = MokaDefaults.ResolveBool(
 				"CLEAN_OUTPUT", dto.Clean, MokaDefaults.CleanOutput),
-			Minify = dto.Minify ?? true,
+			Minify = MokaDefaults.ResolveBool(
+				"MINIFY_OUTPUT", dto.Minify, MokaDefaults.MinifyOutput),
 			Sitemap = MokaDefaults.ResolveBool(
 				"GENERATE_SITEMAP", dto.Sitemap, MokaDefaults.GenerateSitemap),
 			Robots = MokaDefaults.ResolveBool(
 				"GENERATE_ROBOTS", dto.Robots, MokaDefaults.GenerateRobots),
 			Cache = dto.Cache ?? true,
+			Strict = dto.Strict ?? false,
 			BasePath = NormalizeBasePath(dto.BasePath)
 		};
 	}
@@ -377,6 +434,10 @@ public sealed class SiteConfigReader
 
 		return p;
 	}
+
+	// Windows accepts "/" too, so the same mokadocs.yaml works on both. On Linux ".\_site" used to
+	// name a folder literally called ".\_site".
+	private static string? NormalizeSeparators(string? path) => path?.Replace('\\', '/');
 
 	private static SiteConfigDto MapToDto(SiteConfig config)
 	{
@@ -423,6 +484,12 @@ public sealed class SiteConfigReader
 					CodeThemeSelector = config.Theme.Options.CodeThemeSelector ? null : false,
 					CodeStyle = config.Theme.Options.CodeStyle == "plain" ? null : config.Theme.Options.CodeStyle,
 					CodeStyleSelector = config.Theme.Options.CodeStyleSelector ? null : false,
+					Style = config.Theme.Options.Style == ThemeStyles.Default ? null : config.Theme.Options.Style,
+					StyleSelector = config.Theme.Options.StyleSelector ? null : false,
+					Sidebar = config.Theme.Options.Sidebar == SidebarModes.Auto ? null : config.Theme.Options.Sidebar,
+					SidebarInlineLimit = config.Theme.Options.SidebarInlineLimit == MokaDefaults.SidebarInlineLimit
+						? null
+						: config.Theme.Options.SidebarInlineLimit,
 					ShowFeedback = config.Theme.Options.ShowFeedback ? null : false,
 					ShowDarkModeToggle = config.Theme.Options.ShowDarkModeToggle ? null : false,
 					ShowAnimations = config.Theme.Options.ShowAnimations ? null : false,
@@ -452,10 +519,11 @@ public sealed class SiteConfigReader
 			{
 				Output = config.Build.Output,
 				Clean = config.Build.Clean,
-				Minify = config.Build.Minify,
+				Minify = config.Build.Minify ? true : null,
 				Sitemap = config.Build.Sitemap,
 				Robots = config.Build.Robots,
 				Cache = config.Build.Cache,
+				Strict = config.Build.Strict ? true : null,
 				BasePath = config.Build.BasePath == "/" ? null : config.Build.BasePath
 			}
 		};
@@ -517,7 +585,7 @@ public sealed class SiteConfigReader
 		// Normalize to forward slashes so publish URLs are consistent across platforms.
 		// Leading slash is interpreted as "relative to yaml dir" not filesystem root,
 		// matching user intent for forms like "/assets/logo.png".
-		string trimmed = value.TrimStart('/');
+		string trimmed = value.Replace('\\', '/').TrimStart('/');
 		string normalizedYamlDir = Path.GetFullPath(yamlDir);
 		string sourcePath = Path.GetFullPath(Path.Combine(normalizedYamlDir, trimmed));
 

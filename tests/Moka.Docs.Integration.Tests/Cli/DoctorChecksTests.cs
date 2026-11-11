@@ -2,6 +2,8 @@ using FluentAssertions;
 using Moka.Docs.Cli.Diagnostics;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Core.Content;
+using Moka.Docs.Plugins;
 
 namespace Moka.Docs.Integration.Tests.Cli;
 
@@ -186,20 +188,51 @@ public sealed class DoctorChecksTests
 	}
 
 	[Fact]
-	public void FindIgnoredPluginDeclarations_ReportsPathsAndNamelessEntries()
+	public void FindIgnoredPluginDeclarations_ReportsNamelessEntries()
 	{
-		// The plugin host skips both without a trace, so doctor and validate used to pass
-		// a config whose plugin never loaded.
+		// The plugin host skips them without a trace, so doctor and validate used to pass a config
+		// whose plugin never loaded. A path with a name is loaded now, so only the nameless one counts.
 		PluginDeclaration[] declared =
 		[
 			new() { Name = "mokadocs-repl" },
 			new() { Path = "./plugins/Footer.dll" },
-			new() { Options = new Dictionary<string, object> { ["x"] = 1 } }
+			new() { Options = new Dictionary<string, object> { ["x"] = 1 } },
+			new() { Name = "mokadocs-footer", Path = "./plugins/Footer.dll" }
 		];
 
 		DoctorChecks.FindIgnoredPluginDeclarations(declared).Should().Equal(
-			"plugins[1]: path './plugins/Footer.dll' is ignored, the mokadocs CLI cannot load plugin assemblies",
+			"plugins[1] has no name, so nothing is loaded from './plugins/Footer.dll'. Set it to the plugin's id",
 			"plugins[2] has no name");
+	}
+
+	[Fact]
+	public void FindUnknownPlugins_LeavesPathDeclarationsToTheirAssembly()
+	{
+		// A plugin from a path has an id the CLI doesn't register; the build reports when it doesn't load.
+		PluginDeclaration[] declared =
+		[
+			new() { Name = "mokadocs-footer", Path = "./plugins/Footer.dll" },
+			new() { Name = "mokadocs-footer" }
+		];
+
+		DoctorChecks.FindUnknownPlugins(declared, ["openapi"]).Should().Equal("mokadocs-footer");
+	}
+
+	[Fact]
+	public void FindPluginsThatFailedToInitialize_SkipsPathsThatFailedToLoadAndUnknownNames()
+	{
+		PluginDeclaration loaded = new() { Name = "openapi" };
+		PluginDeclaration initThrew = new() { Name = "mokadocs-changelog" };
+		PluginDeclaration unknown = new() { Name = "nope" };
+		PluginDeclaration pathInitThrew = new() { Name = "mokadocs-a", Path = "./a.dll" };
+		PluginDeclaration pathFailed = new() { Name = "mokadocs-b", Path = "./b.dll" };
+
+		DoctorChecks.FindPluginsThatFailedToInitialize(
+				[loaded, initThrew, unknown, pathInitThrew, pathFailed],
+				["openapi", "mokadocs-changelog"],
+				["openapi"],
+				[new PluginLoadFailure("mokadocs-b", "./b.dll", "missing")])
+			.Should().Equal(initThrew, pathInitThrew);
 	}
 
 	#endregion
@@ -268,6 +301,88 @@ public sealed class DoctorChecksTests
 		DoctorChecks.IsUnder(Path.Combine(site, "icon.png"), site).Should().BeTrue();
 		DoctorChecks.IsUnder(Path.Combine(root, "docs", "_sitemap", "notes.md"), site).Should().BeFalse();
 		DoctorChecks.IsUnder(Path.Combine(root, "docs", "icon.png"), site).Should().BeFalse();
+	}
+
+	#endregion
+
+	#region CheckLinks
+
+	private static DocPage LinkPage(string route, string? source, string html) => new()
+	{
+		FrontMatter = new FrontMatter { Title = route },
+		Content = new PageContent { Html = html, PlainText = "" },
+		Route = route,
+		SourcePath = source
+	};
+
+	private static readonly DocPage[] _linkPages =
+	[
+		LinkPage("/guide/intro", "guide/intro.md",
+			"""<h2 id="setup">Setup</h2><h2 id='usage'>Usage</h2><a name="legacy"></a><h3 id="a&amp;b">A</h3>"""),
+		LinkPage("/Reference", "Reference.md", """<h2 id="types">Types</h2>""")
+	];
+
+	private static LinkCheckResult Check(string markdown, string pathInDocs = "guide/intro.md") =>
+		DoctorChecks.CheckLinks(_linkPages, ["/assets/logo.png"],
+			[new MarkdownSource("docs/" + pathInDocs, pathInDocs, markdown)]);
+
+	[Theory]
+	[InlineData("[x](/guide/Intro)", "/guide/intro")]
+	[InlineData("[x](/reference)", "/Reference")]
+	[InlineData("![x](/assets/Logo.png)", "/assets/logo.png")]
+	[InlineData("[x](../reference.md)", "/Reference")]
+	public void CheckLinks_ALinkThatOnlyMatchesIgnoringCase_IsBrokenAndSaysSo(string markdown, string actual)
+	{
+		// Linux hosts serve /guide/Intro and /guide/intro as different paths. The case-insensitive
+		// comparison passed these links, which 404 once deployed.
+		Check(markdown).Broken.Should().ContainSingle()
+			.Which.Should().Contain($"differs only in case from {actual}");
+	}
+
+	[Theory]
+	[InlineData("[x](/guide/intro)")]
+	[InlineData("[x](/Reference/)")]
+	[InlineData("[x](/guide)")]
+	[InlineData("![x](/assets/logo.png)")]
+	[InlineData("[x](https://example.com/Guide)")]
+	public void CheckLinks_ExactTargets_AreFine(string markdown) =>
+		Check(markdown).Broken.Should().BeEmpty();
+
+	[Theory]
+	[InlineData("[x](/guide/intro#setup)")]
+	[InlineData("[x](/guide/intro#usage)")]
+	[InlineData("[x](/guide/intro#legacy)")]
+	[InlineData("[x](/guide/intro#a%26b)")]
+	[InlineData("[x](#setup)")]
+	[InlineData("[x](#top)")]
+	[InlineData("[x](intro.md#setup)")]
+	[InlineData("[x](/Reference#types)")]
+	public void CheckLinks_AnchorsThatExist_AreFine(string markdown)
+	{
+		LinkCheckResult result = Check(markdown);
+
+		result.Broken.Should().BeEmpty();
+		result.BrokenAnchors.Should().BeEmpty();
+	}
+
+	[Theory]
+	[InlineData("[x](/guide/intro#install)", "/guide/intro#install")]
+	[InlineData("[x](#Setup)", "/guide/intro#Setup")]
+	[InlineData("[x](/Reference#methods)", "/Reference#methods")]
+	public void CheckLinks_AnchorsThatDoNotExist_AreReported(string markdown, string reported)
+	{
+		LinkCheckResult result = Check(markdown);
+
+		result.Broken.Should().BeEmpty();
+		result.BrokenAnchors.Should().ContainSingle()
+			.Which.Should().StartWith(reported).And.Contain("docs/guide/intro.md:1");
+	}
+
+	[Fact]
+	public void ElementIds_ReadsDoubleAndSingleQuotedIdsAndAnchorNames()
+	{
+		DoctorChecks.ElementIds("""<div class="x" id="one"><a name='two'></a><p data-id="no">id="no"</p></div>""")
+			.Should().BeEquivalentTo("one", "two");
 	}
 
 	#endregion

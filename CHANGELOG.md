@@ -15,15 +15,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2026-10-13. It is pinned to the patched 10.0.15. The 1.7.0 packages ship 8.0.1 on
   net9.0.
 
+- **XML doc comments could inject script into API pages.** A `paramref` or
+  `typeparamref` name went into the page unescaped, and `<see href="javascript:...">`
+  became a live link (the `seealso` check could be skipped with a tab inside the
+  scheme). Names are escaped, and doc links only go to http, https, mailto or relative
+  URLs, checked after control characters are removed. This matters most in the ASP.NET
+  Core host, which reads third-party XML files.
+- **A page could be written outside the output folder.** A front matter `route:` with
+  `..`, or an OpenAPI tag holding a Windows path under `routePrefix: "/"`, wrote
+  `index.html` outside `_site`. Bad routes are now errors, reported before the old site
+  is deleted, and every write is checked to stay under the output folder.
+- **`DocsPath = "."` published the app's settings.** The ASP.NET Core host copied every
+  file under DocsPath, so `/docs/appsettings.json`, deps and runtimeconfig files, dlls
+  and pdbs were served. It now copies only Markdown and the asset types a site publishes,
+  never app files or bin, obj and node_modules, and warns about what it left out.
+- **Values in page attributes were written unescaped.** A route, label or OpenAPI tag
+  containing a quote could break out of `href` and other attributes. Every value the
+  default layouts write into an attribute is escaped now.
+
 ### 🔄 Changed
 
 - **NuGet dependencies updated to the latest of the .NET 10 line.** Microsoft.Extensions.*
   and Microsoft.AspNetCore.OpenApi 10.0.12 to 10.0.15 (9.0.23 on the net9.0 legs),
   Markdig 1.3.2 to 1.6.0, Scriban 7.4.0 to 7.6.1, System.IO.Abstractions 22.2.0 to
-  23.0.0, System.CommandLine 2.0.12 to 2.0.15, Microsoft.FeatureManagement 4.7.0 to
+  23.0.0, System.CommandLine 2.0.12 to 3.0.0, Microsoft.FeatureManagement 4.7.0 to
   4.8.0 and Moka.Blazor.Repl.* 1.3.5 to 1.3.6, and on the test side xunit.v3 4.0.3,
-  Microsoft.Testing.Platform 2.5.2, FluentAssertions 8.11.0 and Swashbuckle 10.3.1.
-  The .NET 11 releases (Microsoft.Extensions 11, System.CommandLine 3) are not used.
+  Microsoft.Testing.Platform 2.5.3, Microsoft.NET.Test.Sdk 18.12.0, FluentAssertions 8.11.0
+  and Swashbuckle 10.3.1. The .NET 11 releases of the framework packages (Microsoft.Extensions
+  11, Microsoft.AspNetCore.OpenApi 11) are not used. The repository builds from
+  `MokaDocs.slnx`; `MokaDocs.sln` is gone.
   Verify.XunitV3 stays on 32.x: 33 adds a license check that fails the build.
 - **New Blazor preview hosts reference Moka.Blazor.Repl.Host 1.3.6** and
   Microsoft.AspNetCore.Components.WebAssembly 10.0.15. An existing scaffolded host
@@ -31,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The `NuGet.Packaging`/`NuGet.Protocol` pins are gone.** Moka.Blazor.Repl.Compiler
   1.3.6 depends on NuGet 7.9.0 itself, so the pins that cleared GHSA-g4vj-cjjj-v7hg
   no longer change anything.
+
+- **Faster builds on big sites.** Rendering no longer slows down quadratically (5000
+  pages render in about 2 s instead of 7 s), Markdown parsing and page writing run in
+  parallel (a 4000-page build went from 11 to 13 s down to 5 to 7 s), and C# analysis
+  runs in parallel without reformatting source (a 2000-type project analyzes in about
+  1 s instead of 2.5 s). `-v` shows how long each build phase took.
+- CI's GitHub actions run on Node 24 (checkout 7, setup-dotnet 6, upload-artifact 7,
+  upload-pages-artifact 5, deploy-pages 5, action-gh-release 3). The unused test-only
+  Verify.XunitV3 reference is gone.
 
 ### ⚠️ Behavior changes
 
@@ -47,6 +76,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without a `routePrefix` used `/api`, the API reference's own route. The CLI default
   is unchanged.
 
+- **Nested types and types that differ only in type parameters get their own API
+  pages.** `Outer.Options` is at `/api/ns/outer.options`, and `Result<T>` next to
+  `Result` is at `/api/ns/result-1`; both used to share one route and one page was lost.
+  Titles, the `/api` index, the sidebar and cref links show names as C# writes them
+  (`Outer.Options`, `Result<T>`), so generic types now show their type parameters.
+- **More problems fail the build.** A missing docs folder, a page that can't be read or
+  parsed, an invalid front matter `route:`, and a configured project that is missing or
+  fails to analyze are errors, so `mokadocs build` exits 1 instead of shipping a site
+  without them. `build.strict: true` or `--warnings-as-errors` also fails on warnings.
+- **Unknown keys warn.** A key in `mokadocs.yaml` or in front matter that MokaDocs
+  doesn't read is a warning with its line, and suggests the right spelling when only the
+  letter case differs. YAML errors name the line, column and cause.
+- **The output folder guard covers more.** Build and `mokadocs clean` refuse an output
+  folder that holds a configured project, a custom theme or the logo or favicon source,
+  and refuse to empty a folder MokaDocs didn't create. Each build writes a
+  `.mokadocs-output` marker; sites built by older versions are recognized by their
+  theme files.
+- **Sitemap, canonical and `og:url` addresses** are percent-encoded and end with `/`,
+  matching how pages are written; the sitemap is always valid XML.
+- **View Source shows the code as written** instead of a reformatted copy, still without
+  the members the page leaves out. `[EditorBrowsable(Never)]` members are left out by the
+  CLI too, as the host already did.
+- **Previous and Next links follow the sidebar order.**
+- **API search has one entry per member** with its summary, instead of empty Methods and
+  Properties entries per type.
+- **OpenAPI tags with characters a route can't hold** (quotes, colons, `&`, `#`, paths)
+  get a safe slug, and tags that slug alike get `-2`, `-3` in document order. Tags whose
+  routes were already safe keep them.
+- **Python API:** a class whose route matches its module's page moves to `-2`, and a
+  root `__init__.py` is named after its folder.
+- **Moka.Docs.Serve:** the unused `/api/blazor/preview` dev server endpoint is removed,
+  with `BlazorPreviewService` and `BlazorPreviewResult`; `DevServer`'s constructor lost
+  that parameter. `ReplExecutionService.ExecuteAsync` can throw `ReplQueueFullException`
+  when four runs are already waiting (the endpoints answer 429).
+
+- **The generated sidebar is a tree.** Without `nav:`, every folder is a section titled by
+  its index page, and API types are grouped by namespace, collapsed except the one holding the
+  current page. Pages more than three levels down are listed under their third-level folder
+  instead of being dropped. `nav[].autoGenerate: true` now lists the tree below the item's
+  path; it used to be ignored. The ASP.NET Core host's default Guide entry is a tree too.
+- **Sites with more than 300 sidebar entries share one sidebar file.** With the default
+  `theme.options.sidebar: auto`, the full sidebar is written once to `_theme/js/sidebar.js`
+  and each page keeps its top-level entries and its own path, so readers without JavaScript
+  get that shorter sidebar. `sidebar: inline` keeps the old behavior.
+- **`draft: true` in front matter drafts the page**, like `visibility: draft`. It used to be
+  ignored and the page was published.
+- **The navbar version label comes from the package version.** With versioning on, a
+  version without a label shows `v{major}.{minor}` of the documented package; versioning on
+  with no `versions` list now shows that one version. Pages with a `version:` range are left
+  out of versions the range doesn't cover.
+- **Default style colors meet WCAG AA.** Muted text and text in the accent color (links,
+  inline code, the current sidebar and contents entries) are darker in light mode and
+  lighter in dark mode where a preset fell short: ocean links were 2.8:1 on white, amber
+  2.2:1. Each preset keeps its hue. A custom `primaryColor` is used as is.
+- **Search entries carry their section text** and code words, so the index is larger (this
+  repository's grew from 296 KB to 478 KB, 50 KB to 110 KB gzipped).
+- **Plugin registration:** `AddMokaDocsPlugins()` now registers every built-in plugin, and the
+  ASP.NET Core host registers `openapi` only when it's declared.
+- **Moka.Docs.Search is no longer published.** It was an empty package (`AddMokaDocsSearch()`
+  registered nothing) and 1.8.0 is its last release; search lives in Moka.Docs.Engine.
+  Moka.Docs.Serve no longer depends on Moka.Blazor.Repl.Compiler.
+- **Obsolete, removed in 2.0:** `DocSite`, `ThemeManifest`, `SearchFeatureConfig.Provider` and
+  `MokaDefaults.SearchProvider`, none of which MokaDocs used. `features.search.provider` is no
+  longer read, and a config that sets it gets a warning.
+
 ### ✨ New
 
 - **REST API pages from the app's own OpenAPI document.** `options.OpenApiDocument = "v1"`
@@ -60,9 +154,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `if (await MokaDocsReplWorker.TryRunAsync()) return;` as the first line of
   Program.cs and `EnableRepl` snippets run in a copy of the app's own executable, with
   the documented assemblies referenced. Without the line nothing is spawned and Run
-  answers with the fix. The endpoint is mapped in Development only, runs code for
-  requests from the same machine only, and accepts JSON from the app's own origin only.
-  `AllowRemoteRepl` lifts the first two; put the docs behind authorization first.
+  answers with the fix. The endpoint is mapped in Development only, runs code only for a
+  caller on the same machine whose Host is localhost or a loopback address and whose
+  request didn't come through a proxy (which stops DNS rebinding and local tunnels), and
+  accepts JSON from the app's own origin only. `AllowRemoteRepl` lifts the first two;
+  put the docs behind authorization first. At most four runs wait behind the one running.
   `ReplWorkerStartInfo` overrides the worker command.
 - **Feedback in the ASP.NET Core host.** `POST {BasePath}/api/feedback` logs each vote
   and passes it to the new `OnFeedback` callback. `ShowFeedback = false` hides the
@@ -105,6 +201,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A root base path (`MapMokaDocs("/")` or `BasePath = "/"`) serves the docs at the app
   root.
 
+- **C# 14 extension blocks.** A static class's page has a section for each
+  `extension(...)` block with its declaration, receiver and type parameter docs, then its
+  members. Extension properties, static extension members and extension operators are
+  listed on the pages of the types they apply to, next to extension methods (the section
+  is headed Extension Members when it has any). The ASP.NET Core host reads them from
+  compiled assemblies, and crefs and `<inheritdoc cref>` resolve to them.
+- **Appearance styles.** The default theme has five looks: `default`, `moka`, `minimal`,
+  `classic` and `soft`, each in light and dark with every accent preset and WCAG AA
+  contrast. Pick one with `theme.options.style` (or `MOKADOCS_STYLE`,
+  `MokaDocsOptions.Style`); readers can switch from a Style button in the header, which
+  `theme.options.styleSelector: false` hides. An unknown name renders as default with a
+  warning. `moka` starts in dark mode for readers who haven't chosen.
+- **`build.strict` and `--warnings-as-errors`** on `build` and `validate` fail on
+  warnings, for CI.
+- **`doctor` checks `#anchor` targets** against the target page's ids, and compares link
+  paths with their letter case (a case-only match 404s on Linux hosts).
+- **`csharp repl`, `cs repl` and `c# repl` fences** become REPL blocks, as the REPL page
+  documented.
+- **OpenAPI:** OpenAPI 3.1 `webhooks` are listed on the overview, parameters described
+  with `content` show their schema, and references that resolve to nothing are listed in
+  a warning.
+- **Blazor previews:** `renderTimeout` (5 s) stops a component that never settles from
+  hanging the build, and `publishTimeout` (600 s) bounds the preview host publish, which
+  now honours cancellation and kills its process tree.
+
+- **Sidebar modes.** `theme.options.sidebar` is `auto` (default), `inline` or `shared`, with
+  `theme.options.sidebarInlineLimit` (300 entries), `MOKADOCS_SIDEBAR` and
+  `MokaDocsOptions.Sidebar`. A shared sidebar marks the current page and expands its sections
+  before the first paint. A 5012-page site went from 65 s and 8.4 GB of output to 10 s and
+  258 MB.
+- **Blog.** Posts in `features.blog.path` get a paginated index, tag pages, a header with
+  date, authors, tags and reading time, links to the next newer and older post, and RSS and
+  Atom feeds linked from every page's head (feeds need `site.url`). New settings `path`,
+  `route`, `title`, `description`, `sidebarPosts`, `feed` and `authors`; `postsPerPage` and
+  `showAuthors` take effect. Post front matter `date`, `author`/`authors`, `summary` and
+  `image`. The blog takes one sidebar entry listing its latest posts. `MokaDocsOptions.Blog`
+  builds it in the ASP.NET Core host.
+- **Multi-version builds.** With versions that name a git `branch` or the new `tag`,
+  `mokadocs build` builds each into its own folder and the default version at the site root
+  too, from temporary git worktrees it removes afterwards; your working tree and index are
+  not touched. The version dropdown links to the same page in the other version when it has
+  one, and appears on landing pages. `mokadocs build --version <name>` rebuilds one version.
+  `validate` and `doctor` report refs that don't exist. Front matter `version:` takes npm or
+  NuGet ranges, or a list of them.
+- **Plugins from a path.** `plugins[].path` loads your own plugin in the CLI: a .dll, a
+  project that mokadocs builds with `dotnet build -c Release`, or a folder holding either.
+  A path that doesn't load is a build error naming the plugin, the path and the reason.
+  `mokadocs new plugin` makes a project the CLI loads as it is.
+- **`build --watch` and `serve` reload mokadocs.yaml**, with new plugins, theme and
+  templates. A broken file keeps the last good site and prints the error. `build.output`,
+  `content.docs` and, under serve, `build.basePath` still need a restart, and the terminal
+  says so.
+- **`build.minify`** collapses whitespace and drops comments in pages (pre, code, textarea,
+  script and style are kept as written) and minifies the theme's CSS and JS. Off by default;
+  `MOKADOCS_MINIFY_OUTPUT` and `MokaDocsOptions.Minify`.
+- **`theme.options.showContributors`** lists the people who committed to each page under its
+  "Last updated" line, from the same git log as the dates, with `.mailmap` applied. Emails
+  aren't shown and nothing is downloaded.
+- **OpenAPI:** endpoints show their path or operation servers when they differ from the
+  document's, and `externalDocs` on documents, tags, operations and schemas show as links.
+
 ### 🐛 Fixed
 
 - **MokaDocs broke a .NET 9 app's own OpenAPI document.** Moka.Docs.Plugins referenced
@@ -132,16 +289,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The AspNetCore sample built for net9.0 as well: `Directory.Build.props` sets
   `TargetFrameworks`, which the sample's singular `TargetFramework` didn't override.
 
+- A sidebar with about 1000 entries or more made every page render without its layout,
+  and pages over 1 MB were cut off with "..." (Scriban's default limits).
+- `build --watch` rebuilt forever when the output folder was inside the docs folder (this
+  repository's own layout), and a change during a running build in `serve` or
+  `build --watch` started a second build that deleted the first one's output. Rebuilds
+  now run one at a time with one queued, and watching falls back to polling when the
+  system refuses a watcher (`DOTNET_USE_POLLING_FILE_WATCHER` is honoured).
+- `mokadocs init` overwrote an existing `docs/index.md`; it now skips existing files and
+  names them.
+- `mokadocs clean` could delete a project's sources when `build.output` pointed at them.
+- C# analysis followed the default glob only: `<Compile Remove>` files got pages, linked
+  `<Compile Include>` files were missing, and dot folders such as `.mokadocs` were
+  analyzed. `<include>` doc comments are expanded, and a doc comment that isn't
+  well-formed XML is a warning naming the member.
+- API pages: record struct and readonly record struct declarations read like the source,
+  delegates show their signature, default values print as written, attribute named
+  arguments show, code blocks lose the comment indentation, lists keep their terms and
+  table lists render as tables, inherited parameter docs survive a renamed parameter, the
+  type graph handles generic types, and the NuGet widget fills in `$(MSBuildProjectName)`.
+- Admonition, card and code-group titles and link card URLs were written raw. Table of
+  contents and search text lost link text, emphasis and entities. A body starting with a
+  `---` rule lost content, and front matter delimiters inside block scalars closed the
+  front matter. Tab and code-group ids changed on every watch rebuild.
+- `.md` files were found case-sensitively on Linux, a folder link pointing at an ancestor
+  looped, `\` in config paths broke on Linux, `.md` was removed anywhere in a route, and
+  with `clean: false` a changed logo or favicon outside the docs folder was never copied.
+- Changelog plugin: long numeric version parts threw, partial dates like `2025-06` showed
+  a day, ambiguous dates were read US-style, and the first release in a hidden tab
+  rendered 1px tall.
+- Theme: code block line numbers failed contrast (about 2:1) in every style, the landing
+  hero stayed hidden for 0.4 s with animations off, the version menu stayed open when
+  another picker opened, search snippets could break entities, and root-relative links
+  in single-quoted, unquoted and `srcset` attributes missed the base path. Theme CSS and
+  JS URLs carry a content hash, so an upgrade reaches readers at once.
+- Dev server: HEAD answered 500 on Windows, POST bodies had no size limit, PDF, video,
+  AVIF, webmanifest, zip and wasm files had generic content types, and it now also
+  answers on 127.0.0.1 (and [::1] on Windows). REPL return values and errors are capped at
+  100,000 characters like output, an oversized line from the worker stops it, and a
+  worker that exited between runs is replaced.
+- ASP.NET Core host: a failed build no longer reruns on every request (requests get the
+  last site that built, or 503 with Retry-After), a locked file in DocsPath is skipped
+  with a warning, a reader who leaves no longer cancels the build others wait for, and
+  every response uses `no-cache` with its ETag.
+- ASP.NET Core host reflection: a type or member needing an assembly the app doesn't
+  deploy is left out with a warning instead of failing the whole API reference. Ref
+  structs no longer show the compiler's Obsolete marker, a real Obsolete on a constructor
+  shows, attribute arguments read like source, function pointers, ref fields, const
+  decimals, fixed buffers and record structs render correctly, an assembly listed twice
+  is documented once, and one bad SourceLink entry no longer drops the others.
+- OpenAPI: deeply nested, self-expanding or heavily cross-referenced documents parsed for
+  minutes or crashed the process; they now parse quickly with bounded memory. YAML over
+  about 1 MB parses again, documents with a BOM, a leading comment or YAML flow style are
+  read, a key written twice is a clear error, a tag listed twice no longer duplicates the
+  endpoint, tag pages sort the same on every machine, and a description Markdig refuses
+  shows as text instead of failing every page.
+- Blazor previews: the preview host was republished in every new process and not when a
+  referenced project changed, and shared framework detection missed non-default install
+  locations. A `library` or REPL package value that isn't a NuGet id is reported instead
+  of being written into a project file.
+- Python API: `source: ./src/` failed on Windows, and the analyzer had no timeout.
+- The single-file app case of the host REPL worker failed to start.
+- A REPL snippet that called `Environment.Exit` under `serve` on .NET 9 was reported with exit
+  code 143 instead of its own code, after System.CommandLine 3's process termination
+  handling; the worker runs without it.
+
+- Open sidebar sections were cut off at 2000px, and opening the sidebar on a phone didn't
+  scroll to the current page.
+- The dev server kept closed hot reload connections for its whole life, and on Linux `serve`
+  could end with "Address already in use" when it shut down.
+- REPL workers inherited `DOTNET_STARTUP_HOOKS` and the `dotnet watch` hot reload variables.
+- The color picker didn't close the code theme and code style menus, and the code theme
+  picker didn't close the code style menu.
+- Relative URLs in raw HTML in Markdown (`<img src="./x.png">`, srcset, href, poster) weren't
+  resolved against the file like Markdown links.
+- ASP.NET Core host reflection: base types and interfaces were unqualified, nested types of
+  generic types didn't resolve for inherited members and inheritdoc, and in an interface
+  diamond one same-named member hid the other. View Source showed enum members marked
+  `[EditorBrowsable(Never)]`, in the CLI and the host.
+
 ### 🧪 Tests
 
-- 1698 tests on Windows, up from 1246 (four Windows-path cases don't run on Linux). New: `AspNetCoreEndpointTests`, `AspNetCoreReplTests`,
-  `AspNetCoreRebuildTests`, `AspNetCoreOpenApiTests` (Microsoft.AspNetCore.OpenApi and
-  Swashbuckle on both frameworks, in a real app), `OpenApiParserTests` with documents
-  generated by both providers, `OpenApiPluginTests`, `OpenApiPagesTests`, `ReflectionSourceTests` (sidecar
-  and embedded PDBs with SourceLink), `ReflectionFilterTests`,
-  `ReflectionRelatedMembersTests`, `ApiRelatedMembersTests` (renderer and CLI), and a
-  cancelled-run case in `ReplExecutionServiceTests`. Each fix was confirmed by
-  reverting it and watching its tests fail.
+- 3682 tests on Windows (1841 per framework), up from 1246; Linux runs 3674. New coverage
+  includes the ASP.NET Core host's endpoints, REPL and rebuilds on real Kestrel, OpenAPI with
+  documents generated by Microsoft.AspNetCore.OpenApi and Swashbuckle on both frameworks and
+  hostile documents, PDB and SourceLink reading, C# 14 extension blocks in both API paths,
+  the appearance styles and contrast, the sidebar script under Node, multi-version builds in
+  real git repositories, plugin loading from dlls and real project builds, and config reload
+  in `build --watch` and `serve`. Every fix was confirmed by reverting it and watching its
+  tests fail. The suite also runs on Linux before release, as CI does.
 
 ### 📚 Docs
 
@@ -150,6 +386,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the new options in the reference table. API documentation guide: Inherited
   Members and Extension Methods. OpenAPI and REPL plugin pages updated. The sample app
   shows the REPL, the REST API pages and the watcher.
+- New or rewritten: the blog guide, the versioning page, large sidebars on the navigation
+  page, plugin authoring and loading from a path, configuration changes under the dev
+  server, theme styles, and the strict and unknown-key behavior in the configuration
+  reference. The Library sample shows the blog and builds without warnings.
 
 ## [1.7.0] - 2026-09-12
 

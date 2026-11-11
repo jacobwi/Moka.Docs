@@ -57,7 +57,7 @@ public static class OpenApiPageRenderer
 
 	#region Index Page
 
-	internal static string RenderIndexPage(OpenApiSpec spec, OpenApiLayout layout)
+	internal static string RenderIndexPage(OpenApiSpec spec, OpenApiLayout layout, Func<string, string?>? schemaLink = null)
 	{
 		var sb = new StringBuilder();
 
@@ -69,6 +69,8 @@ public static class OpenApiPageRenderer
 		{
 			sb.AppendLine($"<p class=\"api-namespace\">Version: <code>{Esc(spec.Version)}</code></p>");
 		}
+
+		AppendExternalDocs(sb, spec.ExternalDocs);
 
 		if (layout.DocumentUrl is { } documentUrl)
 		{
@@ -105,8 +107,43 @@ public static class OpenApiPageRenderer
 			sb.AppendLine("</tbody></table></div>");
 		}
 
+		RenderWebhooks(sb, spec, layout, schemaLink);
 		sb.AppendLine("</div>");
 		return sb.ToString();
+	}
+
+	/// <summary>
+	///     The webhooks of an OpenAPI 3.1 document: one row each with the method, the name, the summary and
+	///     the request body the API sends. Their parameters and responses are left to the document itself.
+	/// </summary>
+	private static void RenderWebhooks(StringBuilder sb, OpenApiSpec spec, OpenApiLayout layout, Func<string, string?>? schemaLink)
+	{
+		if (spec.Webhooks.Count == 0)
+		{
+			return;
+		}
+
+		sb.AppendLine($"<h2 id=\"{OpenApiLayout.WebhooksAnchor}\">Webhooks</h2>");
+		string document = layout.DocumentUrl is { } documentUrl ? $"<a href=\"{Attr(documentUrl)}\">the OpenAPI document</a>" : "the OpenAPI document";
+		sb.AppendLine($"<p>Requests the API sends to a URL you give it. Their parameters and responses are in {document}.</p>");
+		sb.AppendLine(
+			"<div class=\"table-responsive\"><table><thead><tr><th>Method</th><th>Name</th><th>Description</th><th>Request body</th></tr></thead><tbody>");
+		foreach (OpenApiEndpoint webhook in spec.Webhooks)
+		{
+			string body = webhook.RequestBody is { } requestBody
+				? (requestBody.Schema is { } schema ? $"<code>{RenderType(schema, schemaLink)}</code>" : "")
+				  + (requestBody.ContentType.Length > 0 ? $" <span class=\"openapi-values\">{Esc(requestBody.ContentType)}</span>" : "")
+				: "-";
+			string deprecatedClass = webhook.Deprecated ? " class=\"openapi-deprecated\"" : "";
+			sb.AppendLine($"<tr{deprecatedClass}>");
+			sb.AppendLine($"<td><span class=\"openapi-method {GetMethodCssClass(webhook.Method)}\">{Esc(webhook.Method)}</span></td>");
+			sb.AppendLine($"<td><code>{Esc(webhook.Path)}</code></td>");
+			sb.AppendLine($"<td>{Esc(webhook.Summary)}</td>");
+			sb.AppendLine($"<td>{body}</td>");
+			sb.AppendLine("</tr>");
+		}
+
+		sb.AppendLine("</tbody></table></div>");
 	}
 
 	private static void RenderServers(StringBuilder sb, OpenApiSpec spec)
@@ -234,6 +271,7 @@ public static class OpenApiPageRenderer
 		sb.AppendLine("<div class=\"openapi-tag-page\">");
 		sb.AppendLine($"<h1>{Esc(page.Tag)}</h1>");
 		AppendMarkdownBlock(sb, spec.TagDescriptions.GetValueOrDefault(page.Tag), "openapi-tag-description");
+		AppendExternalDocs(sb, spec.TagExternalDocs.GetValueOrDefault(page.Tag));
 
 		foreach (OpenApiEndpointLayout entry in page.Endpoints)
 		{
@@ -265,6 +303,7 @@ public static class OpenApiPageRenderer
 		sb.AppendLine("</h2>");
 
 		RenderEndpointAuth(sb, ep, spec, layout);
+		RenderEndpointServers(sb, ep, spec);
 
 		if (!string.IsNullOrEmpty(ep.Summary))
 		{
@@ -275,6 +314,8 @@ public static class OpenApiPageRenderer
 		{
 			AppendMarkdownBlock(sb, ep.Description, "openapi-description");
 		}
+
+		AppendExternalDocs(sb, ep.ExternalDocs);
 
 		if (ep.Parameters.Count > 0)
 		{
@@ -398,6 +439,49 @@ public static class OpenApiPageRenderer
 			: html;
 	}
 
+	/// <summary>
+	///     A line under the endpoint's heading naming the servers its path or operation lists, when they
+	///     aren't the document's. The index page lists the document's own.
+	/// </summary>
+	private static void RenderEndpointServers(StringBuilder sb, OpenApiEndpoint ep, OpenApiSpec spec)
+	{
+		if (ep.Servers is not { Count: > 0 } servers || SameServers(servers, spec.Servers))
+		{
+			return;
+		}
+
+		string label = servers.Count == 1 ? "Server" : "Servers";
+		string list = string.Join(" or ", servers.Select(RenderServerUse));
+		sb.AppendLine($"<p class=\"openapi-endpoint-servers\"><span class=\"openapi-servers-label\">{label}</span> {list}</p>");
+	}
+
+	private static string RenderServerUse(OpenApiServer server)
+	{
+		var html = new StringBuilder($"<code>{Esc(server.Url)}</code>");
+		if (OpenApiMarkdown.PlainText(server.Description) is { Length: > 0 } description)
+		{
+			html.Append($" ({Esc(description)})");
+		}
+
+		foreach (OpenApiServerVariable variable in server.Variables.Where(v => v.EnumValues.Count > 1))
+		{
+			html.Append($" <span class=\"openapi-server-values\"><code>{{{Esc(variable.Name)}}}</code>: ")
+				.Append(string.Join(", ", variable.EnumValues.Select(value => $"<code>{Esc(value)}</code>")))
+				.Append("</span>");
+		}
+
+		return html.ToString();
+	}
+
+	/// <summary>The same server URLs in any order, ignoring a trailing slash.</summary>
+	private static bool SameServers(List<OpenApiServer> servers, List<OpenApiServer> documentServers)
+	{
+		static HashSet<string> Urls(IEnumerable<OpenApiServer> list) =>
+			new(list.Select(s => s.Url.TrimEnd('/')), StringComparer.Ordinal);
+
+		return Urls(servers).SetEquals(Urls(documentServers));
+	}
+
 	#endregion
 
 	#region Models Page
@@ -428,6 +512,7 @@ public static class OpenApiPageRenderer
 			}
 
 			AppendMarkdownBlock(sb, schema.Description, null);
+			AppendExternalDocs(sb, schema.ExternalDocs);
 
 			bool plainObject = schema.Properties.Count > 0 && schema.Variants.Count == 0 && !schema.Nullable
 			                   && schema.RefName is null && schema.Type is "object" or "";
@@ -595,6 +680,13 @@ public static class OpenApiPageRenderer
 		       .openapi-auth a { text-decoration: none; }
 		       .openapi-auth-or { margin: 0 0.25rem; }
 		       .openapi-scheme th { text-align: left; white-space: nowrap; width: 1%; }
+		       .openapi-endpoint-servers { font-size: 0.8125rem; margin: 0 0 0.5rem; color: var(--color-text-secondary, #6b7280); }
+		       .openapi-servers-label {
+		           display: inline-block; padding: 0.05rem 0.4rem; border-radius: var(--radius-sm, 3px); margin-right: 0.25rem;
+		           font-size: 0.6875rem; font-weight: 600; border: 1px solid var(--color-border, #e5e7eb);
+		       }
+		       .openapi-server-values { margin-left: 0.25rem; }
+		       .openapi-external-docs { font-size: 0.875rem; color: var(--color-text-secondary, #6b7280); }
 
 		       .openapi-endpoint-card h3 {
 		           font-size: 1rem; margin-top: 1.25rem; margin-bottom: 0.5rem;
@@ -682,10 +774,35 @@ public static class OpenApiPageRenderer
 
 	/// <summary>An http or https URL as a link, anything else as text.</summary>
 	private static string Url(string url) =>
+		IsHttpUrl(url) ? $"<a href=\"{Attr(url)}\"><code>{Esc(url)}</code></a>" : Code(url);
+
+	/// <summary>
+	///     Whether a URL from the document can be a link: an absolute http or https URL. Relative and
+	///     protocol-relative ones would resolve against the docs site, not the API.
+	/// </summary>
+	private static bool IsHttpUrl(string url) =>
 		OpenApiMarkdown.IsSafeUrl(url) && (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-		                                   || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-			? $"<a href=\"{Attr(url)}\"><code>{Esc(url)}</code></a>"
-			: Code(url);
+		                                   || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	///     An <c>externalDocs</c> link, its text the description without markup or else the URL. A URL that
+	///     isn't http or https is shown as text.
+	/// </summary>
+	private static void AppendExternalDocs(StringBuilder sb, OpenApiExternalDocs? docs)
+	{
+		if (docs is null)
+		{
+			return;
+		}
+
+		string description = OpenApiMarkdown.PlainText(docs.Description);
+		string html = IsHttpUrl(docs.Url)
+			? $"<a href=\"{Attr(docs.Url)}\">{Esc(description.Length > 0 ? description : docs.Url)}</a>"
+			: description.Length > 0
+				? $"{Esc(description)} {Code(docs.Url)}"
+				: Code(docs.Url);
+		sb.AppendLine($"<p class=\"openapi-external-docs\">External documentation: {html}</p>");
+	}
 
 	private static string Code(string value) => $"<code>{Esc(value)}</code>";
 

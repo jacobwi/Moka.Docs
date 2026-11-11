@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Moka.Docs.Plugins.PythonApi;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Moka.Docs.Plugins;
 
@@ -9,18 +9,41 @@ namespace Moka.Docs.Plugins;
 public static class PluginServiceExtensions
 {
 	/// <summary>
-	///     Adds MokaDocs plugin infrastructure to the service collection.
-	///     Registers the <see cref="PluginHost" /> which discovers and manages
-	///     <see cref="IMokaPlugin" /> instances at build time.
+	///     Adds the <see cref="PluginHost" /> and every built-in plugin. The host runs the plugins
+	///     the site declares under <c>plugins:</c>. Loading plugins from <c>plugins[].path</c> stays
+	///     off; the other overload turns it on with <see cref="MokaPluginOptions.PluginBaseDirectory" />.
 	/// </summary>
-	public static IServiceCollection AddMokaDocsPlugins(this IServiceCollection services)
-	{
-		services.AddSingleton<PluginHost>();
+	/// <param name="services">The service collection.</param>
+	/// <returns>The service collection for chaining.</returns>
+	public static IServiceCollection AddMokaDocsPlugins(this IServiceCollection services) =>
+		services.AddMokaDocsPlugins(_ => { });
 
-		// Register built-in plugins. Each is discoverable by the PluginHost via
-		// its Id property when the user adds the corresponding plugin declaration
-		// to their mokadocs.yaml.
-		services.AddSingleton<IMokaPlugin, PythonApiPlugin>();
+	/// <summary>
+	///     Adds the <see cref="PluginHost" /> and the built-in plugins that
+	///     <see cref="MokaPluginOptions.BuiltInPlugins" /> names, all of them when it is <c>null</c>.
+	///     The mokadocs CLI and the ASP.NET Core host both register plugins through this method.
+	/// </summary>
+	/// <param name="services">The service collection.</param>
+	/// <param name="configure">Sets the options.</param>
+	/// <returns>The service collection for chaining.</returns>
+	public static IServiceCollection AddMokaDocsPlugins(this IServiceCollection services,
+		Action<MokaPluginOptions> configure)
+	{
+		ArgumentNullException.ThrowIfNull(configure);
+		var options = new MokaPluginOptions();
+		configure(options);
+
+		services.TryAddSingleton(options);
+		services.TryAddSingleton<PluginHost>();
+
+		foreach (string id in options.BuiltInPlugins ?? BuiltInPlugins.Ids)
+		{
+			// An id that is no built-in is left alone: it can be the application's own plugin.
+			if (BuiltInPlugins.Find(id) is { } type)
+			{
+				services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IMokaPlugin), type));
+			}
+		}
 
 		return services;
 	}

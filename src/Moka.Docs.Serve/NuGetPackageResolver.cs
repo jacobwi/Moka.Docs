@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace Moka.Docs.Serve;
@@ -9,8 +10,63 @@ namespace Moka.Docs.Serve;
 ///     Resolves NuGet package specifications (e.g. "Newtonsoft.Json", "Humanizer@2.14.1")
 ///     into loaded assemblies by creating a temporary project and publishing it.
 /// </summary>
-public sealed class NuGetPackageResolver(ILogger logger)
+public sealed partial class NuGetPackageResolver(ILogger logger)
 {
+	private const int _maxPackageIdLength = 100;
+	private const string _versionNumbers = @"[0-9]+(?:\.[0-9]+){0,3}";
+	private const string _versionLabel = "[0-9A-Za-z-]+";
+	private const string _exactVersion = _versionNumbers
+	                                     + "(?:-" + _versionLabel + @"(?:\." + _versionLabel + ")*)?"
+	                                     + @"(?:\+" + _versionLabel + @"(?:\." + _versionLabel + ")*)?";
+	private const string _floatingVersion = @"\*(?:-\*)?"
+	                                        + @"|[0-9]+(?:\.[0-9]+){0,2}\.\*(?:-\*)?"
+	                                        + "|" + _versionNumbers + "-(?:" + _versionLabel + @"\.)*(?:" + _versionLabel + @")?\*";
+	private const string _versionRange = @"[\[(]\s*(?:" + _exactVersion + @")?\s*(?:,\s*(?:" + _exactVersion + @")?\s*)?[\])]";
+
+	/// <summary>
+	///     Splits a package spec, <c>Id</c> or <c>Id@Version</c>, and checks both parts against
+	///     NuGet's grammar: an id made of letters, digits and <c>_</c>, <c>-</c> or <c>.</c>
+	///     separators (at most 100 characters), and a version, a floating version such as
+	///     <c>1.*</c>, or a version range such as <c>[1.0,2.0)</c>.
+	/// </summary>
+	/// <remarks>
+	///     A spec that passes is safe to write into a generated project file: neither part can
+	///     hold quotes, angle brackets, <c>$</c>, <c>%</c> or <c>;</c>, which would break out of
+	///     the attribute or change what MSBuild reads.
+	/// </remarks>
+	/// <param name="spec">The spec, for example <c>Humanizer@2.14.1</c>.</param>
+	/// <param name="id">The package id, or an empty string when the spec is invalid.</param>
+	/// <param name="version">The version, or <c>null</c> when the spec has none or is invalid.</param>
+	/// <returns><c>true</c> when the id and the version, if present, are valid.</returns>
+	public static bool TryParsePackageSpec(string spec, out string id, out string? version)
+	{
+		id = "";
+		version = null;
+		int at = spec.IndexOf('@', StringComparison.Ordinal);
+		string candidateId = (at < 0 ? spec : spec[..at]).Trim();
+		string? candidateVersion = at < 0 ? null : spec[(at + 1)..].Trim();
+
+		if (candidateId.Length is 0 or > _maxPackageIdLength || !PackageIdPattern().IsMatch(candidateId))
+		{
+			return false;
+		}
+
+		if (candidateVersion is not null && !PackageVersionPattern().IsMatch(candidateVersion))
+		{
+			return false;
+		}
+
+		id = candidateId;
+		version = candidateVersion;
+		return true;
+	}
+
+	[GeneratedRegex(@"^\w+(?:[_.-]\w+)*\z")]
+	private static partial Regex PackageIdPattern();
+
+	[GeneratedRegex("^(?:" + _exactVersion + "|" + _floatingVersion + "|" + _versionRange + @")\z")]
+	private static partial Regex PackageVersionPattern();
+
 	/// <summary>
 	///     Resolves the given package specifications to assemblies.
 	///     Each spec is either "PackageName" or "PackageName@Version".
@@ -90,6 +146,15 @@ public sealed class NuGetPackageResolver(ILogger logger)
 	internal async Task<ResolvedPackages> PublishAsync(IReadOnlyList<string> packageSpecs, string directory,
 		CancellationToken ct)
 	{
+		if (packageSpecs.FirstOrDefault(spec => !TryParsePackageSpec(spec, out _, out _)) is { } invalid)
+		{
+			logger.LogWarning("REPL package '{Spec}' is not a NuGet package id with an optional @version", invalid);
+			return new ResolvedPackages
+			{
+				Error = $"'{invalid}' is not a NuGet package id with an optional @version (for example Humanizer@2.14.1)"
+			};
+		}
+
 		Directory.CreateDirectory(directory);
 
 		string csproj = BuildProjectFile(packageSpecs);
@@ -171,31 +236,13 @@ public sealed class NuGetPackageResolver(ILogger logger)
 
 		foreach (string spec in packageSpecs)
 		{
-			(string name, string? version) = ParseSpec(spec);
-			if (version is not null)
-			{
-				sb.AppendLine($"    <PackageReference Include=\"{name}\" Version=\"{version}\" />");
-			}
-			else
-			{
-				sb.AppendLine($"    <PackageReference Include=\"{name}\" Version=\"*\" />");
-			}
+			TryParsePackageSpec(spec, out string name, out string? version);
+			sb.AppendLine($"    <PackageReference Include=\"{name}\" Version=\"{version ?? "*"}\" />");
 		}
 
 		sb.AppendLine("  </ItemGroup>");
 		sb.AppendLine("</Project>");
 		return sb.ToString();
-	}
-
-	private static (string Name, string? Version) ParseSpec(string spec)
-	{
-		int atIndex = spec.LastIndexOf('@');
-		if (atIndex > 0)
-		{
-			return (spec[..atIndex].Trim(), spec[(atIndex + 1)..].Trim());
-		}
-
-		return (spec.Trim(), null);
 	}
 
 	/// <summary>

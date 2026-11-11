@@ -26,6 +26,13 @@ public sealed record DocPage
 	/// <summary>Last modified timestamp, if available.</summary>
 	public DateTimeOffset? LastModified { get; init; }
 
+	/// <summary>
+	///     The people who committed changes to the page's source file, most commits first. Read
+	///     from git only when <c>theme.options.showContributors</c> is on; empty otherwise and for
+	///     generated pages.
+	/// </summary>
+	public IReadOnlyList<PageContributor> Contributors { get; init; } = [];
+
 	/// <inheritdoc />
 	public override string ToString() => $"DocPage({Route}, {FrontMatter.Title})";
 }
@@ -94,6 +101,27 @@ public sealed record FrontMatter
 
 	/// <summary>Text under <see cref="FeaturesTitle" />, or empty for none.</summary>
 	public string FeaturesSubtitle { get; init; } = "";
+
+	/// <summary>
+	///     The publication date of a blog post, from an ISO 8601 date or date and time. A date
+	///     without a time is midnight UTC. <c>null</c> when the page has none or it could not be read.
+	/// </summary>
+	public DateTimeOffset? Date { get; init; }
+
+	/// <summary>
+	///     The authors of a blog post as written in <c>author</c> or <c>authors</c>: keys of
+	///     <c>features.blog.authors</c>, or names shown as written.
+	/// </summary>
+	public List<string> Authors { get; init; } = [];
+
+	/// <summary>A blog post's summary for the index page and feeds, or <c>null</c> to use its first paragraph.</summary>
+	public string? Summary { get; init; }
+
+	/// <summary>
+	///     A blog post's cover image: an absolute URL, a path from the site root, or a path
+	///     relative to the post's file. <c>null</c> for none.
+	/// </summary>
+	public string? Image { get; init; }
 }
 
 /// <summary>

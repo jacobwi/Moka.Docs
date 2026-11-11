@@ -49,8 +49,11 @@ public static class EngineServiceExtensions
 		services.AddSingleton<IBuildPhase, DiscoveryPhase>();
 		services.AddSingleton<IBuildPhase, CSharpAnalysisPhase>();
 		services.AddSingleton<IBuildPhase, MarkdownParsePhase>();
+		services.AddSingleton<IBuildPhase, VersionGatePhase>();
 		services.AddSingleton<IBuildPhase, FeatureGatePhase>();
+		services.AddSingleton<IBuildPhase, BlogPhase>();
 		services.AddSingleton<IBuildPhase, NavigationBuildPhase>();
+		services.AddSingleton<IBuildPhase, BlogNavigationPhase>();
 		services.AddSingleton<IBuildPhase, SearchIndexPhase>();
 		services.AddSingleton<IBuildPhase, RenderPhase>();
 		services.AddSingleton<IBuildPhase, ThemeAssetPhase>();

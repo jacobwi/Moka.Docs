@@ -8,12 +8,15 @@ namespace Moka.Docs.Engine.Phases;
 
 /// <summary>
 ///     Works out what a type page lists besides the type's own members: the members it inherits from
-///     documented base types and interfaces, and the documented extension methods that apply to it.
+///     documented base types and interfaces, and the documented extension methods and extension block
+///     members that apply to it.
 /// </summary>
 /// <remarks>
-///     A type reference such as a base type, an interface or an extension method's <c>this</c> parameter
+///     A type reference such as a base type, an interface, an extension method's <c>this</c> parameter or an
+///     extension block's receiver
 ///     is matched against the documented types by name, with each type argument list replaced by its
-///     arity, so <c>Base&lt;int&gt;</c> finds <c>Base&lt;T&gt;</c>. Names don't have to carry their namespace:
+///     arity, so <c>Base&lt;int&gt;</c> finds <c>Base&lt;T&gt;</c>. Both hosts write base types and interfaces
+///     with their namespace, but names don't have to carry it:
 ///     <list type="bullet">
 ///         <item>
 ///             <description>
@@ -23,14 +26,18 @@ namespace Moka.Docs.Engine.Phases;
 ///         </item>
 ///         <item>
 ///             <description>
-///                 The reflection host writes every type name without its namespace.
+///                 The reflection host writes parameter types, and so extension method receivers, without
+///                 their namespace.
 ///             </description>
 ///         </item>
 ///     </list>
-///     A name matches the documented types whose full name ends with it. When several do, the one in the
-///     referencing type's namespace wins, then the one in each enclosing namespace, the way C# looks names
-///     up. A qualified name never matches a type in another namespace, so <c>System.Exception</c> doesn't
-///     find a documented type that happens to be called <c>Exception</c>.
+///     Documented types are keyed by their documentation ID (<c>Ns.Outer`1.Inner</c>), which both hosts'
+///     models give the same way, although the reflection host's full names leave type parameters out. A name
+///     matches the documented types whose key ends with it, and the one whose key is the whole name wins.
+///     When several match otherwise, the one in the referencing type's namespace wins, then the one in each
+///     enclosing namespace, the way C# looks names up. A qualified name never matches a type in another
+///     namespace, so <c>System.Exception</c> doesn't find a documented type that happens to be called
+///     <c>Exception</c>.
 /// </remarks>
 internal sealed partial class ApiTypeRelations
 {
@@ -44,12 +51,12 @@ internal sealed partial class ApiTypeRelations
 		"class", "class?", "struct", "notnull", "unmanaged", "new()", "default", "allows ref struct"
 	};
 
-	private readonly List<(ApiExtensionMethod Method, List<ApiType> Constraints)> _constrainedExtensions = [];
+	private readonly List<(ApiExtensionMember Extension, List<ApiType> Constraints)> _constrainedExtensions = [];
 
-	private readonly ConcurrentDictionary<ApiType, IReadOnlyList<ApiExtensionMethod>> _extensions =
+	private readonly ConcurrentDictionary<ApiType, IReadOnlyList<ApiExtensionMember>> _extensions =
 		new(ReferenceEqualityComparer.Instance);
 
-	private readonly Dictionary<ApiType, List<ApiExtensionMethod>> _extensionsByReceiver =
+	private readonly Dictionary<ApiType, List<ApiExtensionMember>> _extensionsByReceiver =
 		new(ReferenceEqualityComparer.Instance);
 
 	private readonly ConcurrentDictionary<ApiType, IReadOnlyList<ApiInheritedGroup>> _inherited =
@@ -62,10 +69,11 @@ internal sealed partial class ApiTypeRelations
 	{
 		// Python pages live under the plugin's route prefix, and Python has no extension methods.
 		List<ApiType> documented = types.Where(t => !ApiPageRenderer.IsPython(t)).ToList();
+		ApiTypeRoutes routes = ApiTypeRoutes.For(documented);
 
 		foreach (ApiType type in documented)
 		{
-			string key = KeyOf(type);
+			string key = routes.DocumentationId(type);
 			string name = key[(key.LastIndexOf('.') + 1)..];
 			if (!_typesByName.TryGetValue(name, out List<(string Key, ApiType Type)>? sameName))
 			{
@@ -77,11 +85,15 @@ internal sealed partial class ApiTypeRelations
 		}
 
 		foreach (ApiType type in documented)
-		foreach (ApiMember method in type.Members)
+		foreach (ApiMember member in type.Members)
 		{
-			if (method.IsExtensionMethod && method.Parameters.Count > 0)
+			if (member.Extension is { } block)
 			{
-				IndexExtension(type, method);
+				IndexExtension(type, member, block.Receiver.Type, block.TypeParameters);
+			}
+			else if (member.IsExtensionMethod && member.Parameters.Count > 0)
+			{
+				IndexExtension(type, member, member.Parameters[0].Type, member.TypeParameters);
 			}
 		}
 	}
@@ -99,28 +111,31 @@ internal sealed partial class ApiTypeRelations
 	/// </summary>
 	/// <remarks>
 	///     A class inherits from its base type chain, an interface from the interfaces it extends. Constructors
-	///     and operators are left out, and so is every member that the type, or a type nearer to it, declares
-	///     again with the same name and parameter types: an override, or a member hidden with <c>new</c>.
-	///     A sealed type also leaves out protected members.
+	///     and operators are left out, and so is every member that the type, or a type between it and the
+	///     declaring type, declares again with the same name and parameter types: an override, or a member
+	///     hidden with <c>new</c>. Same-named members of two interfaces neither of which extends the other are
+	///     both listed. A sealed type also leaves out protected members.
 	/// </remarks>
 	internal IReadOnlyList<ApiInheritedGroup> InheritedMembers(ApiType type) =>
 		_inherited.GetOrAdd(type, BuildInheritedMembers);
 
 	/// <summary>
-	///     The documented extension methods whose <c>this</c> parameter is the type, a documented base type
-	///     or a documented interface it implements, ordered by name.
+	///     The documented extension methods whose <c>this</c> parameter, and the documented extension block
+	///     members whose receiver, is the type, a documented base type or a documented interface it
+	///     implements, ordered by name. Static extension block members count too: C# finds them through a
+	///     derived or implementing type as well.
 	/// </summary>
-	internal IReadOnlyList<ApiExtensionMethod> ExtensionMethods(ApiType type) =>
-		_extensions.GetOrAdd(type, BuildExtensionMethods);
+	internal IReadOnlyList<ApiExtensionMember> ExtensionMembers(ApiType type) =>
+		_extensions.GetOrAdd(type, BuildExtensionMembers);
 
 	/// <summary>
 	///     A member as the inherited and extension lists show it: its name with its parameter types, such as
-	///     <c>Parse(string, int)</c> or <c>this[int]</c>, after replacing the declaring type's type parameters
-	///     with the arguments the page's type passes.
+	///     <c>Parse(string, int)</c>, <c>this[int]</c> or <c>operator +(Money, Money)</c>, after replacing the
+	///     declaring type's type parameters with the arguments the page's type passes.
 	/// </summary>
 	internal static string MemberText(ApiMember member, IReadOnlyDictionary<string, string> typeArguments)
 	{
-		if (member.Kind is not (ApiMemberKind.Method or ApiMemberKind.Indexer))
+		if (member.Kind is not (ApiMemberKind.Method or ApiMemberKind.Indexer or ApiMemberKind.Operator))
 		{
 			return member.Name;
 		}
@@ -132,6 +147,11 @@ internal sealed partial class ApiTypeRelations
 		if (member.Kind == ApiMemberKind.Indexer)
 		{
 			return $"this[{parameters}]";
+		}
+
+		if (member.Kind == ApiMemberKind.Operator)
+		{
+			return $"{ApiPageRenderer.OperatorName(member)}({parameters})";
 		}
 
 		string typeParameters = member.TypeParameters.Count > 0
@@ -151,9 +171,13 @@ internal sealed partial class ApiTypeRelations
 		}
 
 		Lineage lineage = GetLineage(type);
-		List<ApiAncestor> sources = type.Kind == ApiTypeKind.Interface ? lineage.Interfaces : lineage.BaseTypes;
+		bool isInterface = type.Kind == ApiTypeKind.Interface;
+		List<ApiAncestor> sources = isInterface ? lineage.Interfaces : lineage.BaseTypes;
 		var declared = new HashSet<string>(
 			type.Members.Select(m => SignatureKey(m, _noTypeArguments)), StringComparer.Ordinal);
+		List<HashSet<string>> declaredBySource = sources
+			.Select(a => a.Type.Members.Select(m => SignatureKey(m, a.TypeArguments)).ToHashSet(StringComparer.Ordinal))
+			.ToList();
 
 		// Nothing derives from a sealed type, so a reader can't reach the protected members it inherits.
 		// The reflection host leaves a sealed type's own protected members out for the same reason, which
@@ -161,16 +185,21 @@ internal sealed partial class ApiTypeRelations
 		bool derivable = !type.IsSealed && !type.IsStatic;
 
 		var groups = new List<ApiInheritedGroup>();
-		foreach (ApiAncestor ancestor in sources)
+		for (int i = 0; i < sources.Count; i++)
 		{
+			ApiAncestor ancestor = sources[i];
+			List<int> hiders = Enumerable.Range(0, sources.Count)
+				.Where(j => isInterface ? Extends(sources[j].Type, ancestor.Type) : j < i)
+				.ToList();
+
 			List<ApiMember> members = ancestor.Type.Members
-				.Where(m => IsInheritable(m, derivable) && !declared.Contains(SignatureKey(m, ancestor.TypeArguments)))
+				.Where(m => IsInheritable(m, derivable))
+				.Where(m => SignatureKey(m, ancestor.TypeArguments) is var key
+				            && !declared.Contains(key)
+				            && !hiders.Any(j => declaredBySource[j].Contains(key)))
 				.OrderBy(m => m.Name, StringComparer.Ordinal)
 				.ThenBy(m => m.Parameters.Count)
 				.ToList();
-
-			// Collected after the filter, so a member this ancestor overrides hides the one further up.
-			declared.UnionWith(ancestor.Type.Members.Select(m => SignatureKey(m, ancestor.TypeArguments)));
 
 			if (members.Count > 0)
 			{
@@ -180,6 +209,16 @@ internal sealed partial class ApiTypeRelations
 
 		return groups;
 	}
+
+	/// <summary>
+	///     Whether an interface extends another one, directly or not. Only a member of an interface that
+	///     extends the declaring one hides it: in <c>IC : IA, IB</c>, <c>IA.Reset()</c> and <c>IB.Reset()</c>
+	///     are both inherited, while a <c>new</c> member hides the one it replaces on every path, as C# looks
+	///     interface members up.
+	/// </summary>
+	private bool Extends(ApiType derived, ApiType baseInterface) =>
+		!ReferenceEquals(derived, baseInterface)
+		&& GetLineage(derived).Interfaces.Any(a => ReferenceEquals(a.Type, baseInterface));
 
 	private static bool IsInheritable(ApiMember member, bool derivable) =>
 		member.Kind is not (ApiMemberKind.Constructor or ApiMemberKind.Operator)
@@ -226,14 +265,17 @@ internal sealed partial class ApiTypeRelations
 
 	#region Extension methods
 
-	private void IndexExtension(ApiType declaringType, ApiMember method)
+	// The receiver is an extension method's this parameter or an extension block's receiver, and the type
+	// parameters it can name are the method's or the block's.
+	private void IndexExtension(ApiType declaringType, ApiMember member, string receiverType,
+		List<ApiTypeParameter> typeParameters)
 	{
-		string receiver = method.Parameters[0].Type.Trim();
+		string receiver = receiverType.Trim();
 		bool annotated = receiver.EndsWith('?');
 		receiver = receiver.TrimEnd('?');
-		var extension = new ApiExtensionMethod(declaringType, method);
+		var extension = new ApiExtensionMember(declaringType, member);
 
-		if (method.TypeParameters.FirstOrDefault(tp => tp.Name == receiver) is { } typeParameter)
+		if (typeParameters.FirstOrDefault(tp => tp.Name == receiver) is { } typeParameter)
 		{
 			IndexConstrainedExtension(extension, typeParameter, annotated);
 			return;
@@ -250,21 +292,21 @@ internal sealed partial class ApiTypeRelations
 			return;
 		}
 
-		if (!_extensionsByReceiver.TryGetValue(target, out List<ApiExtensionMethod>? methods))
+		if (!_extensionsByReceiver.TryGetValue(target, out List<ApiExtensionMember>? members))
 		{
-			methods = [];
-			_extensionsByReceiver[target] = methods;
+			members = [];
+			_extensionsByReceiver[target] = members;
 		}
 
-		methods.Add(extension);
+		members.Add(extension);
 	}
 
 	/// <summary>
-	///     Indexes <c>this T value</c> by the documented types <c>T</c> is constrained to. Unless every type
-	///     constraint names a documented type, the method isn't listed: a page can't tell whether its type
-	///     satisfies the rest.
+	///     Indexes <c>this T value</c>, or <c>extension&lt;T&gt;(T value)</c>, by the documented types <c>T</c> is
+	///     constrained to. Unless every type constraint names a documented type, the member isn't listed: a
+	///     page can't tell whether its type satisfies the rest.
 	/// </summary>
-	private void IndexConstrainedExtension(ApiExtensionMethod extension, ApiTypeParameter typeParameter, bool annotated)
+	private void IndexConstrainedExtension(ApiExtensionMember extension, ApiTypeParameter typeParameter, bool annotated)
 	{
 		var constraints = new List<ApiType>();
 		foreach (string constraint in typeParameter.Constraints.Select(c => c.Trim()))
@@ -294,7 +336,7 @@ internal sealed partial class ApiTypeRelations
 		}
 	}
 
-	private IReadOnlyList<ApiExtensionMethod> BuildExtensionMethods(ApiType type)
+	private IReadOnlyList<ApiExtensionMember> BuildExtensionMembers(ApiType type)
 	{
 		if (ApiPageRenderer.IsPython(type))
 		{
@@ -305,28 +347,28 @@ internal sealed partial class ApiTypeRelations
 		List<ApiType> receivers = [type, ..lineage.BaseTypes.Select(a => a.Type), ..lineage.Interfaces.Select(a => a.Type)];
 		var receiverSet = new HashSet<ApiType>(receivers, ReferenceEqualityComparer.Instance);
 
-		var extensions = new List<ApiExtensionMethod>();
+		var extensions = new List<ApiExtensionMember>();
 		foreach (ApiType receiver in receivers)
 		{
-			if (_extensionsByReceiver.TryGetValue(receiver, out List<ApiExtensionMethod>? methods))
+			if (_extensionsByReceiver.TryGetValue(receiver, out List<ApiExtensionMember>? members))
 			{
-				extensions.AddRange(methods);
+				extensions.AddRange(members);
 			}
 		}
 
 		extensions.AddRange(_constrainedExtensions
 			.Where(c => c.Constraints.All(receiverSet.Contains))
-			.Select(c => c.Method));
+			.Select(c => c.Extension));
 
 		return extensions
-			.OrderBy(e => e.Method.Name, StringComparer.Ordinal)
+			.OrderBy(e => e.Member.Name, StringComparer.Ordinal)
 			.ThenBy(e => e.DeclaringType.Name, StringComparer.Ordinal)
-			.ThenBy(e => e.Method.Parameters.Count)
+			.ThenBy(e => e.Member.Parameters.Count)
 			.ToList();
 	}
 
 	/// <summary>
-	///     Whether a <c>this</c> parameter names a class, struct, interface, enum or delegate, possibly
+	///     Whether a receiver names a class, struct, interface, enum or delegate, possibly
 	///     generic, rather than an array, pointer or tuple. An extension on <c>Shape[]</c> doesn't apply to
 	///     <c>Shape</c>.
 	/// </summary>
@@ -436,12 +478,25 @@ internal sealed partial class ApiTypeRelations
 		}
 
 		List<string> arguments = TypeArgumentsOf(substituted);
+		if (arguments.Count != type.TypeParameters.Count)
+		{
+			// The reflection host lists a nested type's inherited type parameters too: Outer<T>.Inner has T.
+			arguments = SplitLevels(substituted.TrimEnd('?')).SelectMany(TypeArgumentsOf).ToList();
+		}
+
 		IReadOnlyDictionary<string, string> map = arguments.Count > 0 && arguments.Count == type.TypeParameters.Count
 			? type.TypeParameters.Zip(arguments).ToDictionary(p => p.First.Name, p => p.Second, StringComparer.Ordinal)
 			: _noTypeArguments;
 
 		return new ApiAncestor(type, substituted, map);
 	}
+
+	/// <summary>
+	///     Whether a base type or interface reference written on <paramref name="from" /> names
+	///     <paramref name="target" />, by the same rules as the inherited members.
+	/// </summary>
+	internal bool Names(string reference, ApiType from, ApiType target) =>
+		Find(reference, from.Namespace) is { } found && ReferenceEquals(found, target);
 
 	#endregion
 
@@ -499,23 +554,6 @@ internal sealed partial class ApiTypeRelations
 			int dot = ns.LastIndexOf('.');
 			ns = dot >= 0 ? ns[..dot] : null;
 		}
-	}
-
-	/// <summary>
-	///     The key a documented type is indexed by. The CLI's full name spells type parameters out
-	///     (<c>Ns.Base&lt;T&gt;</c>); the reflection host's leaves them off, so its arity comes from the
-	///     parameter count.
-	/// </summary>
-	private static string KeyOf(ApiType type)
-	{
-		if (type.FullName.Contains('<'))
-		{
-			return TypeKey(type.FullName);
-		}
-
-		return type.TypeParameters.Count > 0 && !type.FullName.Contains('`')
-			? $"{type.FullName}`{type.TypeParameters.Count}"
-			: type.FullName;
 	}
 
 	/// <summary>
@@ -630,6 +668,36 @@ internal sealed partial class ApiTypeRelations
 	}
 
 	/// <summary>
+	///     The dot-separated parts of a name, leaving the dots inside type argument lists alone:
+	///     <c>Ns.Outer&lt;Ns.User&gt;.Inner</c> gives <c>Ns</c>, <c>Outer&lt;Ns.User&gt;</c> and <c>Inner</c>.
+	/// </summary>
+	private static List<string> SplitLevels(string reference)
+	{
+		var levels = new List<string>();
+		int depth = 0;
+		int start = 0;
+		for (int i = 0; i < reference.Length; i++)
+		{
+			switch (reference[i])
+			{
+				case '<' or '(' or '[':
+					depth++;
+					break;
+				case '>' or ')' or ']':
+					depth--;
+					break;
+				case '.' when depth == 0:
+					levels.Add(reference[start..i]);
+					start = i + 1;
+					break;
+			}
+		}
+
+		levels.Add(reference[start..]);
+		return levels;
+	}
+
+	/// <summary>
 	///     Replaces type parameter names with what they stand for. Names next to a dot are part of a
 	///     qualified name, not type parameters.
 	/// </summary>
@@ -669,8 +737,8 @@ internal sealed record ApiAncestor(ApiType Type, string Reference, IReadOnlyDict
 internal sealed record ApiInheritedGroup(ApiAncestor From, List<ApiMember> Members);
 
 /// <summary>
-///     An extension method and the static class that declares it.
+///     An extension method or extension block member, and the static class that declares it.
 /// </summary>
 /// <param name="DeclaringType">The static class.</param>
-/// <param name="Method">The extension method.</param>
-internal sealed record ApiExtensionMethod(ApiType DeclaringType, ApiMember Method);
+/// <param name="Member">The extension method or extension block member.</param>
+internal sealed record ApiExtensionMember(ApiType DeclaringType, ApiMember Member);

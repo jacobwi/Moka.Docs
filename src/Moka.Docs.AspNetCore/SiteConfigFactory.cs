@@ -1,6 +1,4 @@
 using Moka.Docs.AspNetCore.OpenApi;
-using Moka.Docs.AspNetCore.Phases;
-using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Plugins.OpenApi;
 
@@ -15,15 +13,10 @@ internal static class SiteConfigFactory
 	internal const string BlazorPreviewPluginId = "mokadocs-blazor-preview";
 
 	/// <summary>
-	///     Creates a site configuration from the user-provided options.
+	///     Creates a site configuration from the user-provided options. The navigation phase fills in
+	///     the entries marked <see cref="NavEntry.AutoGenerate" />, the same way as for the CLI.
 	/// </summary>
-	public static SiteConfig Create(MokaDocsOptions options) => Create(options, null);
-
-	/// <summary>
-	///     Creates a site configuration from the user-provided options. With an API model,
-	///     navigation entries marked <see cref="NavEntry.AutoGenerate" /> list its namespaces and types.
-	/// </summary>
-	public static SiteConfig Create(MokaDocsOptions options, ApiReference? apiModel)
+	public static SiteConfig Create(MokaDocsOptions options)
 	{
 		List<PluginDeclaration> plugins = CreatePluginDeclarations(options);
 		var nav = new List<NavItem>();
@@ -36,8 +29,7 @@ internal static class SiteConfigFactory
 				Label = "API Reference",
 				Path = "/api",
 				Icon = "code",
-				AutoGenerate = true,
-				Children = CreateApiChildren("/api", apiModel)
+				AutoGenerate = true
 			});
 
 			// The REST pages had no way into the default sidebar: they sit at their own prefix, and only
@@ -51,7 +43,18 @@ internal static class SiteConfigFactory
 					Label = "Guide",
 					Path = "/guide",
 					Icon = "book-open",
-					Expanded = true
+					Expanded = true,
+					AutoGenerate = true
+				});
+			}
+
+			if (options.DocsPath is not null && options.Blog is { } blog)
+			{
+				nav.Add(new NavItem
+				{
+					Label = string.IsNullOrWhiteSpace(blog.Title) ? "Blog" : blog.Title,
+					Path = blog.Route ?? "/" + blog.Path.Replace('\\', '/').Trim('/'),
+					Icon = "newspaper"
 				});
 			}
 		}
@@ -63,8 +66,7 @@ internal static class SiteConfigFactory
 				Path = n.Path,
 				Icon = n.Icon,
 				Expanded = n.Expanded,
-				AutoGenerate = n.AutoGenerate,
-				Children = n.AutoGenerate ? CreateApiChildren(n.Path, apiModel) : []
+				AutoGenerate = n.AutoGenerate
 			}));
 		}
 
@@ -113,6 +115,9 @@ internal static class SiteConfigFactory
 				{
 					PrimaryColor = options.PrimaryColor,
 					AccentColor = options.AccentColor,
+					Style = options.Style,
+					StyleSelector = options.StyleSelector,
+					Sidebar = options.Sidebar,
 					ShowEditLink = false, // no source repo in embedded mode
 					ShowLastUpdated = false,
 					// MapMokaDocs maps the endpoint the widget posts to only when this is on.
@@ -130,7 +135,8 @@ internal static class SiteConfigFactory
 					{
 						Enabled = true,
 						Versions = [new VersionDefinition { Label = options.Version, Default = true }]
-					}
+					},
+				Blog = CreateBlogConfig(options.Blog)
 			},
 			Nav = nav,
 			Plugins = plugins,
@@ -140,6 +146,7 @@ internal static class SiteConfigFactory
 				Clean = true,
 				Sitemap = false,
 				Robots = false,
+				Minify = options.Minify,
 				// The pipeline prefixes every route, asset and search result with this and tells the
 				// theme script where the site lives. It used to stay "/" while the finished HTML was
 				// patched afterwards, which missed the search index and the script's fetch paths.
@@ -147,6 +154,35 @@ internal static class SiteConfigFactory
 			}
 		};
 	}
+
+	/// <summary>
+	///     The blog settings for <see cref="MokaDocsOptions.Blog" />, or a disabled blog. Feeds stay
+	///     off: they need <c>site.url</c>, which is empty here, and asking for one would only warn on
+	///     every build.
+	/// </summary>
+	private static BlogFeatureConfig CreateBlogConfig(MokaDocsBlogOptions? blog) =>
+		blog is null
+			? new BlogFeatureConfig()
+			: new BlogFeatureConfig
+			{
+				Enabled = true,
+				Path = blog.Path,
+				Route = blog.Route,
+				Title = blog.Title,
+				Description = blog.Description,
+				PostsPerPage = blog.PostsPerPage,
+				SidebarPosts = blog.SidebarPosts,
+				ShowAuthors = blog.ShowAuthors,
+				Feeds = [],
+				// The caller may have replaced the dictionary with a case-sensitive one holding both
+				// "Jane" and "jane"; the later entry wins instead of the build throwing.
+				Authors = blog.Authors.Aggregate(new Dictionary<string, BlogAuthor>(StringComparer.OrdinalIgnoreCase),
+					(authors, entry) =>
+					{
+						authors[entry.Key] = entry.Value;
+						return authors;
+					})
+			};
 
 	/// <summary>
 	///     Whether <see cref="MokaDocsOptions.Plugins" /> declares the plugin with this id.
@@ -222,40 +258,4 @@ internal static class SiteConfigFactory
 			.Where(item => item.Path.Length > 0)
 			.DistinctBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
 			.Select(item => new NavItem { Label = item.Label, Path = item.Path, Icon = "globe" });
-
-	/// <summary>
-	///     One child per namespace, holding one child per type, for an entry that points at the
-	///     API reference. Any other path gets none, and the navigation phase fills in the pages
-	///     one route segment below it.
-	/// </summary>
-	/// <remarks>
-	///     That fill-in is why <see cref="NavEntry.AutoGenerate" /> needs this: type pages sit at
-	///     <c>/api/{namespace path}/{type}</c>, never one segment below <c>/api</c>, so the API
-	///     entry had no children whether the flag was set or not.
-	/// </remarks>
-	private static List<NavItem> CreateApiChildren(string? path, ApiReference? apiModel)
-	{
-		if (apiModel is null
-		    || !string.Equals(path?.Trim().Trim('/'), "api", StringComparison.OrdinalIgnoreCase))
-		{
-			return [];
-		}
-
-		return apiModel.Namespaces
-			.Where(ns => ns.Types.Count > 0)
-			.Select(ns => new NavItem
-			{
-				// No path: no page exists for a namespace, so the theme shows it as a heading
-				// instead of linking it to its first type.
-				Label = ns.Name,
-				Children = ns.Types
-					.Select(type => new NavItem
-					{
-						Label = type.Name,
-						Path = ReflectionApiPagePhase.GetTypeRoute(ns, type)
-					})
-					.ToList()
-			})
-			.ToList();
-	}
 }

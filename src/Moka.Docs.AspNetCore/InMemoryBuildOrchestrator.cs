@@ -36,6 +36,40 @@ public sealed class InMemoryBuildOrchestrator(
 	private const string _virtualOutput = "/mokadocs-virtual/_site";
 
 	/// <summary>
+	///     What the build reads from <see cref="MokaDocsOptions.DocsPath" />: Markdown, plus the asset
+	///     types <c>FileDiscoveryService</c> publishes (a test keeps the two lists equal). Everything
+	///     used to be read, video and locked files included.
+	/// </summary>
+	private static readonly HashSet<string> _copiedExtensions = new(StringComparer.OrdinalIgnoreCase)
+	{
+		".md",
+		".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
+		".pdf", ".zip", ".mp4", ".webm",
+		".css", ".js", ".json", ".xml",
+		".woff", ".woff2", ".ttf", ".eot",
+		".txt", ".webmanifest", ".avif"
+	};
+
+	/// <summary>Extensionless files discovery publishes from the docs root.</summary>
+	private static readonly HashSet<string> _rootHostFiles = new(StringComparer.Ordinal)
+	{
+		"CNAME", "_redirects", "_headers"
+	};
+
+	private static readonly EnumerationOptions _oneLevel = new()
+	{
+		IgnoreInaccessible = true,
+		AttributesToSkip = 0
+	};
+
+	/// <summary>
+	///     Folders under <see cref="MokaDocsOptions.DocsPath" /> that never reach the site: build
+	///     output and packages. With <c>DocsPath = "."</c>, <c>bin</c> published the app's
+	///     <c>.deps.json</c> and <c>obj</c> its <c>project.assets.json</c>.
+	/// </summary>
+	internal static IReadOnlyList<string> ExcludedFolders { get; } = ["bin", "obj", "node_modules"];
+
+	/// <summary>
 	///     Creates an orchestrator that resolves relative paths from the current working directory.
 	/// </summary>
 	/// <param name="pipeline">The build pipeline.</param>
@@ -65,8 +99,8 @@ public sealed class InMemoryBuildOrchestrator(
 			? root
 			: Directory.GetCurrentDirectory();
 
-		// Build API model from runtime assemblies via reflection. It comes first because sidebar
-		// entries with AutoGenerate list its namespaces.
+		// Build API model from runtime assemblies via reflection. It is in the build context before
+		// the pipeline runs, so sidebar entries with AutoGenerate can list its namespaces.
 		var apiDiagnostics = new DiagnosticBag();
 		ApiReference apiModel = apiModelBuilder.Build(options, contentRoot, apiDiagnostics);
 		logger.LogInformation("Reflection analysis found {TypeCount} types across {AsmCount} assemblies",
@@ -78,7 +112,7 @@ public sealed class InMemoryBuildOrchestrator(
 		// the mokadocs.yaml folder. The old "/mokadocs-virtual" root sent the OpenAPI spec and the
 		// Blazor preview host to a folder that does not exist.
 		string docsPath = Path.GetFullPath(Path.Combine(contentRoot, options.DocsPath ?? "docs"));
-		SiteConfig config = SiteConfigFactory.Create(options, apiModel);
+		SiteConfig config = SiteConfigFactory.Create(options);
 		config = config with { Content = config.Content with { Docs = docsPath } };
 
 		var fs = new MockFileSystem();
@@ -86,11 +120,12 @@ public sealed class InMemoryBuildOrchestrator(
 		fs.Directory.CreateDirectory(docsPath);
 		fs.Directory.CreateDirectory(_virtualOutput);
 
-		// Copy real markdown docs into the virtual filesystem if DocsPath is specified
+		DocsCopy? copy = null;
 		if (options.DocsPath is not null)
 		{
 			logger.LogInformation("Copying docs from {RealPath} to the in-memory file system", docsPath);
-			if (!CopyDocsToVirtualFs(fs, docsPath))
+			copy = CopyDocsToVirtualFs(fs, docsPath);
+			if (copy is null)
 			{
 				logger.LogWarning("Docs folder {RealPath} does not exist, so the site has no Markdown pages",
 					docsPath);
@@ -106,11 +141,15 @@ public sealed class InMemoryBuildOrchestrator(
 			OutputDirectory = _virtualOutput
 		};
 
+		if (copy is not null)
+		{
+			ReportCopyProblems(context, copy, options.DocsPath, docsPath, contentRoot);
+		}
+
 		// Pre-populate the API model so ReflectionApiPagePhase generates pages
 		context.ApiModel = apiModel;
 
-		// The model is built before the context exists, because the navigation needs it. The
-		// builder reports warnings only.
+		// The model is built before the context exists. The builder reports warnings only.
 		foreach (Diagnostic diagnostic in apiDiagnostics.All)
 		{
 			context.Diagnostics.Warning(diagnostic.Message, diagnostic.Source);
@@ -161,33 +200,149 @@ public sealed class InMemoryBuildOrchestrator(
 	}
 
 	/// <summary>
-	///     Copies real markdown files from disk into the MockFileSystem
-	///     so that DiscoveryPhase and MarkdownParsePhase can find them.
+	///     Copies the files the site publishes from disk into the MockFileSystem so that
+	///     DiscoveryPhase and MarkdownParsePhase can find them.
 	/// </summary>
-	/// <returns><c>false</c> when the folder does not exist.</returns>
-	private static bool CopyDocsToVirtualFs(MockFileSystem fs, string docsPath)
+	/// <remarks>
+	///     Folders and files whose names start with a dot are skipped, except <c>.well-known</c>.
+	/// </remarks>
+	/// <returns><c>null</c> when the folder does not exist.</returns>
+	private static DocsCopy? CopyDocsToVirtualFs(MockFileSystem fs, string docsPath)
 	{
 		if (!Directory.Exists(docsPath))
 		{
-			return false;
+			return null;
 		}
 
-		foreach (string file in Directory.EnumerateFiles(docsPath, "*.*", SearchOption.AllDirectories))
-		{
-			string relativePath = Path.GetRelativePath(docsPath, file);
-			string virtualPath = fs.Path.Combine(docsPath, relativePath);
+		var copy = new DocsCopy();
+		CopyDirectory(fs, docsPath, docsPath, copy, new HashSet<string>(StringComparer.Ordinal));
+		return copy;
+	}
 
-			string? dir = fs.Path.GetDirectoryName(virtualPath);
-			if (dir is not null)
+	private static void CopyDirectory(MockFileSystem fs, string docsPath, string directory, DocsCopy copy,
+		HashSet<string> visited)
+	{
+		string[] files;
+		string[] subdirectories;
+		try
+		{
+			// A folder symlink that points back up the tree would otherwise be copied forever.
+			string realPath = new DirectoryInfo(directory).ResolveLinkTarget(true)?.FullName ?? Path.GetFullPath(directory);
+			if (!visited.Add(realPath))
 			{
-				fs.Directory.CreateDirectory(dir);
+				return;
 			}
 
-			byte[] content = File.ReadAllBytes(file);
+			files = Directory.GetFiles(directory, "*", _oneLevel);
+			subdirectories = Directory.GetDirectories(directory, "*", _oneLevel);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			copy.Unreadable.Add((Path.GetRelativePath(docsPath, directory).Replace('\\', '/') + "/", ex.Message));
+			return;
+		}
+
+		bool atRoot = string.Equals(directory, docsPath, StringComparison.Ordinal);
+		foreach (string file in files)
+		{
+			string name = Path.GetFileName(file);
+			string relativePath = Path.GetRelativePath(docsPath, file);
+			if (IsAppFile(name))
+			{
+				copy.Excluded.Add(relativePath.Replace('\\', '/'));
+				continue;
+			}
+
+			if (name.StartsWith('.')
+			    || !(_copiedExtensions.Contains(Path.GetExtension(name)) || (atRoot && _rootHostFiles.Contains(name))))
+			{
+				continue;
+			}
+
+			byte[] content;
+			try
+			{
+				content = File.ReadAllBytes(file);
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				copy.Unreadable.Add((relativePath.Replace('\\', '/'), ex.Message));
+				continue;
+			}
+
+			string virtualPath = fs.Path.Combine(docsPath, relativePath);
+			if (fs.Path.GetDirectoryName(virtualPath) is { } virtualDirectory)
+			{
+				fs.Directory.CreateDirectory(virtualDirectory);
+			}
+
 			fs.File.WriteAllBytes(virtualPath, content);
 		}
 
-		return true;
+		foreach (string subdirectory in subdirectories)
+		{
+			string name = Path.GetFileName(subdirectory);
+			if (ExcludedFolders.Contains(name, StringComparer.OrdinalIgnoreCase))
+			{
+				copy.Excluded.Add(Path.GetRelativePath(docsPath, subdirectory).Replace('\\', '/') + "/");
+				continue;
+			}
+
+			if (name.StartsWith('.') && !name.Equals(".well-known", StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+
+			CopyDirectory(fs, docsPath, subdirectory, copy, visited);
+		}
+	}
+
+	/// <summary>
+	///     Whether a file holds the app's settings or is part of its build output. With
+	///     <c>DocsPath = "."</c>, <c>GET /docs/appsettings.json</c> returned the connection strings.
+	/// </summary>
+	internal static bool IsAppFile(string fileName) =>
+		(fileName.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
+		 && fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+		|| fileName.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase)
+		|| fileName.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase)
+		|| fileName.EndsWith(".runtimeconfig.dev.json", StringComparison.OrdinalIgnoreCase)
+		|| fileName.Equals("launchSettings.json", StringComparison.OrdinalIgnoreCase)
+		|| fileName.Equals("secrets.json", StringComparison.OrdinalIgnoreCase)
+		|| fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+		|| fileName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	///     Warns about what the copy left out. One warning covers the app's own files, so a
+	///     <c>DocsPath</c> of <c>"."</c> doesn't log a line per file on every build.
+	/// </summary>
+	private static void ReportCopyProblems(BuildContext context, DocsCopy copy, string? configuredPath,
+		string docsPath, string contentRoot)
+	{
+		bool isContentRoot = string.Equals(
+			Path.TrimEndingDirectorySeparator(docsPath), Path.TrimEndingDirectorySeparator(Path.GetFullPath(contentRoot)),
+			OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+
+		if (isContentRoot || copy.Excluded.Count > 0)
+		{
+			const int listed = 5;
+			string where = isContentRoot ? "the app's content root" : docsPath;
+			string left = copy.Excluded.Count == 0
+				? ""
+				: " These stay out of the docs site: " + string.Join(", ", copy.Excluded.Take(listed))
+				                                       + (copy.Excluded.Count > listed ? $" and {copy.Excluded.Count - listed} more" : "")
+				                                       + ".";
+			context.Diagnostics.Warning(
+				$"DocsPath \"{configuredPath}\" is {where}, which holds the app's settings or build output.{left} " +
+				"Point DocsPath at a folder that holds only the docs.",
+				"DocsPath");
+		}
+
+		foreach ((string path, string reason) in copy.Unreadable)
+		{
+			context.Diagnostics.Warning($"Skipped {path} in the docs folder because it can't be read: {reason}",
+				"DocsPath");
+		}
 	}
 
 	/// <summary>
@@ -269,5 +424,12 @@ public sealed class InMemoryBuildOrchestrator(
 		}
 
 		return files;
+	}
+
+	/// <summary>What <see cref="CopyDocsToVirtualFs" /> left out, relative to the docs folder.</summary>
+	private sealed class DocsCopy
+	{
+		public List<string> Excluded { get; } = [];
+		public List<(string Path, string Reason)> Unreadable { get; } = [];
 	}
 }

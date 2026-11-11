@@ -192,7 +192,8 @@ public sealed class AdmonitionRenderer : HtmlObjectRenderer<AdmonitionBlock>
 		renderer.EnsureLine();
 		renderer.Write($"<div class=\"admonition admonition-{type}\">");
 		renderer.WriteLine();
-		renderer.Write($"<div class=\"admonition-title\"><span class=\"admonition-icon\">{icon}</span>{title}</div>");
+		renderer.Write($"<div class=\"admonition-title\"><span class=\"admonition-icon\">{icon}</span>");
+		renderer.WriteEscape(title).Write("</div>");
 		renderer.WriteLine();
 		renderer.Write("<div class=\"admonition-content\">");
 		renderer.WriteLine();

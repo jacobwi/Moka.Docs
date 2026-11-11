@@ -113,17 +113,16 @@ plugins:
 | `Moka.Docs.Plugins` | Plugin system (REPL, Blazor, OpenAPI, Changelog) |
 | `Moka.Docs.Serve` | Dev server with hot reload |
 | `Moka.Docs.AspNetCore` | ASP.NET Core middleware integration |
-| `Moka.Docs.Search` | Client-side search index generation |
 | `Moka.Docs.Versioning` | Multi-version documentation support |
 
 ## Development
 
 ```bash
 # Build
-dotnet build MokaDocs.sln
+dotnet build MokaDocs.slnx
 
 # Test (424 tests across 5 projects x 2 TFMs)
-dotnet test MokaDocs.sln
+dotnet test MokaDocs.slnx
 
 # Run self-documenting site
 dotnet run --project src/Moka.Docs.CLI -- serve

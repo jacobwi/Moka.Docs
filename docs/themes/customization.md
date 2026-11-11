@@ -13,6 +13,7 @@ The built-in theme includes:
 
 - **Responsive layout**: on screens 768px wide or less, the sidebar moves behind a menu button.
 - **Dark and light mode**: follows the system setting on a first visit, with a header toggle that remembers the reader's choice.
+- **Styles**: five whole looks (default, moka, minimal, classic and soft) that readers can switch between from the header. See [Styles](#styles).
 - **Syntax highlighting**: done in the browser, with seven color themes.
 - **Search**: a dialog opened from the header button or with `Ctrl+K` / `Cmd+K`. It matches page titles, headings, tags and the first 300 characters of each page's text. See [Search](/guide/search).
 - **Table of contents**: built from the page's headings, highlighting the section in view.
@@ -27,16 +28,18 @@ The default theme's stylesheet defines these custom properties. The default them
 
 | Property | Light | Dark | Used for |
 |----------|-------|------|----------|
-| `--color-primary` | `#0ea5e9` | unchanged | Links, active navigation, buttons |
+| `--color-primary` | `#0ea5e9` | unchanged | Buttons, borders, icons and other fills |
+| `--color-primary-text` | the preset's text shade | the preset's text shade | Links, inline code, the current sidebar and table of contents entries. See [Color Theme Presets](#color-theme-presets) |
+| `--color-primary-text-hover` | 80% of `--color-primary-text`, 20% black | 75% of `--color-primary-text`, 25% white | Link hover |
 | `--color-primary-light` | `#38bdf8` | unchanged | Lighter shade of the primary color |
-| `--color-primary-dark` | `#0284c7` | unchanged | Darker shade, used for link hover |
+| `--color-primary-dark` | `#0284c7` | unchanged | Darker shade of the primary color |
 | `--color-accent` | `#f59e0b` | unchanged | Highlighted matches in search results |
 | `--color-bg` | `#ffffff` | `#0f172a` | Page background |
 | `--color-bg-secondary` | `#f8fafc` | `#1e293b` | Secondary surfaces and hover backgrounds |
 | `--color-bg-code` | `#f1f5f9` | `#1e293b` | Inline code background |
 | `--color-text` | `#1e293b` | `#e2e8f0` | Body text |
 | `--color-text-secondary` | `#64748b` | `#94a3b8` | Secondary text |
-| `--color-text-muted` | `#94a3b8` | `#64748b` | Muted text |
+| `--color-text-muted` | `#667488` | `#8091a9` | Muted text, at least 4.5:1 on both backgrounds |
 | `--color-border` | `#e2e8f0` | `#334155` | Borders and dividers |
 | `--color-border-light` | `#f1f5f9` | `#1e293b` | Defined, but not used by the default stylesheet |
 | `--gradient-secondary` | `#06b6d4` | unchanged | Second color of the landing page title gradient |
@@ -70,7 +73,7 @@ The theme doesn't load web fonts, so Inter and JetBrains Mono are only used when
 
 ### Changing Styles
 
-With the default theme, `css_files` contains only `/_theme/css/main.css`, and there is no `customCss` option. A `.css` file in the docs folder is copied to the output, but no page links to it.
+With the default theme, `css_files` contains only `/_theme/css/main.css` (followed by a `?v=` content hash), and there is no `customCss` option. A `.css` file in the docs folder is copied to the output, but no page links to it.
 
 That leaves two options:
 
@@ -126,23 +129,24 @@ Layouts are [Scriban](https://github.com/scriban/scriban) templates. A minimal `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ page.title }} - {{ site.title }}</title>
-    {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
+    <title>{{ page.title | html.escape }} - {{ site.title | html.escape }}</title>
+    {{ for css in css_files }}<link rel="stylesheet" href="{{ css | html.escape }}" />
     {{ end }}
 </head>
 <body>
     <main>{{ page.content }}</main>
-    {{ for js in js_files }}<script src="{{ js }}"></script>
+    {{ for js in js_files }}<script src="{{ js | html.escape }}"></script>
     {{ end }}
 </body>
 </html>
 ```
 
-Everything under `css/`, `js/` and `assets/`, subfolders included, is copied to `_theme/` in the output. `css_files` lists every `.css` file under `css/`, subfolders included, in alphabetical order of path. `js_files` lists only the `.js` files directly inside `js/`. The built-in stylesheet and script are not included, so a custom theme owns its styling completely.
+Everything under `css/`, `js/` and `assets/`, subfolders included, is copied to `_theme/` in the output. `css_files` lists every `.css` file under `css/`, subfolders included, in alphabetical order of path. `js_files` lists only the `.js` files directly inside `js/`. Each URL ends in `?v=` and a hash of the file, so browsers and CDNs fetch a changed file instead of a cached copy. The built-in stylesheet and script are not included, so a custom theme owns its styling completely.
 
 A few things to know when writing layouts:
 
 - The variables a layout can use are listed in [Template Variables](/advanced/architecture#template-variables).
+- Variables hold raw text. Write them through `html.escape`, as above, in element text and in attributes: a route or a label can contain `"`, `<` or `&`. `page.content`, `partials` and the `icon` and `icon_svg` fields are HTML and go in as they are.
 - Partials are inserted as raw text: `{{ partials.footer }}` outputs the file as written, without evaluating Scriban expressions in it. Scriban's `include` doesn't work in MokaDocs layouts. See [Partials](/advanced/architecture#partials).
 - A page whose front matter names a layout the theme doesn't have renders with `default.html`, and the build reports a warning for each missing layout name.
 - The build still generates `404.html` from its own markup, which links `_theme/css/main.css` and `_theme/js/main.js`.
@@ -169,14 +173,49 @@ When the theme folder doesn't exist or contains no `layouts/*.html`, MokaDocs bu
 | `showBackToTop` | `true` | Back-to-top button |
 | `showCopyButton` | `true` | Copy button on code blocks |
 | `showLineNumbers` | `true` | Line numbers on code blocks of three or more lines |
-| `showVersionSelector` | `true` | Version menu in the header, when versions are configured |
+| `showVersionSelector` | `true` | Version menu in the header, when versioning is enabled |
 | `showFeedback` | `true` | [Feedback widget](#feedback-widget) |
 | `showLastUpdated` | `true` | [Last updated](#last-updated) date |
 | `showEditLink` | `false` | [Edit link](#edit-links) |
 | `showAnimations` | `false` | [Animations](#animations) |
 | `showBuiltWith` | `true` | ["Built with MokaDocs"](#footer-customization) footer text |
 
-The breadcrumbs, previous and next links, back-to-top button, version menu, feedback widget, last updated date and edit link appear in the default layout only, not on landing pages.
+The breadcrumbs, previous and next links, back-to-top button, feedback widget, last updated date and edit link appear in the default layout only, not on landing pages. The version menu appears in both.
+
+### Styles
+
+A style changes the whole look of the default theme: surfaces, borders, corner radii, shadows, fonts and spacing. Each one works in light and dark mode, with every color preset, code theme and code frame, on every kind of page. Set the style pages start with:
+
+```yaml
+theme:
+  options:
+    style: moka
+```
+
+| Style | Look |
+|---|---|
+| `default` | The original look, used when `style` isn't set. |
+| `moka` | Dense and dark first. Near-black surfaces, borders tinted with the primary color, glow rings instead of shadows, uppercase micro-labels for headings in the sidebar, tables and table of contents, and a monospace font for signatures, versions and other technical text. A reader who has never used the dark mode toggle starts in dark mode. Light mode keeps the same structure on a near-white page. |
+| `minimal` | Quiet. Almost no borders or shadows, more whitespace, a reading column about 70 characters wide, plain sidebar links with a thin marker on the current page, and flat code blocks. |
+| `classic` | Traditional reference docs. A solid header bar in the primary color (near-black in dark mode), a bordered sidebar and panels, small corner radii, dense tables with striped rows, rules under the headings and the system font. |
+| `soft` | Rounded. 12px cards with soft layered shadows, tinted section backgrounds, pill-shaped highlights in the sidebar and table of contents, and roomier spacing. |
+
+In every style except `default`, text in the primary color is darkened in light mode and lightened in dark mode, and so are the colors of badges and callouts, so they keep a contrast ratio of at least 4.5:1 with each preset. Links in these styles are a deeper or paler shade than the preset's swatch.
+
+An unknown name renders as `default`, and the build reports a warning that `mokadocs validate` lists.
+
+#### Showing the Style Selector
+
+A layout button in the header lists the five styles. The reader's pick is saved in `localStorage` and applies to every page before it's drawn, so there is no flash of another style. The button is shown by default, and like the other appearance buttons it's hidden on screens 768px wide or less. To give every reader the same style:
+
+```yaml
+theme:
+  options:
+    style: classic
+    styleSelector: false
+```
+
+With the selector hidden, a style a reader picked earlier no longer applies.
 
 ### Primary Color
 
@@ -300,14 +339,16 @@ Six presets set the primary color, along with the landing page title gradient. A
 
 #### Available Presets
 
-| Preset | ID | Hex |
-|---|---|---|
-| Ocean | `ocean` | `#0ea5e9` |
-| Emerald | `emerald` | `#10b981` |
-| Violet | `violet` | `#8b5cf6` |
-| Amber | `amber` | `#f59e0b` |
-| Rose | `rose` | `#f43f5e` |
-| Moka Red | `moka-red` | `#d32f2f` |
+| Preset | ID | Hex | Text, light | Text, dark |
+|---|---|---|---|---|
+| Ocean | `ocean` | `#0ea5e9` | `#0377aa` | `#0ea5e9` |
+| Emerald | `emerald` | `#10b981` | `#038058` | `#10b981` |
+| Violet | `violet` | `#8b5cf6` | `#804fe9` | `#9b77ff` |
+| Amber | `amber` | `#f59e0b` | `#9d6302` | `#f59e0b` |
+| Rose | `rose` | `#f43f5e` | `#d81c48` | `#ff4d68` |
+| Moka Red | `moka-red` | `#d32f2f` | `#d12c2d` | `#f9564f` |
+
+In the `default` style, text in the primary color (links, inline code, the current page in the sidebar and table of contents) uses the "Text" shade (`--color-primary-text`): the preset's hue, darkened in light mode or lightened in dark mode only as far as a 4.5:1 contrast ratio on the code background and the current sidebar link's tint needs. Buttons, borders and icons keep the swatch color. A custom `primaryColor` without a preset is used for text as it is, so pick one with enough contrast.
 
 #### Presets and `primaryColor`
 
@@ -371,7 +412,15 @@ Markdown pages link to `{repo}/edit/{branch}/{path}/{file}`, where `{file}` is t
 
 ### Contributors
 
-`showContributors` is accepted in `mokadocs.yaml` but has no effect. The default theme doesn't show contributors.
+`showContributors: true` lists the people who committed to each Markdown page under the "Last updated" line, most commits first, with their initials as an avatar. It's off by default. Names come from `git log` with the repository's `.mailmap` applied, one entry per email; emails aren't shown and no avatar is downloaded.
+
+```yaml
+theme:
+  options:
+    showContributors: true
+```
+
+A custom theme gets the list as `page.contributors` (each with `name`, `initials` and `commits`) and the option as `theme.show_contributors`.
 
 ### Last Updated
 
@@ -397,7 +446,7 @@ Paths are resolved **relative to the directory containing `mokadocs.yaml`** and 
 
 ### Automatic Detection
 
-On a reader's first visit, a script at the top of the page picks dark mode when the system prefers it (`prefers-color-scheme: dark`) and light mode otherwise. It sets `data-theme` on the `<html>` element before the page renders.
+On a reader's first visit, a script at the top of the page picks dark mode when the system prefers it (`prefers-color-scheme: dark`) and light mode otherwise. It sets `data-theme` on the `<html>` element before the page renders. With the [`moka` style](#styles) the first visit starts in dark mode whatever the system prefers.
 
 ### Manual Toggle
 
@@ -422,7 +471,7 @@ To change the dark colors, override them in a custom theme's stylesheet:
 
 ## Landing Page
 
-Pages with `layout: landing` in their front matter use the landing layout. It starts with a hero section: the site logo, the site title, the page's `description`, a **Get Started** button that links to the first sidebar item, and a **View on GitHub** button when `site.editLink.repo` is set. Next come the feature cards listed in the page's [`features`](/configuration/front-matter#features) front matter, under an optional `featuresTitle` and `featuresSubtitle`, then the page's own Markdown content. A page without `features` goes from the hero straight to its content.
+Pages with `layout: landing` in their front matter use the landing layout. It starts with a hero section: the site logo, the site title, the page's `description`, a **Get Started** button that links to the first sidebar page other than the landing page itself, and a **View on GitHub** button when `site.editLink.repo` is set. Next come the feature cards listed in the page's [`features`](/configuration/front-matter#features) front matter, under an optional `featuresTitle` and `featuresSubtitle`, then the page's own Markdown content. A page without `features` goes from the hero straight to its content.
 
 ```yaml
 ---
@@ -474,7 +523,7 @@ theme:
 
 ### Accessibility: `prefers-reduced-motion`
 
-When a reader's system asks for reduced motion (`prefers-reduced-motion: reduce`), animations stay off whatever `showAnimations` says.
+When a reader's system asks for reduced motion (`prefers-reduced-motion: reduce`), animations stay off whatever `showAnimations` says. With animations off, content that would fade in is there from the first frame, the landing page hero included.
 
 ### What Is Affected
 
@@ -549,6 +598,10 @@ content:
 theme:
   name: default
   options:
+    # Look
+    style: default                # default, moka, minimal, classic or soft
+    styleSelector: true           # style button in the header
+
     # Colors
     primaryColor: "#0ea5e9"
     accentColor: "#f59e0b"

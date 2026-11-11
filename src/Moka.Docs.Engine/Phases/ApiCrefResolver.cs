@@ -62,11 +62,13 @@ internal sealed partial class ApiCrefResolver
 	private readonly ConcurrentDictionary<ApiType, IReadOnlyDictionary<ApiMember, string>> _anchors =
 		new(ReferenceEqualityComparer.Instance);
 
+	private readonly ApiTypeRoutes _routes;
 	private readonly Dictionary<string, ApiType> _typesById = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, List<(string Id, ApiType Type)>> _typesByName = new(StringComparer.Ordinal);
 
-	private ApiCrefResolver(IEnumerable<ApiType> types)
+	private ApiCrefResolver(IReadOnlyList<ApiType> types)
 	{
+		_routes = ApiTypeRoutes.For(types);
 		foreach (ApiType type in types)
 		{
 			// Python pages live under the plugin's route prefix, so an /api link to one would be wrong.
@@ -75,7 +77,7 @@ internal sealed partial class ApiCrefResolver
 				continue;
 			}
 
-			string id = TypeId(type);
+			string id = _routes.DocumentationId(type);
 			if (!_typesById.TryAdd(id, type))
 			{
 				continue;
@@ -146,7 +148,7 @@ internal sealed partial class ApiCrefResolver
 				return Resolve(target, current) is { } resolved ? Link(resolved.Href, text) : Esc(text);
 			}
 
-			return IsSafeUrl(target) ? Link(target, text) : Esc(text);
+			return ApiDocText.TryGetSafeUrl(target, out string safeTarget) ? Link(safeTarget, text) : Esc(text);
 		}
 
 		if (IsDocumentationId(entry))
@@ -196,6 +198,15 @@ internal sealed partial class ApiCrefResolver
 
 	private CrefTarget? ResolveMember(char kind, string body, ApiType current)
 	{
+		// An extension block member is documented on the compiler's grouping type, as in
+		// M:Ns.ShapeExtensions.<G>$4B0A9C.Grow(System.Double), with the member's own parameters. A reference
+		// to the static method that implements it lists the receiver first instead.
+		string? grouping = MemberIdParser.ExtensionGroupingName(body);
+		if (grouping is not null)
+		{
+			body = MemberIdParser.WithoutExtensionTypes(body);
+		}
+
 		// M:Ns.Type`1.Name``1(System.Int32,`0), with ~ReturnType after the list for conversions.
 		string? parameters = null;
 		int open = body.IndexOf('(');
@@ -213,10 +224,12 @@ internal sealed partial class ApiCrefResolver
 		}
 
 		string name = ArityMarkerRegex().Replace(body[(dot + 1)..], "");
-		List<ApiMember> candidates = parent.Members.Where(m => kind switch
+		List<ApiMember> candidates = parent.Members.Where(m =>
+			(grouping is null || MemberIdParser.IsInExtensionGrouping(m, grouping)) && kind switch
 		{
 			'M' when name == "#ctor" => m.Kind == ApiMemberKind.Constructor,
-			'M' => m.Kind is ApiMemberKind.Method or ApiMemberKind.Operator && m.Name == name,
+			'M' => (m.Kind is ApiMemberKind.Method or ApiMemberKind.Operator && m.Name == name)
+			       || IsExtensionPropertyAccessor(m, name),
 			'P' when parameters is not null => m.Kind == ApiMemberKind.Indexer,
 			'P' => m.Kind == ApiMemberKind.Property && m.Name == name,
 			'F' => m.Kind == ApiMemberKind.Field && m.Name == name,
@@ -231,15 +244,22 @@ internal sealed partial class ApiCrefResolver
 		// A method ID leaves out the parentheses when there are no parameters.
 		ApiMember member = candidates.Count == 1
 			? candidates[0]
-			: PickOverload(candidates, kind == 'M' ? parameters ?? "" : parameters, parent);
+			: PickOverload(candidates, kind == 'M' ? parameters ?? "" : parameters, parent, grouping is not null);
 		return MemberTarget(parent, member, current);
 	}
+
+	// The compiler implements an extension property with get_ and set_ methods on the static class.
+	private static bool IsExtensionPropertyAccessor(ApiMember member, string name) =>
+		member is { Extension: not null, Kind: ApiMemberKind.Property }
+		&& (name.StartsWith("get_", StringComparison.Ordinal) || name.StartsWith("set_", StringComparison.Ordinal))
+		&& member.Name == name[4..];
 
 	/// <summary>
 	///     Picks the overload whose parameter types match the ID, then one with the same parameter count,
 	///     then the first.
 	/// </summary>
-	private static ApiMember PickOverload(List<ApiMember> candidates, string? parameterList, ApiType parent)
+	private static ApiMember PickOverload(List<ApiMember> candidates, string? parameterList, ApiType parent,
+		bool viaGroupingType)
 	{
 		if (parameterList is null)
 		{
@@ -247,16 +267,29 @@ internal sealed partial class ApiCrefResolver
 		}
 
 		List<string> wanted = SplitParameters(parameterList).Select(NormalizeIdParameter).ToList();
-		List<ApiMember> sameCount = candidates.Where(m => m.Parameters.Count == wanted.Count).ToList();
+		List<ApiMember> sameCount = candidates.Where(m => IdParameterTypes(m, viaGroupingType).Count == wanted.Count).ToList();
 
 		ApiMember? exact = sameCount.FirstOrDefault(m =>
 		{
 			var typeParameters = new HashSet<string>(
-				parent.TypeParameters.Concat(m.TypeParameters).Select(tp => tp.Name), StringComparer.Ordinal);
-			return m.Parameters.Select(p => NormalizeModelParameter(p.Type, typeParameters)).SequenceEqual(wanted);
+				parent.TypeParameters.Concat(m.TypeParameters).Concat(m.Extension?.TypeParameters ?? []).Select(tp => tp.Name),
+				StringComparer.Ordinal);
+			return IdParameterTypes(m, viaGroupingType).Select(type => NormalizeModelParameter(type, typeParameters))
+				.SequenceEqual(wanted);
 		});
 
 		return exact ?? sameCount.FirstOrDefault() ?? candidates[0];
+	}
+
+	private static List<string> IdParameterTypes(ApiMember member, bool viaGroupingType)
+	{
+		List<string> types = member.Parameters.Select(p => p.Type).ToList();
+		if (member.Extension is { } block && !viaGroupingType && !member.IsStatic)
+		{
+			types.Insert(0, block.Receiver.Type);
+		}
+
+		return types;
 	}
 
 	/// <summary>
@@ -311,7 +344,7 @@ internal sealed partial class ApiCrefResolver
 	private CrefTarget MemberTarget(ApiType parent, ApiMember member, ApiType current)
 	{
 		// A member without a detail block has no anchor of its own, but its section always exists.
-		string anchor = GetAnchors(parent).TryGetValue(member, out string? id) ? id : ApiPageRenderer.SectionId(member.Kind);
+		string anchor = GetAnchors(parent).TryGetValue(member, out string? id) ? id : ApiPageRenderer.MemberSectionId(parent, member);
 		string href = ReferenceEquals(parent, current) ? $"#{anchor}" : $"{TypeRoute(parent)}#{anchor}";
 		string text = member.Kind == ApiMemberKind.Constructor
 			? parent.Name
@@ -319,10 +352,7 @@ internal sealed partial class ApiCrefResolver
 		return new CrefTarget(href, text);
 	}
 
-	private static CrefTarget TypeTarget(ApiType type) =>
-		new(TypeRoute(type), type.TypeParameters.Count == 0
-			? type.Name
-			: $"{type.Name}<{string.Join(", ", type.TypeParameters.Select(tp => tp.Name))}>");
+	private CrefTarget TypeTarget(ApiType type) => new(TypeRoute(type), _routes.DisplayName(type));
 
 	/// <summary>
 	///     Links a <c>System.*</c> or <c>Microsoft.*</c> ID to its page on learn.microsoft.com, where
@@ -364,28 +394,9 @@ internal sealed partial class ApiCrefResolver
 	}
 
 	/// <summary>
-	///     The documentation ID of a type without its <c>T:</c> prefix, such as <c>Ns.Outer`1.Inner</c>.
+	///     The route of a type's page, the one <c>CSharpAnalysisPhase</c> and <c>ReflectionApiPagePhase</c> give it.
 	/// </summary>
-	private static string TypeId(ApiType type)
-	{
-		// Roslyn's full name spells type parameters out (Ns.Outer<T>.Inner). The reflection host's full
-		// name leaves them off, so its arity comes from the parameter count.
-		if (type.FullName.Contains('<'))
-		{
-			return GenericArgumentsToArity(type.FullName);
-		}
-
-		return type.TypeParameters.Count > 0 ? $"{type.FullName}`{type.TypeParameters.Count}" : type.FullName;
-	}
-
-	/// <summary>
-	///     Mirrors the route that <c>CSharpAnalysisPhase</c> and <c>ReflectionApiPagePhase</c> give a type page.
-	/// </summary>
-	internal static string TypeRoute(ApiType type)
-	{
-		string name = type.Name.Replace('<', '-').Replace('>', '-').Replace('`', '-').TrimEnd('-');
-		return $"/api/{(type.Namespace ?? "(global)").Replace('.', '/')}/{name}".ToLowerInvariant();
-	}
+	internal string TypeRoute(ApiType type) => _routes.Route(type);
 
 	/// <summary>
 	///     Replaces each generic argument list with its arity: <c>Dictionary&lt;K, List&lt;V&gt;&gt;</c>
@@ -513,12 +524,6 @@ internal sealed partial class ApiCrefResolver
 
 	private static bool IsDocumentationId(string value) => DocumentationIdRegex().IsMatch(value);
 
-	private static bool IsSafeUrl(string url)
-	{
-		Match scheme = UrlSchemeRegex().Match(url);
-		return !scheme.Success || scheme.Groups[1].Value.ToLowerInvariant() is "http" or "https" or "mailto";
-	}
-
 	private static string Link(string href, string text) =>
 		$"<a href=\"{HttpUtility.HtmlAttributeEncode(href)}\">{Esc(text)}</a>";
 
@@ -550,9 +555,6 @@ internal sealed partial class ApiCrefResolver
 
 	[GeneratedRegex(@"\s+")]
 	private static partial Regex WhitespaceRegex();
-
-	[GeneratedRegex("^([A-Za-z][A-Za-z0-9+.-]*):")]
-	private static partial Regex UrlSchemeRegex();
 
 	private sealed record CrefTarget(string Href, string Text);
 }

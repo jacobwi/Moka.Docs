@@ -80,7 +80,6 @@ plugins:
 | `Moka.Docs.Plugins` | Plugin system (REPL, Blazor, OpenAPI, Changelog) |
 | `Moka.Docs.Serve` | Dev server with hot reload |
 | `Moka.Docs.AspNetCore` | ASP.NET Core middleware integration |
-| `Moka.Docs.Search` | Client-side search index generation |
 | `Moka.Docs.Versioning` | Multi-version documentation support |
 
 ## Links

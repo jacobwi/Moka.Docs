@@ -23,6 +23,7 @@ Given an OpenAPI document, the plugin generates:
 - **Descriptions rendered as Markdown**, as OpenAPI defines them (see [Descriptions](#descriptions))
 - **Links from schema names to the C# API reference**, when the site documents C# types too, and to the models page otherwise (see [Links to C# Types](#links-to-c-types))
 - **Example JSON** when the specification provides examples
+- **Links to external documentation** from the document, its tags, operations and schemas (see [External Documentation](#external-documentation))
 
 The pages are added to the search index, with an entry for each endpoint and each model. See [Sidebar Navigation](#sidebar-navigation) for how they get into the navigation.
 
@@ -79,7 +80,7 @@ If the `spec` option is not set, the plugin looks in the directory that contains
 4. `swagger.json`
 5. `swagger.yaml`
 
-The first file found is used. If `spec` is set but the file doesn't exist, there is no fallback to auto-discovery. When no file is found, the plugin adds a build warning (`OpenAPI plugin: No OpenAPI spec file found. Skipping.`) and generates nothing. A spec that can't be read or parsed is a build error, so `mokadocs build` exits with code 1.
+The first file found is used. If `spec` is set but the file doesn't exist, there is no fallback to auto-discovery: the plugin adds a build warning naming the full path it looked for, and generates nothing. When auto-discovery finds no file, the warning lists the names and folders it tried. A spec that can't be read or parsed is a build error, so `mokadocs build` exits with code 1.
 
 ## Generated Pages
 
@@ -89,20 +90,36 @@ The plugin creates an overview page at the configured `routePrefix`. This page i
 
 - The API title and description from the `info` section of the specification
 - The API version
+- The document's external documentation link, when it has one
 - A link to download the document (see [The Source Document](#the-source-document)), and one to the [models page](#models-page) when the document has schemas
 - A **Servers** section (see [Servers](#servers)) and an **Authentication** section (see [Authentication](#authentication)), when the document has them
 - One table per tag, sorted by tag name, listing each endpoint's method, path and summary
 - Links from each path to the endpoint on its tag's detail page, such as `/rest-api/pets#list-pets`
+- A **Webhooks** section, when an OpenAPI 3.1 document has `webhooks` (see [Webhooks](#webhooks))
 
-Deprecated endpoints are shown struck through. The page's table of contents lists the Servers and Authentication sections and the tags.
+Deprecated endpoints are shown struck through. The page's table of contents lists the Servers and Authentication sections, the tags and Webhooks.
 
 ### Per-Tag Detail Pages
 
-For each tag used by an operation, the plugin generates a detail page at `{routePrefix}/{tag-slug}`. The slug is the tag name in lowercase with spaces, slashes and dots replaced by hyphens, so `Pet Store` becomes `pet-store`. An endpoint with several tags appears on each of their pages.
+For each tag used by an operation, the plugin generates a detail page at `{routePrefix}/{tag-slug}`. An endpoint with several tags appears on each of their pages, and once on each page even when it lists a tag twice. Tags are compared without regard to case, so `Pets` and `pets` share a page. The pages are sorted by tag name, comparing characters by their code without regard to case, so the order is the same on every machine.
+
+The slug is the tag name in lowercase with spaces, slashes and dots replaced by hyphens, so `Pet Store` becomes `pet-store`. Letters of any alphabet stay as they are. When that leaves any other character, such as a colon, a quote or a symbol, the slug is built from `a` to `z`, `0` to `9` and single hyphens instead, with accents dropped:
+
+| Tag | Route segment |
+|---|---|
+| `Pet Store` | `pet-store` |
+| `v2.Orders` | `v2-orders` |
+| `Admin: Users` | `admin-users` |
+| `Q&A` | `q-a` |
+| `C#` | `c` |
+| `Café ☕` | `cafe` |
+| `***` | `tag` |
+
+A tag the strict slug leaves empty gets `tag`. A slug is cut at 100 characters, and a Windows device name (`con`, `nul`, `com1` and so on) gets `-tag` added. Tags that end up with the same slug get `-2`, `-3` and so on, in the order the document first uses them, so `a.b` and `a/b` don't overwrite each other's page and each build numbers them the same way.
 
 Endpoints without tags are grouped under **Other**, at `{routePrefix}/other`.
 
-The tag's description, from the document's top-level `tags` list, opens the page. Each endpoint sits under a heading with an id, so `{routePrefix}/{tag-slug}#{anchor}` links straight to it, and the page's table of contents lists every endpoint as `GET /pets/{id}`. Search has an entry for each endpoint too. The anchor comes from the `operationId` when there is one, otherwise from the method and path:
+The tag's description, from the document's top-level `tags` list, opens the page, followed by the tag's external documentation link. Each endpoint sits under a heading with an id, so `{routePrefix}/{tag-slug}#{anchor}` links straight to it, and the page's table of contents lists every endpoint as `GET /pets/{id}`. Search has an entry for each endpoint too. The anchor comes from the `operationId` when there is one, otherwise from the method and path:
 
 | Endpoint | Anchor |
 |---|---|
@@ -118,7 +135,7 @@ When the document has schemas (`components/schemas` in 3.x, `definitions` in 2.0
 
 - A heading with an anchor, such as `{routePrefix}/models#pet`, made the same way as the endpoint anchors
 - A link to the C# type's page, when the site documents a type with that name (see [Links to C# Types](#links-to-c-types))
-- Its description
+- Its description and its external documentation link
 - Its type, unless it is an object with properties, and its enum values
 - The table of its properties, as for a [request body](#request-body)
 
@@ -162,7 +179,7 @@ Any other method uses the `GET` color. Operations marked `deprecated` also get a
 
 ### Path and Summary
 
-The endpoint's heading shows its method and path (e.g., `/users/{id}`), followed by the schemes it needs (see [Authentication](#authentication)) and its summary. The description follows when it differs from the summary.
+The endpoint's heading shows its method and path (e.g., `/users/{id}`), followed by the schemes it needs (see [Authentication](#authentication)), the servers it is served from when they aren't the document's (see [Servers](#servers)) and its summary. The description follows when it differs from the summary, then the operation's external documentation link.
 
 ### Parameters
 
@@ -174,7 +191,7 @@ Parameters are documented in a table with the following columns:
 - **Required** - A `required` or `optional` badge
 - **Description** - The parameter description from the specification, followed by the allowed values of an enum
 
-Parameters defined on the path are merged with the operation's own. An operation parameter with the same name and location replaces the path-level one.
+Parameters defined on the path are merged with the operation's own. An operation parameter with the same name and location replaces the path-level one. A parameter described with `content` instead of `schema`, such as a JSON value in a query string, shows the schema of its media type.
 
 ### Types
 
@@ -209,7 +226,7 @@ A schema name without a C# type links to its entry on the [models page](#models-
 
 OpenAPI defines `description` fields as CommonMark, and the plugin renders them as Markdown: the document's, the tags', and those of operations, parameters, request bodies, responses, schemas, properties, servers and security schemes. Pipe tables, strikethrough and bare URLs work too. In a table cell, a description of one paragraph is shown without the paragraph around it.
 
-A document can come from anywhere, so raw HTML in a description is shown as text, and a link whose scheme isn't `http`, `https` or `mailto` (such as `javascript:`) keeps its text and loses the link. Headings in a description get no ids.
+A document can come from anywhere, so raw HTML in a description is shown as text, and a link whose scheme isn't `http`, `https` or `mailto` (such as `javascript:`) keeps its text and loses the link. Headings in a description get no ids. A description the Markdown parser refuses, such as one nested thousands of quotes deep, is shown as plain text; the rest of the pages render as usual.
 
 Summaries are plain text, as the specification defines them, so `List *all* pets` is shown with its asterisks.
 
@@ -217,10 +234,12 @@ Summaries are plain text, as the specification defines them, so `List *all* pets
 
 The index page's **Servers** section lists each server's URL and description:
 
-- **OpenAPI 3.x** - the top-level `servers` list. Each `{variable}` in a URL is replaced by its `default`, and a variable with an `enum` lists its values after the description. Servers on paths and operations are not shown.
+- **OpenAPI 3.x** - the top-level `servers` list. Each `{variable}` in a URL is replaced by its `default`, and a variable with an `enum` lists its values after the description.
 - **OpenAPI 2.0** - a URL for each of the `schemes`, made from `host` and `basePath`, such as `https://api.example.com/v1`. Without `schemes`, the URL starts with `//`, the scheme the document is served with. Without a `host`, the URL is the `basePath` alone.
 
 When the document names no server, there is no Servers section. Documents that Microsoft.AspNetCore.OpenApi and Swashbuckle write at build time name none.
+
+In OpenAPI 3.x, a path or an operation can list `servers` of its own, which replace the document's for that endpoint; an operation's replace its path's. The endpoint then shows a **Server** line under its heading with each URL, variables filled in the same way, its description as plain text and the values of a variable with an `enum`. Several servers are joined with **or**. The line is left out when the endpoint's servers have the same URLs as the document's, in any order and ignoring a trailing `/`, and when the list is empty or has no URL. OpenAPI 2.0 has no servers on operations, and an operation's own `schemes` are not shown.
 
 ### Authentication
 
@@ -242,6 +261,19 @@ Each endpoint shows the schemes it needs under its heading, each linked to its e
 - An empty entry (`{}`) makes authentication optional, shown as **Auth (optional)**.
 - An empty list (`security: []`) means the endpoint needs no authentication. When the document's default needs some, the endpoint says **No authentication**.
 
+### External Documentation
+
+An `externalDocs` object links to documentation outside the OpenAPI document. The plugin shows it as an **External documentation** line:
+
+| Where it is | Where it shows |
+|---|---|
+| The document | The index page, after the version |
+| A tag in the top-level `tags` list | The tag's page, after its description |
+| An operation | The endpoint, after its description |
+| A schema in `components/schemas` (`definitions` in 2.0) | The schema's entry on the models page |
+
+The link text is the `description` without its Markdown markup, or the URL when there is no description. Only an absolute `http` or `https` URL becomes a link. Any other `url`, such as a relative one, one starting with `//`, or a `javascript:` or `data:` URL, is shown as text, since it would resolve against the docs site or run in it. An `externalDocs` without a `url` is left out, and so are those of properties and inline schemas.
+
 ### Request Body
 
 If the endpoint accepts a request body, the plugin documents:
@@ -252,6 +284,10 @@ If the endpoint accepts a request body, the plugin documents:
 - For a polymorphic schema (a named schema made of `oneOf` or `anyOf` alternatives), the alternatives
 
 Nested objects are listed by their type name (or `object`) and not expanded. The properties of the parts of an `allOf` are listed together, as for a type that inherits from another. Whether the body itself is required is not shown.
+
+### Webhooks
+
+An OpenAPI 3.1 document can list `webhooks`: requests the API sends to a URL you give it, rather than ones it receives. The index page lists them in a **Webhooks** section, one row each with the method, the webhook's name, its summary and the type of the request body it sends. Their parameters and responses are not shown; the section links to the published document for those. Webhooks get no detail pages and don't appear on the tag pages. If a tag is also called `Webhooks`, its section on the index page gets the anchor `webhooks-2`.
 
 ### Response Schemas
 
@@ -297,9 +333,18 @@ The pages are searchable through the MokaDocs search feature. Without a `nav:` s
 
 ## Specification Requirements
 
-The plugin reads OpenAPI 2.0 (Swagger), 3.0 and 3.1 documents in JSON or YAML (`.yaml`/`.yml`). A file whose first non-whitespace character is `{` is read as JSON, anything else as YAML. The document needs an `openapi` or `swagger` version field; one that can't be read is a build error. The generated pages show only the parts of the document described on this page.
+The plugin reads OpenAPI 2.0 (Swagger), 3.0 and 3.1 documents in JSON or YAML (`.yaml`/`.yml`). It reads a document as JSON first, allowing `//` and `/* */` comments and trailing commas, and as YAML when that fails, so a YAML document written as one `{...}` flow mapping works too. A byte order mark at the start is ignored. The document needs an `openapi` or `swagger` version field; one that can't be read is a build error, and so is an object with the same key twice. The generated pages show only the parts of the document described on this page.
 
-MokaDocs reads the document itself, JSON with System.Text.Json and YAML with YamlDotNet, and doesn't use an OpenAPI library. In YAML, unquoted `true`, `false`, `null` and numbers are read as those values, and anything quoted as text. Anchors and `<<` merge keys work.
+MokaDocs reads the document itself, JSON with System.Text.Json and YAML with YamlDotNet, and doesn't use an OpenAPI library. In YAML, unquoted `true`, `false`, `null` and numbers are read as those values, and anything quoted as text. Anchors and `<<` merge keys work: keys written in the mapping win over merged ones, and an earlier merged mapping wins over a later one. Every key has to be text; a mapping, list or alias used as a key is an error.
+
+A document can come from anywhere, so the reader has limits that a real document doesn't come near:
+
+- A document may nest 64 levels of objects and lists, in JSON and in YAML.
+- YAML aliases and merge keys may add a few times the document's own size; a document whose aliases expand further is an error.
+- Of a schema that refers to other schemas, only the first `$ref` on each path is expanded. A reference inside an expanded one shows its name, type, description and allowed values, which is all the pages show of it anyway. `allOf` parts are merged at any depth, within a budget that grows with the document's size.
+- A walk through a schema stops 64 schemas deep, so a long `allOf` chain is cut off there.
+
+When the last two cut a schema short, the build gets a warning that says so.
 
 The specification should include:
 
@@ -309,7 +354,7 @@ The specification should include:
 - `components/schemas` for reusable schema definitions (referenced via `$ref`)
 - `servers` and `components/securitySchemes` with `security`, when you want them documented
 
-The plugin resolves `$ref` references within the document: to schemas, and to shared parameters, request bodies, responses and examples (`components/...` in 3.x, `definitions`, `parameters` and `responses` in 2.0). A reference to another file isn't followed; its schema is shown by name. A schema that refers to itself is shown by name at the point where it repeats instead of being expanded again.
+The plugin resolves `$ref` references within the document: to schemas, path items, and shared parameters, request bodies, responses and examples (`components/...` in 3.x, `definitions`, `parameters` and `responses` in 2.0). A reference to another file isn't followed, and neither is one that points at nothing in the document; its schema is shown by name, and the build gets one warning that lists such references. A schema that refers to itself is shown by name at the point where it repeats instead of being expanded again.
 
 OpenAPI 3.1 documents, such as those Microsoft.AspNetCore.OpenApi 10 writes by default, are read with their 3.1 keywords: type lists, `const`, schema `examples` arrays, and a `$ref` with keywords beside it (its `description` is the property's description). In a 3.0 document, `nullable: true` counts on any schema, including one that only wraps a `$ref` in `allOf`. In a 2.0 document, the `body` parameter is the request body, `formData` parameters are listed as the properties of a form body, and `x-nullable: true` makes a value nullable.
 

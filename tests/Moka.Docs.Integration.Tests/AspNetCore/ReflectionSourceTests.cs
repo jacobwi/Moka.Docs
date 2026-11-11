@@ -115,6 +115,21 @@ public sealed class ReflectionSourceTests
 	}
 
 	[Fact]
+	public void IncludeSourceCode_EnumMemberHiddenFromEditors_IsLeftOutLikeOnThePage()
+	{
+		ApiReference model = Build(SourceFixtureAssembly.Embedded, options => options.IncludeSourceCode = true);
+
+		Type(model, "WidgetKind").SourceCode.Should().Be("""
+		                                                 /// <summary>Kinds of widget.</summary>
+		                                                 public enum WidgetKind
+		                                                 {
+		                                                     /// <summary>Round.</summary>
+		                                                     Round
+		                                                 }
+		                                                 """.ReplaceLineEndings("\n"));
+	}
+
+	[Fact]
 	public void IncludeSourceCode_SourceFilesOnDisk_AreRead()
 	{
 		// Only the generated part is embedded in this PDB; the rest is read from the paths it names.

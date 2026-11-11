@@ -25,6 +25,13 @@ internal static class MokaDocsApiEndpoints
 
 	private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
+	/// <summary>
+	///     Headers a proxy adds. The <c>X-Original-*</c> ones are what <c>UseForwardedHeaders()</c>
+	///     leaves after it applies the others.
+	/// </summary>
+	private static readonly string[] _proxyHeaders =
+		["Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Original-For", "X-Original-Host"];
+
 	/// <summary>Handles <c>POST {BasePath}/api/feedback</c>.</summary>
 	internal static async Task HandleFeedbackAsync(HttpContext context, MokaDocsOptions options, ILogger logger)
 	{
@@ -79,10 +86,10 @@ internal static class MokaDocsApiEndpoints
 
 		// The origin checks stop other web pages, not other machines: an app in Development that
 		// listens on every interface, as containers often do, would run code for anyone on the network.
-		if (!repl.AllowRemote && !IsLocalCaller(context.Connection.RemoteIpAddress))
+		if (!repl.AllowRemote && LocalOnlyRefusal(context.Request, context.Connection.RemoteIpAddress) is { } refusal)
 		{
-			logger.LogWarning("Refused a REPL run from {Address}; set AllowRemoteRepl to accept other machines",
-				context.Connection.RemoteIpAddress);
+			logger.LogWarning("Refused a REPL run: {Reason}. Set AllowRemoteRepl to accept it, behind authorization",
+				refusal);
 			await WriteJsonAsync(context, StatusCodes.Status403Forbidden,
 				new { error = "The REPL only runs code for requests from the machine the app runs on." });
 			return;
@@ -115,7 +122,17 @@ internal static class MokaDocsApiEndpoints
 
 		// A reader who leaves mid-run cancels the run, and the service replaces the worker, so the
 		// snippet stops instead of running on until the timeout.
-		ReplResult result = await repl.Service.ExecuteAsync(request.Code ?? "", context.RequestAborted);
+		ReplResult result;
+		try
+		{
+			result = await repl.Service.ExecuteAsync(request.Code ?? "", context.RequestAborted);
+		}
+		catch (ReplQueueFullException ex)
+		{
+			await WriteJsonAsync(context, StatusCodes.Status429TooManyRequests, new { error = ex.Message });
+			return;
+		}
+
 		await WriteJsonAsync(context, StatusCodes.Status200OK,
 			new { output = result.Output ?? "", error = result.Error ?? "" });
 	}
@@ -169,12 +186,65 @@ internal static class MokaDocsApiEndpoints
 	}
 
 	/// <summary>
+	///     Why a request doesn't count as coming from this machine, or <c>null</c> when it does: a
+	///     loopback caller, a loopback <c>Host</c>, and no sign of a proxy in between.
+	/// </summary>
+	/// <remarks>
+	///     A loopback caller alone isn't enough. A page on attacker.example whose DNS name is rebound
+	///     to 127.0.0.1 sends <c>Host</c> and <c>Origin</c> as attacker.example, which pass the origin
+	///     check, and a forwarder on the box (nginx, ngrok, a dev tunnel) makes every caller loopback.
+	/// </remarks>
+	internal static string? LocalOnlyRefusal(HttpRequest request, IPAddress? remoteAddress)
+	{
+		if (!IsLocalCaller(remoteAddress))
+		{
+			return $"the caller {remoteAddress} is another machine";
+		}
+
+		if (!IsLoopbackHost(request.Host))
+		{
+			return $"the Host header \"{request.Host}\" is not localhost or a loopback address";
+		}
+
+		foreach (string header in _proxyHeaders)
+		{
+			if (request.Headers.ContainsKey(header))
+			{
+				return $"the request has a {header} header, so it came through a proxy";
+			}
+		}
+
+		return null;
+	}
+
+	/// <summary>
 	///     Whether the caller is on this machine. No address means a local transport, such as a Unix
 	///     socket or an in-process server.
 	/// </summary>
 	internal static bool IsLocalCaller(IPAddress? address) =>
 		address is null
 		|| IPAddress.IsLoopback(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address);
+
+	/// <summary>
+	///     Whether a <c>Host</c> header names this machine: <c>localhost</c>, a name under
+	///     <c>.localhost</c>, or a loopback address, on any port.
+	/// </summary>
+	internal static bool IsLoopbackHost(HostString host)
+	{
+		if (!host.HasValue)
+		{
+			return false;
+		}
+
+		string name = host.Host.TrimEnd('.');
+		if (name.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+		    || name.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		return IPAddress.TryParse(name.Trim('[', ']'), out IPAddress? address) && IsLocalCaller(address);
+	}
 
 	private static void Reject(HttpContext context, ILogger logger)
 	{

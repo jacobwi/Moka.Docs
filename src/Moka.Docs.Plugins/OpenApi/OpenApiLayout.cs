@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace Moka.Docs.Plugins.OpenApi;
@@ -14,8 +15,21 @@ internal sealed class OpenApiLayout
 	/// <summary>The id of the Authentication section on the index page.</summary>
 	internal const string AuthenticationAnchor = "authentication";
 
+	/// <summary>The id of the Webhooks section on the index page.</summary>
+	internal const string WebhooksAnchor = "webhooks";
+
 	/// <summary>The tag that endpoints without tags are listed under.</summary>
 	internal const string UntaggedTag = "Other";
+
+	// Well under the 255 characters a file name can have on Windows and Linux, with room for a "-2" suffix.
+	private const int _maxSegmentLength = 100;
+
+	private static readonly HashSet<string> _windowsDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"con", "prn", "aux", "nul",
+		"com0", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+		"lpt0", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"
+	};
 
 	private OpenApiLayout(string routePrefix) => RoutePrefix = routePrefix;
 
@@ -64,13 +78,18 @@ internal sealed class OpenApiLayout
 	/// <param name="documentFileName">The name the source document is published under, or <c>null</c>.</param>
 	internal static OpenApiLayout Create(OpenApiSpec spec, string routePrefix, string? documentFileName)
 	{
+		// Segments are handed out in document order, so of two tags that slug alike the first keeps the plain one.
+		var segments = new AnchorSet();
 		List<OpenApiTagPageLayout> tagPages = GroupByTag(spec.Endpoints)
-			.OrderBy(group => group.Key)
-			.Select(group => CreateTagPage(group.Key, group.Value, $"{routePrefix}/{TagSlug(group.Key)}"))
+			.Select(group => CreateTagPage(group.Tag, group.Endpoints, $"{routePrefix}/{segments.Add(TagSlug(group.Tag), "tag")}"))
+			.ToList()
+			.OrderBy(page => page.Tag, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 
-		// The two fixed section ids come first so a tag or scheme with the same name can't take them.
-		var indexAnchors = new AnchorSet([ServersAnchor, AuthenticationAnchor]);
+		// The fixed section ids come first so a tag or scheme with the same name can't take them.
+		var indexAnchors = new AnchorSet(spec.Webhooks.Count > 0
+			? [ServersAnchor, AuthenticationAnchor, WebhooksAnchor]
+			: [ServersAnchor, AuthenticationAnchor]);
 		var schemeAnchors = new Dictionary<string, string>(StringComparer.Ordinal);
 		foreach (string scheme in spec.SecuritySchemes.Keys)
 		{
@@ -115,25 +134,30 @@ internal sealed class OpenApiLayout
 		return new OpenApiTagPageLayout(tag, route, entries);
 	}
 
-	/// <summary>The endpoints of each tag, with untagged ones under <see cref="UntaggedTag" />.</summary>
-	private static Dictionary<string, List<OpenApiEndpoint>> GroupByTag(IEnumerable<OpenApiEndpoint> endpoints)
+	/// <summary>
+	///     The endpoints of each tag, with untagged ones under <see cref="UntaggedTag" />, in the order the
+	///     document first uses each tag.
+	/// </summary>
+	private static List<(string Tag, List<OpenApiEndpoint> Endpoints)> GroupByTag(IEnumerable<OpenApiEndpoint> endpoints)
 	{
-		var grouped = new Dictionary<string, List<OpenApiEndpoint>>(StringComparer.OrdinalIgnoreCase);
+		var groups = new List<(string Tag, List<OpenApiEndpoint> Endpoints)>();
+		var byTag = new Dictionary<string, List<OpenApiEndpoint>>(StringComparer.OrdinalIgnoreCase);
 		foreach (OpenApiEndpoint ep in endpoints)
 		{
 			foreach (string tag in ep.Tags.Count > 0 ? ep.Tags : [UntaggedTag])
 			{
-				if (!grouped.TryGetValue(tag, out List<OpenApiEndpoint>? list))
+				if (!byTag.TryGetValue(tag, out List<OpenApiEndpoint>? list))
 				{
 					list = [];
-					grouped[tag] = list;
+					byTag[tag] = list;
+					groups.Add((tag, list));
 				}
 
 				list.Add(ep);
 			}
 		}
 
-		return grouped;
+		return groups;
 	}
 
 	/// <summary>
@@ -147,11 +171,69 @@ internal sealed class OpenApiLayout
 	}
 
 	/// <summary>
-	///     A tag's route segment: lowercase, with spaces, slashes and dots replaced by hyphens. Unlike
-	///     <see cref="Slug" /> it keeps every other character, since existing sites link to these routes.
+	///     A tag's route segment, before it is made unique. Tags whose old segment (lowercase, with spaces,
+	///     slashes and dots replaced by hyphens) holds only letters, digits and hyphens keep it, since
+	///     existing sites link to those routes. Any other tag gets a strict slug of <c>a-z</c>, <c>0-9</c>
+	///     and single hyphens, or <c>tag</c> when nothing is left.
 	/// </summary>
-	internal static string TagSlug(string tag) =>
-		tag.ToLowerInvariant().Replace(' ', '-').Replace('/', '-').Replace('.', '-');
+	/// <remarks>
+	///     A tag is free text and the segment becomes a file path, a link and a sitemap entry: a quote broke
+	///     out of the sidebar's <c>href</c>, a colon or question mark failed the build on Windows, a tag
+	///     shaped like <c>C:\dir</c> wrote outside the output folder, an ampersand broke the sitemap and
+	///     <c>C#</c> linked to <c>c</c>.
+	/// </remarks>
+	internal static string TagSlug(string tag)
+	{
+		string legacy = tag.ToLowerInvariant().Replace(' ', '-').Replace('/', '-').Replace('.', '-');
+		if (legacy.Length <= _maxSegmentLength && legacy.All(c => c == '-' || char.IsLetterOrDigit(c))
+		                                       && !_windowsDeviceNames.Contains(legacy))
+		{
+			return legacy;
+		}
+
+		string decomposed;
+		try
+		{
+			decomposed = tag.Normalize(NormalizationForm.FormD);
+		}
+		catch (ArgumentException)
+		{
+			// Normalize refuses a lone surrogate, which a JSON "\ud800" escape gives.
+			decomposed = tag;
+		}
+
+		var sb = new StringBuilder(Math.Min(tag.Length, _maxSegmentLength));
+		foreach (char c in decomposed)
+		{
+			if (sb.Length >= _maxSegmentLength)
+			{
+				break;
+			}
+
+			if (char.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+			{
+				continue;
+			}
+
+			char lower = char.ToLowerInvariant(c);
+			if (lower is >= 'a' and <= 'z' or >= '0' and <= '9')
+			{
+				sb.Append(lower);
+			}
+			else if (sb.Length > 0 && sb[^1] != '-')
+			{
+				sb.Append('-');
+			}
+		}
+
+		string slug = sb.ToString().TrimEnd('-');
+		if (_windowsDeviceNames.Contains(slug))
+		{
+			return slug + "-tag";
+		}
+
+		return slug.Length > 0 ? slug : "tag";
+	}
 
 	/// <summary>
 	///     An anchor id: words in lowercase joined by hyphens, with camelCase split into words, so

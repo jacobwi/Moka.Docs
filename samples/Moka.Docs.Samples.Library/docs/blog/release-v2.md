@@ -1,9 +1,10 @@
 ---
 title: "SampleLibrary v2.0 Released"
 description: "Rectangle shapes, numeric extensions, safe division, and the new ResultBuilder API"
-date: 2026-03-15
-author: MokaDocs Team
+date: 2026-03-15T09:30:00Z
+author: [team, sam]
 tags: [release, v2.0, announcement]
+image: ./release-v2-cover.svg
 icon: package
 ---
 

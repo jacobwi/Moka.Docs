@@ -1,3 +1,4 @@
+using System.Web;
 using Markdig;
 using Markdig.Renderers;
 using Markdig.Syntax;
@@ -42,7 +43,16 @@ internal static class OpenApiMarkdown
 			return "";
 		}
 
-		string text = Markdown.ToPlainText(markdown, _pipeline);
+		string text;
+		try
+		{
+			text = Markdown.ToPlainText(markdown, _pipeline);
+		}
+		catch (Exception ex) when (ex is not OutOfMemoryException)
+		{
+			text = markdown;
+		}
+
 		return string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 	}
 
@@ -53,6 +63,21 @@ internal static class OpenApiMarkdown
 			return "";
 		}
 
+		// Markdig refuses some input outright (100,000 ">" nest too deeply), and the exception took every
+		// page of the document with it. Such a description is shown as escaped text instead.
+		try
+		{
+			return RenderMarkdown(markdown, unwrapParagraph);
+		}
+		catch (Exception ex) when (ex is not OutOfMemoryException)
+		{
+			string text = HttpUtility.HtmlEncode(markdown.Trim());
+			return unwrapParagraph ? text : $"<p>{text}</p>";
+		}
+	}
+
+	private static string RenderMarkdown(string markdown, bool unwrapParagraph)
+	{
 		MarkdownDocument document = Markdown.Parse(markdown, _pipeline);
 		RemoveUnsafeLinks(document);
 

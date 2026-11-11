@@ -101,7 +101,16 @@ internal sealed class MokaDocsStartupService(
 
 		if (ShouldWatch(options, environment))
 		{
-			StartWatching();
+			try
+			{
+				StartWatching();
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				// An exception here escapes into the host's ApplicationStarted callback and skips the
+				// REPL warning below.
+				_logger.LogWarning(ex, "Can't watch the docs folder for changes; restart the app to see edits");
+			}
 		}
 
 		if (services.GetService<MokaDocsRepl>() is { IsMapped: true, CanStartWorker: false } repl)
@@ -116,7 +125,8 @@ internal sealed class MokaDocsStartupService(
 		await Task.Yield();
 		try
 		{
-			await docs.GetSiteAsync(_stopping.Token);
+			// A build that fails is logged by the service.
+			await docs.GetSiteOrFailureAsync(_stopping.Token);
 		}
 		catch (Exception ex) when (IsStopping(ex))
 		{
@@ -124,7 +134,7 @@ internal sealed class MokaDocsStartupService(
 		}
 		catch (Exception ex)
 		{
-			_logger.LogError(ex, "The MokaDocs build at startup failed; the first request builds the site again");
+			_logger.LogError(ex, "The MokaDocs build at startup failed");
 		}
 	}
 
@@ -140,7 +150,10 @@ internal sealed class MokaDocsStartupService(
 			Track(rebuild);
 			return rebuild;
 		};
-		_watcher.Start(docsDirectory);
+
+		// The build leaves these out of the site, and `dotnet watch` writes to them on every compile.
+		_watcher.Start(docsDirectory, null, InMemoryBuildOrchestrator.ExcludedFolders
+			.Select(folder => Path.Combine(docsDirectory, folder)));
 		WatchedDirectory = docsDirectory;
 	}
 

@@ -50,18 +50,13 @@ public sealed class TabbedContentExtension : IMarkdownExtension
 ///     time. This mirrors how <c>::: steps</c> and <c>::: code-group</c> work, and avoids
 ///     pushing sibling containers from a block parser, which Markdig does not support.
 /// </remarks>
-public sealed class TabGroupBlock : ContainerBlock
+public sealed class TabGroupBlock(BlockParser parser) : ContainerBlock(parser)
 {
-	private static int _counter;
-
-	/// <summary>Creates a new tab group block.</summary>
-	public TabGroupBlock(BlockParser parser) : base(parser)
-	{
-		GroupId = $"tabs-{Interlocked.Increment(ref _counter)}";
-	}
-
-	/// <summary>Unique ID for this tab group (links tab headers to content panels).</summary>
-	public string GroupId { get; set; }
+	/// <summary>
+	///     ID linking the group's headers to its panels, unique within the page. The parser derives
+	///     it from the line the group opens on; <see cref="MarkdownParser" /> then adds a key for the page.
+	/// </summary>
+	public string GroupId { get; set; } = "tabs";
 
 	/// <summary>Tab titles, in document order.</summary>
 	public List<string> TabTitles { get; } = [];
@@ -110,6 +105,7 @@ public sealed class TabGroupParser : BlockParser
 
 		var group = new TabGroupBlock(this)
 		{
+			GroupId = $"tabs-{processor.LineIndex + 1}",
 			Span = new SourceSpan(start, line.End),
 			Column = processor.Column
 		};
@@ -230,7 +226,7 @@ public sealed class TabGroupRenderer : HtmlObjectRenderer<TabGroupBlock>
 		}
 
 		renderer.EnsureLine();
-		renderer.Write("<div class=\"tabs\" data-tab-group=\"").Write(block.GroupId).Write("\">");
+		renderer.Write("<div class=\"tabs\" data-tab-group=\"").WriteEscape(block.GroupId).Write("\">");
 		renderer.WriteLine();
 
 		#region Headers

@@ -100,4 +100,30 @@ public sealed class ReplExtensionTests
 
 		html.Should().NotContain("repl-container");
 	}
+
+	[Theory]
+	[InlineData("csharp repl")]
+	[InlineData("cs repl")]
+	[InlineData("CSharp REPL")]
+	[InlineData("c# repl")]
+	[InlineData("csharp repl title=\"Demo\"")]
+	public void LanguageThenRepl_ProducesReplContainer(string info)
+	{
+		// Markdig puts "repl" in Arguments, so comparing Info with "csharp repl" never matched,
+		// though docs/plugins/repl.md documents these spellings.
+		string html = Render($"```{info}\nvar x = 1;\n```");
+
+		html.Should().Contain("data-repl=\"true\"");
+	}
+
+	[Theory]
+	[InlineData("csharp replay")]
+	[InlineData("python repl")]
+	[InlineData("csharp title=\"repl\"")]
+	public void OtherArguments_AreNotARepl(string info)
+	{
+		string html = Render($"```{info}\nvar x = 1;\n```");
+
+		html.Should().NotContain("repl-container");
+	}
 }

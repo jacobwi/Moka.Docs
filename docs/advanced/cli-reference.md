@@ -42,7 +42,8 @@ mokadocs init
 
 ### Behavior
 
-- If `mokadocs.yaml` already exists in the current directory, `init` prints a message and changes nothing.
+- `init` never overwrites a file. Each file that already exists is skipped with a message, so running it in a folder that already has a `docs/index.md` only adds `mokadocs.yaml`.
+- An existing `mokadocs.yml` counts as the configuration file, and no `mokadocs.yaml` is added next to it.
 - The generated `docs/index.md` has `title`, `description`, `order` and `layout` in its front matter.
 
 ---
@@ -62,15 +63,19 @@ Runs the full build pipeline: parses Markdown, analyzes the configured C# projec
 | `--draft` | | Include pages that have `visibility: draft` in their front matter | Off |
 | `--base-path <path>` | | Path prefix for subdirectory deployments (e.g. `/repo-name` for GitHub Pages) | `build.basePath` |
 | `--no-cache` | | Analyze C# projects again instead of using `.mokadocs/cache` | Off |
+| `--warnings-as-errors` | | Fail the build when it reports any warning, the same as `build.strict: true` | Off |
+| `--version <name>` | | Build only this version, by slug or label, into its folder of the output. See [Versioning](/advanced/versioning#rebuilding-one-version) | All versions |
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | The build completed without errors |
-| 1 | The build failed, or it reported one or more errors |
+| 1 | The build failed, or it reported one or more errors (or warnings, with `--warnings-as-errors` or `build.strict`) |
 
-Errors include problems reported by plugins, such as a Blazor preview host that fails to publish. They are always printed; warnings are counted, and listed with `--verbose`.
+Errors include a missing docs folder, a page that could not be read or parsed, a front matter `route:` that can't be written, and problems reported by plugins, such as a Blazor preview host that fails to publish. They are always printed; warnings are counted, and listed with `--verbose`. When warnings count as errors they are always listed.
+
+With `--verbose`, the log shows how long each build phase took, and a summary line at the end lists them all.
 
 ### Build Output Summary
 
@@ -87,6 +92,17 @@ MokaDocs v1.6.0 - Building documentation site...
 ```
 
 When the build reports problems, a `Diagnostics` line follows with the warning and error counts.
+
+When `features.versioning` lists versions with a git `branch` or `tag`, the build checks out and builds each of them, and the summary has one line per version instead of the page counts:
+
+```
+✅ MokaDocs build complete in 9.81s
+📄 v2.0 → site root: 182 pages (26 markdown, 156 generated) from tag 'v2.0.0'
+📄 next → next/: 190 pages (28 markdown, 162 generated) from the working tree
+📄 v2.0 → v2.0/: 182 pages (26 markdown, 156 generated) from tag 'v2.0.0'
+📄 v1.0 → v1.0/: 151 pages (22 markdown, 129 generated) from tag 'v1.0.0'
+📦 Output:       ./_site
+```
 
 ### Usage Examples
 
@@ -111,13 +127,19 @@ mokadocs build --no-cache -v
 
 # Build for GitHub Pages subdirectory deployment
 mokadocs build --base-path /my-repo
+
+# Rebuild one version of a versioned site
+mokadocs build --version v1.0
 ```
 
 ### Notes
 
-- `--watch` monitors the docs folder and the configuration file. A change to the configuration file triggers a rebuild with the settings loaded at startup, so restart the command to apply configuration changes. Press `Ctrl+C` to stop.
+- `--watch` monitors the docs folder and the configuration file, ignoring the output folder and `.mokadocs`, so an output folder inside the docs folder doesn't rebuild itself. One rebuild runs at a time; changes made during it start one more rebuild when it ends. Press `Ctrl+C` to stop.
+- When the configuration file changes, `--watch` reads it again and sets up the build from scratch before rebuilding: plugins, including ones loaded from a `path`, the theme and its templates. A file that doesn't parse prints the error and skips the rebuild, so the last good site stays in the output folder until you fix it. `content.docs` and `build.output` keep the values the command started with, and the terminal says so when they change; restart to use new ones.
 - The C# analysis cache is keyed by the project's source files and by the MokaDocs build that wrote it, so editing code or upgrading MokaDocs invalidates it on its own. `--no-cache` is only needed to rule the cache out while troubleshooting.
-- The output directory must not be the project folder, the docs folder, or a folder that contains either. The build stops with an error instead of deleting your sources.
+- The output directory must not be the project folder, the docs folder, a `content.projects` folder, a custom theme folder, or a folder that contains any of them or the logo or favicon source file. The build stops with an error instead of deleting your sources.
+- Every build writes a `.mokadocs-output` marker file into the output directory. With `build.clean` on, the build refuses to delete an existing output directory that is not empty and has no marker (or the `_theme/css/main.css` that older builds wrote), because MokaDocs did not create it.
+- A page is never written outside the output directory. A route that would land there, or that no URL can reach (a `?`, a `#`, a `..` segment), is reported as an error and that page is skipped before anything is deleted. On Windows the same goes for routes Windows can't use as folder names; elsewhere those are warnings.
 - Draft pages are left out of builds unless `--draft` is passed.
 
 ---
@@ -142,15 +164,15 @@ Builds the site and serves it locally, rebuilding and reloading the browser when
 ### Features
 
 - **Hot reload**: the server injects a small WebSocket client into served pages and tells the browser to reload after each rebuild.
-- **File watching**: watches the docs folder and the configuration file, ignoring the output folder. Configuration changes are rebuilt with the settings loaded at startup; restart `serve` to apply them.
+- **File watching**: watches the docs folder and the configuration file, ignoring the output folder and `.mokadocs`. One rebuild runs at a time; changes made during it start one more when it ends.
+- **Configuration reload**: a change to the configuration file is read again before the rebuild, with new plugins, theme and templates. A file that doesn't parse prints the error, and the server keeps serving the last good site until you fix it. The port is a command-line option, so it can't change; `build.basePath`, `build.output` and `content.docs` keep the values `serve` started with, the terminal says when they differ, and a restart applies them. So do changes to the `mokadocs-repl` entry, since the REPL endpoint is set up at startup.
 - **Diagnostics**: after every build the terminal shows the warning and error counts and lists the errors, like `build`. `--verbose` lists the warnings too.
 - **Clean URLs**: a request for `/guide` is served from `/guide/index.html`.
 - **404 page**: unknown paths get the site's generated `404.html`.
 - **Base path aware**: with `build.basePath` or `--base-path`, the server strips that prefix from requests, so `http://localhost:5080/my-repo/` serves the same pages the deployed site will.
 - **REPL endpoint**: `POST /api/repl/execute` exists only when the `mokadocs-repl` plugin is declared. It runs the posted C# code in a separate worker process with your permissions, and kills that process when a run passes 5 seconds.
-- **Blazor preview endpoint**: `POST /api/blazor/preview` exists only when the `mokadocs-blazor-preview` plugin is declared.
 
-The API endpoints accept only JSON requests, and a browser request must come from the dev server's own origin (`http://localhost:<port>`). Requests from other sites get `403`, so a web page open in the same browser cannot run code through the REPL endpoint.
+The server answers on `http://localhost:<port>` and `http://127.0.0.1:<port>`, and on Windows `http://[::1]:<port>` too. The API endpoints accept only JSON requests, and a browser request must come from the origin of the address it was sent to, so a page on `localhost` can't post to `127.0.0.1`. Requests from other sites get `403`, so a web page open in the same browser cannot run code through the REPL endpoint.
 
 ### Usage Examples
 
@@ -213,7 +235,7 @@ mokadocs new page overview -p ./docs/guides --layout landing
 
 ### mokadocs new plugin
 
-Scaffolds a plugin project: a `.csproj` that references the `Moka.Docs.Plugins` package at the version of the tool you are running, and a class that implements `IMokaPlugin`.
+Scaffolds a plugin project: a `net9.0` `.csproj` that references the `Moka.Docs.Plugins` package at the version of the tool you are running, and a class that implements `IMokaPlugin`. The class adds a page that shows its `message` option, so the plugin does something visible as soon as a site declares it.
 
 #### Options
 
@@ -229,7 +251,17 @@ mokadocs new plugin MyCustomPlugin
 
 This creates `Moka.Docs.Plugins.MyCustomPlugin/` containing `Moka.Docs.Plugins.MyCustomPlugin.csproj` and `MyCustomPlugin.cs`, which declares the class `MyCustomPlugin`. The plugin id is `mokadocs-my-custom-plugin`; `MyCustomPlugin` and `my-custom-plugin` produce the same id. The class name gets a `Plugin` suffix only when the name doesn't already end with one, so `mokadocs new plugin Footer` creates `FooterPlugin`.
 
-The `mokadocs` CLI loads only its built-in plugins, so a plugin built from this template runs only in a host that registers it as an `IMokaPlugin` and declares its id under `plugins`. See [Plugin System](/plugins/overview).
+The command prints the `plugins` entry to add to `mokadocs.yaml`. Point its `path` at the project folder, relative to `mokadocs.yaml`, and `mokadocs build` and `serve` build the project with `dotnet build -c Release` and load the plugin:
+
+```yaml
+plugins:
+  - name: mokadocs-my-custom-plugin
+    path: ./Moka.Docs.Plugins.MyCustomPlugin
+    options:
+      message: Hello from my plugin
+```
+
+The page appears at `/my-custom-plugin`. See [Loading a Plugin from a Path](/plugins/overview#loading-a-plugin-from-a-path).
 
 ### mokadocs new component
 
@@ -273,16 +305,17 @@ Checks that depend on what the build produces run against a dry-run build (see [
 
 | Check | What It Validates |
 |-------|-------------------|
-| Configuration | `mokadocs.yaml` exists and parses |
+| Configuration | `mokadocs.yaml` exists and parses. Keys that are not settings (a typo such as `basepath:`) are a warning, listed with their line. |
 | .NET SDK | The .NET SDK is on `PATH` |
 | Projects | Every `content.projects` path points at a real `.csproj`. A site with no projects is valid and passes. |
 | Docs Folder | The `content.docs` directory exists |
 | Logo, Favicon | `site.logo` and `site.favicon` resolve to real files. Only shown when set. |
 | Build | A dry-run build completes. Warnings and errors it reports are counted here; run `mokadocs validate` to see them. |
-| Broken Links | Links and images point at something the build produces |
+| Broken Links | Links and images point at something the build produces, with the same letter case |
+| Anchors | A link's `#anchor` matches an id on the page it points to |
 | Front Matter | Every page has a non-empty `title` |
 | Orphan Images | Images in the docs folder that nothing references |
-| Plugins | Every `plugins[].name` matches a built-in plugin id and initializes. Entries that set `path` or have no name are reported, since nothing loads them. |
+| Plugins | Every `plugins[].name` matches a built-in plugin id and initializes. An entry with a `path` loads its plugin the way a build does; one that fails to load is an error that names the plugin, the path and the reason. Entries with no name are reported, since nothing loads them. |
 | Search | The search index builds with entries. Search turned off in config passes. |
 | API Coverage | Share of public types and members with a summary. Only shown when projects are configured. |
 
@@ -295,6 +328,10 @@ A link counts as valid when it resolves to any of:
 - a static asset in the docs folder, the logo or favicon, or a generated file like `/sitemap.xml`
 
 Root-relative links (`/guide/intro`) are checked as written. Relative links (`./intro`, `../guide/intro.md`) are resolved against the file that contains them, the same way the build rewrites them. Links are read from the parsed Markdown, not with a text search, so examples inside code blocks and inline code are never reported. Links to a draft page are reported and labelled, since drafts are left out of production builds. External URLs are not checked.
+
+Paths are compared with their letter case. Most static hosts run on Linux, where `/Guide/Intro` and `/guide/intro` are different addresses, so a link that matches a page only when case is ignored is reported as broken and names the page's real spelling.
+
+A link with an anchor, such as `/guide/intro#setup`, `intro.md#setup` or `#setup` on the same page, must also match an `id` on the target page: a heading's id, an explicit id, or one of the theme's own. `#top` always passes. A missing anchor is a warning, since the page still opens.
 
 ### How API Coverage Is Measured
 
@@ -410,7 +447,8 @@ Deletes the build output and the C# analysis cache.
 - Reads `build.output` from the configuration file and deletes that directory.
 - Deletes the `.mokadocs` cache folder next to the configuration file.
 - Prints a message and succeeds when there is nothing to delete.
-- Refuses to delete an output directory that is the project folder, the docs folder, or contains either.
+- Refuses to delete an output directory that the build would refuse to use: the project folder, the docs folder, a `content.projects` folder, a custom theme folder, or a folder containing any of them or the logo or favicon source file.
+- Refuses to delete a non-empty output directory that has no `.mokadocs-output` marker (and no `_theme/css/main.css` from an older build), since MokaDocs did not create it.
 - Fails without deleting anything when the configuration file is missing or cannot be parsed.
 
 ### Options
@@ -480,7 +518,7 @@ Runs the complete build as a dry run and reports every warning and error it prod
 They answer different questions and work well together.
 
 - **`mokadocs doctor`** checks your project files: links, titles, images, plugin names, API coverage. It can fix some problems.
-- **`mokadocs validate`** shows what the build itself reports: a page that failed to parse, a project that could not be analyzed, a plugin that reported an error or never loaded, pages that share a route, an output directory that would delete your sources. These only show up by running the build.
+- **`mokadocs validate`** shows what the build itself reports: a page that failed to parse, a project that could not be analyzed, a plugin that reported an error or never loaded, a plugin `path` that didn't build or load, pages that share a route, an output directory that would delete your sources. These only show up by running the build.
 
 When `doctor`'s Build row reports warnings or errors, `validate` lists them.
 
@@ -496,10 +534,10 @@ mokadocs validate - dry run, nothing is written
                   155 search index entries
                   plugins: mokadocs-repl, mokadocs-changelog
 
-  ⚠ CSharpAnalysis: Project file not found: ./src/Old/Old.csproj
+  ✗ CSharpAnalysis: Project file not found: ./src/Old/Old.csproj (looked for /home/me/site/src/Old/Old.csproj). Its API reference was not generated.
   ⚠ Plugins: Plugin 'repl' is declared but no plugin has that id
 
-  Result: 0 error(s), 2 warning(s)
+  Result: 1 error(s), 1 warning(s)
 ```
 
 Each problem is prefixed with the build phase or plugin that reported it.
@@ -511,6 +549,9 @@ Each problem is prefixed with the build phase or plugin that reported it.
 | `--config <path>` | `-c` | Path to the configuration file | `mokadocs.yaml` |
 | `--draft` | | Include pages with `visibility: draft` | Off |
 | `--verbose` | `-v` | Show pipeline logging and informational diagnostics | Off |
+| `--warnings-as-errors` | | Count warnings as errors (exit code 2), the same as `build.strict: true` | Off |
+
+Warnings include keys in `mokadocs.yaml` or in front matter that are not settings, each with its line, and sidebar entries whose `path` matches no page.
 
 ### Exit Codes
 
@@ -518,7 +559,7 @@ Each problem is prefixed with the build phase or plugin that reported it.
 |------|---------|
 | 0 | The build reported no warnings or errors |
 | 1 | The build reported warnings |
-| 2 | The build reported errors, failed outright, or the config could not be read |
+| 2 | The build reported errors, failed outright, or the config could not be read. Also warnings, with `--warnings-as-errors` or `build.strict`. |
 
 ### Usage
 
@@ -531,6 +572,9 @@ mokadocs validate --draft -v
 
 # Fail a CI job only on errors
 mokadocs validate || [ $? -eq 1 ]
+
+# Fail a CI job on any warning too
+mokadocs validate --warnings-as-errors
 ```
 
 The C# analysis cache in `.mokadocs/cache/` is used and updated as in a normal build.

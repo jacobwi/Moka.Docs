@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-label="SampleLibrary v2.0">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c4a6e"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="480" fill="url(#bg)"/>
+  <circle cx="1040" cy="90" r="170" fill="#ffffff" opacity="0.08"/>
+  <circle cx="140" cy="420" r="120" fill="#ffffff" opacity="0.06"/>
+  <text x="600" y="245" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="150" font-weight="800" fill="#ffffff">v2.0</text>
+  <text x="600" y="320" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="44" font-weight="600" fill="#e0f2fe">SampleLibrary</text>
+</svg>

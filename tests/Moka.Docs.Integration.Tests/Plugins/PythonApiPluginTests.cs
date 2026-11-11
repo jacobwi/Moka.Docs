@@ -109,6 +109,104 @@ public sealed class PythonApiPluginTests : IDisposable
 	}
 
 	[Fact]
+	public async Task SourceEndingInASeparator_IsAnalyzed()
+	{
+		// The arguments were one quoted string, and on Windows "C:\...\src\" escaped its closing
+		// quote, so Python got the source path and every argument after it as one argument.
+		Assert.SkipUnless(_pythonAvailable.Value, "python3 is not on PATH");
+
+		List<DocPage> pages = await BuildAsync(Declaration(("source", "./src/")));
+
+		pages.Should().Contain(p => p.Route == "/python-api/calc/calc");
+	}
+
+	[Fact]
+	public async Task ClassInAPackageAndASubmoduleNamedLikeIt_GetSeparatePages()
+	{
+		// Class Calc in mypkg/__init__.py and the functions of mypkg/calc.py both mapped to
+		// /python-api/mypkg/calc, and one page overwrote the other.
+		Assert.SkipUnless(_pythonAvailable.Value, "python3 is not on PATH");
+		WritePackage();
+
+		List<DocPage> pages = await BuildAsync(Declaration(("source", "./pkgsrc")));
+
+		pages.Should().Contain(p => p.Route == "/python-api/mypkg/calc" && p.FrontMatter.Title == "calc",
+			"the module keeps its own path");
+		DocPage calcClass = pages.Should().ContainSingle(p => p.FrontMatter.Title == "Calc").Subject;
+		calcClass.Route.Should().Be("/python-api/mypkg/calc-2");
+		pages.GroupBy(p => p.Route, StringComparer.OrdinalIgnoreCase).Should().OnlyContain(g => g.Count() == 1);
+		pages.Single(p => p.Route == "/python-api").Content.Html
+			.Should().Contain("href=\"/python-api/mypkg/calc\"").And.Contain("href=\"/python-api/mypkg/calc-2\"");
+	}
+
+	[Fact]
+	public async Task SourcePointingAtAPackage_NamesItsInitModuleAfterTheFolder()
+	{
+		// An __init__.py directly in source became a module named __init__.
+		Assert.SkipUnless(_pythonAvailable.Value, "python3 is not on PATH");
+		WritePackage();
+
+		List<DocPage> pages = await BuildAsync(Declaration(("source", "./pkgsrc/mypkg")));
+
+		pages.Should().Contain(p => p.Route == "/python-api/mypkg" && p.FrontMatter.Title == "mypkg");
+		pages.Should().Contain(p => p.Route == "/python-api/mypkg/calc" && p.FrontMatter.Title == "Calc");
+		pages.Should().NotContain(p => p.Route.Contains("__init__", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task CancellingTheBuild_StopsTheAnalyzerAndWhatItStarted()
+	{
+		// The analyzer was read with the build's token but never killed, so a cancelled build
+		// left it running.
+		using var tree = new HangingProcessTree();
+		string fakePython = tree.WriteScript();
+		using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+		var config = new SiteConfig
+		{
+			Site = new SiteMetadata { Title = "Python" },
+			Content = new ContentConfig { Docs = "./docs" },
+			Build = new BuildConfig { Output = "./_site", Cache = false },
+			Plugins = [Declaration(("source", "./src"), ("pythonPath", fakePython))]
+		};
+
+		Task<DryRunOutcome> build = DryRunBuild.RunAsync(config, _root, false, false, cts.Token);
+		await tree.WaitUntilStartedAsync(TimeSpan.FromSeconds(60));
+		await cts.CancelAsync();
+		Func<Task> act = () => build.WaitAsync(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken);
+
+		await act.Should().ThrowAsync<OperationCanceledException>();
+		(await tree.GrandchildExitedAsync(TimeSpan.FromSeconds(15))).Should().BeTrue();
+	}
+
+	private void WritePackage()
+	{
+		string package = Path.Combine(_root, "pkgsrc", "mypkg");
+		Directory.CreateDirectory(package);
+		File.WriteAllText(Path.Combine(package, "__init__.py"), string.Join("\n",
+			"'''My package.'''",
+			"",
+			"class Calc:",
+			"    '''A calculator defined in the package.'''",
+			"",
+			"    def add(self, a: int, b: int) -> int:",
+			"        '''Adds two numbers.'''",
+			"        return a + b",
+			"",
+			"",
+			"def helper(x: int) -> int:",
+			"    '''Package level helper.'''",
+			"    return x",
+			""));
+		File.WriteAllText(Path.Combine(package, "calc.py"), string.Join("\n",
+			"'''Calc module functions.'''",
+			"",
+			"def compute(x: int) -> int:",
+			"    '''Computes something.'''",
+			"    return x * 2",
+			""));
+	}
+
+	[Fact]
 	public async Task SecondDeclaration_DoesNotInheritTheFirstOnesOptions()
 	{
 		// Both entries run on one plugin instance, and option fields were only overwritten

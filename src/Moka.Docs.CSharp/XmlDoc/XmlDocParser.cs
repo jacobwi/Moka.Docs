@@ -265,7 +265,7 @@ public sealed partial class XmlDocParser(ILogger<XmlDocParser> logger)
 
 			case "code":
 				sb.Append("<pre><code>");
-				sb.Append(EscapeText(element.Value));
+				sb.Append(EscapeText(TrimCodeIndentation(element.Value)));
 				sb.Append("</code></pre>");
 				break;
 
@@ -275,14 +275,9 @@ public sealed partial class XmlDocParser(ILogger<XmlDocParser> logger)
 				sb.Append("</p>");
 				break;
 
-			case "paramref":
-				string paramName = element.Attribute("name")?.Value ?? "";
-				sb.Append($"<code>{paramName}</code>");
-				break;
-
-			case "typeparamref":
-				string typeParamName = element.Attribute("name")?.Value ?? "";
-				sb.Append($"<code>{typeParamName}</code>");
+			// The name is the comment author's text like any other, and it used to go out unescaped.
+			case "paramref" or "typeparamref":
+				sb.Append($"<code>{EscapeText(element.Attribute("name")?.Value ?? "")}</code>");
 				break;
 
 			case "see":
@@ -300,9 +295,10 @@ public sealed partial class XmlDocParser(ILogger<XmlDocParser> logger)
 				}
 				else if (!string.IsNullOrEmpty(href))
 				{
-					string escapedHref = HttpUtility.HtmlAttributeEncode(href);
 					string escapedText = HttpUtility.HtmlEncode(string.IsNullOrEmpty(linkText) ? href : linkText);
-					sb.Append($"<a href=\"{escapedHref}\">{escapedText}</a>");
+					sb.Append(ApiDocText.TryGetSafeUrl(href, out string safeHref)
+						? $"<a href=\"{HttpUtility.HtmlAttributeEncode(safeHref)}\">{escapedText}</a>"
+						: escapedText);
 				}
 				else if (element.Attribute("langword")?.Value is { Length: > 0 } langword)
 				{
@@ -330,29 +326,114 @@ public sealed partial class XmlDocParser(ILogger<XmlDocParser> logger)
 	private static string EscapeText(string text) =>
 		text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
+	/// <summary>
+	///     Removes the blank lines around a code block and the indentation its lines share. The comment's
+	///     own indentation, left behind by <c>///</c>, used to show up in front of every line.
+	/// </summary>
+	internal static string TrimCodeIndentation(string code)
+	{
+		string[] lines = code.Replace("\r\n", "\n").Split('\n');
+		int start = 0;
+		int end = lines.Length;
+		while (start < end && string.IsNullOrWhiteSpace(lines[start]))
+		{
+			start++;
+		}
+
+		while (end > start && string.IsNullOrWhiteSpace(lines[end - 1]))
+		{
+			end--;
+		}
+
+		string[] kept = lines[start..end];
+		int indent = kept
+			.Where(line => !string.IsNullOrWhiteSpace(line))
+			.Select(line => line.Length - line.TrimStart(' ', '\t').Length)
+			.DefaultIfEmpty(0)
+			.Min();
+
+		return string.Join("\n", kept.Select(line => line.Length > indent ? line[indent..].TrimEnd() : ""));
+	}
+
+	/// <summary>
+	///     Renders a <c>&lt;list&gt;</c>: a bulleted or numbered list whose items show their
+	///     <c>&lt;term&gt;</c> before the <c>&lt;description&gt;</c>, or a table for <c>type="table"</c>, with
+	///     the <c>&lt;listheader&gt;</c> as its heading row. Only the description used to be kept.
+	/// </summary>
 	private static void RenderList(StringBuilder sb, XElement listElement)
 	{
 		string type = listElement.Attribute("type")?.Value ?? "bullet";
+		if (type == "table")
+		{
+			RenderTableList(sb, listElement);
+			return;
+		}
+
 		string tag = type == "number" ? "ol" : "ul";
 
 		sb.Append($"<{tag}>");
 		foreach (XElement item in listElement.Elements("item"))
 		{
-			sb.Append("<li>");
+			string term = RenderInnerXml(item.Element("term"));
 			XElement? desc = item.Element("description");
-			if (desc is not null)
+			string description = desc is not null || term.Length > 0 ? RenderInnerXml(desc) : RenderInnerXml(item);
+
+			sb.Append("<li>");
+			if (term.Length > 0)
 			{
-				sb.Append(RenderInnerXml(desc));
-			}
-			else
-			{
-				sb.Append(RenderInnerXml(item));
+				sb.Append($"<strong>{term}</strong>");
+				if (description.Length > 0)
+				{
+					sb.Append(": ");
+				}
 			}
 
+			sb.Append(description);
 			sb.Append("</li>");
 		}
 
 		sb.Append($"</{tag}>");
+	}
+
+	private static void RenderTableList(StringBuilder sb, XElement listElement)
+	{
+		sb.Append("<div class=\"table-responsive\"><table>");
+		if (listElement.Element("listheader") is { } header)
+		{
+			sb.Append("<thead><tr>");
+			foreach (string cell in TableCells(header))
+			{
+				sb.Append($"<th>{cell}</th>");
+			}
+
+			sb.Append("</tr></thead>");
+		}
+
+		sb.Append("<tbody>");
+		foreach (XElement item in listElement.Elements("item"))
+		{
+			sb.Append("<tr>");
+			foreach (string cell in TableCells(item))
+			{
+				sb.Append($"<td>{cell}</td>");
+			}
+
+			sb.Append("</tr>");
+		}
+
+		sb.Append("</tbody></table></div>");
+	}
+
+	private static IEnumerable<string> TableCells(XElement row)
+	{
+		XElement? term = row.Element("term");
+		XElement? description = row.Element("description");
+		if (term is null && description is null)
+		{
+			return [RenderInnerXml(row)];
+		}
+
+		return term is null ? [RenderInnerXml(description)] : [RenderInnerXml(term), RenderInnerXml(description)];
 	}
 
 	private static string NormalizeWhitespace(string text)

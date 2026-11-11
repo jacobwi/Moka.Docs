@@ -19,7 +19,6 @@
     <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
-    <PackageReference Include="Moka.Blazor.Repl.Compiler" />
   </ItemGroup>
 
   <ItemGroup>

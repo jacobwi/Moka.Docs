@@ -7,7 +7,7 @@ order: 1
 
 MokaDocs includes a plugin system for adding functionality to a documentation site. Plugins can modify page content, inject scripts and styles, generate new pages, and queue extra files for the output directory.
 
-The `mokadocs` CLI only loads its built-in plugins. A plugin you write yourself runs from your own host program; see [Creating a Custom Plugin](#creating-a-custom-plugin).
+The `mokadocs` CLI runs its built-in plugins, and loads a plugin of your own from a `.dll` or a project named by `plugins[].path`; see [Creating a Custom Plugin](#creating-a-custom-plugin) and [Loading a Plugin from a Path](#loading-a-plugin-from-a-path).
 
 ## Architecture Overview
 
@@ -24,7 +24,9 @@ Plugins run at a fixed point in the build pipeline: after Markdown parsing and b
 | 400 | Markdown Parse | Parses Markdown with custom extensions |
 | | **Plugin hook** | **Loaded plugins run here, immediately before the first phase with order 500 or higher** |
 | 500 | Feature Gate | Removes pages whose `requires` feature flag is disabled |
+| 550 | Blog | Generates the blog's index and tag pages and its feeds, when the blog is on |
 | 600 | Navigation Build | Builds the sidebar navigation tree |
+| 650 | Blog Navigation | Lists the latest posts under the blog's sidebar entry |
 | 700 | Search Index | Builds client-side search entries |
 | 900 | Render | Applies Scriban templates |
 | 1100 | Output | Writes pages and assets to the output directory (`_site/` by default) |
@@ -102,9 +104,9 @@ The plugin system follows a three-phase lifecycle:
 
 ### 1. Discovery
 
-When the host loads plugins, `PluginHost` resolves every `IMokaPlugin` registered in the DI container and matches each entry in the `plugins` section to the plugin whose `Id` equals the entry's `name`, ignoring case.
+When the host loads plugins, `PluginHost` resolves every `IMokaPlugin` registered in the DI container and matches each entry in the `plugins` section to the plugin whose `Id` equals the entry's `name`, ignoring case. An entry with a `path` takes the plugin with that id from the assembly the path names instead (see [Loading a Plugin from a Path](#loading-a-plugin-from-a-path)).
 
-Only plugins with a matching entry are activated. Registered plugins without an entry are ignored, an entry that matches no registered plugin is logged as a warning, and an entry without a `name` is skipped. `mokadocs validate` and `mokadocs doctor` report entries whose name matches no plugin.
+Only plugins with a matching entry are activated. Registered plugins without an entry are ignored, an entry that matches no registered plugin is logged as a warning, and an entry without a `name` is skipped. `mokadocs validate` and `mokadocs doctor` report entries whose name matches no plugin. An entry whose `path` fails to load is an error in every build.
 
 The same id can be declared more than once. Each entry gets its own options and context, but all entries share one plugin instance, so reset any per-entry state at the start of `ExecuteAsync`.
 
@@ -177,7 +179,7 @@ plugins:
 |-----------|--------|-------------|
 | `name`    | string | **Required.** Matched against the `Id` property of a registered `IMokaPlugin`, ignoring case. |
 | `options` | object | Optional. A key-value map passed to the plugin via `context.Options`. |
-| `path`    | string | Not supported. No host loads plugin assemblies from a path; `validate` and `doctor` warn when it is set. |
+| `path`    | string | Optional. A plugin `.dll`, a project, or a folder holding either, relative to `mokadocs.yaml`. The CLI loads the plugin with the id `name` from it. See [Loading a Plugin from a Path](#loading-a-plugin-from-a-path). |
 
 ### Plugin Matching
 
@@ -237,15 +239,15 @@ A host registers plugins in its .NET dependency injection container as `IMokaPlu
 services.AddSingleton<IMokaPlugin, MyCustomPlugin>();
 ```
 
-Registration alone doesn't activate a plugin: its id also has to be declared under `plugins` in the site configuration. Where that is possible:
+Registration alone doesn't activate a plugin: its id also has to be declared under `plugins` in the site configuration. `AddMokaDocsPlugins()` registers the `PluginHost` and the built-in plugins, and both hosts use it:
 
-- **`mokadocs` CLI** - registers only the built-in plugins. You can't add your own.
-- **ASP.NET Core host** (`AddMokaDocs`) - register your plugin in the application's services and add a `PluginEntry` with its id to `MokaDocsOptions.Plugins`. See [Plugins](/guide/aspnetcore#plugins).
-- **Your own host** - a program that builds the site with the MokaDocs libraries, registers your plugin, and reads a `mokadocs.yaml` that declares it. [Step 3](#step-3-run-it-from-your-own-host) below shows a complete one.
+- **`mokadocs` CLI** - registers every built-in plugin and runs the ones `mokadocs.yaml` declares. A plugin of your own is loaded from its `path`; see [Loading a Plugin from a Path](#loading-a-plugin-from-a-path).
+- **ASP.NET Core host** (`AddMokaDocs`) - registers the built-in plugins that `MokaDocsOptions.Plugins` declares, and the REPL plugin only with `EnableRepl`. Register your plugin in the application's services and add a `PluginEntry` with its id. `PluginEntry` has no `path`: the application references the plugin's project or package like any other dependency, so it never loads an assembly from a path. See [Plugins](/guide/aspnetcore#plugins).
+- **Your own host** - a program that builds the site with the MokaDocs libraries, registers your plugin, and reads a `mokadocs.yaml` that declares it. [Running a Plugin from Your Own Host](#running-a-plugin-from-your-own-host) below shows a complete one.
 
 ## Creating a Custom Plugin
 
-This step-by-step guide walks through creating a plugin that adds a custom footer to every documentation page, then running it from a small host program.
+This step-by-step guide walks through creating a plugin that adds a custom footer to every documentation page, then running it with `mokadocs`.
 
 ### Scaffolding with the CLI
 
@@ -257,10 +259,10 @@ mokadocs new plugin custom-footer
 
 This creates a `Moka.Docs.Plugins.CustomFooter/` directory in the current directory (`--path` picks another parent directory) containing:
 
-- `Moka.Docs.Plugins.CustomFooter.csproj` - a `net9.0` class library with a PackageReference to `Moka.Docs.Plugins` at the version of your `mokadocs` tool
-- `CustomFooterPlugin.cs` - a starter `IMokaPlugin` class with the id `mokadocs-custom-footer`
+- `Moka.Docs.Plugins.CustomFooter.csproj` - a `net9.0` class library with a PackageReference to `Moka.Docs.Plugins` at the version of your `mokadocs` tool. The reference has `ExcludeAssets="runtime"`, since `mokadocs` supplies that assembly when it loads the plugin, and `EnableDynamicLoading` copies the packages you add to the build output.
+- `CustomFooterPlugin.cs` - a starter `IMokaPlugin` class with the id `mokadocs-custom-footer`. It adds a page at `/custom-footer` that shows its `message` option.
 
-The command also prints a reminder that the CLI loads only built-in plugins.
+The command prints the `plugins` entry to add to `mokadocs.yaml`. The starter class works as it is: declare it and run `mokadocs serve` to see its page.
 
 ### Step 1: Write the Plugin Class
 
@@ -320,19 +322,30 @@ The plugin runs before the Render phase, so the footer ends up at the bottom of 
 
 ### Step 2: Configure the Plugin
 
-Add the plugin configuration to your `mokadocs.yaml`:
+Add the plugin configuration to your `mokadocs.yaml`. `path` points at the plugin's project folder, relative to `mokadocs.yaml`:
 
 ```yaml
 plugins:
   - name: mokadocs-custom-footer
+    path: ../Moka.Docs.Plugins.CustomFooter
     options:
       text: "Copyright 2026 My Company. Built with MokaDocs."
       cssClass: docs-page-footer
 ```
 
-### Step 3: Run It from Your Own Host
+### Step 3: Run It
 
-The `mokadocs` CLI can't load this plugin, so build the site from a console app (`dotnet new console`) with a project reference to the plugin project. `Moka.Docs.Plugins` brings in the build engine, and this `Program.cs` runs a full build:
+```bash
+mokadocs serve
+```
+
+`mokadocs` builds the project with `dotnet build -c Release`, loads the plugin with the id `mokadocs-custom-footer` from it, and runs it in every build. Every page in the site now ends with the custom footer, and the footer text and CSS class come from `mokadocs.yaml`. A compiler error in the plugin is a build error that quotes the compiler's message. `serve` builds the project again whenever `mokadocs.yaml` changes, so save it after editing the plugin, or restart.
+
+Once the plugin is done, you can also point `path` at the `.dll` that `dotnet build` produced, so `mokadocs` doesn't build anything.
+
+### Running a Plugin from Your Own Host
+
+A program that builds the site with the MokaDocs libraries can register the plugin itself instead. This console app (`dotnet new console`) has a project reference to the plugin project; `Moka.Docs.Plugins` brings in the build engine, and this `Program.cs` runs a full build of a `mokadocs.yaml` that declares the plugin without a `path`:
 
 ```csharp
 using System.IO.Abstractions;
@@ -392,9 +405,7 @@ Run it with the path to your `mokadocs.yaml`:
 dotnet run -- ../docs-site/mokadocs.yaml
 ```
 
-Every page in the built site now ends with the custom footer, and the footer text and CSS class come from `mokadocs.yaml`.
-
-This host covers a plain build. It has no dev server, watch mode or versioning, and `AddMokaDocsPlugins` registers only the Python API plugin among the built-ins. Register others the same way, for example `services.AddSingleton<IMokaPlugin, ChangelogPlugin>()` from `Moka.Docs.Plugins.Changelog`.
+This host covers a plain build. It has no dev server, watch mode or versioning. `AddMokaDocsPlugins()` registers every built-in plugin; `AddMokaDocsPlugins(o => o.BuiltInPlugins = ["openapi"])` registers only the ones listed. Entries with a `path` are reported as errors unless the host sets `o.PluginBaseDirectory` to the folder that holds `mokadocs.yaml`, which loads them the way the CLI does.
 
 ### Plugin Best Practices
 
@@ -405,3 +416,45 @@ This host covers a plain build. It has no dev server, watch mode or versioning, 
 - **Handle missing services gracefully.** When calling `GetService<T>()`, always check for `null` returns.
 - **Reset per-entry state.** If your plugin can be declared more than once, reset its fields at the start of `ExecuteAsync`.
 - **Respect dry runs.** When `buildContext.DryRun` is set, don't write to the output directory yourself. Files queued in `DeferredOutputFiles` are skipped for you.
+
+## Loading a Plugin from a Path
+
+`mokadocs build`, `serve`, `validate`, `doctor` and `stats` load the plugin of a `plugins` entry that sets `path`. The path is relative to `mokadocs.yaml` and names one of:
+
+- **A `.dll`** - loaded as it is.
+- **A project file** (`.csproj`, `.fsproj` or `.vbproj`) - built first with `dotnet build -c Release`, through the .NET SDK on your `PATH`. A project with several target frameworks is built for the highest one the running `mokadocs` can load. The build, restore included, may take ten minutes before it's stopped.
+- **A folder** - the project in it, when it holds one. Otherwise the assembly that has a `.deps.json` beside it, as `dotnet build` output does, or the folder's only `.dll`.
+
+`mokadocs` then looks for classes that implement `IMokaPlugin`, creates them with their constructor arguments from its services (an `ILogger<T>`, for example), and uses the one whose `Id` matches `name`. Two entries naming the same assembly share its plugin instances.
+
+### Dependencies
+
+Each plugin assembly gets a load context of its own:
+
+- The MokaDocs libraries (`Moka.Docs.Core`, `Moka.Docs.Plugins` and the rest) and the .NET framework always come from `mokadocs`, so the plugin's `IMokaPlugin` and `BuildContext` are the ones `mokadocs` calls. A copy of them in the plugin's folder is ignored.
+- The plugin's other dependencies come from its folder, as its `.deps.json` lists them. When `mokadocs` has the same library at the same major version and at least the version the plugin asks for, its copy is used, so types the two exchange stay the same type. Any other version is loaded from the plugin's folder, next to the one `mokadocs` uses.
+- Assemblies are read into memory, so a running `serve` doesn't lock the plugin's build output and can build the project again. `Assembly.Location` is empty for them; ship data files as embedded resources.
+
+### Compatibility
+
+A plugin built against `Moka.Docs.Plugins` of another major version than the running `mokadocs`, or of a newer version, isn't loaded. A `net9.0` plugin runs in both builds of `mokadocs`; a `net10.0` one needs `mokadocs` running on .NET 10.
+
+### Errors
+
+When the plugin can't be loaded, every build reports an error that names the plugin, its path and the reason, and `mokadocs build` exits with code 1. The reasons:
+
+- the path doesn't exist, or isn't a `.dll`, a project or a folder holding one
+- `dotnet build` failed (the error quotes the compiler's messages) or took too long
+- the assembly has no class that implements `IMokaPlugin`, or none whose `Id` matches `name` (the error lists the ids it has)
+- a class implements an `IMokaPlugin` from another assembly than `Moka.Docs.Plugins`
+- the plugin targets an incompatible MokaDocs version, or its constructor threw
+
+`mokadocs validate` lists the error, and `mokadocs doctor` fails its Plugins check with it.
+
+### In `serve` and `build --watch`
+
+A change to `mokadocs.yaml` loads the plugins again before the next build, and a plugin from a project is built again. Changes to the plugin's own files don't trigger anything; save `mokadocs.yaml` or restart. See [Dev Server](/advanced/dev-server#configuration-changes).
+
+### In the ASP.NET Core Host
+
+`MokaDocsOptions.Plugins` entries have no path. Add a reference to the plugin's project or package to the application and register the plugin with `services.AddSingleton<IMokaPlugin, MyPlugin>()`; the same plugin project works in both hosts.

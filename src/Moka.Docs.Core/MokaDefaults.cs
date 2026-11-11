@@ -19,6 +19,9 @@ public static class MokaDefaults
 	/// <summary>Show the code block window style selector in the header.</summary>
 	public static bool ShowCodeStyleSelector { get; set; } = false;
 
+	/// <summary>Show the appearance style selector in the header.</summary>
+	public static bool ShowStyleSelector { get; set; } = true;
+
 	/// <summary>Show the "Was this page helpful?" feedback widget.</summary>
 	public static bool ShowFeedbackWidget { get; set; } = true;
 
@@ -42,6 +45,9 @@ public static class MokaDefaults
 
 	/// <summary>Show "Last updated" date on pages.</summary>
 	public static bool ShowLastUpdated { get; set; } = true;
+
+	/// <summary>Show the page's git authors under the "Last updated" date. Off by default.</summary>
+	public static bool ShowContributors { get; set; }
 
 	/// <summary>Show "Edit on GitHub" link.</summary>
 	public static bool ShowEditLink { get; set; } = false;
@@ -77,6 +83,18 @@ public static class MokaDefaults
 	/// <summary>Default code block window style (plain, macos, terminal, vscode).</summary>
 	public static string CodeStyle { get; set; } = "plain";
 
+	/// <summary>Default appearance style (default, moka, minimal, classic, soft).</summary>
+	public static string Style { get; set; } = "default";
+
+	/// <summary>Default sidebar mode (auto, inline, shared).</summary>
+	public static string Sidebar { get; set; } = "auto";
+
+	/// <summary>
+	///     Most sidebar entries the <c>auto</c> sidebar mode writes into every page. A bigger
+	///     sidebar is written once and shared.
+	/// </summary>
+	public static int SidebarInlineLimit { get; set; } = 300;
+
 	/// <summary>Default theme name.</summary>
 	public static string ThemeName { get; set; } = "default";
 
@@ -93,6 +111,9 @@ public static class MokaDefaults
 	/// <summary>Clean output directory before build.</summary>
 	public static bool CleanOutput { get; set; } = true;
 
+	/// <summary>Minify the HTML pages and the default theme's CSS and JS. Off by default.</summary>
+	public static bool MinifyOutput { get; set; }
+
 	#endregion
 
 	#region Feature Defaults
@@ -100,7 +121,8 @@ public static class MokaDefaults
 	/// <summary>Enable search by default.</summary>
 	public static bool SearchEnabled { get; set; } = true;
 
-	/// <summary>Default search provider.</summary>
+	/// <summary>Not used. Search has no providers; see <see cref="Configuration.SearchFeatureConfig.Provider" />.</summary>
+	[Obsolete("Search has no providers; this value is ignored. It will be removed in 2.0.")]
 	public static string SearchProvider { get; set; } = "flexsearch";
 
 	#endregion

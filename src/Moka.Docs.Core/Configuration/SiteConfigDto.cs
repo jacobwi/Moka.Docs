@@ -68,6 +68,10 @@ internal sealed class ThemeOptionsDto
 	public bool? CodeThemeSelector { get; set; }
 	public string? CodeStyle { get; set; }
 	public bool? CodeStyleSelector { get; set; }
+	public string? Style { get; set; }
+	public bool? StyleSelector { get; set; }
+	public string? Sidebar { get; set; }
+	public int? SidebarInlineLimit { get; set; }
 	public bool? ShowFeedback { get; set; }
 	public bool? ShowDarkModeToggle { get; set; }
 	public bool? ShowAnimations { get; set; }
@@ -116,7 +120,6 @@ internal sealed class FeaturesConfigDto
 internal sealed class SearchFeatureConfigDto
 {
 	public bool? Enabled { get; set; }
-	public string? Provider { get; set; }
 }
 
 /// <summary>DTO for versioning feature config.</summary>
@@ -132,6 +135,7 @@ internal sealed class VersionDefinitionDto
 {
 	public string? Label { get; set; }
 	public string? Branch { get; set; }
+	public string? Tag { get; set; }
 	public bool Default { get; set; }
 	public bool Prerelease { get; set; }
 }
@@ -142,6 +146,24 @@ internal sealed class BlogFeatureConfigDto
 	public bool? Enabled { get; set; }
 	public int? PostsPerPage { get; set; }
 	public bool? ShowAuthors { get; set; }
+	public string? Path { get; set; }
+	public string? Route { get; set; }
+	public string? Title { get; set; }
+	public string? Description { get; set; }
+	public int? SidebarPosts { get; set; }
+
+	// A format name or a list of them, so YAML gives a string or a list.
+	public object? Feed { get; set; }
+
+	public Dictionary<string, BlogAuthorDto>? Authors { get; set; }
+}
+
+/// <summary>DTO for an entry of <c>features.blog.authors</c>.</summary>
+internal sealed class BlogAuthorDto
+{
+	public string? Name { get; set; }
+	public string? Url { get; set; }
+	public string? Avatar { get; set; }
 }
 
 /// <summary>DTO for a plugin declaration.</summary>
@@ -178,5 +200,6 @@ internal sealed class BuildConfigDto
 	public bool? Sitemap { get; set; }
 	public bool? Robots { get; set; }
 	public bool? Cache { get; set; }
+	public bool? Strict { get; set; }
 	public string? BasePath { get; set; }
 }

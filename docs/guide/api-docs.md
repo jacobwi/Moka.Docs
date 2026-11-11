@@ -11,8 +11,8 @@ MokaDocs generates API reference pages from the C# source of the projects listed
 
 For each configured project, the build:
 
-1. Collects every `.cs` file under the folder that contains the `.csproj`, skipping `bin` and `obj` folders
-2. Reads the project's settings from the `.csproj`, the `Directory.Build.props` it imports and `obj/project.assets.json`
+1. Reads the project's settings from the `.csproj`, the `Directory.Build.props` it imports and `obj/project.assets.json`
+2. Collects the `.cs` files the project compiles (see below)
 3. Compiles the files with Roslyn against the shared framework of the .NET runtime MokaDocs runs on, plus the project's package and project references
 4. Extracts type declarations, member signatures and XML documentation comments
 5. Fills in missing documentation from base types and interfaces (see `<inheritdoc>` below)
@@ -24,7 +24,7 @@ MSBuild doesn't run. From the project files, MokaDocs reads the target framework
 - Only unconditional properties and items are read. Values built from other properties are used when those properties were read first, as in `$(DefineConstants);MY_SYMBOL`; anything else that needs MSBuild to evaluate is skipped. A `Directory.Build.props` higher up applies only when the nearest one imports it, as MSBuild does.
 - Package and project references come from `obj/project.assets.json`, so the project needs a `dotnet restore`. A project reference also needs the referenced project built, because its assembly is taken from that project's `bin` folder. Types that can't be resolved show without their namespace, and an exception `cref` that points at one shows as written.
 - Shared framework references, such as `Microsoft.AspNetCore.App` in a Web SDK project, resolve from the same .NET installation.
-- Every `.cs` file below the project folder is included, whether or not the `.csproj` compiles it. Keep other projects out of that folder.
+- The source files follow the project's `Compile` items the way the .NET SDK evaluates them. Every `.cs` file below the project folder counts, except those in folders named `bin` or `obj` and in folders whose name starts with a dot, such as `.vs` or `.mokadocs`. Then the unconditional `<Compile Include>` and `<Compile Remove>` items apply in order, `Exclude` included, so a linked file such as `<Compile Include="../Shared/Version.cs" />` is analyzed and a removed one isn't. `EnableDefaultItems` or `EnableDefaultCompileItems` set to `false` turns the folder search off, and `DefaultItemExcludes` patterns are left out of it. Items in `Directory.Build.props` apply before the SDK's and the project's own. A project nested inside another project's folder is analyzed with it unless a `<Compile Remove>` leaves it out.
 
 ## Configuration
 
@@ -37,7 +37,7 @@ content:
     - path: src/MyLibrary.Abstractions/MyLibrary.Abstractions.csproj
 ```
 
-A plain string entry such as `- src/MyLibrary/MyLibrary.csproj` makes the build stop with "Failed to parse configuration". A path that doesn't exist produces a "Project file not found" warning and that project is skipped.
+A plain string entry such as `- src/MyLibrary/MyLibrary.csproj` makes the build stop with "Failed to parse configuration". A path that doesn't exist is a "Project file not found" error, and so is a project the analysis fails on, with the reason. The rest of the site still builds, without that project's API reference, and `mokadocs build` exits with code 1 so a CI run doesn't publish the site as if nothing were missing. A project with no source files is a warning.
 
 ### Project Options
 
@@ -61,6 +61,10 @@ content:
 
 Each class, struct, record, interface, enum and delegate gets a page. The route is `/api/` followed by the namespace with dots turned into slashes and the type name, all lowercase: `MyLibrary.Text.Parser` is at `/api/mylibrary/text/parser`.
 
+- A nested type's name follows its containing types, joined with dots: `Outer.Options` is at `/api/mylibrary/outer.options`, so it doesn't share a page with `Other.Options` or a top-level `Options`.
+- When types in the same namespace and containing type share a name but not their number of type parameters, as `Result` and `Result<T>` do, the one with the fewest type parameters keeps the plain route and each other one gets a hyphen and its number of type parameters: `Result<T>` is at `/api/mylibrary/result-1`. A generic type without such a twin keeps the plain route, so `Repository<T>` alone is at `/api/mylibrary/repository`.
+- The page title, the `/api` index and the links from `<see cref>` show the name as C# writes it: `Outer.Options`, `Result<T>`.
+
 Types declared outside any namespace are listed under `(global)`, so `Helper` in the global namespace is at `/api/(global)/helper`.
 
 | Type Kind   | Example                                       |
@@ -72,13 +76,15 @@ Types declared outside any namespace are listed under `(global)`, so `Helper` in
 | Enums       | `public enum LogLevel`                        |
 | Delegates   | `public delegate void EventHandler(Event e)`  |
 
-A page opens with a declaration line such as `public sealed class Parser : MyLibrary.Text.ParserBase, System.IDisposable`. It shows type parameter names without their constraints. A delegate's line shows only its name. Its parameters are listed under its `Invoke` method, whose signature is the full delegate declaration.
+A page opens with the type's declaration line as the source writes it, without attributes and type parameter constraints: `public sealed class Parser : MyLibrary.Text.ParserBase, System.IDisposable`, `public readonly record struct Money(decimal Amount, string Currency)`, `public enum Flags : byte`, `public interface IProducer<out T>`. Base types and interfaces are written with their namespace, and the ones the compiler adds, such as `System.ValueType` on a struct or `IEquatable<Money>` on a record, are left out of the line; the [Inheritance](#base-types-and-interfaces) section still lists them. A delegate's line is its full declaration, such as `public delegate TResult Transform<in T, out TResult>(T input)`, and its parameters are listed under its `Invoke` method too.
 
 A `partial` type declared in several files gets one page, which lists the members of every declaration. Its View Source section shows each declaration, headed by the name of its file.
 
 ### Accessibility
 
 By default, MokaDocs documents `public`, `protected` and `protected internal` types and members. It leaves out `internal` and `private protected` ones, and it leaves out a public type nested inside an internal type. With `includeInternals: true`, the `internal` and `private protected` ones are documented too. Private members never are.
+
+Types, members and enum values marked `[EditorBrowsable(EditorBrowsableState.Never)]` are left out as well, the way IntelliSense hides them, along with the types nested in a hidden type. The [ASP.NET Core integration](/guide/aspnetcore) does the same.
 
 ### Member Documentation
 
@@ -93,7 +99,7 @@ A type's members are grouped into sections:
 | Fields       | Fields and enum members   | `public const int MaxDepth = 10`, `Info = 1`              |
 | Operators    | Operators and conversions | `public static Point operator +(Point a, Point b)`        |
 
-After these, a page can list the members the type inherits from other documented types and the extension methods that apply to it. See [Inherited Members](#inherited-members) and [Extension Methods](#extension-methods).
+After these, a page can list the members the type inherits from other documented types and the extension methods that apply to it. See [Inherited Members](#inherited-members) and [Extension Methods](#extension-methods). A static class that declares C# 14 extension blocks gets a section for each block instead; see [Extension Blocks](#extension-blocks).
 
 Each section starts with a table of member names and summaries. Below it, members get a detail block with their signature and documentation. What to expect:
 
@@ -101,6 +107,7 @@ Each section starts with a table of member names and summaries. Below it, member
 - The table shows the member name and a short parameter list. Operators and conversions appear as C# writes them, such as `operator +(Point a, Point b)` and `implicit operator Point(int value)`. Indexers appear as `this[int index]` and constructors under the type name. A list of more than two parameters is shortened to `(…)`, and hovering over it shows the whole list.
 - A detail block's anchor is the member's metadata name in lowercase, such as `#parse`, `#op_addition` or `#this[]`, and the type name for a constructor. Overloads after the first get `-2`, `-3` and so on, in the order the table lists them.
 - Signatures read like the declaration: accessibility, modifiers such as `static`, `abstract`, `sealed override`, `new`, `readonly`, `required`, `const` and `volatile`, `this` on an extension method's first parameter, default values, type parameter constraints, accessor accessibility such as `{ get; private set; }` or `{ get; init; }`, and constant values. `async` isn't part of a signature. Interface members show only the modifiers their declarations spell out, such as `static abstract`.
+- Default values are written as the source writes them: `DayOfWeek day = DayOfWeek.Friday`, `double limit = double.NaN`, `CancellationToken token = default`.
 - Types in signatures and in the Parameters table are written without their namespace.
 - Static, virtual, abstract, override and obsolete members also get a badge in the table.
 - The Parameters table, which lists each parameter's type, only appears when the member has `<param>` docs.
@@ -109,7 +116,13 @@ Each section starts with a table of member names and summaries. Below it, member
 
 MokaDocs reads the standard XML documentation tags. Some render only on type pages, as noted for each tag below.
 
-In the text of tags such as `<summary>` and `<remarks>`, `<see href="...">` becomes a link. `<c>`, `<paramref>`, `<typeparamref>` and `<see langword="null"/>` become inline code, `<code>` a code block, `<para>` a paragraph and `<list>` a bulleted or numbered list. Escaped text such as `<c>List&lt;T&gt;</c>` shows as `List<T>`.
+In the text of tags such as `<summary>` and `<remarks>`, `<see href="...">` becomes a link. `<c>`, `<paramref>`, `<typeparamref>` and `<see langword="null"/>` become inline code, `<code>` a code block, `<para>` a paragraph and `<list>` a bulleted or numbered list. Escaped text such as `<c>List&lt;T&gt;</c>` shows as `List<T>`. Everything a comment says is shown as text, names in `<paramref>` and `<typeparamref>` included, so a comment can't add markup or scripts to the page.
+
+- A link from `<see href>` or `<seealso href>` is made only for an `http`, `https` or `mailto` URL, or a relative one. Tabs, line breaks and other control characters are removed first, since browsers ignore them, so `java&#9;script:` doesn't get through. Any other URL shows as plain text.
+- A `<code>` block loses the blank lines around it and the indentation its lines share, which the `///` comment adds.
+- A `<list>` item shows its `<term>` in bold before its `<description>`. A `<list type="table">` becomes a table, with its `<listheader>` as the heading row.
+- `<include file="..." path="..."/>` is replaced with the XML it points to. The file is found relative to the source file.
+- A comment that isn't well-formed XML, such as one with an unclosed tag, is left out with a warning that names the member and its file and line. So is an `<include>` whose file can't be read.
 
 `<see cref="..."/>` links to the first of these that exists:
 
@@ -119,7 +132,7 @@ In the text of tags such as `<summary>` and `<remarks>`, `<see href="...">` beco
 
 A reference that matches none of these shows as inline code. The link text is the type name, or `Type.Member` for a member, unless the tag has text of its own. The `/api` index page shows the names without links.
 
-Search results and the page's meta description use the type's summary as plain text, without the markup.
+Search results and the page's meta description use the type's summary as plain text, without the markup. Each member on a type page also gets a search entry, such as `Find(int id)` with its summary, that links to its detail block.
 
 ### Supported Tags
 
@@ -151,7 +164,7 @@ public class MarkdownConverter { }
 
 #### `<param>`
 
-Fills the description column of the Parameters table in a member's detail block.
+Fills the description column of the Parameters table in a member's detail block. On an extension block, the `<param>` for the receiver fills the block's Receiver table (see [Extension Blocks](#extension-blocks)).
 
 ```csharp
 /// <summary>
@@ -166,7 +179,7 @@ public Document(string filePath, Encoding? encoding = null) { }
 
 #### `<typeparam>`
 
-Fills the description column of the Type Parameters table on a generic type's page. The table also lists each parameter's constraints. A generic method's detail block has the same table.
+Fills the description column of the Type Parameters table on a generic type's page. The table also lists each parameter's constraints. A generic method's detail block and a generic extension block's section have the same table.
 
 ```csharp
 /// <summary>
@@ -295,11 +308,11 @@ public class MarkdownProcessor : IProcessor
 public string ProcessMarkdown(string input) => input;
 ```
 
-A member with no doc comment at all is filled the same way as one with `<inheritdoc/>`. A `cref` that names nothing in the documented types falls back to the search.
+A member with no doc comment at all is filled the same way as one with `<inheritdoc/>`. A `cref` that names nothing in the documented types falls back to the search. Inherited `<param>` and `<typeparam>` descriptions are matched by position, so an override that renames a parameter keeps its description.
 
 ## Attributes Display
 
-Attributes appear above the declaration line of a type and in a member's detail block, the way C# writes them: `[Flags]` above `public enum Options`. Attributes that the compiler generates or that only tools read are left out, such as `[CompilerGenerated]`, `[Nullable]`, `[AsyncStateMachine]`, `[DebuggerDisplay]` and `[MethodImpl]`. Names and arguments appear as written: `[Experimental("MOKA001")]`, `[EditorBrowsable(EditorBrowsableState.Never)]`. An attribute the compiler can't resolve, such as one from a package that hasn't been restored, appears without its arguments.
+Attributes appear above the declaration line of a type and in a member's detail block, the way C# writes them: `[Flags]` above `public enum Options`. Attributes that the compiler generates or that only tools read are left out, such as `[CompilerGenerated]`, `[Nullable]`, `[AsyncStateMachine]`, `[DebuggerDisplay]` and `[MethodImpl]`. Names and arguments appear as written, named arguments included: `[Experimental("MOKA001")]`, `[JsonDerivedType(typeof(Circle), TypeDiscriminator = "circle")]`. An attribute the compiler can't resolve, such as one from a package that hasn't been restored, appears without its arguments.
 
 An obsolete type gets an Obsolete badge and a warning box with the attribute's message instead of an attribute line. An obsolete member gets an `obsolete` badge in its section's table and the warning box in its detail block. The attribute is only recognized when the compiler resolves it, so in a file without `using System;` it shows as a plain `[Obsolete]` line with no badge.
 
@@ -317,11 +330,11 @@ Type pages built by the CLI end with a collapsed "View Source" section that hold
 
 ### How It Works
 
-During analysis, `AssemblyAnalyzer` takes each of the type's declarations, removes the members the page doesn't document and stores the result of `SyntaxNode.NormalizeWhitespace().ToFullString()` in `ApiType.SourceCode`. `ApiPageRenderer` renders it inside an HTML `<details>` element, so the code stays collapsed until the reader opens it.
+During analysis, `AssemblyAnalyzer` takes each of the type's declarations, removes the members the page doesn't document and stores the text that's left in `ApiType.SourceCode`. `ApiPageRenderer` renders it inside an HTML `<details>` element, so the code stays collapsed until the reader opens it.
 
 ### What It Contains
 
-The section shows the declaration with normalized whitespace, doc comments included. It keeps the members the page documents, with their bodies, and leaves out the rest: `private` members and private nested types always, and `internal` and `private protected` ones unless `includeInternals` is `true`. A `#region` or `#if` directive on a removed member stays when its closing directive is on a member that stays. For a `partial` type it shows every declaration.
+The section shows the declaration as you wrote it, doc comments, comments and spacing included. Only the indentation its lines share is removed, such as the one a block-scoped namespace or a containing type adds, along with blank lines around it and before a type's first member. It keeps the members the page documents, with their bodies, and leaves out the rest: `private` members and private nested types always, `internal` and `private protected` ones unless `includeInternals` is `true`, and members marked `[EditorBrowsable(EditorBrowsableState.Never)]`, enum members included. A `#region` or `#if` directive on a removed member stays when its closing directive is on a member that stays. For a `partial` type it shows every declaration.
 
 Pages served by the [ASP.NET Core integration](/guide/aspnetcore) have the section only when `IncludeSourceCode` is on, and read the source through the assembly's PDB; see View Source there.
 
@@ -382,9 +395,11 @@ The `UnitCircle` page lists `Area` and `Radius` from `Circle`, then `Name` and `
 - Members of types that aren't documented, such as `System.Object`, `System.Exception` or `ControllerBase`. The chain stops at the first base type outside the documented types, so a class whose base type is one of those has no section.
 - Interface members on a class or struct page. The type implements them rather than inheriting them.
 
+An interface can extend two interfaces that each declare a member with the same name and parameter types. Its page lists both, each in its own row. A member that one of the interfaces it extends hides with `new` stays hidden, even when another interface leads to it, the way C# looks interface members up.
+
 Members show their name, plus parameter types for methods and indexers, such as `Move(int, int)` and `this[int]`. A generic base type's type parameters are replaced by the arguments the type passes: a class that derives from `Repository<User>` lists `Find(User)`, in a row labeled `Repository<User>`.
 
-Base types and interfaces are found like the source of `<inheritdoc>`: by full name, with generic types matched by name and number of type parameters, or by name alone when the reference has no namespace. Projects are compiled separately, so a base type from another configured project has none. When several documented types have that name, the one in the type's own namespace or the nearest enclosing namespace is used. If that doesn't settle it, the base type isn't listed.
+Base types and interfaces are found like the source of `<inheritdoc>`: by full name, with generic types matched by name and number of type parameters, or by name alone when the reference has no namespace. A nested type of a generic type counts the type parameters of each level, so `Outer<int>.Inner` finds `Outer<T>.Inner`. Projects are compiled separately, so a base type from another configured project has none. When several documented types have that name, the one in the type's own namespace or the nearest enclosing namespace is used. If that doesn't settle it, the base type isn't listed. A full name never matches a type in another namespace, so a class that derives from `System.Exception` doesn't inherit from a documented type that happens to be called `Exception`.
 
 ### Generic Type Parameters
 
@@ -411,9 +426,10 @@ Type pages can also include a collapsible "Type Relationships" section with a Me
 - types whose base type is this type
 - for an interface, types that declare it
 
-The diagram doesn't follow the hierarchy any further in either direction. No configuration is needed.
+Derived types and implementing types are found the same way as for [Inherited Members](#inherited-members). The diagram doesn't follow the hierarchy any further in either direction. No configuration is needed.
 
 - The current type is highlighted.
+- Generic types show their type arguments, such as `IEquatable<Money>`.
 - The graph stops adding nodes at 20.
 - A type with no base type other than `object`, no interfaces and no derived types gets no section.
 - The diagram is drawn in the browser by the same Mermaid script as [Markdown diagrams](/guide/diagrams).
@@ -442,11 +458,53 @@ With the shapes from [Inherited Members](#inherited-members), `Describe` is list
 - An array, a tuple or a nullable struct (`this Shape[] shapes`, `this Point? point`) doesn't match the type it's made from.
 - Types are matched the same way as for [Inherited Members](#inherited-members), names without a namespace included.
 
+### Extension Blocks
+
+Members of a C# 14 extension block are documented on the page of the static class that declares the block, in a section of their own after the class's other members. The section's heading is the block's declaration without its constraints, such as `extension(Shape shape)` or `extension<T>(List<T> list)`, and the page's table of contents lists it.
+
+```csharp
+namespace MyLibrary;
+
+public static class ShapeExtensions
+{
+    /// <summary>Members for any shape.</summary>
+    /// <param name="shape">The shape to extend.</param>
+    extension(Shape shape)
+    {
+        /// <summary>The length of the outline.</summary>
+        public double Perimeter => shape.Width * 4;
+
+        /// <summary>Grows the shape.</summary>
+        /// <param name="factor">The factor.</param>
+        public Shape Grow(double factor) => shape;
+
+        /// <summary>A shape of size one.</summary>
+        public static Shape Unit() => new();
+
+        /// <summary>Combines two shapes.</summary>
+        public static Shape operator +(Shape left, Shape right) => left;
+    }
+}
+```
+
+The `extension(Shape shape)` section on the `ShapeExtensions` page has:
+
+- The block's full declaration, constraints included, then its `<summary>` and `<remarks>`. A generic block adds a Type Parameters table, and a block whose comment has a `<param>` for the receiver adds a Receiver table.
+- A table of the block's members and a detail block for each documented one, as in the other member sections. A member keeps its kind: `Perimeter` is a property, `public double Perimeter { get; }`, not a `get_Perimeter` method, and `operator +` is an operator. Signatures leave the receiver out, as the source does: `public Shape Grow(double factor)`, `public static Shape Unit()`.
+
+The section's anchor is `extension-` and the receiver's type in lowercase, such as `#extension-shape` or `#extension-list-t`. A second block on the same type gets `-2`, a third `-3`, in declaration order. Members get the usual anchors: `#perimeter`, `#grow`, `#op_addition`. Blocks with the same declaration share a section. Block members aren't listed in the class's Properties, Methods or Operators sections, and the static methods the compiler adds to implement them, such as `Grow(Shape, double)` and `get_Perimeter(Shape)`, aren't listed at all.
+
+On the pages of the types a block applies to, its members join the extension methods in the same section. The receiver is matched like a `this` parameter, so the rules above apply, and a ref receiver on a struct, `extension(ref Point point)`, applies to `Point`. Static members are listed as well, because C# finds them through a derived or implementing type too: `Circle.Unit()` compiles. A property shows its name, an operator its symbol and parameter types, such as `operator +(Shape, Shape)`, and a static member gets a static badge. With any block member in it, the section's heading reads Extension Members. Its anchor stays `#extension-methods`.
+
+A `<see cref>` to a block member links to its entry: `<see cref="ShapeExtensions.extension(Shape).Perimeter"/>`, or `<see cref="ShapeExtensions.extension{T}(List{T}).Add(T)"/>` for a generic block. So does a cref to the static method that implements it, such as `<see cref="ShapeExtensions.Grow(Shape, double)"/>`. The compiler can't resolve a cref to a block itself, so `<see cref="ShapeExtensions.extension(Shape)"/>` shows as code.
+
+The [ASP.NET Core integration](/guide/aspnetcore) builds the same sections from compiled assemblies.
+
 ## Analysis Cache
 
 MokaDocs caches each project's analysis result in `.mokadocs/cache/` next to `mokadocs.yaml`. A cached result is reused only when:
 
-- the project's `.cs` files have the same paths, sizes and modification times as before
+- the `.cs` files the project compiles, linked files included, have the same paths, sizes and modification times as before
 - so do the `.csproj`, any `Directory.Build.props` above it (adding one counts as a change), `obj/project.assets.json` and the reference assemblies it points to
 - MokaDocs runs on the same .NET runtime version
 - `includeInternals` hasn't changed
@@ -474,7 +532,7 @@ The package id and version are read from that project's `.csproj` file:
 
 | Value      | Taken from                                                         |
 |------------|--------------------------------------------------------------------|
-| Package id | `PackageId`, else `AssemblyName`, else the `.csproj` file name     |
+| Package id | `PackageId`, else `AssemblyName`, else the `.csproj` file name. A value built from other properties, such as `$(MSBuildProjectName)`, is filled in from the project file and the `Directory.Build.props` files above it; one that names a property MokaDocs can't find is skipped. |
 | Version    | `PackageVersion`, else `Version`, else `VersionPrefix` (with `-VersionSuffix` when set), else `1.0.0` |
 
 The version is looked up in the `.csproj` first, then in each `Directory.Build.props` above it, nearest first. `1.0.0` is what `dotnet pack` uses when nothing sets a version. Nothing evaluates MSBuild, so a few cases are missed:

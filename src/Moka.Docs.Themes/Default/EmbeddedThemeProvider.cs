@@ -6,7 +6,7 @@ namespace Moka.Docs.Themes.Default;
 ///     Provides the built-in "Moka" default theme with all templates, CSS, and JS.
 ///     This enables zero-config builds without requiring a theme directory on disk.
 /// </summary>
-public static class EmbeddedThemeProvider
+public static partial class EmbeddedThemeProvider
 {
 	#region Embedded CSS
 
@@ -26,7 +26,7 @@ public static class EmbeddedThemeProvider
 	                                        --color-bg-code: #f1f5f9;
 	                                        --color-text: #1e293b;
 	                                        --color-text-secondary: #64748b;
-	                                        --color-text-muted: #94a3b8;
+	                                        --color-text-muted: #667488;
 	                                        --color-border: #e2e8f0;
 	                                        --color-border-light: #f1f5f9;
 	                                        --sidebar-width: 280px;
@@ -49,7 +49,7 @@ public static class EmbeddedThemeProvider
 	                                        --color-bg-code: #1e293b;
 	                                        --color-text: #e2e8f0;
 	                                        --color-text-secondary: #94a3b8;
-	                                        --color-text-muted: #64748b;
+	                                        --color-text-muted: #8091a9;
 	                                        --color-border: #334155;
 	                                        --color-border-light: #1e293b;
 	                                    }
@@ -99,6 +99,26 @@ public static class EmbeddedThemeProvider
 	                                        --gradient-tertiary: #e53935;
 	                                    }
 
+	                                    /* Text in the accent color (links, inline code, active items). Each preset's
+	                                       primary only darkened (light) or lightened (dark) as far as 4.5:1 on the
+	                                       code background and the current sidebar link's tint needs, keeping its hue.
+	                                       A custom primaryColor has no preset and is used as it is. */
+	                                    :root {
+	                                        --color-primary-text: var(--color-primary);
+	                                        --color-primary-text-hover: color-mix(in srgb, var(--color-primary-text) 80%, black);
+	                                    }
+	                                    [data-theme="dark"] { --color-primary-text-hover: color-mix(in srgb, var(--color-primary-text) 75%, white); }
+	                                    html[data-color-theme="ocean"] { --color-primary-text: #0377aa; }
+	                                    html[data-color-theme="emerald"] { --color-primary-text: #038058; }
+	                                    html[data-color-theme="violet"] { --color-primary-text: #804fe9; }
+	                                    html[data-color-theme="amber"] { --color-primary-text: #9d6302; }
+	                                    html[data-color-theme="rose"] { --color-primary-text: #d81c48; }
+	                                    html[data-color-theme="moka-red"] { --color-primary-text: #d12c2d; }
+	                                    html[data-theme="dark"]:is([data-color-theme="ocean"], [data-color-theme="emerald"], [data-color-theme="amber"]) { --color-primary-text: var(--color-primary); }
+	                                    html[data-theme="dark"][data-color-theme="violet"] { --color-primary-text: #9b77ff; }
+	                                    html[data-theme="dark"][data-color-theme="rose"] { --color-primary-text: #ff4d68; }
+	                                    html[data-theme="dark"][data-color-theme="moka-red"] { --color-primary-text: #f9564f; }
+
 	                                    /* Reset */
 	                                    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -113,8 +133,8 @@ public static class EmbeddedThemeProvider
 	                                        -webkit-font-smoothing: antialiased;
 	                                    }
 
-	                                    a { color: var(--color-primary); text-decoration: none; transition: color var(--transition); }
-	                                    a:hover { color: var(--color-primary-dark); }
+	                                    a { color: var(--color-primary-text); text-decoration: none; transition: color var(--transition); }
+	                                    a:hover { color: var(--color-primary-text-hover); }
 
 	                                    /* Header */
 	                                    .site-header {
@@ -323,7 +343,7 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text);
 	                                    }
 	                                    .code-theme-option.active {
-	                                        color: var(--color-primary);
+	                                        color: var(--color-primary-text);
 	                                        font-weight: 600;
 	                                    }
 	                                    .code-theme-preview {
@@ -400,7 +420,7 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text);
 	                                    }
 	                                    .code-style-option.active {
-	                                        color: var(--color-primary);
+	                                        color: var(--color-primary-text);
 	                                        font-weight: 600;
 	                                    }
 	                                    .code-style-indicator {
@@ -465,7 +485,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .nav-link:hover { color: var(--color-text); background: var(--color-bg-secondary); }
 	                                    .nav-link.current {
-	                                        color: var(--color-primary);
+	                                        color: var(--color-primary-text);
 	                                        background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
 	                                        font-weight: 600;
 	                                        border-left: 2px solid var(--color-primary);
@@ -481,7 +501,7 @@ public static class EmbeddedThemeProvider
 	                                        font-weight: 600;
 	                                        color: var(--color-text);
 	                                    }
-	                                    .nav-header .nav-link:hover { color: var(--color-primary); }
+	                                    .nav-header .nav-link:hover { color: var(--color-primary-text); }
 	                                    .nav-header .nav-link.parent-active {
 	                                        color: var(--color-text);
 	                                        font-weight: 700;
@@ -504,7 +524,7 @@ public static class EmbeddedThemeProvider
 	                                        color: var(--color-text);
 	                                        flex: 1;
 	                                    }
-	                                    .nav-group-label.parent-active { color: var(--color-primary); }
+	                                    .nav-group-label.parent-active { color: var(--color-primary-text); }
 
 	                                    .nav-sub-section { margin-bottom: 0.125rem; }
 	                                    .nav-sub-section .nav-header { padding-left: 0; }
@@ -554,7 +574,7 @@ public static class EmbeddedThemeProvider
 	                                        padding: 0.125rem 0.375rem;
 	                                        background: var(--color-bg-code);
 	                                        border-radius: var(--radius-sm);
-	                                        color: var(--color-primary);
+	                                        color: var(--color-primary-text);
 	                                    }
 
 	                                    .page-content pre {
@@ -627,7 +647,7 @@ public static class EmbeddedThemeProvider
 	                                        position: absolute; left: 0; top: 1rem; bottom: 0; width: 2.5rem;
 	                                        padding-right: 0.5rem; text-align: right; font-family: var(--font-mono);
 	                                        font-size: 0.875rem; line-height: 1.6; user-select: none;
-	                                        color: var(--color-text-muted); opacity: 0.4; border-right: 1px solid var(--color-border);
+	                                        color: var(--sh-line-number); border-right: 1px solid var(--color-border);
 	                                    }
 	                                    .page-content pre .line-numbers span { display: block; }
 
@@ -669,7 +689,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #6c7086; --sh-string: #a6e3a1; --sh-keyword: #cba6f7;
 	                                        --sh-number: #fab387; --sh-type: #89dceb; --sh-function: #89b4fa;
 	                                        --sh-operator: #94e2d5; --sh-punctuation: #bac2de; --sh-attr: #f9e2af;
-	                                        --sh-tag: #f38ba8; --sh-property: #b4befe;
+	                                        --sh-tag: #f38ba8; --sh-property: #b4befe; --sh-line-number: #9399b2;
 	                                    }
 	                                    [data-code-theme="catppuccin-mocha"] .page-content pre { background: #1e1e2e; border-color: #313244; }
 	                                    [data-code-theme="catppuccin-mocha"] .page-content pre code { color: #cdd6f4; }
@@ -679,7 +699,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #9ca0b0; --sh-string: #40a02b; --sh-keyword: #8839ef;
 	                                        --sh-number: #fe640b; --sh-type: #04a5e5; --sh-function: #1e66f5;
 	                                        --sh-operator: #179299; --sh-punctuation: #5c5f77; --sh-attr: #df8e1d;
-	                                        --sh-tag: #d20f39; --sh-property: #7287fd;
+	                                        --sh-tag: #d20f39; --sh-property: #7287fd; --sh-line-number: #5c5f77;
 	                                    }
 	                                    [data-code-theme="catppuccin-latte"] .page-content pre { background: #eff1f5; border-color: #ccd0da; }
 	                                    [data-code-theme="catppuccin-latte"] .page-content pre code { color: #4c4f69; }
@@ -689,7 +709,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #8b949e; --sh-string: #a5d6ff; --sh-keyword: #ff7b72;
 	                                        --sh-number: #79c0ff; --sh-type: #ffa657; --sh-function: #d2a8ff;
 	                                        --sh-operator: #ff7b72; --sh-punctuation: #c9d1d9; --sh-attr: #79c0ff;
-	                                        --sh-tag: #7ee787; --sh-property: #79c0ff;
+	                                        --sh-tag: #7ee787; --sh-property: #79c0ff; --sh-line-number: #8b949e;
 	                                    }
 	                                    [data-code-theme="github-dark"] .page-content pre { background: #0d1117; border-color: #30363d; }
 	                                    [data-code-theme="github-dark"] .page-content pre code { color: #c9d1d9; }
@@ -699,7 +719,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #6272a4; --sh-string: #f1fa8c; --sh-keyword: #ff79c6;
 	                                        --sh-number: #bd93f9; --sh-type: #8be9fd; --sh-function: #50fa7b;
 	                                        --sh-operator: #ff79c6; --sh-punctuation: #f8f8f2; --sh-attr: #50fa7b;
-	                                        --sh-tag: #ff79c6; --sh-property: #66d9ef;
+	                                        --sh-tag: #ff79c6; --sh-property: #66d9ef; --sh-line-number: #9aa1c4;
 	                                    }
 	                                    [data-code-theme="dracula"] .page-content pre { background: #282a36; border-color: #44475a; }
 	                                    [data-code-theme="dracula"] .page-content pre code { color: #f8f8f2; }
@@ -709,7 +729,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #5c6370; --sh-string: #98c379; --sh-keyword: #c678dd;
 	                                        --sh-number: #d19a66; --sh-type: #e5c07b; --sh-function: #61afef;
 	                                        --sh-operator: #56b6c2; --sh-punctuation: #abb2bf; --sh-attr: #d19a66;
-	                                        --sh-tag: #e06c75; --sh-property: #e06c75;
+	                                        --sh-tag: #e06c75; --sh-property: #e06c75; --sh-line-number: #959ba5;
 	                                    }
 	                                    [data-code-theme="one-dark"] .page-content pre { background: #282c34; border-color: #3e4451; }
 	                                    [data-code-theme="one-dark"] .page-content pre code { color: #abb2bf; }
@@ -719,7 +739,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #616e88; --sh-string: #a3be8c; --sh-keyword: #81a1c1;
 	                                        --sh-number: #b48ead; --sh-type: #8fbcbb; --sh-function: #88c0d0;
 	                                        --sh-operator: #81a1c1; --sh-punctuation: #d8dee9; --sh-attr: #8fbcbb;
-	                                        --sh-tag: #bf616a; --sh-property: #88c0d0;
+	                                        --sh-tag: #bf616a; --sh-property: #88c0d0; --sh-line-number: #a0a9ba;
 	                                    }
 	                                    [data-code-theme="nord"] .page-content pre { background: #2e3440; border-color: #3b4252; }
 	                                    [data-code-theme="nord"] .page-content pre code { color: #d8dee9; }
@@ -729,7 +749,7 @@ public static class EmbeddedThemeProvider
 	                                        --sh-comment: #6e7781; --sh-string: #0a3069; --sh-keyword: #cf222e;
 	                                        --sh-number: #0550ae; --sh-type: #953800; --sh-function: #8250df;
 	                                        --sh-operator: #cf222e; --sh-punctuation: #24292f; --sh-attr: #0550ae;
-	                                        --sh-tag: #116329; --sh-property: #0550ae;
+	                                        --sh-tag: #116329; --sh-property: #0550ae; --sh-line-number: #656d76;
 	                                    }
 	                                    [data-code-theme="github-light"] .page-content pre { background: #ffffff; border-color: #d0d7de; }
 	                                    [data-code-theme="github-light"] .page-content pre code { color: #24292f; }
@@ -987,7 +1007,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .install-tab:hover { color: var(--color-text); }
 	                                    .install-tab.active {
-	                                        color: var(--color-primary);
+	                                        color: var(--color-primary-text);
 	                                        border-bottom-color: var(--color-primary);
 	                                        font-weight: 600;
 	                                    }
@@ -1067,7 +1087,7 @@ public static class EmbeddedThemeProvider
 	                                    .api-member-table td:last-child { color: var(--color-text-secondary); }
 	                                    .api-member-table code { font-size: 0.8125rem; }
 	                                    .api-member-table pre { white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
-	                                    .api-member-link { text-decoration: none; color: var(--color-primary); transition: opacity var(--transition); }
+	                                    .api-member-link { text-decoration: none; color: var(--color-primary-text); transition: opacity var(--transition); }
 	                                    .api-member-link:hover { opacity: 0.8; }
 	                                    .api-member-link code { color: inherit; background: none; padding: 0; font-weight: 500; }
 
@@ -1080,7 +1100,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .source-viewer summary::-webkit-details-marker { display: none; }
 	                                    .source-viewer summary::marker { display: none; content: ""; }
-	                                    .source-viewer summary:hover { color: var(--color-primary); }
+	                                    .source-viewer summary:hover { color: var(--color-primary-text); }
 	                                    .source-viewer summary svg { flex-shrink: 0; }
 	                                    .source-viewer[open] summary { border-bottom: 1px solid var(--color-border); }
 	                                    .source-viewer pre { margin: 0; border: none; border-radius: 0 0 8px 8px; }
@@ -1355,7 +1375,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .toc-item a:hover { color: var(--color-text); }
 	                                    .toc-item a.active {
-	                                        color: var(--color-primary);
+	                                        color: var(--color-primary-text);
 	                                        font-weight: 500;
 	                                        border-left-color: var(--color-primary);
 	                                    }
@@ -1419,7 +1439,7 @@ public static class EmbeddedThemeProvider
 	                                        margin-bottom: 0.25rem;
 	                                        transition: color var(--transition);
 	                                    }
-	                                    .toc-back-to-top:hover { color: var(--color-primary); }
+	                                    .toc-back-to-top:hover { color: var(--color-primary-text); }
 
 	                                    /* Breadcrumbs */
 	                                    .breadcrumbs {
@@ -1442,7 +1462,7 @@ public static class EmbeddedThemeProvider
 	                                        opacity: 0.5;
 	                                    }
 	                                    .breadcrumbs a { color: var(--color-text-secondary); }
-	                                    .breadcrumbs a:hover { color: var(--color-primary); }
+	                                    .breadcrumbs a:hover { color: var(--color-primary-text); }
 	                                    .breadcrumbs [aria-current="page"] { color: var(--color-text); font-weight: 500; }
 
 	                                    /* Edit link / Last updated */
@@ -1455,8 +1475,47 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .edit-link + .last-updated { margin-top: 0.5rem; padding-top: 0; border-top: none; }
 	                                    .edit-link a { color: var(--color-text-secondary); display: inline-flex; align-items: center; gap: 0.375rem; }
-	                                    .edit-link a:hover { color: var(--color-primary); }
+	                                    .edit-link a:hover { color: var(--color-primary-text); }
 	                                    .last-updated { display: flex; align-items: center; gap: 0.375rem; }
+
+	                                    /* Page contributors (theme.options.showContributors) */
+	                                    .page-contributors {
+	                                        display: flex;
+	                                        flex-wrap: wrap;
+	                                        align-items: center;
+	                                        gap: 0.375rem;
+	                                        margin-top: 3rem;
+	                                        padding-top: 1rem;
+	                                        border-top: 1px solid var(--color-border);
+	                                        font-size: 0.8125rem;
+	                                        color: var(--color-text-muted);
+	                                    }
+	                                    :is(.edit-link, .last-updated) + .page-contributors { margin-top: 0.5rem; padding-top: 0; border-top: none; }
+	                                    .page-contributors > svg { flex-shrink: 0; }
+	                                    .page-content .page-contributors-list {
+	                                        display: flex;
+	                                        flex-wrap: wrap;
+	                                        gap: 0.25rem 0.75rem;
+	                                        margin: 0;
+	                                        padding: 0;
+	                                        list-style: none;
+	                                    }
+	                                    .page-content .page-contributors-list > li { display: inline-flex; align-items: center; gap: 0.375rem; margin: 0; line-height: 1.5; }
+	                                    .page-contributor-avatar {
+	                                        display: inline-flex;
+	                                        align-items: center;
+	                                        justify-content: center;
+	                                        width: 1.5rem;
+	                                        height: 1.5rem;
+	                                        border-radius: 50%;
+	                                        border: 1px solid var(--color-border);
+	                                        background: var(--color-bg-secondary);
+	                                        color: var(--color-text-secondary);
+	                                        font-size: 0.625rem;
+	                                        font-weight: 600;
+	                                        letter-spacing: 0.02em;
+	                                        flex-shrink: 0;
+	                                    }
 
 	                                    /* Footer */
 	                                    .site-footer {
@@ -1619,7 +1678,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    .search-result:hover, .search-result.active { background: var(--color-bg-secondary); color: var(--color-text); }
 	                                    .search-result-title { font-weight: 600; font-size: 0.875rem; }
-	                                    .search-result-section { font-size: 0.8125rem; color: var(--color-primary); margin-left: 0.25rem; }
+	                                    .search-result-section { font-size: 0.8125rem; color: var(--color-primary-text); margin-left: 0.25rem; }
 	                                    .search-result-category { font-size: 0.75rem; color: var(--color-text-muted); }
 	                                    .search-result-snippet { font-size: 0.8125rem; color: var(--color-text-secondary); margin-top: 0.125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	                                    .search-result-snippet mark { background: color-mix(in srgb, var(--color-accent) 30%, transparent); color: inherit; border-radius: 2px; }
@@ -1653,7 +1712,7 @@ public static class EmbeddedThemeProvider
 	                                    .page-nav-next { text-align: right; justify-content: flex-end; }
 	                                    .page-nav-text { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
 	                                    .page-nav-label { font-size: 0.75rem; font-weight: 500; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-	                                    .page-nav-title { font-size: 0.9375rem; font-weight: 600; color: var(--color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	                                    .page-nav-title { font-size: 0.9375rem; font-weight: 600; color: var(--color-primary-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	                                    .page-nav-arrow { flex-shrink: 0; color: var(--color-text-muted); transition: color var(--transition), transform var(--transition); }
 	                                    .page-nav-link:hover .page-nav-arrow { color: var(--color-primary); }
 	                                    .page-nav-prev:hover .page-nav-arrow { transform: translateX(-2px); }
@@ -1895,7 +1954,7 @@ public static class EmbeddedThemeProvider
 	                                    @media (hover: none) { .landing-content pre .copy-btn { opacity: 1; } .landing-content pre .code-lang { opacity: 0; } }
 	                                    .landing-content pre .code-lang { position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.6875rem; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); user-select: none; transition: opacity 0.15s ease 0.15s; }
 	                                    .landing-content pre.has-line-numbers { padding-left: 3.5rem; }
-	                                    .landing-content pre .line-numbers { position: absolute; top: 1.25rem; left: 0; width: 2.75rem; text-align: right; padding-right: 0.75rem; font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.7; color: var(--color-text-muted); border-right: 1px solid var(--color-border); user-select: none; }
+	                                    .landing-content pre .line-numbers { position: absolute; top: 1.25rem; left: 0; width: 2.75rem; text-align: right; padding-right: 0.75rem; font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.7; color: var(--color-text-secondary); border-right: 1px solid var(--color-border); user-select: none; }
 	                                    .landing-content pre .line-numbers span { display: block; }
 
 	                                    @media (max-width: 768px) {
@@ -1935,7 +1994,7 @@ public static class EmbeddedThemeProvider
 	                                        font-size: 0.8125rem; transition: background 100ms ease;
 	                                    }
 	                                    .version-option:hover { background: var(--color-bg-secondary); color: var(--color-text); }
-	                                    .version-option.active { color: var(--color-primary); font-weight: 600; }
+	                                    .version-option.active { color: var(--color-primary-text); font-weight: 600; }
 	                                    .version-badge {
 	                                        font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
 	                                        padding: 0.0625rem 0.375rem; border-radius: 9999px;
@@ -1947,6 +2006,12 @@ public static class EmbeddedThemeProvider
 	                                        .version-trigger .version-label { display: none; }
 	                                        .version-dropdown { right: auto; left: 0; }
 	                                    }
+
+	                                    /* Version selector text contrast: the raw primary and amber are under 4.5:1 on white for most presets */
+	                                    .version-option.active, .version-badge-default { color: color-mix(in srgb, var(--color-primary) 56%, #000); }
+	                                    [data-theme="dark"] .version-option.active, [data-theme="dark"] .version-badge-default { color: color-mix(in srgb, var(--color-primary) 70%, #fff); }
+	                                    .version-badge-pre { color: #92400e; }
+	                                    [data-theme="dark"] .version-badge-pre { color: #fcd34d; }
 
 	                                    /* Mermaid diagrams */
 	                                    .mermaid {
@@ -2127,7 +2192,7 @@ public static class EmbeddedThemeProvider
 	                                        display: block !important;
 	                                    }
 	                                    .nav-children.expanded {
-	                                        max-height: 2000px;
+	                                        max-height: none;
 	                                        opacity: 1;
 	                                    }
 	                                    .nav-link {
@@ -2176,7 +2241,6 @@ public static class EmbeddedThemeProvider
 
 	                                    /* Better line number styling */
 	                                    .page-content pre .line-numbers {
-	                                        opacity: 0.35 !important;
 	                                        border-right-color: rgba(255,255,255,0.08) !important;
 	                                        font-size: 0.8rem !important;
 	                                    }
@@ -2202,7 +2266,7 @@ public static class EmbeddedThemeProvider
 	                                        margin-left: -2px;
 	                                    }
 	                                    .toc-item a.active {
-	                                        color: var(--color-primary) !important;
+	                                        color: var(--color-primary-text) !important;
 	                                        font-weight: 600 !important;
 	                                        border-left-color: var(--color-primary) !important;
 	                                        background: color-mix(in srgb, var(--color-primary) 5%, transparent);
@@ -2253,6 +2317,7 @@ public static class EmbeddedThemeProvider
 	                                    @media (prefers-reduced-motion: reduce) {
 	                                        *, *::before, *::after {
 	                                            animation-duration: 0.01ms !important;
+	                                            animation-delay: 0s !important;
 	                                            animation-iteration-count: 1 !important;
 	                                            transition-duration: 0.01ms !important;
 	                                            scroll-behavior: auto !important;
@@ -2260,6 +2325,7 @@ public static class EmbeddedThemeProvider
 	                                    }
 	                                    [data-no-animations] *, [data-no-animations] *::before, [data-no-animations] *::after {
 	                                        animation-duration: 0.01ms !important;
+	                                        animation-delay: 0s !important;
 	                                        animation-iteration-count: 1 !important;
 	                                        transition-duration: 0.01ms !important;
 	                                        scroll-behavior: auto !important;
@@ -2487,7 +2553,1413 @@ public static class EmbeddedThemeProvider
 	                                        .landing-features-grid { grid-template-columns: 1fr; }
 	                                        .landing-md-content { padding: 0 1rem 2rem; }
 	                                    }
+
+	                                    /* Blog: index cards, post header, tags and pager. Accent text is mixed toward black (light)
+	                                       or white (dark) so every color preset keeps 4.5:1; the styles use their own --st-link. */
+	                                    :root { --blog-link: color-mix(in srgb, var(--color-primary) 56%, #000000); }
+	                                    [data-theme="dark"] { --blog-link: color-mix(in srgb, var(--color-primary) 70%, #ffffff); }
+	                                    .blog-sr-only {
+	                                        position: absolute;
+	                                        width: 1px;
+	                                        height: 1px;
+	                                        padding: 0;
+	                                        margin: -1px;
+	                                        overflow: hidden;
+	                                        clip: rect(0, 0, 0, 0);
+	                                        white-space: nowrap;
+	                                        border: 0;
+	                                    }
+	                                    .page-content .blog-page .blog-description { font-size: 1.0625rem; color: var(--color-text-secondary); margin: -0.25rem 0 1.75rem; }
+	                                    .page-content .blog-page .blog-description a { color: var(--blog-link); font-weight: 500; }
+	                                    .page-content .blog-page .blog-empty { color: var(--color-text-secondary); }
+	                                    .blog-list { display: flex; flex-direction: column; gap: 1.25rem; margin: 0 0 2rem; }
+	                                    .blog-card {
+	                                        display: flex;
+	                                        gap: 1.25rem;
+	                                        padding: 1.25rem 1.5rem;
+	                                        background: var(--color-bg);
+	                                        border: 1px solid var(--color-border);
+	                                        border-radius: var(--radius);
+	                                        transition: border-color var(--transition), box-shadow var(--transition);
+	                                    }
+	                                    .blog-card:hover { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); box-shadow: var(--shadow-md); }
+	                                    .blog-card-image { flex: 0 0 168px; display: block; }
+	                                    .page-content .blog-card-image img { display: block; width: 168px; height: 112px; object-fit: cover; border-radius: var(--radius-sm); }
+	                                    .blog-card-body { flex: 1; min-width: 0; }
+	                                    .page-content .blog-card .blog-card-title {
+	                                        font-size: 1.25rem !important;
+	                                        line-height: 1.35;
+	                                        margin: 0 0 0.375rem;
+	                                        padding: 0;
+	                                        border: none;
+	                                        animation: none;
+	                                    }
+	                                    .page-content .blog-card-title a { color: var(--color-text); }
+	                                    .page-content .blog-card-title a:hover { color: var(--blog-link); }
+	                                    .blog-meta {
+	                                        display: flex;
+	                                        flex-wrap: wrap;
+	                                        align-items: center;
+	                                        gap: 0.25rem 0.5rem;
+	                                        font-size: 0.875rem;
+	                                        line-height: 1.5;
+	                                        color: var(--color-text-secondary);
+	                                    }
+	                                    .blog-meta-sep { color: var(--color-text-secondary); }
+	                                    .blog-authors { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; margin-top: 0.375rem; font-size: 0.875rem; line-height: 1.5; color: var(--color-text-secondary); }
+	                                    .blog-author { display: inline-flex; align-items: center; }
+	                                    .blog-authors .blog-author a, .blog-author-name { color: var(--color-text); font-weight: 500; }
+	                                    .blog-authors .blog-author a:hover { color: var(--blog-link); }
+	                                    .blog-author-sep { margin-left: 0.375rem; }
+	                                    .page-content .blog-author-avatar { width: 24px; height: 24px; margin-right: 0.375rem; border-radius: 50%; object-fit: cover; }
+	                                    .blog-draft {
+	                                        padding: 0 0.5rem;
+	                                        border: 1px solid var(--color-border);
+	                                        border-radius: 999px;
+	                                        font-size: 0.75rem;
+	                                        font-weight: 600;
+	                                        color: var(--color-text);
+	                                    }
+	                                    .page-content .blog-card .blog-card-summary { margin: 0.625rem 0 0; color: var(--color-text); line-height: 1.65; }
+	                                    .page-content .blog-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; list-style: none; padding: 0; margin: 0.75rem 0 0; }
+	                                    .page-content .blog-tags li { margin: 0; line-height: 1.4; }
+	                                    .blog-tag {
+	                                        display: inline-flex;
+	                                        align-items: center;
+	                                        gap: 0.375rem;
+	                                        padding: 0.125rem 0.625rem;
+	                                        border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+	                                        border-radius: 999px;
+	                                        background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+	                                        font-size: 0.8125rem;
+	                                        font-weight: 500;
+	                                        color: var(--blog-link);
+	                                        transition: background var(--transition), border-color var(--transition);
+	                                    }
+	                                    .blog-tag:hover { color: var(--blog-link); background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bg)); border-color: var(--blog-link); }
+	                                    .blog-tag-count { font-size: 0.75rem; font-weight: 700; color: inherit; }
+	                                    .page-content .blog-tags-all { gap: 0.5rem; margin-top: 0.5rem; }
+	                                    .blog-read-more {
+	                                        display: inline-flex;
+	                                        align-items: center;
+	                                        gap: 0.25rem;
+	                                        margin-top: 0.875rem;
+	                                        font-size: 0.875rem;
+	                                        font-weight: 600;
+	                                        color: var(--blog-link);
+	                                    }
+	                                    .blog-read-more:hover { color: var(--blog-link); text-decoration: underline; text-underline-offset: 0.18em; }
+	                                    .blog-pager-arrow { flex-shrink: 0; transition: transform var(--transition); }
+	                                    .blog-read-more:hover .blog-pager-arrow, .blog-pager-older:hover .blog-pager-arrow { transform: translateX(2px); }
+	                                    .blog-pager-newer:hover .blog-pager-arrow { transform: translateX(-2px); }
+	                                    .blog-post-header { margin: 0 0 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--color-border); }
+	                                    .page-content .blog-post-header .blog-tags { margin-top: 0.625rem; }
+	                                    .page-content .blog-cover { display: block; width: 100%; max-height: 380px; object-fit: cover; margin-top: 1.25rem; }
+	                                    .blog-pager {
+	                                        display: grid;
+	                                        grid-template-columns: 1fr auto 1fr;
+	                                        align-items: center;
+	                                        gap: 0.75rem 1rem;
+	                                        margin: 0 0 1rem;
+	                                    }
+	                                    .blog-pager-newer { justify-self: start; }
+	                                    .blog-pager-older { justify-self: end; }
+	                                    .blog-pager-status { font-size: 0.875rem; color: var(--color-text-secondary); text-align: center; }
+	                                    .blog-pager-link {
+	                                        display: inline-flex;
+	                                        align-items: center;
+	                                        gap: 0.375rem;
+	                                        padding: 0.5rem 1rem;
+	                                        border: 1px solid var(--color-border);
+	                                        border-radius: var(--radius);
+	                                        font-size: 0.875rem;
+	                                        font-weight: 600;
+	                                        color: var(--blog-link);
+	                                        transition: border-color var(--transition), background var(--transition);
+	                                    }
+	                                    .blog-pager-link:hover { color: var(--blog-link); border-color: var(--blog-link); background: color-mix(in srgb, var(--color-primary) 5%, var(--color-bg)); }
+	                                    @media (max-width: 640px) {
+	                                        .blog-card { flex-direction: column; gap: 0.875rem; padding: 1rem; }
+	                                        .blog-card-image { flex-basis: auto; }
+	                                        .page-content .blog-card-image img { width: 100%; height: 168px; }
+	                                        .blog-pager { grid-template-columns: 1fr 1fr; }
+	                                        .blog-pager-status { grid-column: 1 / -1; order: -1; }
+	                                    }
 	                                    """;
+
+	#endregion
+
+	#region Embedded Style CSS
+
+	private const string _stylesCss = """
+
+	                                  /* =============================== */
+	                                  /* Styles (html[data-style])       */
+	                                  /* =============================== */
+
+	                                  /* Style selector */
+	                                  .style-selector { position: relative; }
+	                                  .style-trigger {
+	                                      display: flex;
+	                                      align-items: center;
+	                                      justify-content: center;
+	                                      width: 36px;
+	                                      height: 36px;
+	                                      border: 1px solid var(--color-border);
+	                                      border-radius: var(--radius);
+	                                      background: transparent;
+	                                      color: var(--color-text-secondary);
+	                                      cursor: pointer;
+	                                      transition: all var(--transition);
+	                                  }
+	                                  .style-trigger:hover {
+	                                      background: var(--color-bg-secondary);
+	                                      color: var(--color-text);
+	                                  }
+	                                  .style-trigger[aria-expanded="true"] {
+	                                      border-color: var(--color-primary);
+	                                      color: var(--color-primary);
+	                                  }
+	                                  .style-dropdown {
+	                                      position: absolute;
+	                                      top: calc(100% + 8px);
+	                                      right: 0;
+	                                      display: flex;
+	                                      flex-direction: column;
+	                                      gap: 2px;
+	                                      padding: 6px;
+	                                      background: var(--color-bg);
+	                                      border: 1px solid var(--color-border);
+	                                      border-radius: var(--radius);
+	                                      box-shadow: var(--shadow-lg);
+	                                      z-index: 200;
+	                                      min-width: 220px;
+	                                  }
+	                                  .style-dropdown[hidden] { display: none; }
+	                                  .style-option {
+	                                      display: flex;
+	                                      align-items: center;
+	                                      gap: 10px;
+	                                      padding: 7px 10px;
+	                                      border: none;
+	                                      border-radius: calc(var(--radius) - 2px);
+	                                      background: transparent;
+	                                      color: var(--color-text);
+	                                      cursor: pointer;
+	                                      transition: all var(--transition);
+	                                      font-family: inherit;
+	                                      font-size: 0.82rem;
+	                                      width: 100%;
+	                                      text-align: left;
+	                                  }
+	                                  .style-option:hover, .style-option:focus-visible { background: var(--color-bg-secondary); }
+	                                  .style-option.active { font-weight: 600; }
+	                                  .style-text { display: flex; flex-direction: column; flex: 1; line-height: 1.3; }
+	                                  .style-desc { font-size: 0.72rem; font-weight: 400; color: var(--color-text-secondary); }
+	                                  .style-check {
+	                                      opacity: 0;
+	                                      font-size: 0.75rem;
+	                                      color: var(--color-text);
+	                                      transition: opacity var(--transition);
+	                                  }
+	                                  .style-option.active .style-check { opacity: 1; }
+	                                  .style-preview {
+	                                      width: 24px;
+	                                      height: 18px;
+	                                      flex-shrink: 0;
+	                                      border-radius: 3px;
+	                                      border: 1px solid #cbd5e1;
+	                                      background: #ffffff;
+	                                  }
+	                                  .style-preview-default { background: linear-gradient(#0ea5e9 0 4px, #f8fafc 4px); }
+	                                  .style-preview-moka {
+	                                      background: #060608;
+	                                      border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+	                                      box-shadow: inset 0 0 6px color-mix(in srgb, var(--color-primary) 40%, transparent);
+	                                  }
+	                                  .style-preview-minimal { background: linear-gradient(90deg, transparent 6px, #d4d4d8 6px 7px, transparent 7px), #ffffff; border-color: #e4e4e7; }
+	                                  .style-preview-classic { background: linear-gradient(#1f2937 0 5px, #ffffff 5px); border-color: #9ca3af; border-radius: 1px; }
+	                                  .style-preview-soft { background: #eef2ff; border-color: transparent; border-radius: 7px; box-shadow: 0 2px 5px rgba(15,23,42,0.22); }
+	                                  @media (max-width: 768px) {
+	                                      .style-selector { display: none; }
+	                                  }
+
+	                                  /* Styles: shared tokens. Accent text and fills are mixed toward black (light) or white
+	                                     (dark) so every color preset keeps 4.5:1 against the style's surfaces. */
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) {
+	                                      --st-ink: #000000;
+	                                      --st-hue: 56%;
+	                                      --st-link: color-mix(in srgb, var(--color-primary) var(--st-hue), var(--st-ink));
+	                                      --st-on-fill: #ffffff;
+	                                  }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"])[data-theme="dark"] {
+	                                      --st-ink: #ffffff;
+	                                      --st-hue: 70%;
+	                                      --st-on-fill: #0b0b0f;
+	                                      color-scheme: dark;
+	                                  }
+	                                  :where(html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"])) a,
+	                                  :where(html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"])) a:hover { color: var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-content a:not([class]):hover { text-decoration: underline; text-underline-offset: 0.18em; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :focus-visible { outline: 2px solid var(--st-link); outline-offset: 2px; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-content :not(pre) > code,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .nav-link.current,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .nav-header .nav-link:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .nav-group-label.parent-active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-member-link,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-nav-title,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .search-result-section,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .version-option.active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .version-badge-default,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .code-theme-option.active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .code-style-option.active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .style-option.active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .code-theme-check,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .code-style-check,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .style-check,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .site-logo-icon,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .component-card-icon,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-feature-icon,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-hero-icon,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-footer-heart,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing .landing-content > ul > li strong,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .blazor-preview-badge,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .blazor-preview-error { color: var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .breadcrumbs a:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .edit-link a:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .toc-back-to-top:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .heading-anchor:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .footer-social a:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-footer a:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .source-viewer summary:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .install-nuget-link:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .site-logo:hover { color: var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .toc-item a.active { color: var(--st-link) !important; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .tab-header.active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .install-tab.active,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .blazor-preview-tab.active { color: var(--st-link); border-bottom-color: var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .color-theme-trigger[aria-expanded="true"],
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .code-theme-trigger[aria-expanded="true"],
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .code-style-trigger[aria-expanded="true"],
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .style-trigger[aria-expanded="true"],
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .version-trigger[aria-expanded="true"] { color: var(--st-link); border-color: var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-content h1,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-hero-title,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing .landing-content > h1:first-of-type {
+	                                      background: none;
+	                                      -webkit-text-fill-color: currentColor;
+	                                      color: var(--color-text);
+	                                  }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-content h1 code { -webkit-text-fill-color: currentColor; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .component-step-number,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .toc-toggle-btn,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .back-to-top,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-btn-primary,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing-btn-primary:hover { background: var(--st-link); color: var(--st-on-fill); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .back-to-top:hover { background: var(--st-link) !important; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .install-copy-btn:hover { background: var(--st-link); border-color: var(--st-link); color: var(--st-on-fill); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing .landing-content > h1:first-of-type + p + p a:first-child,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .landing .landing-content > h1:first-of-type + p + ul a:first-of-type { background: var(--st-link); color: var(--st-on-fill); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-endpoint-card h2.openapi-endpoint-header { margin: 0 0 0.75rem; padding: 0; border: none; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-content .table-responsive table { margin: 0; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-endpoint-card > :last-child { margin-bottom: 0; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .breadcrumbs ol { padding-left: 0; margin-bottom: 0; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .search-input:focus-visible { outline: none; box-shadow: none; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .search-input-wrap:focus-within { box-shadow: inset 0 -1px 0 var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .search-result-snippet mark { color: var(--color-text); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) ::selection { background: color-mix(in srgb, var(--color-primary) 28%, transparent); }
+
+	                                  /* Styles: semantic colors (badges, admonitions, REST methods), mixed the same way */
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge-sm { --st-c: var(--color-text-secondary); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-class, .admonition-note, .openapi-method-post, .openapi-status-info) { --st-c: #3b82f6; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-struct, .admonition-tip, .openapi-method-get, .openapi-status-success, .feedback-btn-yes, .repl-run-btn) { --st-c: #22c55e; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-record, .admonition-info, .admonition-important, .openapi-method-patch) { --st-c: #8b5cf6; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-interface, .api-badge-virtual) { --st-c: #06b6d4; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-enum, .admonition-warning, .admonition-caution, .openapi-method-put, .openapi-status-redirect, .openapi-auth-label, .version-badge-pre) { --st-c: #f59e0b; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge-delegate { --st-c: #ec4899; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-static, .openapi-method-head, .openapi-method-options, .openapi-optional) { --st-c: #64748b; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge-abstract { --st-c: #a78bfa; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge-sealed { --st-c: #f97316; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) :is(.api-badge-obsolete, .admonition-danger, .openapi-method-delete, .openapi-status-client-error, .openapi-status-server-error, .openapi-required, .feedback-btn-no) { --st-c: #ef4444; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .api-badge-sm,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .page-content .admonition-title,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-status,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-required,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-optional,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-auth-label,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .version-badge-pre { color: color-mix(in srgb, var(--st-c) var(--st-hue), var(--st-ink)); }
+	                                  /* The changelog plugin follows the operating system's color scheme; within a style it follows the page. */
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) {
+	                                      --cl-bg: var(--color-bg);
+	                                      --cl-bg-alt: var(--color-bg-secondary);
+	                                      --cl-text: var(--color-text);
+	                                      --cl-text-muted: var(--color-text-secondary);
+	                                      --cl-border: var(--color-border);
+	                                      --cl-line: var(--color-border);
+	                                      --cl-dot-ring: var(--color-bg);
+	                                      --cl-shadow: var(--shadow-sm);
+	                                      --cl-shadow-hover: var(--shadow-md);
+	                                      --cl-radius: var(--radius);
+	                                      --cl-filter-bg: var(--color-bg-secondary);
+	                                      --cl-filter-active: var(--color-text);
+	                                      --cl-filter-active-text: var(--color-bg);
+	                                      --cl-code-bg: var(--color-bg-code);
+	                                      --cl-code-text: var(--color-text);
+	                                      --cl-major: color-mix(in srgb, #ef4444 var(--st-hue), var(--st-ink));
+	                                      --cl-minor: color-mix(in srgb, #3b82f6 var(--st-hue), var(--st-ink));
+	                                      --cl-patch: color-mix(in srgb, #22c55e var(--st-hue), var(--st-ink));
+	                                      --cl-initial: color-mix(in srgb, #8b5cf6 var(--st-hue), var(--st-ink));
+	                                      --cl-added: color-mix(in srgb, #22c55e var(--st-hue), var(--st-ink));
+	                                      --cl-changed: color-mix(in srgb, #3b82f6 var(--st-hue), var(--st-ink));
+	                                      --cl-fixed: color-mix(in srgb, #f97316 var(--st-hue), var(--st-ink));
+	                                      --cl-breaking: color-mix(in srgb, #ef4444 var(--st-hue), var(--st-ink));
+	                                      --cl-deprecated: color-mix(in srgb, #f59e0b var(--st-hue), var(--st-ink));
+	                                      --cl-removed: color-mix(in srgb, #ef4444 var(--st-hue), var(--st-ink));
+	                                      --cl-security: color-mix(in srgb, #8b5cf6 var(--st-hue), var(--st-ink));
+	                                  }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .changelog-badge-major { background: color-mix(in srgb, #ef4444 12%, var(--color-bg)); border-color: color-mix(in srgb, #ef4444 30%, transparent); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .changelog-badge-minor { background: color-mix(in srgb, #3b82f6 12%, var(--color-bg)); border-color: color-mix(in srgb, #3b82f6 30%, transparent); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .changelog-badge-patch { background: color-mix(in srgb, #22c55e 12%, var(--color-bg)); border-color: color-mix(in srgb, #22c55e 30%, transparent); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .changelog-badge-initial { background: color-mix(in srgb, #8b5cf6 12%, var(--color-bg)); border-color: color-mix(in srgb, #8b5cf6 30%, transparent); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .openapi-method,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .repl-run-btn { background: color-mix(in srgb, var(--st-c) 58%, #000000); color: #ffffff; }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .repl-run-btn:hover { background: color-mix(in srgb, var(--st-c) 48%, #000000); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .feedback-btn-yes:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .feedback-btn-yes.selected,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .feedback-btn-no:hover,
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .feedback-btn-no.selected {
+	                                      border-color: color-mix(in srgb, var(--st-c) var(--st-hue), var(--st-ink));
+	                                      color: color-mix(in srgb, var(--st-c) var(--st-hue), var(--st-ink));
+	                                      background: color-mix(in srgb, var(--st-c) 12%, var(--color-bg));
+	                                  }
+
+	                                  /* Style: Moka */
+	                                  html[data-style="moka"] {
+	                                      --color-bg: #fafafa;
+	                                      --color-bg-secondary: #f3f3f5;
+	                                      --color-bg-code: #f0f0f3;
+	                                      --color-text: #16161a;
+	                                      --color-text-secondary: #4a4a55;
+	                                      --color-text-muted: #5c5c66;
+	                                      --mk-surface: #ffffff;
+	                                      --mk-hover: #ececf0;
+	                                      --mk-surface-3: #e6e6ea;
+	                                      --mk-border: color-mix(in srgb, var(--color-primary) 14%, transparent);
+	                                      --mk-border-visible: color-mix(in srgb, var(--color-primary) 24%, transparent);
+	                                      --mk-border-strong: color-mix(in srgb, var(--color-primary) 40%, transparent);
+	                                      --mk-glow: color-mix(in srgb, var(--color-primary) 8%, transparent);
+	                                      --mk-glow-md: color-mix(in srgb, var(--color-primary) 15%, transparent);
+	                                      --mk-glow-strong: color-mix(in srgb, var(--color-primary) 25%, transparent);
+	                                      --mk-backdrop: rgba(250, 250, 250, 0.85);
+	                                      --color-border: var(--mk-border-visible);
+	                                      --color-border-light: var(--mk-border);
+	                                      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	                                      --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, monospace;
+	                                      --radius: 8px;
+	                                      --radius-sm: 4px;
+	                                      --radius-md: 10px;
+	                                      --shadow-sm: none;
+	                                      --shadow-md: none;
+	                                      --shadow-lg: none;
+	                                      --transition: 150ms ease-out;
+	                                      --header-height: 52px;
+	                                      --sidebar-width: 256px;
+	                                      --toc-width: 208px;
+	                                      --content-max-width: 820px;
+	                                  }
+	                                  html[data-style="moka"][data-theme="dark"] {
+	                                      --color-bg: #060608;
+	                                      --color-bg-secondary: #0c0c10;
+	                                      --color-bg-code: #101015;
+	                                      --color-text: #e8e8ec;
+	                                      --color-text-secondary: #a0a0aa;
+	                                      --color-text-muted: #8a8a94;
+	                                      --mk-surface: #0c0c10;
+	                                      --mk-hover: #14141a;
+	                                      --mk-surface-3: #1a1a22;
+	                                      --mk-border: color-mix(in srgb, var(--color-primary) 6%, transparent);
+	                                      --mk-border-visible: color-mix(in srgb, var(--color-primary) 12%, transparent);
+	                                      --mk-border-strong: color-mix(in srgb, var(--color-primary) 24%, transparent);
+	                                      --mk-backdrop: rgba(6, 6, 8, 0.85);
+	                                  }
+	                                  html[data-style="moka"] body { font-size: 14px; line-height: 1.6; }
+	                                  html[data-style="moka"] :focus-visible {
+	                                      outline: none;
+	                                      box-shadow: 0 0 0 1px var(--st-link), 0 0 0 4px var(--mk-glow-md), inset 0 0 12px var(--mk-glow);
+	                                  }
+	                                  html[data-style="moka"] ::selection { background: var(--mk-glow-strong); }
+	                                  html[data-style="moka"] :is(.sidebar, .toc-sidebar, .search-results, .version-dropdown, pre, .page-content table) { scrollbar-width: thin; scrollbar-color: var(--mk-surface-3) transparent; }
+	                                  html[data-style="moka"] .site-header {
+	                                      background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+	                                      border-bottom-color: var(--mk-border-visible);
+	                                  }
+	                                  html[data-style="moka"] .site-name { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.01em; }
+	                                  html[data-style="moka"] .search-trigger {
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-visible);
+	                                      color: var(--color-text-muted);
+	                                      font-family: var(--font-mono);
+	                                      font-size: 11px;
+	                                      padding: 0.375rem 0.625rem;
+	                                      transition: border-color var(--transition), box-shadow var(--transition);
+	                                  }
+	                                  html[data-style="moka"] .search-trigger:hover { border-color: var(--mk-border-strong); box-shadow: inset 0 0 12px var(--mk-glow); }
+	                                  html[data-style="moka"] .search-trigger kbd { background: transparent; border-color: var(--mk-border-visible); font-size: 10px; }
+	                                  html[data-style="moka"] :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger) {
+	                                      width: 32px;
+	                                      height: 32px;
+	                                      border-color: var(--mk-border-visible);
+	                                      color: var(--color-text-secondary);
+	                                  }
+	                                  html[data-style="moka"] :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger):hover {
+	                                      background: var(--mk-hover);
+	                                      border-color: var(--mk-border-strong);
+	                                      color: var(--color-text);
+	                                  }
+	                                  html[data-style="moka"] :is(.color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger, .version-trigger)[aria-expanded="true"] { box-shadow: inset 0 0 12px var(--mk-glow-md); }
+	                                  html[data-style="moka"] :is(.color-theme-dropdown, .code-theme-dropdown, .code-style-dropdown, .style-dropdown, .version-dropdown) {
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-strong);
+	                                      border-radius: var(--radius-md);
+	                                      box-shadow: none;
+	                                  }
+	                                  html[data-style="moka"] :is(.code-theme-option, .code-style-option, .style-option, .version-option) { border-radius: 6px; font-size: 13px; }
+	                                  html[data-style="moka"] :is(.code-theme-option, .code-style-option, .style-option, .version-option):hover { background: var(--mk-hover); color: var(--color-text); }
+	                                  html[data-style="moka"] :is(.code-theme-option, .code-style-option, .style-option, .version-option).active { box-shadow: inset 0 0 20px var(--mk-glow); }
+	                                  html[data-style="moka"] .version-trigger {
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-visible);
+	                                      font-family: var(--font-mono);
+	                                      font-size: 11px;
+	                                      letter-spacing: 0.02em;
+	                                  }
+	                                  html[data-style="moka"] .version-trigger:hover { border-color: var(--mk-border-strong); }
+	                                  html[data-style="moka"] .version-option { font-family: var(--font-mono); font-size: 12px; }
+	                                  html[data-style="moka"] .version-badge {
+	                                      border-radius: var(--radius-sm);
+	                                      font-family: var(--font-body);
+	                                      font-size: 9px;
+	                                      letter-spacing: 0.08em;
+	                                      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+	                                  }
+	                                  html[data-style="moka"] .sidebar { padding: 1.25rem 0.75rem; border-right-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .nav-section { margin-bottom: 0.375rem; }
+	                                  html[data-style="moka"] .nav-link {
+	                                      padding: 0.3125rem 0.625rem !important;
+	                                      border: 1px solid transparent !important;
+	                                      border-radius: 6px;
+	                                      font-size: 13px;
+	                                      color: var(--color-text-secondary);
+	                                      transition: background var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition) !important;
+	                                  }
+	                                  html[data-style="moka"] .nav-link:hover { background: var(--mk-hover); border-color: var(--mk-border-visible) !important; color: var(--color-text); }
+	                                  html[data-style="moka"] .nav-link.current {
+	                                      background: var(--mk-glow);
+	                                      border-color: var(--mk-border-strong) !important;
+	                                      box-shadow: inset 0 0 20px var(--mk-glow), 0 0 12px var(--mk-glow);
+	                                      font-weight: 600;
+	                                  }
+	                                  html[data-style="moka"] .nav-section > .nav-header :is(.nav-link, .nav-group-label) {
+	                                      font-size: 10px;
+	                                      font-weight: 600;
+	                                      letter-spacing: 0.08em;
+	                                      text-transform: uppercase;
+	                                      color: var(--color-text-muted);
+	                                  }
+	                                  html[data-style="moka"] .nav-section > .nav-header :is(.nav-link.parent-active, .nav-group-label.parent-active) { color: var(--color-text); }
+	                                  html[data-style="moka"] .nav-section > .nav-header .nav-link.current { color: var(--st-link); }
+	                                  html[data-style="moka"] .nav-sub-section > .nav-header .nav-link { font-size: 13px; font-weight: 600; color: var(--color-text); }
+	                                  html[data-style="moka"] .nav-chevron-btn { color: var(--color-text-muted); border-radius: var(--radius-sm); }
+	                                  html[data-style="moka"] .nav-chevron-btn:hover { background: var(--mk-hover); color: var(--color-text); }
+	                                  html[data-style="moka"] .nav-sub-section .nav-children { margin-left: 0.75rem; padding-left: 0.5rem; border-left: 1px solid var(--mk-border-visible); }
+	                                  html[data-style="moka"] .content { padding: 1.75rem 2.25rem; }
+	                                  html[data-style="moka"] .page-content h1 {
+	                                      font-size: 1.75rem !important;
+	                                      font-weight: 600 !important;
+	                                      letter-spacing: -0.02em !important;
+	                                      margin-bottom: 1rem !important;
+	                                  }
+	                                  html[data-style="moka"] .page-content h2 {
+	                                      font-size: 1.25rem !important;
+	                                      font-weight: 600;
+	                                      letter-spacing: -0.01em;
+	                                      margin: 2.25rem 0 0.75rem;
+	                                      padding-bottom: 0.375rem;
+	                                      border-bottom-color: var(--mk-border-visible);
+	                                  }
+	                                  html[data-style="moka"] .page-content h3 { font-size: 1.0625rem !important; font-weight: 600; margin: 1.75rem 0 0.5rem; }
+	                                  html[data-style="moka"] .page-content h4 { font-size: 0.9375rem; }
+	                                  html[data-style="moka"] .page-content p { line-height: 1.65; margin-bottom: 0.875rem; }
+	                                  html[data-style="moka"] .page-content li { line-height: 1.6; }
+	                                  html[data-style="moka"] .page-content :not(pre) > code {
+	                                      background: var(--mk-glow);
+	                                      border-color: var(--mk-border-visible);
+	                                      border-radius: var(--radius-sm) !important;
+	                                      font-weight: 400;
+	                                  }
+	                                  html[data-style="moka"] .page-content pre { border-color: var(--mk-border-visible); border-radius: var(--radius); }
+	                                  html[data-style="moka"][data-theme="dark"]:not([data-code-theme="catppuccin-latte"]):not([data-code-theme="github-light"]) :is(.page-content, .landing-content) pre { background: #0a0a0d; }
+	                                  html[data-style="moka"] .page-content pre .line-numbers { border-right-color: var(--mk-border-visible) !important; }
+	                                  html[data-style="moka"] .page-content pre .code-lang { letter-spacing: 0.08em !important; font-weight: 600; }
+	                                  html[data-style="moka"] .page-content blockquote {
+	                                      background: var(--mk-surface);
+	                                      border-left: 2px solid var(--st-link);
+	                                      border-radius: 0 var(--radius) var(--radius) 0;
+	                                      box-shadow: inset 0 0 20px var(--mk-glow);
+	                                  }
+	                                  html[data-style="moka"] .page-content table { font-size: 13px; }
+	                                  html[data-style="moka"] .page-content :is(th, td) { padding: 0.4375rem 0.75rem; border-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .page-content th {
+	                                      background: var(--mk-surface);
+	                                      color: var(--color-text-muted);
+	                                      font-size: 10px;
+	                                      font-weight: 600;
+	                                      letter-spacing: 0.08em;
+	                                      text-transform: uppercase;
+	                                  }
+	                                  html[data-style="moka"] .page-content tr:hover td { background: var(--mk-hover); }
+	                                  html[data-style="moka"] .api-member-table code { font-size: 12px; }
+	                                  html[data-style="moka"] .api-namespace { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em; }
+	                                  html[data-style="moka"] :is(.api-badge, .api-badge-sm) {
+	                                      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+	                                      border-radius: var(--radius-sm);
+	                                      font-size: 10px;
+	                                      letter-spacing: 0.08em;
+	                                  }
+	                                  html[data-style="moka"] .api-badge-sm { font-size: 9px; }
+	                                  html[data-style="moka"] .page-content .admonition {
+	                                      border: 1px solid color-mix(in srgb, var(--st-c) 24%, transparent);
+	                                      border-left: 3px solid var(--st-c);
+	                                      border-radius: var(--radius);
+	                                      background: color-mix(in srgb, var(--st-c) 6%, var(--color-bg));
+	                                      padding: 0.875rem 1rem;
+	                                  }
+	                                  html[data-style="moka"] .page-content .admonition-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+	                                  html[data-style="moka"] .tabs { border-color: var(--mk-border-visible); border-radius: var(--radius-md); }
+	                                  html[data-style="moka"] .tab-headers { background: var(--mk-surface); border-bottom-color: var(--mk-border-visible); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+	                                  html[data-style="moka"] .tab-header { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+	                                  html[data-style="moka"] .tab-header:hover { background: var(--mk-hover); }
+	                                  html[data-style="moka"] .tab-header.active { box-shadow: inset 0 -12px 16px -12px var(--mk-glow-strong); }
+	                                  html[data-style="moka"] :is(.component-card, .component-link-card) {
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-visible);
+	                                      border-radius: var(--radius-md);
+	                                  }
+	                                  html[data-style="moka"] .component-card { border-left-width: 1px; }
+	                                  html[data-style="moka"] :is(.component-card-info, .component-card-success, .component-card-warning) { border-left-width: 3px; }
+	                                  html[data-style="moka"] :is(.component-card, .component-link-card):hover { border-color: var(--mk-border-strong); box-shadow: inset 0 0 20px var(--mk-glow); background: var(--mk-hover); }
+	                                  html[data-style="moka"] .component-card-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
+	                                  html[data-style="moka"] .component-step-number {
+	                                      width: 28px;
+	                                      height: 28px;
+	                                      border-radius: var(--radius);
+	                                      background: var(--mk-surface);
+	                                      color: var(--st-link);
+	                                      border: 1px solid var(--mk-border-strong);
+	                                      box-shadow: inset 0 0 12px var(--mk-glow);
+	                                      font-family: var(--font-mono);
+	                                      font-size: 12px;
+	                                  }
+	                                  html[data-style="moka"] .component-step:not(:last-child) .component-step-indicator::after { width: 1px; background: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .package-install-widget { border-color: var(--mk-border-visible); border-radius: var(--radius-md); }
+	                                  html[data-style="moka"] :is(.install-header, .install-tabs) { background: var(--mk-surface); border-bottom-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .install-package-name { font-family: var(--font-mono); font-size: 12px; }
+	                                  html[data-style="moka"] .install-tab { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+	                                  html[data-style="moka"] .install-copy-btn { background: transparent; border-color: var(--mk-border-visible); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+	                                  html[data-style="moka"] .install-copy-btn:hover { background: var(--mk-glow); border-color: var(--mk-border-strong); color: var(--st-link); }
+	                                  html[data-style="moka"] .source-viewer { border-color: var(--mk-border-visible); border-radius: var(--radius-md); }
+	                                  html[data-style="moka"] .source-viewer summary { font-family: var(--font-mono); font-size: 12px; }
+	                                  html[data-style="moka"] .source-viewer[open] summary { border-bottom-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .toc-sidebar { padding: 1.25rem 0; border-left-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .toc-title { font-size: 10px; letter-spacing: 0.08em; color: var(--color-text-muted); }
+	                                  html[data-style="moka"] .toc-list { border-left: 1px solid var(--mk-border-visible); }
+	                                  html[data-style="moka"] .toc-item a {
+	                                      font-size: 12px;
+	                                      border-left-width: 1px !important;
+	                                      margin-left: -1px;
+	                                      color: var(--color-text-muted);
+	                                      transition: color var(--transition), background var(--transition), box-shadow var(--transition) !important;
+	                                  }
+	                                  html[data-style="moka"] .toc-item a:hover { color: var(--color-text); background: var(--mk-hover); }
+	                                  html[data-style="moka"] .toc-item a.active {
+	                                      border-left-color: var(--st-link) !important;
+	                                      background: var(--mk-glow);
+	                                      box-shadow: inset 12px 0 16px -12px var(--mk-glow-strong);
+	                                      font-weight: 500 !important;
+	                                  }
+	                                  html[data-style="moka"] .toc-progress { height: 1px; background: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .toc-progress-bar { background: var(--st-link); }
+	                                  html[data-style="moka"] :is(.toc-counter, .toc-back-to-top) { font-family: var(--font-mono); font-size: 11px; }
+	                                  html[data-style="moka"] .toc-counter { border-top-color: var(--mk-border); color: var(--color-text-muted); }
+	                                  html[data-style="moka"] .breadcrumbs { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em; }
+	                                  html[data-style="moka"] .breadcrumbs li:not(:last-child)::after { color: var(--mk-border-strong); opacity: 1; }
+	                                  html[data-style="moka"] :is(.edit-link, .last-updated, .page-contributors) { border-top-color: var(--mk-border-visible); font-size: 11px; }
+	                                  html[data-style="moka"] .last-updated { font-family: var(--font-mono); }
+	                                  html[data-style="moka"] .page-nav-link {
+	                                      padding: 0.75rem 1rem;
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-visible);
+	                                      border-radius: var(--radius-md);
+	                                  }
+	                                  html[data-style="moka"] .page-nav-link:hover { background: var(--mk-hover); border-color: var(--mk-border-strong); box-shadow: inset 0 0 20px var(--mk-glow); }
+	                                  html[data-style="moka"] .page-nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; }
+	                                  html[data-style="moka"] .page-nav-title { font-size: 13px; }
+	                                  html[data-style="moka"] .feedback-prompt { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
+	                                  html[data-style="moka"] .feedback-btn {
+	                                      border-color: var(--mk-border-visible);
+	                                      border-radius: var(--radius);
+	                                      font-size: 11px;
+	                                      font-weight: 600;
+	                                      letter-spacing: 0.08em;
+	                                      text-transform: uppercase;
+	                                  }
+	                                  html[data-style="moka"] .feedback-btn:hover { background: var(--mk-hover); }
+	                                  html[data-style="moka"] .feedback-btn.selected { box-shadow: inset 0 0 20px color-mix(in srgb, var(--st-c) 12%, transparent); }
+	                                  html[data-style="moka"] .site-footer { border-top-color: var(--mk-border-visible); padding: 1rem 1.5rem; }
+	                                  html[data-style="moka"] .footer-inner { font-size: 11px; }
+	                                  html[data-style="moka"] .built-with { font-family: var(--font-mono); }
+	                                  html[data-style="moka"] .search-backdrop { background: var(--mk-backdrop); backdrop-filter: blur(8px); }
+	                                  html[data-style="moka"] .search-dialog {
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-strong);
+	                                      border-radius: 12px;
+	                                      box-shadow: 0 0 0 1px var(--mk-border);
+	                                  }
+	                                  html[data-style="moka"] .search-input-wrap { border-bottom-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .search-input { font-size: 14px; }
+	                                  html[data-style="moka"] .search-input::placeholder { font-family: var(--font-mono); font-size: 11px; }
+	                                  html[data-style="moka"] :is(.search-esc, .search-result-category) { font-family: var(--font-mono); }
+	                                  html[data-style="moka"] .search-result-category { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); }
+	                                  html[data-style="moka"] .search-result { border: 1px solid transparent; border-radius: 6px; }
+	                                  html[data-style="moka"] :is(.search-result:hover, .search-result.active) { background: var(--mk-hover); border-color: var(--mk-border-visible); box-shadow: inset 0 0 20px var(--mk-glow); }
+	                                  html[data-style="moka"] .back-to-top {
+	                                      border-radius: var(--radius);
+	                                      background: var(--mk-surface);
+	                                      color: var(--st-link);
+	                                      border: 1px solid var(--mk-border-strong);
+	                                      box-shadow: none;
+	                                  }
+	                                  html[data-style="moka"] .back-to-top:hover { background: var(--mk-hover) !important; box-shadow: inset 0 0 12px var(--mk-glow-md) !important; transform: none; }
+	                                  html[data-style="moka"] .toc-toggle-btn {
+	                                      border-radius: var(--radius);
+	                                      background: var(--mk-surface);
+	                                      color: var(--st-link);
+	                                      border: 1px solid var(--mk-border-strong);
+	                                      box-shadow: none;
+	                                  }
+	                                  html[data-style="moka"] .landing-hero::before { background: none !important; animation: none; }
+	                                  html[data-style="moka"] .landing-hero .hero-grid-pattern {
+	                                      background-image: linear-gradient(var(--mk-border-visible) 1px, transparent 1px), linear-gradient(90deg, var(--mk-border-visible) 1px, transparent 1px);
+	                                      background-size: 32px 32px;
+	                                      opacity: 1;
+	                                      -webkit-mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 70%);
+	                                      mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 70%);
+	                                  }
+	                                  html[data-style="moka"] .landing-hero-icon {
+	                                      animation: none;
+	                                      width: 64px;
+	                                      height: 64px;
+	                                      border-radius: 12px;
+	                                      background: var(--mk-surface);
+	                                      border: 1px solid var(--mk-border-strong);
+	                                      box-shadow: inset 0 0 20px var(--mk-glow-md);
+	                                  }
+	                                  html[data-style="moka"] .landing-hero-title { font-weight: 600; letter-spacing: -0.035em; }
+	                                  html[data-style="moka"] :is(.landing-hero-title, .landing-hero-subtitle, .landing-hero-actions) { animation-duration: 200ms; animation-delay: 0s; }
+	                                  html[data-style="moka"] .landing-hero-subtitle { font-size: 1.0625rem; }
+	                                  html[data-style="moka"] .landing-btn {
+	                                      min-width: 0;
+	                                      padding: 0.75rem 1.5rem;
+	                                      border-radius: var(--radius);
+	                                      font-size: 11px;
+	                                      font-weight: 600;
+	                                      letter-spacing: 0.08em;
+	                                      text-transform: uppercase;
+	                                  }
+	                                  html[data-style="moka"] :is(.landing-btn-primary, .landing-btn-primary:hover) {
+	                                      background: transparent;
+	                                      color: var(--st-link);
+	                                      border: 1px solid var(--mk-border-strong);
+	                                      box-shadow: none;
+	                                      transform: none;
+	                                  }
+	                                  html[data-style="moka"] .landing-btn-primary:hover { background: var(--mk-glow); box-shadow: inset 0 0 20px var(--mk-glow); }
+	                                  html[data-style="moka"] .landing-btn-primary:active { box-shadow: 0 0 24px var(--mk-glow-strong); }
+	                                  html[data-style="moka"] .landing-btn-secondary { border-color: var(--mk-border-visible); color: var(--color-text-secondary); backdrop-filter: none; }
+	                                  html[data-style="moka"] .landing-btn-secondary:hover { background: var(--mk-hover); border-color: var(--mk-border-strong); color: var(--color-text); transform: none; }
+	                                  html[data-style="moka"] .landing-features-title { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.01em; }
+	                                  html[data-style="moka"] .landing-features-subtitle { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
+	                                  html[data-style="moka"] .landing-features-grid { gap: 1rem; }
+	                                  html[data-style="moka"] .landing-feature-card {
+	                                      padding: 1.25rem;
+	                                      background: var(--mk-surface);
+	                                      border-color: var(--mk-border-visible);
+	                                      border-radius: var(--radius-md);
+	                                  }
+	                                  html[data-style="moka"] .landing-feature-card::before { height: 1px; background: var(--st-link); }
+	                                  html[data-style="moka"] .landing-feature-card:hover {
+	                                      transform: none !important;
+	                                      background: var(--mk-hover);
+	                                      border-color: var(--mk-border-strong);
+	                                      box-shadow: inset 0 0 20px var(--mk-glow) !important;
+	                                  }
+	                                  html[data-style="moka"] .landing-feature-icon {
+	                                      width: 36px;
+	                                      height: 36px;
+	                                      border-radius: var(--radius);
+	                                      background: transparent;
+	                                      border: 1px solid var(--mk-border-visible);
+	                                      font-size: 0.875rem;
+	                                  }
+	                                  html[data-style="moka"] .landing-feature-name { font-size: 14px; font-weight: 600; }
+	                                  html[data-style="moka"] .landing-feature-desc { font-size: 13px; }
+	                                  html[data-style="moka"] :is(.landing-divider, .landing .landing-content > hr) { border-top-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .landing-md-content :is(th, td) { border-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .landing-md-content table { border-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .landing .landing-content > ul > li { background: var(--mk-surface); border-color: var(--mk-border-visible); border-radius: var(--radius-md); }
+	                                  html[data-style="moka"] .landing .landing-content > ul > li:hover { transform: none !important; box-shadow: inset 0 0 20px var(--mk-glow) !important; border-color: var(--mk-border-strong); }
+	                                  html[data-style="moka"] .landing-content pre { border-color: var(--mk-border-visible); }
+	                                  html[data-style="moka"] .landing-footer { border-top-color: var(--mk-border-visible); font-size: 11px; }
+	                                  html[data-style="moka"] .repl-container { border-color: var(--mk-border-visible); border-radius: var(--radius-md); background: #0a0a0d; }
+	                                  html[data-style="moka"] .repl-toolbar { background: #0c0c10; border-top-color: rgba(255, 255, 255, 0.08); }
+	                                  html[data-style="moka"] .repl-run-btn {
+	                                      background: transparent;
+	                                      color: #4ade80;
+	                                      border: 1px solid rgba(74, 222, 128, 0.35);
+	                                      font-family: var(--font-mono);
+	                                      font-size: 11px;
+	                                      letter-spacing: 0.06em;
+	                                      text-transform: uppercase;
+	                                  }
+	                                  html[data-style="moka"] .repl-run-btn:hover { background: rgba(74, 222, 128, 0.1); }
+	                                  html[data-style="moka"] .repl-output { border-top-color: rgba(255, 255, 255, 0.08); background: #060608; }
+	                                  html[data-style="moka"] .openapi-method {
+	                                      background: color-mix(in srgb, var(--st-c) 12%, var(--color-bg));
+	                                      color: color-mix(in srgb, var(--st-c) var(--st-hue), var(--st-ink));
+	                                      border: 1px solid color-mix(in srgb, var(--st-c) 35%, transparent);
+	                                      font-size: 11px;
+	                                      letter-spacing: 0.06em;
+	                                  }
+	                                  html[data-style="moka"] .openapi-endpoint-card { border-color: var(--mk-border-visible); border-radius: var(--radius-md); background: var(--mk-surface); }
+	                                  html[data-style="moka"] .openapi-endpoint-card h3 { border-bottom-color: var(--mk-border-visible); font-size: 11px !important; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
+	                                  html[data-style="moka"] .openapi-path { font-family: var(--font-mono); font-size: 0.9375rem; }
+	                                  html[data-style="moka"] :is(.openapi-required, .openapi-optional, .openapi-auth-label, .openapi-status) { border-radius: var(--radius-sm); font-family: var(--font-mono); }
+	                                  html[data-style="moka"] .blazor-preview-container { border-color: var(--mk-border-visible); border-radius: var(--radius-md); }
+	                                  @media (max-width: 1200px) {
+	                                      html[data-style="moka"] .toc-sidebar { box-shadow: none; border-left-color: var(--mk-border-strong); }
+	                                  }
+
+	                                  /* Style: Minimal */
+	                                  html[data-style="minimal"] {
+	                                      --color-bg: #ffffff;
+	                                      --color-bg-secondary: #f6f6f7;
+	                                      --color-bg-code: #f6f6f7;
+	                                      --color-text: #1c1c1f;
+	                                      --color-text-secondary: #55555e;
+	                                      --color-text-muted: #6b6b75;
+	                                      --color-border: #e7e7ea;
+	                                      --color-border-light: #f1f1f3;
+	                                      --radius: 6px;
+	                                      --radius-sm: 4px;
+	                                      --radius-md: 6px;
+	                                      --shadow-sm: none;
+	                                      --shadow-md: none;
+	                                      --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.08);
+	                                      --sidebar-width: 260px;
+	                                      --toc-width: 220px;
+	                                      --content-max-width: 70ch;
+	                                  }
+	                                  html[data-style="minimal"][data-theme="dark"] {
+	                                      --color-bg: #111113;
+	                                      --color-bg-secondary: #19191c;
+	                                      --color-bg-code: #19191c;
+	                                      --color-text: #ececef;
+	                                      --color-text-secondary: #a8a8b2;
+	                                      --color-text-muted: #8e8e98;
+	                                      --color-border: #26262b;
+	                                      --color-border-light: #1d1d21;
+	                                      --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
+	                                  }
+	                                  html[data-style="minimal"] body { line-height: 1.75; }
+	                                  html[data-style="minimal"] .site-header { border-bottom-color: var(--color-border-light); }
+	                                  html[data-style="minimal"] .search-trigger { border-color: transparent; }
+	                                  html[data-style="minimal"] :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger, .version-trigger) { border-color: transparent; }
+	                                  html[data-style="minimal"] .version-trigger { background: transparent; }
+	                                  html[data-style="minimal"] .sidebar { border-right: none; padding: 2rem 1rem 2rem 1.5rem; }
+	                                  html[data-style="minimal"] .nav-section { margin-bottom: 0.5rem; }
+	                                  html[data-style="minimal"] .nav-link {
+	                                      padding: 0.3rem 0.75rem !important;
+	                                      border-radius: 0;
+	                                      background: none !important;
+	                                      font-weight: 400;
+	                                      color: var(--color-text-secondary);
+	                                  }
+	                                  html[data-style="minimal"] .nav-link:hover { color: var(--color-text); }
+	                                  html[data-style="minimal"] .nav-link.current {
+	                                      color: var(--color-text);
+	                                      font-weight: 600;
+	                                      border-left: 2px solid var(--st-link) !important;
+	                                  }
+	                                  html[data-style="minimal"] .nav-header .nav-link,
+	                                  html[data-style="minimal"] .nav-group-label { font-weight: 600; color: var(--color-text); }
+	                                  html[data-style="minimal"] .nav-header .nav-link:hover { color: var(--color-text-secondary); }
+	                                  html[data-style="minimal"] .nav-group-label.parent-active { color: var(--color-text); }
+	                                  html[data-style="minimal"] .nav-chevron-btn:hover { background: none; }
+	                                  html[data-style="minimal"] .nav-children { padding-left: 0.75rem; }
+	                                  html[data-style="minimal"] .content { padding: 3rem; }
+	                                  html[data-style="minimal"] .page-content h1 { font-size: 2rem !important; font-weight: 700 !important; letter-spacing: -0.025em !important; margin-bottom: 1.5rem !important; }
+	                                  html[data-style="minimal"] .page-content h2 {
+	                                      font-size: 1.375rem !important;
+	                                      font-weight: 600;
+	                                      margin: 3rem 0 1rem;
+	                                      padding-bottom: 0;
+	                                      border-bottom: none;
+	                                  }
+	                                  html[data-style="minimal"] .page-content h3 { font-size: 1.125rem !important; margin: 2.25rem 0 0.75rem; }
+	                                  html[data-style="minimal"] .page-content p { line-height: 1.8; margin-bottom: 1.25rem; }
+	                                  html[data-style="minimal"] .page-content :not(pre) > code { color: var(--color-text); border-color: transparent; border-radius: var(--radius-sm) !important; }
+	                                  html[data-style="minimal"] .page-content h1 code { color: var(--color-text); }
+	                                  html[data-style="minimal"] :is(.page-content, .landing-content) pre { border-color: transparent; }
+	                                  html[data-style="minimal"] .page-content pre .line-numbers { border-right-color: transparent !important; }
+	                                  html[data-style="minimal"] .page-content :is(th, td) { border: none; border-bottom: 1px solid var(--color-border); padding: 0.625rem 1rem 0.625rem 0; }
+	                                  html[data-style="minimal"] .page-content th { background: none; color: var(--color-text-secondary); font-size: 0.8125rem; }
+	                                  html[data-style="minimal"] .page-content tr:hover td { background: none; }
+	                                  html[data-style="minimal"] .page-content blockquote { background: none; border-left: 2px solid var(--color-border); border-radius: 0; padding: 0 0 0 1.25rem; }
+	                                  html[data-style="minimal"] .page-content .admonition {
+	                                      background: none;
+	                                      border: none;
+	                                      border-left: 2px solid var(--st-c);
+	                                      border-radius: 0;
+	                                      padding: 0.125rem 0 0.125rem 1.25rem;
+	                                  }
+	                                  html[data-style="minimal"] :is(.tabs, .package-install-widget, .source-viewer) { border-color: transparent; border-radius: 0; }
+	                                  html[data-style="minimal"] :is(.tab-headers, .install-header, .install-tabs) { background: none; border-radius: 0; border-bottom-color: var(--color-border); }
+	                                  html[data-style="minimal"] .tab-content { padding: 1rem 0; }
+	                                  html[data-style="minimal"] .component-code-group .tab-content { padding: 0; }
+	                                  html[data-style="minimal"] .install-header { padding: 0.5rem 0; }
+	                                  html[data-style="minimal"] .install-tabs { padding: 0; }
+	                                  html[data-style="minimal"] .install-panel { border-radius: var(--radius); }
+	                                  html[data-style="minimal"] .source-viewer summary { padding: 0.75rem 0; }
+	                                  html[data-style="minimal"] .source-viewer pre { border-radius: var(--radius); }
+	                                  html[data-style="minimal"] :is(.component-card, .component-link-card) { border-color: transparent; background: var(--color-bg-secondary); }
+	                                  html[data-style="minimal"] :is(.component-card, .component-link-card):hover { border-color: transparent; box-shadow: none; }
+	                                  html[data-style="minimal"] .component-link-card:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg)); }
+	                                  html[data-style="minimal"] :is(.component-card-info, .component-card-success, .component-card-warning) { border-left-width: 2px; border-radius: 0 var(--radius) var(--radius) 0; }
+	                                  html[data-style="minimal"] .component-step-number { background: transparent; color: var(--color-text); border: 1px solid var(--color-border); font-weight: 500; }
+	                                  html[data-style="minimal"] .component-step:not(:last-child) .component-step-indicator::after { width: 1px; }
+	                                  html[data-style="minimal"] .toc-sidebar { border-left: none; }
+	                                  html[data-style="minimal"] .toc-list { border-left: none; }
+	                                  html[data-style="minimal"] .toc-item a { color: var(--color-text-muted); }
+	                                  html[data-style="minimal"] .toc-item a:hover { color: var(--color-text); }
+	                                  html[data-style="minimal"] .toc-item a.active { color: var(--color-text) !important; font-weight: 500 !important; background: none; border-left-color: var(--st-link) !important; }
+	                                  html[data-style="minimal"] .toc-progress { height: 1px; }
+	                                  html[data-style="minimal"] .toc-counter { border-top: none; }
+	                                  html[data-style="minimal"] :is(.edit-link, .last-updated, .page-contributors) { border-top-color: var(--color-border-light); }
+	                                  html[data-style="minimal"] .page-nav-link { border-color: transparent; padding: 0.75rem 0; }
+	                                  html[data-style="minimal"] .page-nav-link:hover { background: none; border-color: transparent; box-shadow: none; }
+	                                  html[data-style="minimal"] .page-nav-link:hover .page-nav-title { text-decoration: underline; text-underline-offset: 0.18em; }
+	                                  html[data-style="minimal"] .site-footer { border-top-color: var(--color-border-light); }
+	                                  html[data-style="minimal"] .search-dialog { border-radius: 10px; }
+	                                  html[data-style="minimal"] .search-backdrop { background: rgba(0, 0, 0, 0.3); backdrop-filter: none; }
+	                                  html[data-style="minimal"] :is(.back-to-top, .toc-toggle-btn) { background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border); box-shadow: none; }
+	                                  html[data-style="minimal"] .back-to-top:hover { background: var(--color-bg-secondary) !important; box-shadow: none !important; }
+	                                  html[data-style="minimal"] .landing::before,
+	                                  html[data-style="minimal"] .landing-hero::before,
+	                                  html[data-style="minimal"] .landing-hero::after { display: none; }
+	                                  html[data-style="minimal"] .landing-hero .hero-grid-pattern { display: none; }
+	                                  html[data-style="minimal"] .landing-hero-icon { background: none; animation: none; }
+	                                  html[data-style="minimal"] .landing-hero-title { font-weight: 700; letter-spacing: -0.035em; }
+	                                  html[data-style="minimal"] .landing-btn { border-radius: var(--radius); min-width: 0; padding: 0.75rem 1.5rem; }
+	                                  html[data-style="minimal"] .landing-btn-primary { box-shadow: none; }
+	                                  html[data-style="minimal"] .landing-btn-primary:hover { transform: none; box-shadow: none; background: var(--color-text); color: var(--color-bg); }
+	                                  html[data-style="minimal"] .landing-btn-secondary:hover { transform: none; color: var(--color-text); border-color: var(--color-text-muted); }
+	                                  html[data-style="minimal"] .landing-features-grid { gap: 2.5rem 2rem; }
+	                                  html[data-style="minimal"] .landing-feature-card { border: none; background: transparent; padding: 0; }
+	                                  html[data-style="minimal"] .landing-feature-card::before { display: none; }
+	                                  html[data-style="minimal"] .landing-feature-card:hover { transform: none !important; box-shadow: none !important; }
+	                                  html[data-style="minimal"] .landing-feature-icon { background: none; width: auto; height: auto; justify-content: flex-start; margin-bottom: 0.5rem; }
+	                                  html[data-style="minimal"] .landing .landing-content > ul > li { border-color: transparent; background: var(--color-bg-secondary); }
+	                                  html[data-style="minimal"] .landing .landing-content > ul > li:hover { transform: none !important; box-shadow: none !important; border-color: transparent; }
+	                                  html[data-style="minimal"] .landing-md-content table { border-color: transparent; }
+	                                  html[data-style="minimal"] .landing-md-content :is(th, td) { border: none; border-bottom: 1px solid var(--color-border); }
+	                                  html[data-style="minimal"] .landing-md-content th { background: none; }
+	                                  html[data-style="minimal"] .landing-footer { border-top-color: var(--color-border-light); }
+	                                  html[data-style="minimal"] .repl-container { border-color: transparent; border-radius: var(--radius); }
+	                                  html[data-style="minimal"] .openapi-endpoint-card { border-color: transparent; border-top-color: var(--color-border); border-radius: 0; padding: 1.5rem 0; }
+	                                  html[data-style="minimal"] .openapi-endpoint-card h3 { border-bottom: none; }
+	                                  html[data-style="minimal"] .blazor-preview-container { border-color: var(--color-border-light); }
+	                                  @media (max-width: 1200px) {
+	                                      html[data-style="minimal"] .toc-sidebar { border-left: 1px solid var(--color-border); box-shadow: var(--shadow-lg); }
+	                                  }
+
+	                                  /* Style: Classic */
+	                                  html[data-style="classic"] {
+	                                      --color-bg: #ffffff;
+	                                      --color-bg-secondary: #f4f5f7;
+	                                      --color-bg-code: #f6f8fa;
+	                                      --color-text: #1b1f24;
+	                                      --color-text-secondary: #424a53;
+	                                      --color-text-muted: #57606a;
+	                                      --color-border: #d0d7de;
+	                                      --color-border-light: #e5e8eb;
+	                                      --cs-hover: #e9eaed;
+	                                      --cs-zebra: #f7f7f8;
+	                                      --cs-bar: var(--st-link);
+	                                      --cs-on-bar: #ffffff;
+	                                      --cs-on-bar-muted: #ffffff;
+	                                      --cs-bar-line: rgba(0, 0, 0, 0.2);
+	                                      --cs-bar-control: rgba(0, 0, 0, 0.2);
+	                                      --cs-bar-control-hover: rgba(255, 255, 255, 0.2);
+	                                      --cs-bar-control-border: rgba(255, 255, 255, 0.4);
+	                                      --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+	                                      --font-mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+	                                      --radius: 3px;
+	                                      --radius-sm: 2px;
+	                                      --radius-md: 4px;
+	                                      --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.06);
+	                                      --shadow-md: 0 2px 6px rgba(31, 35, 40, 0.1);
+	                                      --shadow-lg: 0 4px 14px rgba(31, 35, 40, 0.14);
+	                                      --transition: 100ms ease;
+	                                      --header-height: 54px;
+	                                      --toc-width: 230px;
+	                                      --content-max-width: 860px;
+	                                  }
+	                                  html[data-style="classic"][data-theme="dark"] {
+	                                      --color-bg: #0d1117;
+	                                      --color-bg-secondary: #161b22;
+	                                      --color-bg-code: #161b22;
+	                                      --color-text: #e6edf3;
+	                                      --color-text-secondary: #b1bac4;
+	                                      --color-text-muted: #9198a1;
+	                                      --color-border: #30363d;
+	                                      --color-border-light: #21262d;
+	                                      --cs-hover: #1f252d;
+	                                      --cs-zebra: #12171e;
+	                                      --cs-bar: #010409;
+	                                      --cs-on-bar: var(--color-text);
+	                                      --cs-on-bar-muted: var(--color-text-secondary);
+	                                      --cs-bar-line: var(--color-border);
+	                                      --cs-bar-control: var(--color-bg-secondary);
+	                                      --cs-bar-control-hover: #1f252d;
+	                                      --cs-bar-control-border: var(--color-border);
+	                                      --shadow-sm: 0 1px 2px rgba(1, 4, 9, 0.6);
+	                                      --shadow-md: 0 3px 8px rgba(1, 4, 9, 0.7);
+	                                      --shadow-lg: 0 8px 24px rgba(1, 4, 9, 0.8);
+	                                  }
+	                                  html[data-style="classic"] body { font-size: 15px; line-height: 1.6; }
+	                                  html[data-style="classic"] .site-header {
+	                                      background: var(--cs-bar);
+	                                      border-bottom: 1px solid var(--cs-bar-line);
+	                                      box-shadow: inset 0 3px 0 var(--st-link);
+	                                      backdrop-filter: none;
+	                                  }
+	                                  html[data-style="classic"]:not([data-theme="dark"]) .site-header { box-shadow: none; }
+	                                  html[data-style="classic"] .site-header :is(.site-logo, .site-logo:hover, .site-logo-icon) { color: var(--cs-on-bar); }
+	                                  html[data-style="classic"] .site-name { font-weight: 600; }
+	                                  html[data-style="classic"] .site-header :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger, .version-trigger) {
+	                                      color: var(--cs-on-bar);
+	                                      background: transparent;
+	                                      border-color: var(--cs-bar-control-border);
+	                                  }
+	                                  html[data-style="classic"] .site-header :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger, .version-trigger):hover { background: var(--cs-bar-control-hover); color: var(--cs-on-bar); }
+	                                  html[data-style="classic"] .site-header :is(.color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger, .version-trigger)[aria-expanded="true"] {
+	                                      color: var(--cs-on-bar);
+	                                      border-color: var(--cs-on-bar);
+	                                      background: var(--cs-bar-control-hover);
+	                                      box-shadow: none;
+	                                  }
+	                                  html[data-style="classic"] .site-header .search-trigger {
+	                                      background: var(--cs-bar-control);
+	                                      border-color: var(--cs-bar-control-border);
+	                                      color: var(--cs-on-bar-muted);
+	                                      min-width: 200px;
+	                                  }
+	                                  html[data-style="classic"] .site-header .search-trigger:hover { border-color: var(--cs-on-bar); }
+	                                  html[data-style="classic"] .site-header .search-trigger kbd { background: transparent; border-color: var(--cs-bar-control-border); color: var(--cs-on-bar-muted); margin-left: auto; }
+	                                  html[data-style="classic"] :is(.color-theme-dropdown, .code-theme-dropdown, .code-style-dropdown, .style-dropdown, .version-dropdown) { box-shadow: var(--shadow-md); }
+	                                  html[data-style="classic"] :is(.code-theme-option, .code-style-option, .style-option, .version-option):hover { background: var(--cs-hover); }
+	                                  html[data-style="classic"] .sidebar { background: var(--color-bg-secondary); border-right-color: var(--color-border); padding: 1rem 0; }
+	                                  html[data-style="classic"] .nav-section { margin-bottom: 0.5rem; }
+	                                  html[data-style="classic"] .nav-link {
+	                                      padding: 0.3125rem 1.25rem !important;
+	                                      border-radius: 0;
+	                                      border-left: 3px solid transparent !important;
+	                                      color: var(--color-text-secondary);
+	                                      font-weight: 400;
+	                                  }
+	                                  html[data-style="classic"] .nav-link:hover { background: var(--cs-hover); color: var(--color-text); }
+	                                  html[data-style="classic"] .nav-link.current {
+	                                      background: var(--color-bg);
+	                                      border-left-color: var(--st-link) !important;
+	                                      font-weight: 600;
+	                                      box-shadow: inset 0 1px 0 var(--color-border), inset 0 -1px 0 var(--color-border);
+	                                  }
+	                                  html[data-style="classic"] .nav-section > .nav-header :is(.nav-link, .nav-group-label) {
+	                                      font-size: 0.75rem;
+	                                      font-weight: 700;
+	                                      letter-spacing: 0.04em;
+	                                      text-transform: uppercase;
+	                                      color: var(--color-text-secondary);
+	                                  }
+	                                  html[data-style="classic"] .nav-section > .nav-header .nav-link.current { color: var(--st-link); }
+	                                  html[data-style="classic"] .nav-sub-section > .nav-header .nav-link { font-weight: 600; color: var(--color-text); }
+	                                  html[data-style="classic"] .nav-chevron-btn { border-radius: var(--radius-sm); margin-right: 0.5rem; }
+	                                  html[data-style="classic"] .nav-chevron-btn:hover { background: var(--cs-hover); }
+	                                  html[data-style="classic"] .nav-children { padding-left: 0; }
+	                                  html[data-style="classic"] .nav-children .nav-link { padding-left: 2rem !important; }
+	                                  html[data-style="classic"] .nav-sub-section .nav-children .nav-link { padding-left: 2.75rem !important; }
+	                                  html[data-style="classic"] .content { padding: 1.5rem 2.5rem 2rem; }
+	                                  html[data-style="classic"] .page-content h1 {
+	                                      font-size: 2rem !important;
+	                                      font-weight: 600 !important;
+	                                      letter-spacing: -0.01em !important;
+	                                      line-height: 1.25 !important;
+	                                      padding-bottom: 0.5rem;
+	                                      border-bottom: 1px solid var(--color-border);
+	                                  }
+	                                  html[data-style="classic"] .page-content h2 { font-size: 1.5rem !important; font-weight: 600; margin: 2rem 0 0.875rem; padding-bottom: 0.3rem; letter-spacing: -0.005em; }
+	                                  html[data-style="classic"] .page-content h3 { font-size: 1.1875rem !important; font-weight: 600; }
+	                                  html[data-style="classic"] .page-content p { line-height: 1.65; margin-bottom: 1rem; }
+	                                  html[data-style="classic"] .page-content li { line-height: 1.6; }
+	                                  html[data-style="classic"] .page-content :not(pre) > code {
+	                                      background: var(--color-bg-code);
+	                                      border-color: var(--color-border-light);
+	                                      border-radius: var(--radius) !important;
+	                                      color: var(--color-text);
+	                                      font-weight: 400;
+	                                  }
+	                                  html[data-style="classic"] .page-content h1 code { color: var(--color-text); }
+	                                  html[data-style="classic"] .page-content pre { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .page-content table { font-size: 0.875rem; }
+	                                  html[data-style="classic"] .page-content :is(th, td) { padding: 0.4rem 0.75rem; }
+	                                  html[data-style="classic"] .page-content th { background: var(--color-bg-secondary); }
+	                                  html[data-style="classic"] .page-content tbody tr:nth-child(even) td { background: var(--cs-zebra); }
+	                                  html[data-style="classic"] .page-content tr:hover td { background: color-mix(in srgb, var(--color-primary) 7%, var(--color-bg)); }
+	                                  html[data-style="classic"] .page-content blockquote { background: var(--color-bg-secondary); border-left-color: var(--color-border); border-radius: 0; color: var(--color-text-secondary); }
+	                                  html[data-style="classic"] .page-content .admonition {
+	                                      border: 1px solid var(--color-border);
+	                                      border-left: 4px solid var(--st-c);
+	                                      border-radius: var(--radius-sm);
+	                                      background: color-mix(in srgb, var(--st-c) 5%, var(--color-bg));
+	                                  }
+	                                  html[data-style="classic"] .page-content .admonition-title {
+	                                      margin: -1rem -1.25rem 0.75rem;
+	                                      padding: 0.375rem 1.25rem;
+	                                      background: color-mix(in srgb, var(--st-c) 14%, var(--color-bg));
+	                                      font-size: 0.875rem;
+	                                  }
+	                                  html[data-style="classic"] :is(.tabs, .package-install-widget, .source-viewer) { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .tab-headers { border-radius: var(--radius) var(--radius) 0 0; }
+	                                  html[data-style="classic"] .tab-header.active { background: var(--color-bg); }
+	                                  html[data-style="classic"] :is(.component-card, .component-link-card) { border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+	                                  html[data-style="classic"] :is(.component-card, .component-link-card):hover { border-color: var(--st-link); box-shadow: var(--shadow-sm); }
+	                                  html[data-style="classic"] .component-step-number { border-radius: var(--radius); width: 28px; height: 28px; }
+	                                  html[data-style="classic"] .component-step:not(:last-child) .component-step-indicator::after { width: 1px; }
+	                                  html[data-style="classic"] .toc-sidebar { border-left-color: var(--color-border); }
+	                                  html[data-style="classic"] .toc-title {
+	                                      color: var(--color-text);
+	                                      margin: 0 1rem 0.75rem;
+	                                      padding: 0 0 0.5rem;
+	                                      border-bottom: 1px solid var(--color-border);
+	                                  }
+	                                  html[data-style="classic"] .toc-list { border-left: none; margin-left: 0.5rem; }
+	                                  html[data-style="classic"] .toc-item a { color: var(--color-text-secondary); border-left-width: 3px !important; margin-left: 0; }
+	                                  html[data-style="classic"] .toc-item a:hover { background: var(--color-bg-secondary); color: var(--color-text); }
+	                                  html[data-style="classic"] .toc-item a.active { background: var(--color-bg-secondary); }
+	                                  html[data-style="classic"] .toc-counter { color: var(--color-text-secondary); }
+	                                  html[data-style="classic"] .breadcrumbs {
+	                                      padding: 0.375rem 0.75rem;
+	                                      background: var(--color-bg-secondary);
+	                                      border: 1px solid var(--color-border-light);
+	                                      border-radius: var(--radius);
+	                                      color: var(--color-text-secondary);
+	                                  }
+	                                  html[data-style="classic"] .breadcrumbs li:not(:last-child)::after { content: '\203A'; opacity: 1; color: var(--color-text-muted); }
+	                                  html[data-style="classic"] .page-nav-link { border-radius: var(--radius); background: var(--color-bg-secondary); }
+	                                  html[data-style="classic"] .page-nav-link:hover { background: var(--color-bg); border-color: var(--st-link); box-shadow: var(--shadow-sm); }
+	                                  html[data-style="classic"] .page-nav-label { color: var(--color-text-secondary); }
+	                                  html[data-style="classic"] .feedback-btn { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .site-footer { background: var(--color-bg-secondary); border-top-color: var(--color-border); }
+	                                  html[data-style="classic"] .footer-inner { color: var(--color-text-secondary); }
+	                                  html[data-style="classic"] .search-dialog { border-radius: var(--radius-md); }
+	                                  html[data-style="classic"] .search-result { border-radius: 0; border-bottom: 1px solid var(--color-border-light); }
+	                                  html[data-style="classic"] :is(.search-result:hover, .search-result.active) { background: var(--cs-hover); }
+	                                  html[data-style="classic"] :is(.back-to-top, .toc-toggle-btn) { border-radius: var(--radius); box-shadow: var(--shadow-md); }
+	                                  html[data-style="classic"] .back-to-top:hover { box-shadow: var(--shadow-md) !important; transform: none; }
+	                                  html[data-style="classic"] .landing::before,
+	                                  html[data-style="classic"] .landing-hero::after { display: none; }
+	                                  html[data-style="classic"] .landing-hero { background: var(--color-bg-secondary); border-bottom: 1px solid var(--color-border); padding: 4.5rem 2rem 3.5rem; }
+	                                  html[data-style="classic"] .landing-hero::before { background: none !important; animation: none; }
+	                                  html[data-style="classic"] .landing-hero .hero-grid-pattern { display: none; }
+	                                  html[data-style="classic"] .landing-hero-icon { animation: none; border-radius: var(--radius-md); background: var(--color-bg); border: 1px solid var(--color-border); }
+	                                  html[data-style="classic"] .landing-hero-title { font-weight: 600; letter-spacing: -0.02em; }
+	                                  html[data-style="classic"] .landing-btn { border-radius: var(--radius); min-width: 180px; }
+	                                  html[data-style="classic"] .landing-btn-primary { box-shadow: var(--shadow-sm); }
+	                                  html[data-style="classic"] .landing-btn-primary:hover { transform: none; box-shadow: var(--shadow-md); background: color-mix(in srgb, var(--st-link) 85%, var(--st-ink)); }
+	                                  html[data-style="classic"] .landing-btn-secondary { background: var(--color-bg); border-color: var(--color-border); }
+	                                  html[data-style="classic"] .landing-btn-secondary:hover { transform: none; border-color: var(--st-link); color: var(--st-link); }
+	                                  html[data-style="classic"] .landing-feature-card { border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+	                                  html[data-style="classic"] .landing-feature-card::before { display: none; }
+	                                  html[data-style="classic"] .landing-feature-card:hover { transform: none !important; box-shadow: var(--shadow-md) !important; border-color: var(--st-link); }
+	                                  html[data-style="classic"] .landing-feature-icon { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .landing .landing-content > ul > li { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .landing .landing-content > ul > li:hover { transform: none !important; box-shadow: var(--shadow-md) !important; }
+	                                  html[data-style="classic"] .landing-md-content table { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .landing-md-content tbody tr:nth-child(even) td { background: var(--cs-zebra); }
+	                                  html[data-style="classic"] .landing-footer { background: var(--color-bg-secondary); color: var(--color-text-secondary); }
+	                                  html[data-style="classic"] :is(.repl-container, .blazor-preview-container, .openapi-endpoint-card) { border-radius: var(--radius); }
+	                                  html[data-style="classic"] .openapi-endpoint-card { box-shadow: var(--shadow-sm); }
+	                                  html[data-style="classic"] :is(.openapi-method, .openapi-status, .openapi-required, .openapi-optional, .openapi-auth-label) { border-radius: var(--radius-sm); }
+
+	                                  /* Style: Soft */
+	                                  html[data-style="soft"] {
+	                                      --color-bg: #fbfbfd;
+	                                      --color-bg-secondary: color-mix(in srgb, var(--color-primary) 6%, #ffffff);
+	                                      --color-bg-code: color-mix(in srgb, var(--color-primary) 4%, #f4f5f8);
+	                                      --color-text: #1d2030;
+	                                      --color-text-secondary: #4b5068;
+	                                      --color-text-muted: #5f6478;
+	                                      --color-border: color-mix(in srgb, var(--color-primary) 10%, #e6e8ef);
+	                                      --color-border-light: color-mix(in srgb, var(--color-primary) 6%, #f0f1f5);
+	                                      --sf-surface: #ffffff;
+	                                      --sf-tint: color-mix(in srgb, var(--color-primary) 8%, #ffffff);
+	                                      --sf-tint-strong: color-mix(in srgb, var(--color-primary) 14%, #ffffff);
+	                                      --radius: 12px;
+	                                      --radius-sm: 8px;
+	                                      --radius-md: 12px;
+	                                      --shadow-sm: 0 1px 2px rgba(20, 24, 40, 0.04), 0 1px 3px rgba(20, 24, 40, 0.06);
+	                                      --shadow-md: 0 2px 4px rgba(20, 24, 40, 0.04), 0 6px 16px -4px rgba(20, 24, 40, 0.1);
+	                                      --shadow-lg: 0 4px 8px rgba(20, 24, 40, 0.05), 0 16px 40px -8px rgba(20, 24, 40, 0.16);
+	                                      --transition: 200ms ease;
+	                                      --header-height: 64px;
+	                                      --toc-width: 230px;
+	                                      --content-max-width: 800px;
+	                                  }
+	                                  html[data-style="soft"][data-theme="dark"] {
+	                                      --color-bg: #12131a;
+	                                      --color-bg-secondary: color-mix(in srgb, var(--color-primary) 8%, #191b24);
+	                                      --color-bg-code: color-mix(in srgb, var(--color-primary) 5%, #171922);
+	                                      --color-text: #e9eaf2;
+	                                      --color-text-secondary: #b3b6c8;
+	                                      --color-text-muted: #9ca0b5;
+	                                      --color-border: color-mix(in srgb, var(--color-primary) 12%, #2a2d3a);
+	                                      --color-border-light: color-mix(in srgb, var(--color-primary) 8%, #20222c);
+	                                      --sf-surface: #181a23;
+	                                      --sf-tint: color-mix(in srgb, var(--color-primary) 12%, #181a23);
+	                                      --sf-tint-strong: color-mix(in srgb, var(--color-primary) 20%, #181a23);
+	                                      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.25);
+	                                      --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 20px -4px rgba(0, 0, 0, 0.45);
+	                                      --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.35), 0 20px 48px -8px rgba(0, 0, 0, 0.6);
+	                                  }
+	                                  html[data-style="soft"] body { line-height: 1.75; }
+	                                  html[data-style="soft"] .site-header {
+	                                      background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+	                                      border-bottom-color: transparent;
+	                                      box-shadow: var(--shadow-sm);
+	                                      backdrop-filter: blur(12px) saturate(1.4);
+	                                  }
+	                                  html[data-style="soft"] .header-actions { gap: 0.375rem; }
+	                                  html[data-style="soft"] :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger) {
+	                                      border-color: transparent;
+	                                      border-radius: 999px;
+	                                      background: var(--sf-tint);
+	                                  }
+	                                  html[data-style="soft"] :is(.theme-toggle, .mobile-nav-toggle, .color-theme-trigger, .code-theme-trigger, .code-style-trigger, .style-trigger):hover { background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .search-trigger { border-color: transparent; border-radius: 999px; background: var(--sf-tint); padding: 0.4rem 0.9rem; }
+	                                  html[data-style="soft"] .search-trigger:hover { background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .search-trigger kbd { border-color: transparent; border-radius: 999px; background: var(--sf-surface); }
+	                                  html[data-style="soft"] .version-trigger { border-radius: 999px; border-color: transparent; background: var(--sf-tint); }
+	                                  html[data-style="soft"] :is(.color-theme-dropdown, .code-theme-dropdown, .code-style-dropdown, .style-dropdown, .version-dropdown) { border-color: var(--color-border-light); background: var(--sf-surface); padding: 8px; }
+	                                  html[data-style="soft"] :is(.code-theme-option, .code-style-option, .style-option, .version-option) { border-radius: 8px; }
+	                                  html[data-style="soft"] :is(.code-theme-option, .code-style-option, .style-option, .version-option):hover { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .version-badge-default { background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .sidebar { border-right: none; padding: 1.5rem 1rem; }
+	                                  html[data-style="soft"] .nav-section { margin-bottom: 0.5rem; }
+	                                  html[data-style="soft"] .nav-link {
+	                                      padding: 0.4rem 0.875rem !important;
+	                                      border-left: 0 !important;
+	                                      border-radius: 999px;
+	                                      color: var(--color-text-secondary);
+	                                  }
+	                                  html[data-style="soft"] .nav-link:hover { background: var(--sf-tint); color: var(--color-text); }
+	                                  html[data-style="soft"] .nav-link.current { background: var(--sf-tint-strong); font-weight: 600; }
+	                                  html[data-style="soft"] .nav-header .nav-link,
+	                                  html[data-style="soft"] .nav-group-label { font-weight: 700; color: var(--color-text); }
+	                                  html[data-style="soft"] .nav-chevron-btn { border-radius: 999px; }
+	                                  html[data-style="soft"] .nav-chevron-btn:hover { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .nav-children { padding-left: 0.75rem; }
+	                                  html[data-style="soft"] .content { padding: 2.5rem 3rem; }
+	                                  html[data-style="soft"] .page-content h1 { margin-bottom: 1.5rem !important; }
+	                                  html[data-style="soft"] .page-content h2 { border-bottom: none; padding-bottom: 0; margin: 3rem 0 1rem; }
+	                                  html[data-style="soft"] .page-content h3 { margin-top: 2.25rem; }
+	                                  html[data-style="soft"] .page-content p { line-height: 1.85; margin-bottom: 1.25rem; }
+	                                  html[data-style="soft"] .page-content :not(pre) > code { background: var(--sf-tint); border-color: transparent; border-radius: 6px !important; }
+	                                  html[data-style="soft"] :is(.page-content, .landing-content) pre { border-color: transparent; border-radius: var(--radius); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .page-content :is(.install-panel, .source-viewer, .tab-content, .repl-container, .blazor-preview-source) pre { box-shadow: none; }
+	                                  html[data-style="soft"] .page-content table {
+	                                      width: fit-content;
+	                                      max-width: 100%;
+	                                      border: 1px solid var(--color-border);
+	                                      border-radius: var(--radius);
+	                                      border-collapse: separate;
+	                                      border-spacing: 0;
+	                                      background: var(--sf-surface);
+	                                  }
+	                                  html[data-style="soft"] .page-content :is(th, td) { border: none; border-bottom: 1px solid var(--color-border-light); padding: 0.75rem 1rem; }
+	                                  html[data-style="soft"] .page-content tr:last-child td { border-bottom: none; }
+	                                  html[data-style="soft"] .page-content th { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .page-content tr:hover td { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .page-content blockquote { border-left-color: var(--sf-tint-strong); border-radius: var(--radius); background: var(--sf-tint); }
+	                                  html[data-style="soft"] .page-content .admonition {
+	                                      border: 1px solid color-mix(in srgb, var(--st-c) 18%, transparent);
+	                                      border-radius: var(--radius);
+	                                      background: color-mix(in srgb, var(--st-c) 9%, var(--color-bg));
+	                                      box-shadow: var(--shadow-sm);
+	                                      padding: 1.125rem 1.375rem;
+	                                  }
+	                                  html[data-style="soft"] :is(.tabs, .package-install-widget, .source-viewer) {
+	                                      border-color: transparent;
+	                                      border-radius: var(--radius);
+	                                      background: var(--sf-surface);
+	                                      box-shadow: var(--shadow-md);
+	                                      overflow: hidden;
+	                                  }
+	                                  html[data-style="soft"] :is(.tab-headers, .install-tabs) { background: var(--sf-tint); border-bottom: none; padding: 4px; gap: 4px; }
+	                                  html[data-style="soft"] :is(.tab-header, .install-tab) { border-radius: 999px; border-bottom: none; margin-bottom: 0; padding: 0.375rem 0.875rem; }
+	                                  html[data-style="soft"] :is(.tab-header.active, .install-tab.active) { background: var(--sf-surface); box-shadow: var(--shadow-sm); }
+	                                  html[data-style="soft"] .install-header { background: var(--sf-surface); border-bottom-color: var(--color-border-light); }
+	                                  html[data-style="soft"] .install-copy-btn { border-radius: 999px; }
+	                                  html[data-style="soft"] .source-viewer[open] summary { border-bottom-color: var(--color-border-light); }
+	                                  html[data-style="soft"] .source-viewer pre { border-radius: 0; }
+	                                  html[data-style="soft"] :is(.component-card, .component-link-card) {
+	                                      border-color: transparent;
+	                                      border-radius: var(--radius);
+	                                      background: var(--sf-surface);
+	                                      box-shadow: var(--shadow-md);
+	                                  }
+	                                  html[data-style="soft"] :is(.component-card, .component-link-card):hover { border-color: transparent; box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+	                                  html[data-style="soft"] :is(.component-card-info, .component-card-success, .component-card-warning) { border-left-color: transparent; }
+	                                  html[data-style="soft"] .component-card-info { background: color-mix(in srgb, #3b82f6 7%, var(--sf-surface)); }
+	                                  html[data-style="soft"] .component-card-success { background: color-mix(in srgb, #22c55e 7%, var(--sf-surface)); }
+	                                  html[data-style="soft"] .component-card-warning { background: color-mix(in srgb, #f59e0b 8%, var(--sf-surface)); }
+	                                  html[data-style="soft"] .component-step-number { background: var(--sf-tint-strong); color: var(--st-link); }
+	                                  html[data-style="soft"] .component-step:not(:last-child) .component-step-indicator::after { background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .toc-sidebar { border-left: none; }
+	                                  html[data-style="soft"] .toc-list { border-left: none; margin-left: 0.75rem; }
+	                                  html[data-style="soft"] .toc-item a { border-left: 0 !important; border-radius: 999px; margin-left: 0; padding: 0.3rem 0.75rem; }
+	                                  html[data-style="soft"] .toc-level-3 a { margin-left: 0.75rem; padding-left: 0.75rem; }
+	                                  html[data-style="soft"] .toc-level-4 a { margin-left: 1.5rem; padding-left: 0.75rem; }
+	                                  html[data-style="soft"] .toc-item a:hover { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .toc-item a.active { background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .toc-progress { height: 4px; border-radius: 999px; background: var(--sf-tint); }
+	                                  html[data-style="soft"] .toc-progress-bar { border-radius: 999px; background: var(--st-link); }
+	                                  html[data-style="soft"] .toc-counter { border-top: none; }
+	                                  html[data-style="soft"] :is(.edit-link, .last-updated, .page-contributors) { border-top-color: var(--color-border-light); }
+	                                  html[data-style="soft"] .page-nav-link { border-color: transparent; border-radius: var(--radius); background: var(--sf-surface); box-shadow: var(--shadow-sm); padding: 1.125rem 1.375rem; }
+	                                  html[data-style="soft"] .page-nav-link:hover { border-color: transparent; background: var(--sf-surface); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .feedback-btn { border-radius: 999px; padding: 0.45rem 1rem; }
+	                                  html[data-style="soft"] .site-footer { background: var(--color-bg-secondary); border-top: none; }
+	                                  html[data-style="soft"] .search-dialog { border-color: transparent; border-radius: 16px; background: var(--sf-surface); }
+	                                  html[data-style="soft"] .search-result { border-radius: 10px; }
+	                                  html[data-style="soft"] :is(.search-result:hover, .search-result.active) { background: var(--sf-tint); }
+	                                  html[data-style="soft"] :is(.back-to-top, .toc-toggle-btn) { box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .back-to-top:hover { box-shadow: var(--shadow-lg) !important; }
+	                                  html[data-style="soft"] .landing-hero::before { animation: none; background: radial-gradient(ellipse 70% 60% at 50% 0%, var(--sf-tint-strong), transparent 70%) !important; }
+	                                  html[data-style="soft"] .landing-hero .hero-grid-pattern { display: none; }
+	                                  html[data-style="soft"] .landing-hero-icon { border-radius: 20px; background: var(--sf-surface); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .landing-hero-title {
+	                                      background: linear-gradient(135deg, var(--color-text) 35%, var(--st-link));
+	                                      -webkit-background-clip: text;
+	                                      background-clip: text;
+	                                      -webkit-text-fill-color: transparent;
+	                                  }
+	                                  html[data-style="soft"] .landing-btn { border-radius: 999px; }
+	                                  html[data-style="soft"] .landing-btn-primary { box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .landing-btn-primary:hover { box-shadow: var(--shadow-lg); }
+	                                  html[data-style="soft"] .landing-btn-secondary { border-color: transparent; background: var(--sf-surface); box-shadow: var(--shadow-sm); }
+	                                  html[data-style="soft"] .landing-btn-secondary:hover { border-color: transparent; color: var(--st-link); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .landing-feature-card { border-color: transparent; background: var(--sf-surface); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .landing-feature-card::before { display: none; }
+	                                  html[data-style="soft"] .landing-feature-card:hover { box-shadow: var(--shadow-lg) !important; transform: translateY(-3px) !important; }
+	                                  html[data-style="soft"] .landing-feature-icon { border-radius: 12px; background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .landing .landing-content > ul > li { border-color: transparent; background: var(--sf-surface); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .landing .landing-content > ul > li:hover { box-shadow: var(--shadow-lg) !important; }
+	                                  html[data-style="soft"] .landing-md-content table { border-color: var(--color-border); border-collapse: separate; border-spacing: 0; }
+	                                  html[data-style="soft"] .landing-md-content :is(th, td) { border: none; border-bottom: 1px solid var(--color-border-light); }
+	                                  html[data-style="soft"] .landing-md-content th { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .landing-footer { background: var(--color-bg-secondary); border-top: none; }
+	                                  html[data-style="soft"] :is(.repl-container, .blazor-preview-container) { border-color: transparent; border-radius: var(--radius); box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .openapi-endpoint-card { border-color: transparent; border-radius: var(--radius); box-shadow: var(--shadow-md); background: var(--sf-surface); }
+	                                  html[data-style="soft"] .openapi-endpoint-card h3 { border-bottom-color: var(--color-border-light); }
+	                                  html[data-style="soft"] :is(.openapi-method, .openapi-status, .openapi-required, .openapi-optional, .openapi-auth-label) { border-radius: 999px; }
+	                                  @media (max-width: 1200px) {
+	                                      html[data-style="soft"] .toc-sidebar { border-left: none; border-radius: var(--radius) 0 0 var(--radius); box-shadow: var(--shadow-lg); }
+	                                  }
+
+	                                  /* Styles: blog */
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) { --blog-link: var(--st-link); }
+	                                  html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .blog-card:hover { box-shadow: none; }
+	                                  html[data-style="moka"] .blog-card { background: var(--mk-surface); border-color: var(--mk-border-visible); border-radius: var(--radius-md); padding: 1rem 1.25rem; }
+	                                  html[data-style="moka"] .blog-card:hover { border-color: var(--mk-border-strong); box-shadow: inset 0 0 20px var(--mk-glow), 0 0 12px var(--mk-glow); }
+	                                  html[data-style="moka"] .page-content .blog-card .blog-card-title { font-size: 1.0625rem !important; font-weight: 600; letter-spacing: -0.01em; }
+	                                  html[data-style="moka"] .blog-meta,
+	                                  html[data-style="moka"] .blog-authors { font-size: 11px; }
+	                                  html[data-style="moka"] .blog-meta time,
+	                                  html[data-style="moka"] .blog-reading-time,
+	                                  html[data-style="moka"] .blog-pager-status,
+	                                  html[data-style="moka"] .blog-tag-count { font-family: var(--font-mono); letter-spacing: 0.02em; }
+	                                  html[data-style="moka"] .blog-tag { border-radius: var(--radius-sm); border-color: var(--mk-border-visible); background: var(--mk-glow); font-family: var(--font-mono); font-size: 11px; }
+	                                  html[data-style="moka"] .blog-tag:hover { border-color: var(--mk-border-strong); background: var(--mk-glow-md); }
+	                                  html[data-style="moka"] .blog-read-more,
+	                                  html[data-style="moka"] .blog-pager-link,
+	                                  html[data-style="moka"] .blog-draft { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+	                                  html[data-style="moka"] .blog-draft { border-radius: var(--radius-sm); border-color: var(--mk-border-strong); }
+	                                  html[data-style="moka"] .blog-pager-link { border-color: var(--mk-border-visible); background: transparent; }
+	                                  html[data-style="moka"] .blog-pager-link:hover { border-color: var(--mk-border-strong); background: var(--mk-glow); }
+	                                  html[data-style="moka"] .blog-pager-status { font-size: 11px; }
+	                                  html[data-style="moka"] .blog-post-header { border-bottom-color: var(--mk-border-visible); }
+	                                  html[data-style="minimal"] .blog-list { gap: 0; }
+	                                  html[data-style="minimal"] .blog-card { padding: 1.75rem 0; background: transparent; border: none; border-bottom: 1px solid var(--color-border); border-radius: 0; }
+	                                  html[data-style="minimal"] .blog-card:first-child { padding-top: 0.5rem; }
+	                                  html[data-style="minimal"] .page-content .blog-card .blog-card-title { font-size: 1.375rem !important; font-weight: 600; }
+	                                  html[data-style="minimal"] .blog-tag { background: transparent; border-color: var(--color-border); color: var(--color-text-secondary); }
+	                                  html[data-style="minimal"] .blog-tag:hover { background: transparent; border-color: var(--st-link); color: var(--st-link); }
+	                                  html[data-style="minimal"] .blog-pager-link { padding-left: 0; padding-right: 0; border-color: transparent; }
+	                                  html[data-style="minimal"] .blog-pager-link:hover { background: transparent; border-color: transparent; text-decoration: underline; text-underline-offset: 0.18em; }
+	                                  html[data-style="minimal"] .blog-post-header { padding-bottom: 0; border-bottom: none; }
+	                                  html[data-style="classic"] .blog-card:hover { border-color: var(--color-text-secondary); }
+	                                  html[data-style="classic"] .page-content .blog-card .blog-card-title { font-size: 1.25rem !important; font-weight: 600; }
+	                                  html[data-style="classic"] .blog-tag { padding: 0.0625rem 0.625rem; border-color: transparent; border-radius: 2em; background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg)); font-size: 0.75rem; }
+	                                  html[data-style="classic"] .blog-tag:hover { border-color: transparent; background: color-mix(in srgb, var(--color-primary) 18%, var(--color-bg)); text-decoration: underline; }
+	                                  html[data-style="classic"] .blog-pager-link { background: var(--color-bg-secondary); }
+	                                  html[data-style="classic"] .blog-pager-link:hover { background: var(--cs-hover); border-color: var(--color-text-secondary); }
+	                                  html[data-style="soft"] .blog-list { gap: 1.5rem; }
+	                                  html[data-style="soft"] .blog-card { padding: 1.5rem 1.75rem; background: var(--sf-surface); border-color: transparent; box-shadow: var(--shadow-sm); }
+	                                  html[data-style="soft"] .blog-card:hover { border-color: transparent; box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .blog-tag,
+	                                  html[data-style="soft"] .blog-tag:hover { border-color: transparent; }
+	                                  html[data-style="soft"] .blog-tag { background: var(--sf-tint); }
+	                                  html[data-style="soft"] .blog-tag:hover { background: var(--sf-tint-strong); }
+	                                  html[data-style="soft"] .blog-pager-link { background: var(--sf-surface); border-color: transparent; border-radius: 999px; box-shadow: var(--shadow-sm); }
+	                                  html[data-style="soft"] .blog-pager-link:hover { background: var(--sf-surface); border-color: transparent; box-shadow: var(--shadow-md); }
+	                                  html[data-style="soft"] .blog-post-header { border-bottom: none; padding-bottom: 0.5rem; }
+	                                  html[data-style="soft"] .page-content .blog-cover { border-radius: var(--radius); }
+
+	                                  /* Styles: narrow screens */
+	                                  @media (max-width: 768px) {
+	                                      html:is([data-style="moka"], [data-style="minimal"], [data-style="classic"], [data-style="soft"]) .content { padding: 1.5rem 1rem; }
+	                                      html[data-style="moka"] .sidebar { border-right: 1px solid var(--mk-border-strong); }
+	                                      html[data-style="minimal"] .sidebar { border-right: 1px solid var(--color-border); padding: 1.5rem 1rem; }
+	                                      html[data-style="classic"] .site-header .search-trigger { min-width: 0; }
+	                                      html[data-style="soft"] .sidebar { background: var(--sf-surface); box-shadow: var(--shadow-lg); }
+	                                  }
+
+	                                  /* Styles: version selector. The open trigger's label is text, unlike the other pickers' icons, and white on the
+	                                     lightened bar was under 4.5:1 for the emerald and amber presets */
+	                                  html[data-style="classic"] .site-header .version-trigger[aria-expanded="true"] { background: var(--cs-bar-control); }
+	                                  """;
 
 	#endregion
 
@@ -2535,6 +4007,18 @@ public static class EmbeddedThemeProvider
 	                                           });
 	                                       }
 
+	                                       // Opening one of these pickers closes the other two. Their clicks stop
+	                                       // propagating, so the others' outside-click handlers never see them.
+	                                       function closeOtherPickers(keep) {
+	                                           [['.color-theme-dropdown', '.color-theme-trigger'], ['.code-theme-dropdown', '.code-theme-trigger'], ['.code-style-dropdown', '.code-style-trigger']].forEach(function(pair) {
+	                                               var dd = document.querySelector(pair[0]);
+	                                               if (!dd || dd === keep) return;
+	                                               dd.setAttribute('hidden', '');
+	                                               var tr = document.querySelector(pair[1]);
+	                                               if (tr) tr.setAttribute('aria-expanded', 'false');
+	                                           });
+	                                       }
+
 	                                       // Color theme selector
 	                                       (function() {
 	                                           // No preset when the site sets its own primaryColor and the reader has not
@@ -2557,6 +4041,7 @@ public static class EmbeddedThemeProvider
 	                                                   e.stopPropagation();
 	                                                   var open = dropdown.hasAttribute('hidden');
 	                                                   if (open) {
+	                                                       closeOtherPickers(dropdown);
 	                                                       dropdown.removeAttribute('hidden');
 	                                                       trigger.setAttribute('aria-expanded', 'true');
 	                                                   } else {
@@ -2605,11 +4090,7 @@ public static class EmbeddedThemeProvider
 
 	                                               ctTrigger.addEventListener('click', function(e) {
 	                                                   e.stopPropagation();
-	                                                   // Close color theme dropdown if open
-	                                                   var colorDd = document.querySelector('.color-theme-dropdown');
-	                                                   if (colorDd) { colorDd.setAttribute('hidden', ''); }
-	                                                   var colorTr = document.querySelector('.color-theme-trigger');
-	                                                   if (colorTr) { colorTr.setAttribute('aria-expanded', 'false'); }
+	                                                   closeOtherPickers(ctDropdown);
 
 	                                                   var open = ctDropdown.hasAttribute('hidden');
 	                                                   if (open) {
@@ -2660,15 +4141,7 @@ public static class EmbeddedThemeProvider
 
 	                                               csTrigger.addEventListener('click', function(e) {
 	                                                   e.stopPropagation();
-	                                                   // Close other dropdowns
-	                                                   var colorDd = document.querySelector('.color-theme-dropdown');
-	                                                   if (colorDd) { colorDd.setAttribute('hidden', ''); }
-	                                                   var colorTr = document.querySelector('.color-theme-trigger');
-	                                                   if (colorTr) { colorTr.setAttribute('aria-expanded', 'false'); }
-	                                                   var codeDd = document.querySelector('.code-theme-dropdown');
-	                                                   if (codeDd) { codeDd.setAttribute('hidden', ''); }
-	                                                   var codeTr = document.querySelector('.code-theme-trigger');
-	                                                   if (codeTr) { codeTr.setAttribute('aria-expanded', 'false'); }
+	                                                   closeOtherPickers(csDropdown);
 
 	                                                   var open = csDropdown.hasAttribute('hidden');
 	                                                   if (open) {
@@ -2699,11 +4172,91 @@ public static class EmbeddedThemeProvider
 	                                           }
 	                                       })();
 
+	                                       // Style selector
+	                                       (function() {
+	                                           var stTrigger = document.querySelector('.style-trigger');
+	                                           var stDropdown = document.querySelector('.style-dropdown');
+	                                           if (!stTrigger || !stDropdown) return;
+	                                           var stOptions = Array.prototype.slice.call(stDropdown.querySelectorAll('.style-option'));
+
+	                                           function updateStyleActive() {
+	                                               var current = html.getAttribute('data-style') || 'default';
+	                                               stOptions.forEach(function(opt) {
+	                                                   var active = opt.getAttribute('data-style-option') === current;
+	                                                   opt.classList.toggle('active', active);
+	                                                   opt.setAttribute('aria-checked', active ? 'true' : 'false');
+	                                               });
+	                                           }
+
+	                                           function openStyleMenu() {
+	                                               document.querySelectorAll('.color-theme-dropdown, .code-theme-dropdown, .code-style-dropdown, .version-dropdown').forEach(function(d) { d.setAttribute('hidden', ''); });
+	                                               document.querySelectorAll('.color-theme-trigger, .code-theme-trigger, .code-style-trigger, .version-trigger').forEach(function(t) { t.setAttribute('aria-expanded', 'false'); });
+	                                               stDropdown.removeAttribute('hidden');
+	                                               stTrigger.setAttribute('aria-expanded', 'true');
+	                                               (stDropdown.querySelector('.style-option.active') || stOptions[0]).focus();
+	                                           }
+
+	                                           function closeStyleMenu(returnFocus) {
+	                                               if (stDropdown.hasAttribute('hidden')) return;
+	                                               stDropdown.setAttribute('hidden', '');
+	                                               stTrigger.setAttribute('aria-expanded', 'false');
+	                                               if (returnFocus) stTrigger.focus();
+	                                           }
+
+	                                           // Moka starts dark, but only for a reader who has never used the dark mode toggle.
+	                                           function applyStyle(style) {
+	                                               html.setAttribute('data-style', style);
+	                                               localStorage.setItem('mokadocs-style', style);
+	                                               if (!localStorage.getItem('mokadocs-theme')) {
+	                                                   var dark = style === 'moka' || window.matchMedia('(prefers-color-scheme: dark)').matches;
+	                                                   html.setAttribute('data-theme', dark ? 'dark' : 'light');
+	                                               }
+	                                               updateStyleActive();
+	                                           }
+
+	                                           updateStyleActive();
+
+	                                           stTrigger.addEventListener('click', function(e) {
+	                                               e.stopPropagation();
+	                                               if (stDropdown.hasAttribute('hidden')) { openStyleMenu(); } else { closeStyleMenu(false); }
+	                                           });
+	                                           stTrigger.addEventListener('keydown', function(e) {
+	                                               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); openStyleMenu(); }
+	                                           });
+
+	                                           stOptions.forEach(function(opt, i) {
+	                                               opt.addEventListener('click', function(e) {
+	                                                   e.stopPropagation();
+	                                                   applyStyle(opt.getAttribute('data-style-option'));
+	                                                   closeStyleMenu(true);
+	                                               });
+	                                               opt.addEventListener('keydown', function(e) {
+	                                                   var next = null;
+	                                                   if (e.key === 'ArrowDown') next = stOptions[(i + 1) % stOptions.length];
+	                                                   else if (e.key === 'ArrowUp') next = stOptions[(i - 1 + stOptions.length) % stOptions.length];
+	                                                   else if (e.key === 'Home') next = stOptions[0];
+	                                                   else if (e.key === 'End') next = stOptions[stOptions.length - 1];
+	                                                   else if (e.key === 'Escape') { e.preventDefault(); closeStyleMenu(true); }
+	                                                   else if (e.key === 'Tab') closeStyleMenu(false);
+	                                                   if (next) { e.preventDefault(); next.focus(); }
+	                                               });
+	                                           });
+
+	                                           // Capture phase: the other pickers stop their clicks from bubbling, and this
+	                                           // menu still has to close when one of them opens.
+	                                           document.addEventListener('click', function(e) {
+	                                               if (!e.target.closest || !e.target.closest('.style-selector')) closeStyleMenu(false);
+	                                           }, true);
+	                                       })();
+
 	                                       // Mobile nav toggle
 	                                       const mobileToggle = document.querySelector('.mobile-nav-toggle');
 	                                       const sidebar = document.getElementById('sidebar');
 	                                       if (mobileToggle && sidebar) {
-	                                           mobileToggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+	                                           mobileToggle.addEventListener('click', () => {
+	                                               // The sidebar is hidden on load here, so it could not be scrolled to the current page then.
+	                                               if (sidebar.classList.toggle('open')) sidebar.querySelector('.nav-link.current')?.scrollIntoView({ block: 'center' });
+	                                           });
 	                                       }
 
 	                                       // Syntax highlighting + copy buttons + language labels
@@ -3047,13 +4600,14 @@ public static class EmbeddedThemeProvider
 	                                               const title = (entry.t || '').toLowerCase();
 	                                               const section = (entry.s || '').toLowerCase();
 	                                               const content = (entry.c || '').toLowerCase();
+	                                               const code = (entry.x || '').toLowerCase();
 	                                               const tags = (entry.k || '').toLowerCase();
 	                                               let score = 0;
 	                                               let matched = true;
 	                                               for (const term of terms) {
 	                                                   const inTitle = title.includes(term);
 	                                                   const inSection = section.includes(term);
-	                                                   const inContent = content.includes(term);
+	                                                   const inContent = content.includes(term) || code.includes(term);
 	                                                   const inTags = tags.includes(term);
 	                                                   if (!inTitle && !inSection && !inContent && !inTags) { matched = false; break; }
 	                                                   if (inTitle) score += 10;
@@ -3069,14 +4623,7 @@ public static class EmbeddedThemeProvider
 	                                           activeIdx = top.length > 0 ? 0 : -1;
 	                                           searchResults.innerHTML = top.map((item, i) => {
 	                                               const e = item.entry;
-	                                               let snippet = esc(e.c || '');
-	                                               const firstTerm = terms[0] || '';
-	                                               const idx = snippet.toLowerCase().indexOf(firstTerm);
-	                                               if (idx > 30) snippet = '...' + snippet.slice(idx - 30);
-	                                               if (snippet.length > 120) snippet = snippet.slice(0, 120) + '...';
-	                                               for (const term of terms) {
-	                                                   snippet = snippet.replace(new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark>$1</mark>');
-	                                               }
+	                                               const snippet = searchSnippet(e.c || '', terms);
 	                                               const sectionPart = e.s ? '<span class="search-result-section">&rsaquo; ' + esc(e.s) + '</span>' : '';
 	                                               return '<a class="search-result' + (i === 0 ? ' active' : '') + '" href="' + esc(e.r) + '">' +
 	                                                   '<div><span class="search-result-title">' + esc(e.t) + '</span>' + sectionPart +
@@ -3086,7 +4633,23 @@ public static class EmbeddedThemeProvider
 	                                           }).join('');
 	                                       }
 
-	                                       function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+	                                       // Cut and highlight the raw text, then escape each piece. Highlighting escaped text matched
+	                                       // inside entities ("lt" in &lt;) and inside the <mark> tags an earlier term had added.
+	                                       function searchSnippet(text, terms) {
+	                                           const idx = text.toLowerCase().indexOf(terms[0] || '');
+	                                           const prefix = idx > 30 ? '...' : '';
+	                                           let raw = idx > 30 ? text.slice(idx - 30) : text;
+	                                           let suffix = '';
+	                                           if (prefix.length + raw.length > 120) { raw = raw.slice(0, 120 - prefix.length); suffix = '...'; }
+	                                           const pattern = terms.filter(Boolean).sort((a, b) => b.length - a.length)
+	                                               .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+	                                           const parts = pattern ? raw.split(new RegExp('(' + pattern + ')', 'gi')) : [raw];
+	                                           return prefix + parts.map((part, i) => i % 2 ? '<mark>' + esc(part) + '</mark>' : esc(part)).join('') + suffix;
+	                                       }
+
+	                                       function esc(s) {
+	                                           return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+	                                       }
 
 	                                       function updateActive() {
 	                                           const items = searchResults.querySelectorAll('.search-result');
@@ -3130,9 +4693,16 @@ public static class EmbeddedThemeProvider
 	                                           const children = section?.querySelector(':scope > .nav-children');
 	                                           if (children) {
 	                                               const chevron = toggle.querySelector('.nav-chevron');
+	                                               let settle;
 	                                               toggle.addEventListener('click', (e) => {
 	                                                   e.stopPropagation();
+	                                                   // An open list has no max-height: a fixed one cut long lists off. The
+	                                                   // height is set in pixels only for the animation.
+	                                                   children.style.maxHeight = children.scrollHeight + 'px';
+	                                                   void children.offsetHeight;
 	                                                   const isExpanded = children.classList.toggle('expanded');
+	                                                   clearTimeout(settle);
+	                                                   settle = setTimeout(() => { children.style.maxHeight = ''; }, 350);
 	                                                   toggle.setAttribute('aria-expanded', isExpanded);
 	                                                   if (chevron) chevron.style.transform = isExpanded ? 'rotate(180deg)' : '';
 	                                               });
@@ -3158,15 +4728,21 @@ public static class EmbeddedThemeProvider
 	                                           versionTrigger.addEventListener('click', (e) => {
 	                                               e.stopPropagation();
 	                                               const isOpen = versionTrigger.getAttribute('aria-expanded') === 'true';
+	                                               if (!isOpen) {
+	                                                   document.querySelectorAll('.color-theme-dropdown, .code-theme-dropdown, .code-style-dropdown').forEach(d => d.setAttribute('hidden', ''));
+	                                                   document.querySelectorAll('.color-theme-trigger, .code-theme-trigger, .code-style-trigger').forEach(t => t.setAttribute('aria-expanded', 'false'));
+	                                               }
 	                                               versionTrigger.setAttribute('aria-expanded', String(!isOpen));
 	                                               versionDropdown.hidden = isOpen;
 	                                           });
+	                                           // Capture phase, like the style menu: the other pickers stop their clicks from bubbling, so
+	                                           // the menu stayed open when one of them opened.
 	                                           document.addEventListener('click', (e) => {
-	                                               if (!e.target.closest('.version-selector')) {
+	                                               if (!e.target.closest || !e.target.closest('.version-selector')) {
 	                                                   versionTrigger.setAttribute('aria-expanded', 'false');
 	                                                   versionDropdown.hidden = true;
 	                                               }
-	                                           });
+	                                           }, true);
 	                                           document.addEventListener('keydown', (e) => {
 	                                               if (e.key === 'Escape' && !versionDropdown.hidden) {
 	                                                   versionTrigger.setAttribute('aria-expanded', 'false');
@@ -3307,7 +4883,7 @@ public static class EmbeddedThemeProvider
 	/// <summary>
 	///     Returns the embedded CSS content.
 	/// </summary>
-	public static string GetCss() => _embeddedCss;
+	public static string GetCss() => _embeddedCss + _stylesCss;
 
 	/// <summary>
 	///     Returns the embedded JS content.
@@ -3318,33 +4894,35 @@ public static class EmbeddedThemeProvider
 
 	private const string _defaultLayout = """
 	                                      <!DOCTYPE html>
-	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
+	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme | html.escape }}" data-code-style="{{ theme.code_style | html.escape }}" data-style="{{ theme.style | html.escape }}"{{ if base_path != "" }} data-base-path="{{ base_path | html.escape }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
 	                                      <head>
-	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
+	                                          <script>try{const s={{ if theme.style_selector }}localStorage.getItem('mokadocs-style')||{{ end }}'{{ theme.style }}';document.documentElement.setAttribute('data-style',s);const t=localStorage.getItem('mokadocs-theme')||(s==='moka'||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme | html.escape | string.escape }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style | html.escape | string.escape }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
 	                                          <meta name="viewport" content="width=device-width, initial-scale=1" />
 	                                          <title>{{ page.title | html.escape }} - {{ site.title | html.escape }}</title>
 	                                          <meta name="description" content="{{ page.meta_description | html.escape }}" />
-	                                          {{ if page.canonical_url != "" }}<link rel="canonical" href="{{ page.canonical_url }}" />{{ end }}
+	                                          {{ if page.canonical_url != "" }}<link rel="canonical" href="{{ page.canonical_url | html.escape }}" />{{ end }}
 	                                          {{ if page.canonical_url != "" }}<meta property="og:title" content="{{ page.title | html.escape }}" />
 	                                          <meta property="og:description" content="{{ page.meta_description | html.escape }}" />
-	                                          <meta property="og:url" content="{{ page.canonical_url }}" />
+	                                          <meta property="og:url" content="{{ page.canonical_url | html.escape }}" />
 	                                          <meta property="og:site_name" content="{{ site.title | html.escape }}" />
 	                                          <meta property="og:type" content="article" />
 	                                          <meta name="twitter:card" content="summary" />
 	                                          <meta name="twitter:title" content="{{ page.title | html.escape }}" />
 	                                          <meta name="twitter:description" content="{{ page.meta_description | html.escape }}" />{{ end }}
-	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
+	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css | html.escape }}" />
 	                                          {{ end }}
-	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
-	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color }}}</style>{{ end }}
-	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
+	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color | html.escape }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color | html.escape }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color | html.escape }} 80%,#000)}</style>{{ end }}
+	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color | html.escape }}}</style>{{ end }}
+	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url | html.escape }}" />{{ end }}
+	                                          {{ for feed in blog.feeds }}<link rel="alternate" type="{{ feed.type | html.escape }}" title="{{ feed.title | html.escape }}" href="{{ feed.url | html.escape }}" />
+	                                          {{ end }}
 	                                      </head>
 	                                      <body>
 	                                          <header class="site-header">
 	                                              <div class="header-inner">
-	                                                  <a class="site-logo" href="{{ base_path }}/">
-	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title | html.escape }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+	                                                  <a class="site-logo" href="{{ base_path | html.escape }}/">
+	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url | html.escape }}" alt="{{ site.title | html.escape }}" class="site-logo-img" />{{ else }}<svg class="site-logo-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
 	                                                      <span class="site-name">{{ site.title | html.escape }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
@@ -3352,13 +4930,13 @@ public static class EmbeddedThemeProvider
 	                                                      <div class="version-selector">
 	                                                          <button class="version-trigger" aria-label="Select version" aria-expanded="false" aria-haspopup="listbox">
 	                                                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-	                                                              <span class="version-label">{{ current_version }}</span>
+	                                                              <span class="version-label">{{ current_version | html.escape }}</span>
 	                                                              <svg class="version-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
 	                                                          </button>
 	                                                          <ul class="version-dropdown" role="listbox" hidden>
 	                                                              {{ for v in versions }}
-	                                                              <li role="option"{{ if v.label == current_version }} aria-selected="true"{{ end }}>
-	                                                                  <a class="version-option{{ if v.label == current_version }} active{{ end }}" href="{{ if v.is_default }}{{ base_path }}/{{ else }}{{ base_path }}/{{ v.slug }}/{{ end }}" data-version-slug="{{ v.slug }}">
+	                                                              <li role="option"{{ if v.is_current }} aria-selected="true"{{ end }}>
+	                                                                  <a class="version-option{{ if v.is_current }} active{{ end }}" href="{{ v.url | html.escape }}" data-version-slug="{{ v.slug | html.escape }}"{{ if v.is_current }} aria-current="page"{{ end }}>
 	                                                                      <span class="version-option-label">{{ v.label | html.escape }}</span>
 	                                                                      {{ if v.is_default }}<span class="version-badge version-badge-default">latest</span>{{ end }}
 	                                                                      {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">pre</span>{{ end }}
@@ -3376,6 +4954,20 @@ public static class EmbeddedThemeProvider
 	                                                      </button>
 	                                                      {{ end }}
 	                                                      <div class="appearance-group">
+	                                                      {{ if theme.style_selector }}
+	                                                      <div class="style-selector">
+	                                                          <button class="style-trigger" aria-label="Change style" aria-expanded="false" aria-haspopup="menu" aria-controls="styleMenu">
+	                                                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+	                                                          </button>
+	                                                          <div class="style-dropdown" id="styleMenu" role="menu" aria-label="Style" hidden>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="default"><span class="style-preview style-preview-default"></span><span class="style-text"><span class="style-name">Default</span><span class="style-desc">The original look</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="moka"><span class="style-preview style-preview-moka"></span><span class="style-text"><span class="style-name">Moka</span><span class="style-desc">Dense, dark first</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="minimal"><span class="style-preview style-preview-minimal"></span><span class="style-text"><span class="style-name">Minimal</span><span class="style-desc">Quiet, few lines</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="classic"><span class="style-preview style-preview-classic"></span><span class="style-text"><span class="style-name">Classic</span><span class="style-desc">Reference docs</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="soft"><span class="style-preview style-preview-soft"></span><span class="style-text"><span class="style-name">Soft</span><span class="style-desc">Rounded, roomy</span></span><span class="style-check">&#10003;</span></button>
+	                                                          </div>
+	                                                      </div>
+	                                                      {{ end }}
 	                                                      {{ if theme.color_themes != false }}
 	                                                      <div class="color-theme-selector">
 	                                                          <button class="color-theme-trigger" aria-label="Change color theme" aria-expanded="false">
@@ -3435,71 +5027,10 @@ public static class EmbeddedThemeProvider
 	                                          </header>
 
 	                                          <div class="site-container">
-	                                              <aside class="sidebar" id="sidebar">
-	                                                  <nav class="sidebar-nav" aria-label="Documentation">
-	                                                      {{ for item in nav }}
-	                                                      <div class="nav-section{{ if item.is_active || item.has_active_child }} active{{ end }}">
-	                                                          {{ if item.has_children }}
-	                                                          <div class="nav-header">
-	                                                              {{ if item.has_page }}
-	                                                              <a class="nav-link{{ if item.is_active }} current{{ else if item.has_active_child }} parent-active{{ end }}" href="{{ item.route }}">
-	                                                                  {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
-	                                                                  {{ item.label | html.escape }}
-	                                                              </a>
-	                                                              {{ else }}
-	                                                              <span class="nav-link nav-group-label{{ if item.has_active_child }} parent-active{{ end }}">
-	                                                                  {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
-	                                                                  {{ item.label | html.escape }}
-	                                                              </span>
-	                                                              {{ end }}
-	                                                              <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ item.label | html.escape }}" type="button" aria-expanded="{{ if item.expanded || item.has_active_child }}true{{ else }}false{{ end }}">
-	                                                                  <svg class="nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-	                                                              </button>
-	                                                          </div>
-	                                                          {{ else }}
-	                                                          <a class="nav-link{{ if item.is_active }} current{{ end }}" href="{{ item.route }}">
-	                                                              {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
-	                                                              {{ item.label | html.escape }}
-	                                                          </a>
-	                                                          {{ end }}
-	                                                          {{ if item.children.size > 0 }}
-	                                                          <ul class="nav-children{{ if item.expanded || item.has_active_child }} expanded{{ end }}">
-	                                                              {{ for child in item.children }}
-	                                                              <li>
-	                                                                  {{ if child.has_children }}
-	                                                                  <div class="nav-sub-section{{ if child.is_active || child.has_active_child }} active{{ end }}">
-	                                                                      <div class="nav-header">
-	                                                                          {{ if child.has_page }}
-	                                                                          <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route }}">{{ child.label | html.escape }}</a>
-	                                                                          {{ else }}
-	                                                                          <span class="nav-link nav-group-label">{{ child.label | html.escape }}</span>
-	                                                                          {{ end }}
-	                                                                          <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ child.label | html.escape }}" type="button" aria-expanded="{{ if child.expanded || child.has_active_child }}true{{ else }}false{{ end }}">
-	                                                                              <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-	                                                                          </button>
-	                                                                      </div>
-	                                                                      <ul class="nav-children{{ if child.expanded || child.has_active_child }} expanded{{ end }}">
-	                                                                          {{ for grandchild in child.children }}
-	                                                                          <li>
-	                                                                              <a class="nav-link{{ if grandchild.is_active }} current{{ end }}" href="{{ grandchild.route }}">{{ grandchild.label | html.escape }}</a>
-	                                                                          </li>
-	                                                                          {{ end }}
-	                                                                      </ul>
-	                                                                  </div>
-	                                                                  {{ else }}
-	                                                                  <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route }}">
-	                                                                      {{ if child.icon != "" }}<span class="nav-icon">{{ child.icon }}</span>{{ end }}
-	                                                                      {{ child.label | html.escape }}
-	                                                                  </a>
-	                                                                  {{ end }}
-	                                                              </li>
-	                                                              {{ end }}
-	                                                          </ul>
-	                                                          {{ end }}
-	                                                      </div>
-	                                                      {{ end }}
-	                                                  </nav>
-	                                              </aside>
+	                                              <aside class="sidebar" id="sidebar"{{ if sidebar_script != "" }} data-nav-route="{{ page.route | html.escape }}"{{ end }}>
+	                                      """ + _sidebarNav + """
+
+	                                              {{ if sidebar_script != "" }}<script src="{{ sidebar_script | html.escape }}"></script>{{ end }}</aside>
 
 	                                              <main class="content">
 	                                                  <article class="page-content">
@@ -3511,7 +5042,7 @@ public static class EmbeddedThemeProvider
 	                                                              {{ if crumb.is_current }}
 	                                                                  <span aria-current="page">{{ crumb.label | html.escape }}</span>
 	                                                              {{ else if crumb.url != "" }}
-	                                                                  <a href="{{ crumb.url }}">{{ crumb.label | html.escape }}</a>
+	                                                                  <a href="{{ crumb.url | html.escape }}">{{ crumb.label | html.escape }}</a>
 	                                                              {{ else }}
 	                                                                  <span>{{ crumb.label | html.escape }}</span>
 	                                                              {{ end }}
@@ -3530,15 +5061,15 @@ public static class EmbeddedThemeProvider
 	                                                              <button class="install-tab" role="tab" aria-selected="false" data-tab="ref">PackageReference</button>
 	                                                          </div>
 	                                                          <div class="install-panel active" data-panel="pm">
-	                                                              <pre><code>Install-Package {{ package.name | html.escape }} -Version {{ package.version }}</code></pre>
+	                                                              <pre><code>Install-Package {{ package.name | html.escape }} -Version {{ package.version | html.escape }}</code></pre>
 	                                                              <button class="install-copy-btn" aria-label="Copy to clipboard">Copy</button>
 	                                                          </div>
 	                                                          <div class="install-panel" data-panel="cli">
-	                                                              <pre><code>dotnet add package {{ package.name | html.escape }} --version {{ package.version }}</code></pre>
+	                                                              <pre><code>dotnet add package {{ package.name | html.escape }} --version {{ package.version | html.escape }}</code></pre>
 	                                                              <button class="install-copy-btn" aria-label="Copy to clipboard">Copy</button>
 	                                                          </div>
 	                                                          <div class="install-panel" data-panel="ref">
-	                                                              <pre><code>&lt;PackageReference Include="{{ package.name | html.escape }}" Version="{{ package.version }}" /&gt;</code></pre>
+	                                                              <pre><code>&lt;PackageReference Include="{{ package.name | html.escape }}" Version="{{ package.version | html.escape }}" /&gt;</code></pre>
 	                                                              <button class="install-copy-btn" aria-label="Copy to clipboard">Copy</button>
 	                                                          </div>
 	                                                      </div>
@@ -3548,7 +5079,7 @@ public static class EmbeddedThemeProvider
 
 	                                                      {{ if edit_url }}
 	                                                      <div class="edit-link">
-	                                                          <a href="{{ edit_url }}" target="_blank" rel="noopener">
+	                                                          <a href="{{ edit_url | html.escape }}" target="_blank" rel="noopener">
 	                                                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 	                                                              Edit this page
 	                                                          </a>
@@ -3559,6 +5090,18 @@ public static class EmbeddedThemeProvider
 	                                                      <div class="last-updated">
 	                                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
 	                                                          Last updated: {{ page.last_modified }}
+	                                                      </div>
+	                                                      {{ end }}
+
+	                                                      {{ if theme.show_contributors && page.contributors.size > 0 }}
+	                                                      <div class="page-contributors">
+	                                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+	                                                          <span>Contributors:</span>
+	                                                          <ul class="page-contributors-list">
+	                                                              {{ for contributor in page.contributors }}
+	                                                              <li><span class="page-contributor-avatar" aria-hidden="true">{{ contributor.initials | html.escape }}</span>{{ contributor.name | html.escape }}</li>
+	                                                              {{ end }}
+	                                                          </ul>
 	                                                      </div>
 	                                                      {{ end }}
 	                                                  </article>
@@ -3574,19 +5117,19 @@ public static class EmbeddedThemeProvider
 	                                                          {{ for entry in page.toc }}
 	                                                          {{ if entry.level <= theme.toc_depth }}
 	                                                          <li class="toc-item toc-level-{{ entry.level }}">
-	                                                              <a href="#{{ entry.id }}">{{ entry.text | html.escape }}</a>
+	                                                              <a href="#{{ entry.id | html.escape }}">{{ entry.text | html.escape }}</a>
 	                                                              {{ if entry.children.size > 0 }}
 	                                                              <ul>
 	                                                                  {{ for child in entry.children }}
 	                                                                  {{ if child.level <= theme.toc_depth }}
 	                                                                  <li class="toc-item toc-level-{{ child.level }}">
-	                                                                      <a href="#{{ child.id }}">{{ child.text | html.escape }}</a>
+	                                                                      <a href="#{{ child.id | html.escape }}">{{ child.text | html.escape }}</a>
 	                                                                      {{ if child.children.size > 0 }}
 	                                                                      <ul>
 	                                                                          {{ for grandchild in child.children }}
 	                                                                          {{ if grandchild.level <= theme.toc_depth }}
 	                                                                          <li class="toc-item toc-level-{{ grandchild.level }}">
-	                                                                              <a href="#{{ grandchild.id }}">{{ grandchild.text | html.escape }}</a>
+	                                                                              <a href="#{{ grandchild.id | html.escape }}">{{ grandchild.text | html.escape }}</a>
 	                                                                          </li>
 	                                                                          {{ end }}
 	                                                                          {{ end }}
@@ -3627,10 +5170,10 @@ public static class EmbeddedThemeProvider
 	                                          {{ if theme.show_prev_next }}
 	                                          <nav class="page-nav">
 	                                            {{ if prev_page }}
-	                                            <a class="page-nav-link page-nav-prev" href="{{ prev_page.route }}">
+	                                            <a class="page-nav-link page-nav-prev" href="{{ prev_page.route | html.escape }}">
 	                                              <svg class="page-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
 	                                              <div class="page-nav-text">
-	                                                <span class="page-nav-label">Previous</span>
+	                                                <span class="page-nav-label">{{ if page.is_blog_post }}Newer post{{ else }}Previous{{ end }}</span>
 	                                                <span class="page-nav-title">{{ prev_page.title | html.escape }}</span>
 	                                              </div>
 	                                            </a>
@@ -3638,9 +5181,9 @@ public static class EmbeddedThemeProvider
 	                                            <span class="page-nav-spacer"></span>
 	                                            {{ end }}
 	                                            {{ if next_page }}
-	                                            <a class="page-nav-link page-nav-next" href="{{ next_page.route }}">
+	                                            <a class="page-nav-link page-nav-next" href="{{ next_page.route | html.escape }}">
 	                                              <div class="page-nav-text">
-	                                                <span class="page-nav-label">Next</span>
+	                                                <span class="page-nav-label">{{ if page.is_blog_post }}Older post{{ else }}Next{{ end }}</span>
 	                                                <span class="page-nav-title">{{ next_page.title | html.escape }}</span>
 	                                              </div>
 	                                              <svg class="page-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
@@ -3654,7 +5197,7 @@ public static class EmbeddedThemeProvider
 	                                          <footer class="site-footer">
 	                                              <div class="footer-inner">
 	                                                  {{ if site.copyright }}<span>{{ site.copyright }}</span>{{ end }}
-	                                                  {{ if theme.social_links.size > 0 }}<div class="footer-social">{{ for link in theme.social_links }}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" aria-label="{{ link.icon }}">{{ link.icon_svg }}</a>{{ end }}</div>{{ end }}
+	                                                  {{ if theme.social_links.size > 0 }}<div class="footer-social">{{ for link in theme.social_links }}<a href="{{ link.url | html.escape }}" target="_blank" rel="noopener noreferrer" aria-label="{{ link.icon | html.escape }}">{{ link.icon_svg }}</a>{{ end }}</div>{{ end }}
 	                                                  {{ if theme.show_built_with != false }}<span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a> v{{ mokadocs_version }}</span>{{ end }}
 	                                              </div>
 	                                          </footer>
@@ -3689,7 +5232,7 @@ public static class EmbeddedThemeProvider
 	                                         <button class="back-to-top" id="backToTop" aria-label="Back to top">&#8593;</button>
 	                                         {{ end }}
 
-	                                          {{ for js in js_files }}<script src="{{ js }}"></script>
+	                                          {{ for js in js_files }}<script src="{{ js | html.escape }}"></script>
 	                                          {{ end }}
 	                                      </body>
 	                                      </html>
@@ -3697,34 +5240,70 @@ public static class EmbeddedThemeProvider
 
 	private const string _landingLayout = """
 	                                      <!DOCTYPE html>
-	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme }}" data-code-style="{{ theme.code_style }}"{{ if base_path != "" }} data-base-path="{{ base_path }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
+	                                      <html lang="en" data-theme="light" data-code-theme="{{ theme.code_theme | html.escape }}" data-code-style="{{ theme.code_style | html.escape }}" data-style="{{ theme.style | html.escape }}"{{ if base_path != "" }} data-base-path="{{ base_path | html.escape }}"{{ end }}{{ if theme.show_animations == false }} data-no-animations{{ end }}{{ if theme.show_copy_button == false }} data-no-copy-button{{ end }}{{ if theme.show_line_numbers == false }} data-no-line-numbers{{ end }}>
 	                                      <head>
-	                                          <script>try{const t=localStorage.getItem('mokadocs-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
+	                                          <script>try{const s={{ if theme.style_selector }}localStorage.getItem('mokadocs-style')||{{ end }}'{{ theme.style }}';document.documentElement.setAttribute('data-style',s);const t=localStorage.getItem('mokadocs-theme')||(s==='moka'||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);const c=localStorage.getItem('mokadocs-color-theme')||'{{ theme.initial_color_theme | html.escape | string.escape }}';if(c)document.documentElement.setAttribute('data-color-theme',c);const ct=localStorage.getItem('mokadocs-code-theme');if(ct)document.documentElement.setAttribute('data-code-theme',ct);const cs=localStorage.getItem('mokadocs-code-style')||'{{ theme.code_style | html.escape | string.escape }}';document.documentElement.setAttribute('data-code-style',cs)}catch(e){}</script>
 	                                          <meta charset="utf-8" />
 	                                          <meta name="viewport" content="width=device-width, initial-scale=1" />
 	                                          <title>{{ site.title | html.escape }}{{ if page.description != "" }} - {{ page.description | html.escape }}{{ end }}</title>
 	                                          <meta name="description" content="{{ page.meta_description | html.escape }}" />
-	                                          {{ if page.canonical_url != "" }}<link rel="canonical" href="{{ page.canonical_url }}" />{{ end }}
-	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css }}" />
+	                                          {{ if page.canonical_url != "" }}<link rel="canonical" href="{{ page.canonical_url | html.escape }}" />{{ end }}
+	                                          {{ for css in css_files }}<link rel="stylesheet" href="{{ css | html.escape }}" />
 	                                          {{ end }}
-	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color }} 80%,#000)}</style>{{ end }}
-	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color }}}</style>{{ end }}
-	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url }}" />{{ end }}
+	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color | html.escape }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color | html.escape }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color | html.escape }} 80%,#000)}</style>{{ end }}
+	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color | html.escape }}}</style>{{ end }}
+	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url | html.escape }}" />{{ end }}
+	                                          {{ for feed in blog.feeds }}<link rel="alternate" type="{{ feed.type | html.escape }}" title="{{ feed.title | html.escape }}" href="{{ feed.url | html.escape }}" />
+	                                          {{ end }}
 	                                      </head>
 	                                      <body class="landing">
 	                                          <header class="site-header">
 	                                              <div class="header-inner">
-	                                                  <a class="site-logo" href="{{ base_path }}/">
-	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="{{ site.title | html.escape }}" class="site-logo-img" />{{ end }}
+	                                                  <a class="site-logo" href="{{ base_path | html.escape }}/">
+	                                                      {{ if site.logo_url != "" }}<img src="{{ site.logo_url | html.escape }}" alt="{{ site.title | html.escape }}" class="site-logo-img" />{{ end }}
 	                                                      <span class="site-name">{{ site.title | html.escape }}</span>
 	                                                  </a>
 	                                                  <div class="header-actions">
+	                                                      {{ if versions.size > 0 && theme.show_version_selector }}
+	                                                      <div class="version-selector">
+	                                                          <button class="version-trigger" aria-label="Select version" aria-expanded="false" aria-haspopup="listbox">
+	                                                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+	                                                              <span class="version-label">{{ current_version | html.escape }}</span>
+	                                                              <svg class="version-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+	                                                          </button>
+	                                                          <ul class="version-dropdown" role="listbox" hidden>
+	                                                              {{ for v in versions }}
+	                                                              <li role="option"{{ if v.is_current }} aria-selected="true"{{ end }}>
+	                                                                  <a class="version-option{{ if v.is_current }} active{{ end }}" href="{{ v.url | html.escape }}" data-version-slug="{{ v.slug | html.escape }}"{{ if v.is_current }} aria-current="page"{{ end }}>
+	                                                                      <span class="version-option-label">{{ v.label | html.escape }}</span>
+	                                                                      {{ if v.is_default }}<span class="version-badge version-badge-default">latest</span>{{ end }}
+	                                                                      {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">pre</span>{{ end }}
+	                                                                  </a>
+	                                                              </li>
+	                                                              {{ end }}
+	                                                          </ul>
+	                                                      </div>
+	                                                      {{ end }}
 	                                                      {{ if search_enabled }}
 	                                                      <button class="search-trigger" aria-label="Search">
 	                                                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
 	                                                          <span class="search-label">Search</span>
 	                                                          <kbd>⌘K</kbd>
 	                                                      </button>
+	                                                      {{ end }}
+	                                                      {{ if theme.style_selector }}
+	                                                      <div class="style-selector">
+	                                                          <button class="style-trigger" aria-label="Change style" aria-expanded="false" aria-haspopup="menu" aria-controls="styleMenu">
+	                                                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+	                                                          </button>
+	                                                          <div class="style-dropdown" id="styleMenu" role="menu" aria-label="Style" hidden>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="default"><span class="style-preview style-preview-default"></span><span class="style-text"><span class="style-name">Default</span><span class="style-desc">The original look</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="moka"><span class="style-preview style-preview-moka"></span><span class="style-text"><span class="style-name">Moka</span><span class="style-desc">Dense, dark first</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="minimal"><span class="style-preview style-preview-minimal"></span><span class="style-text"><span class="style-name">Minimal</span><span class="style-desc">Quiet, few lines</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="classic"><span class="style-preview style-preview-classic"></span><span class="style-text"><span class="style-name">Classic</span><span class="style-desc">Reference docs</span></span><span class="style-check">&#10003;</span></button>
+	                                                              <button class="style-option" type="button" role="menuitemradio" aria-checked="false" data-style-option="soft"><span class="style-preview style-preview-soft"></span><span class="style-text"><span class="style-name">Soft</span><span class="style-desc">Rounded, roomy</span></span><span class="style-check">&#10003;</span></button>
+	                                                          </div>
+	                                                      </div>
 	                                                      {{ end }}
 	                                                      {{ if theme.color_themes != false }}
 	                                                      <div class="color-theme-selector">
@@ -3784,17 +5363,17 @@ public static class EmbeddedThemeProvider
 	                                          <section class="landing-hero">
 	                                              <div class="hero-grid-pattern"></div>
 	                                              <div class="landing-hero-icon">
-	                                                  {{ if site.logo_url != "" }}<img src="{{ site.logo_url }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
+	                                                  {{ if site.logo_url != "" }}<img src="{{ site.logo_url | html.escape }}" alt="" style="height:40px;width:auto" />{{ else }}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>{{ end }}
 	                                              </div>
 	                                              <h1 class="landing-hero-title">{{ site.title | html.escape }}</h1>
-	                                              <p class="landing-hero-subtitle">{{ page.description }}</p>
+	                                              <p class="landing-hero-subtitle">{{ page.description | html.escape }}</p>
 	                                              <div class="landing-hero-actions">
-	                                                  <a class="landing-btn landing-btn-primary" href="{{ nav[0].route ?? (base_path + '/docs/') }}">
+	                                                  <a class="landing-btn landing-btn-primary" href="{{ if first_nav_route != "" }}{{ first_nav_route | html.escape }}{{ else }}{{ base_path | html.escape }}/docs/{{ end }}">
 	                                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
 	                                                      Get Started
 	                                                  </a>
 	                                                  {{ if site.repo_url != "" }}
-	                                                  <a class="landing-btn landing-btn-secondary" href="{{ site.repo_url }}" target="_blank" rel="noopener">
+	                                                  <a class="landing-btn landing-btn-secondary" href="{{ site.repo_url | html.escape }}" target="_blank" rel="noopener">
 	                                                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 016.02 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.8 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.82.58A12.01 12.01 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
 	                                                      View on GitHub
 	                                                  </a>
@@ -3848,10 +5427,77 @@ public static class EmbeddedThemeProvider
 	                                          </div>
 	                                          {{ end }}
 
-	                                          {{ for js in js_files }}<script src="{{ js }}"></script>
+	                                          {{ for js in js_files }}<script src="{{ js | html.escape }}"></script>
 	                                          {{ end }}
 	                                      </body>
 	                                      </html>
+	                                      """;
+
+	private const string _sidebarNav = """
+
+	                                                  <nav class="sidebar-nav" aria-label="Documentation">
+	                                                      {{ for item in nav }}
+	                                                      <div class="nav-section{{ if item.is_active || item.has_active_child }} active{{ end }}">
+	                                                          {{ if item.has_children }}
+	                                                          <div class="nav-header">
+	                                                              {{ if item.has_page }}
+	                                                              <a class="nav-link{{ if item.is_active }} current{{ else if item.has_active_child }} parent-active{{ end }}" href="{{ item.route | html.escape }}">
+	                                                                  {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
+	                                                                  {{ item.label | html.escape }}
+	                                                              </a>
+	                                                              {{ else }}
+	                                                              <span class="nav-link nav-group-label{{ if item.has_active_child }} parent-active{{ end }}">
+	                                                                  {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
+	                                                                  {{ item.label | html.escape }}
+	                                                              </span>
+	                                                              {{ end }}
+	                                                              <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ item.label | html.escape }}" type="button" aria-expanded="{{ if item.expanded || item.has_active_child }}true{{ else }}false{{ end }}">
+	                                                                  <svg class="nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+	                                                              </button>
+	                                                          </div>
+	                                                          {{ else }}
+	                                                          <a class="nav-link{{ if item.is_active }} current{{ end }}" href="{{ item.route | html.escape }}">
+	                                                              {{ if item.icon != "" }}<span class="nav-icon">{{ item.icon }}</span>{{ end }}
+	                                                              {{ item.label | html.escape }}
+	                                                          </a>
+	                                                          {{ end }}
+	                                                          {{ if item.children.size > 0 }}
+	                                                          <ul class="nav-children{{ if item.expanded || item.has_active_child }} expanded{{ end }}">
+	                                                              {{ for child in item.children }}
+	                                                              <li>
+	                                                                  {{ if child.has_children }}
+	                                                                  <div class="nav-sub-section{{ if child.is_active || child.has_active_child }} active{{ end }}">
+	                                                                      <div class="nav-header">
+	                                                                          {{ if child.has_page }}
+	                                                                          <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route | html.escape }}">{{ child.label | html.escape }}</a>
+	                                                                          {{ else }}
+	                                                                          <span class="nav-link nav-group-label">{{ child.label | html.escape }}</span>
+	                                                                          {{ end }}
+	                                                                          <button class="nav-chevron-btn nav-toggle" aria-label="Toggle {{ child.label | html.escape }}" type="button" aria-expanded="{{ if child.expanded || child.has_active_child }}true{{ else }}false{{ end }}">
+	                                                                              <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+	                                                                          </button>
+	                                                                      </div>
+	                                                                      <ul class="nav-children{{ if child.expanded || child.has_active_child }} expanded{{ end }}">
+	                                                                          {{ for grandchild in child.children }}
+	                                                                          <li>
+	                                                                              <a class="nav-link{{ if grandchild.is_active }} current{{ end }}" href="{{ grandchild.route | html.escape }}">{{ grandchild.label | html.escape }}</a>
+	                                                                          </li>
+	                                                                          {{ end }}
+	                                                                      </ul>
+	                                                                  </div>
+	                                                                  {{ else }}
+	                                                                  <a class="nav-link{{ if child.is_active }} current{{ end }}" href="{{ child.route | html.escape }}">
+	                                                                      {{ if child.icon != "" }}<span class="nav-icon">{{ child.icon }}</span>{{ end }}
+	                                                                      {{ child.label | html.escape }}
+	                                                                  </a>
+	                                                                  {{ end }}
+	                                                              </li>
+	                                                              {{ end }}
+	                                                          </ul>
+	                                                          {{ end }}
+	                                                      </div>
+	                                                      {{ end }}
+	                                                  </nav>
 	                                      """;
 
 	private const string _apiTypeLayout = _defaultLayout; // Reuses default for now

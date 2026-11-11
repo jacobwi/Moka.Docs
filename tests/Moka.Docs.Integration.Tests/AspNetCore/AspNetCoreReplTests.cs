@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -198,6 +199,101 @@ public sealed class AspNetCoreReplTests : IDisposable
 	}
 
 	[Theory]
+	[InlineData(false, HttpStatusCode.Forbidden)]
+	[InlineData(true, HttpStatusCode.BadRequest)]
+	public async Task Repl_AHostNameReboundToLoopback_RunsOnlyWithTheOptIn(bool allowRemote, HttpStatusCode status)
+	{
+		// DNS rebinding: a page on attacker.example whose name now resolves to 127.0.0.1 sends Host and
+		// Origin as attacker.example, so the origin check passed and the caller was loopback.
+		await using DocsTestHost host = await StartAsync("Development", options =>
+		{
+			options.ReplWorkerStartInfo = CliWorker;
+			options.AllowRemoteRepl = allowRemote;
+		});
+		string attacker = $"attacker.example:{host.Client.BaseAddress!.Port}";
+
+		HttpResponseMessage response = await host.PostAsync("/docs/api/repl/execute",
+			allowRemote ? "not json" : Json(new { code = "1" }), origin: "http://" + attacker,
+			configure: request => request.Headers.Host = attacker);
+
+		response.StatusCode.Should().Be(status);
+		host.App.Services.GetRequiredService<MokaDocsRepl>().IsServiceCreated.Should().BeFalse();
+	}
+
+	[Theory]
+	[InlineData("Forwarded", "for=203.0.113.5")]
+	[InlineData("X-Forwarded-For", "203.0.113.5")]
+	[InlineData("X-Forwarded-Host", "docs.example.com")]
+	public async Task Repl_ThroughAProxy_IsRefused(string header, string value)
+	{
+		// nginx, ngrok or a dev tunnel on the same machine makes every caller loopback.
+		await using DocsTestHost host = await StartAsync("Development", options => options.ReplWorkerStartInfo = CliWorker);
+
+		HttpResponseMessage response = await host.PostAsync("/docs/api/repl/execute", Json(new { code = "1" }),
+			configure: request => request.Headers.TryAddWithoutValidation(header, value));
+
+		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+		host.Logs.Messages(LogLevel.Warning).Should().Contain(m => m.Contains(header) && m.Contains("AllowRemoteRepl"));
+		host.App.Services.GetRequiredService<MokaDocsRepl>().IsServiceCreated.Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task Repl_WithALocalhostHostHeader_IsAccepted()
+	{
+		await using DocsTestHost host = await StartAsync("Development", options => options.ReplWorkerStartInfo = CliWorker);
+		string localhost = $"localhost:{host.Client.BaseAddress!.Port}";
+
+		// An accepted request fails on the invalid JSON, before any worker starts.
+		HttpResponseMessage response = await host.PostAsync("/docs/api/repl/execute", "not json",
+			origin: "http://" + localhost, configure: request => request.Headers.Host = localhost);
+
+		response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+	}
+
+	[Theory]
+	[InlineData("localhost", true)]
+	[InlineData("localhost:5340", true)]
+	[InlineData("LOCALHOST.:5340", true)]
+	[InlineData("docs.localhost:5340", true)]
+	[InlineData("127.0.0.1:5340", true)]
+	[InlineData("127.8.9.10", true)]
+	[InlineData("[::1]:5340", true)]
+	[InlineData("attacker.example:5340", false)]
+	[InlineData("localhost.attacker.example", false)]
+	[InlineData("10.0.0.5:5340", false)]
+	[InlineData("[2001:db8::1]:5340", false)]
+	[InlineData("", false)]
+	public void IsLoopbackHost_AcceptsLocalhostNamesAndLoopbackAddressesOnly(string host, bool loopback)
+	{
+		MokaDocsApiEndpoints.IsLoopbackHost(new HostString(host)).Should().Be(loopback);
+	}
+
+	[Fact]
+	public async Task Repl_PastTheQueueLimit_Answers429()
+	{
+		// Runs queued without limit, so a script could hold any number of requests open.
+		await using DocsTestHost host = await StartAsync("Development", options => options.ReplWorkerStartInfo = CliWorker);
+		(await host.PostAsync("/docs/api/repl/execute", Json(new { code = "0" }))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+		Task<HttpResponseMessage> running = host.PostAsync("/docs/api/repl/execute",
+			Json(new { code = "System.Threading.Thread.Sleep(3000);" }));
+		await WaitUntilAsync(() => Pending(host) == 1);
+		Task<HttpResponseMessage>[] waiting = [.. Enumerable.Range(0, 4)
+			.Select(i => host.PostAsync("/docs/api/repl/execute", Json(new { code = $"{i}" })))];
+		await WaitUntilAsync(() => Pending(host) == 5);
+
+		HttpResponseMessage refused = await host.PostAsync("/docs/api/repl/execute", Json(new { code = "1" }));
+
+		refused.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+		(await ReadJsonAsync(refused)).GetProperty("error").GetString().Should().Contain("Too many snippets");
+		(await running).StatusCode.Should().Be(HttpStatusCode.OK);
+		foreach (Task<HttpResponseMessage> queued in waiting)
+		{
+			(await queued).StatusCode.Should().Be(HttpStatusCode.OK);
+		}
+	}
+
+	[Theory]
 	[InlineData(null, true)]
 	[InlineData("127.0.0.1", true)]
 	[InlineData("::1", true)]
@@ -294,6 +390,16 @@ public sealed class AspNetCoreReplTests : IDisposable
 	}
 
 	[Fact]
+	public void WorkerStartInfo_ForASingleFileApp_StartsItsOwnExecutable()
+	{
+		// A single-file app's assembly has no location, which made the REPL refuse to start.
+		ProcessStartInfo startInfo = MokaDocsReplWorker.CreateStartInfo("/apps/shop/Contoso.Shop", "", null, "Contoso.Shop");
+
+		startInfo.FileName.Should().Be("/apps/shop/Contoso.Shop");
+		startInfo.ArgumentList.Should().BeEmpty();
+	}
+
+	[Fact]
 	public void WorkerStartInfo_WithoutAnAssemblyLocation_Throws()
 	{
 		Action create = () => MokaDocsReplWorker.CreateStartInfo("w3wp.exe", null, null);
@@ -331,6 +437,21 @@ public sealed class AspNetCoreReplTests : IDisposable
 		}, environment: environment);
 
 	private static string Json(object value) => JsonSerializer.Serialize(value);
+
+	private static int Pending(DocsTestHost host) =>
+		host.App.Services.GetRequiredService<MokaDocsRepl>() is { IsServiceCreated: true } repl
+			? repl.Service.PendingRuns
+			: 0;
+
+	private static async Task WaitUntilAsync(Func<bool> condition)
+	{
+		DateTime until = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+		while (!condition())
+		{
+			DateTime.UtcNow.Should().BeBefore(until, "the condition should hold within 30 seconds");
+			await Task.Delay(20, Ct);
+		}
+	}
 
 	private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response) =>
 		JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement;

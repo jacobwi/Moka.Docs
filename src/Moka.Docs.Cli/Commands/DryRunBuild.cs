@@ -44,24 +44,28 @@ internal static class DryRunBuild
 			DryRun = true
 		};
 
-		await using ServiceProvider provider = BuildCommand.BuildServices(config, verbose);
+		await using ServiceProvider provider = BuildCommand.BuildServices(config, verbose, rootDirectory);
 
 		// Read before running anything, so plugin checks still work if the pipeline throws.
 		List<string> registeredPluginIds = provider.GetServices<IMokaPlugin>().Select(p => p.Id).ToList();
 		var loadedPluginIds = new List<string>();
+		var pluginLoadFailures = new List<PluginLoadFailure>();
+
+		DryRunOutcome Outcome(Exception? failure) =>
+			new(context, failure, registeredPluginIds, loadedPluginIds, sw.Elapsed) { PluginLoadFailures = pluginLoadFailures };
 
 		try
 		{
 			BuildPipeline pipeline = provider.GetRequiredService<BuildPipeline>();
-			PluginHost pluginHost = await BuildCommand.InitializePluginsAsync(provider, pipeline);
+			PluginHost pluginHost = await BuildCommand.InitializePluginsAsync(provider, pipeline, ct);
 			loadedPluginIds.AddRange(pluginHost.LoadedPlugins.Select(p => p.Plugin.Id));
+			pluginLoadFailures.AddRange(pluginHost.LoadFailures);
 
 			VersionManager versionManager = provider.GetRequiredService<VersionManager>();
-			if (versionManager.IsEnabled)
-			{
-				context.Versions.AddRange(versionManager.Versions);
-				context.CurrentVersion = versionManager.DefaultVersion;
-			}
+			versionManager.ApplyTo(context);
+
+			// The other versions are not built; their refs only have to exist.
+			VersionedBuildOrchestrator.CheckRefs(config, rootDirectory, context.Diagnostics);
 
 			await pipeline.ExecuteAsync(context, ct);
 		}
@@ -71,22 +75,26 @@ internal static class DryRunBuild
 		}
 		catch (Exception ex)
 		{
-			return new DryRunOutcome(context, ex, registeredPluginIds, loadedPluginIds, sw.Elapsed);
+			return Outcome(ex);
 		}
 
-		return new DryRunOutcome(context, null, registeredPluginIds, loadedPluginIds, sw.Elapsed);
+		return Outcome(null);
 	}
 }
 
 /// <summary>The result of a dry-run build.</summary>
 /// <param name="Context">The build context, populated as far as the pipeline got.</param>
 /// <param name="Failure">The exception that stopped the pipeline, or <c>null</c> if it completed.</param>
-/// <param name="RegisteredPluginIds">Ids of every plugin the CLI can load.</param>
-/// <param name="LoadedPluginIds">Ids of the declared plugins that initialized successfully.</param>
+/// <param name="RegisteredPluginIds">Ids of the built-in plugins the CLI registers.</param>
+/// <param name="LoadedPluginIds">Ids of the declared plugins that initialized successfully, from a path too.</param>
 /// <param name="Elapsed">Wall-clock time for the run.</param>
 internal sealed record DryRunOutcome(
 	BuildContext Context,
 	Exception? Failure,
 	IReadOnlyList<string> RegisteredPluginIds,
 	IReadOnlyList<string> LoadedPluginIds,
-	TimeSpan Elapsed);
+	TimeSpan Elapsed)
+{
+	/// <summary>The declarations with a <c>path</c> whose plugin didn't load. The build reports each as an error.</summary>
+	public IReadOnlyList<PluginLoadFailure> PluginLoadFailures { get; init; } = [];
+}

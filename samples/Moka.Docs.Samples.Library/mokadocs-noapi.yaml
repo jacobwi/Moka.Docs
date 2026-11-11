@@ -19,7 +19,6 @@ theme:
 features:
   search:
     enabled: true
-    provider: pagefind
 
 build:
   output: ./_site

@@ -21,7 +21,8 @@ public static class OpenApiParser
 	private static readonly JsonDocumentOptions _lenientJson = new()
 	{
 		AllowTrailingCommas = true,
-		CommentHandling = JsonCommentHandling.Skip
+		CommentHandling = JsonCommentHandling.Skip,
+		MaxDepth = OpenApiYaml.MaxDepth
 	};
 
 	private static readonly string[] _methods = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
@@ -35,10 +36,16 @@ public static class OpenApiParser
 	/// <param name="content">Raw content of the OpenAPI spec file.</param>
 	/// <returns>A populated <see cref="OpenApiSpec" /> instance.</returns>
 	/// <exception cref="InvalidOperationException">Thrown when the spec cannot be parsed.</exception>
-	public static OpenApiSpec Parse(string content)
+	public static OpenApiSpec Parse(string content) => Parse(content, out _);
+
+	/// <summary>
+	///     Parses the given specification string (JSON or YAML) and says which of the two it was read as.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">Thrown when the spec cannot be parsed.</exception>
+	internal static OpenApiSpec Parse(string content, out bool isJson)
 	{
-		JsonObject root = ReadDocument(content);
-		return new DocumentMapper(root).Map();
+		(JsonObject root, int nodeCount) = ReadDocument(content, out isJson);
+		return new DocumentMapper(root, nodeCount).Map();
 	}
 
 	/// <summary>
@@ -55,18 +62,34 @@ public static class OpenApiParser
 
 	#region Reader Plumbing
 
-	private static JsonObject ReadDocument(string content)
+	/// <summary>
+	///     Reads the document as JSON, or as YAML when it isn't JSON, and counts its nodes.
+	/// </summary>
+	/// <remarks>
+	///     JSON is tried first, so a JSON document that starts with a comment is still JSON, and a YAML
+	///     document written as one flow mapping (<c>{openapi: 3.0.0, ...}</c>) still reads as YAML.
+	/// </remarks>
+	private static (JsonObject Root, int NodeCount) ReadDocument(string content, out bool isJson)
 	{
+		string text = content.StartsWith('\uFEFF') ? content[1..] : content;
 		JsonNode? root;
 		try
 		{
-			root = DetectFormat(content) == "json"
-				? JsonNode.Parse(content, documentOptions: _lenientJson)
-				: OpenApiYaml.Parse(content);
+			root = JsonNode.Parse(text, documentOptions: _lenientJson);
+			isJson = true;
 		}
-		catch (Exception ex) when (ex is JsonException or YamlException or InvalidOperationException)
+		catch (JsonException jsonError)
 		{
-			throw new InvalidOperationException($"Failed to parse OpenAPI spec: {ex.Message}", ex);
+			try
+			{
+				root = OpenApiYaml.Parse(text);
+				isJson = false;
+			}
+			catch (Exception yamlError) when (yamlError is YamlException or InvalidOperationException)
+			{
+				Exception shown = LooksLikeJson(text) ? jsonError : yamlError;
+				throw new InvalidOperationException($"Failed to parse OpenAPI spec: {shown.Message}", shown);
+			}
 		}
 
 		if (root is not JsonObject document)
@@ -74,36 +97,73 @@ public static class OpenApiParser
 			throw new InvalidOperationException("Failed to parse OpenAPI spec: the document is not an object.");
 		}
 
+		int nodeCount = CountNodes(document);
 		if (Text(document["openapi"]).Length == 0 && Text(document["swagger"]).Length == 0)
 		{
 			throw new InvalidOperationException(
 				"Failed to parse OpenAPI spec: the document has no 'openapi' or 'swagger' version field.");
 		}
 
-		return document;
+		return (document, nodeCount);
 	}
 
-	/// <summary>Whether the parser reads <paramref name="content" /> as JSON rather than YAML.</summary>
-	internal static bool IsJson(string content) => DetectFormat(content) == "json";
+	private static bool LooksLikeJson(string text)
+	{
+		string start = text.TrimStart();
+		return start.StartsWith('{') || start.StartsWith('[') || start.StartsWith("//", StringComparison.Ordinal)
+		       || start.StartsWith("/*", StringComparison.Ordinal);
+	}
 
 	/// <summary>
-	///     Picks the reader format from the first meaningful character. A spec starting
-	///     with an opening brace is JSON; anything else is treated as YAML (which is a
-	///     superset, so this is a safe fallback rather than a guess).
+	///     Counts the document's nodes without recursing. Reading each object here also turns a key written
+	///     twice into a parse error: <see cref="JsonObject" /> reads its properties only when first asked,
+	///     and threw an <see cref="ArgumentException" /> from somewhere in the middle of mapping.
 	/// </summary>
-	private static string DetectFormat(string content)
+	private static int CountNodes(JsonNode root)
 	{
-		foreach (char c in content)
+		int count = 0;
+		var pending = new Stack<JsonNode>();
+		pending.Push(root);
+		while (pending.TryPop(out JsonNode? node))
 		{
-			if (char.IsWhiteSpace(c) || c == '﻿')
+			count++;
+			switch (node)
 			{
-				continue;
-			}
+				case JsonObject obj:
+					List<JsonNode?> values;
+					try
+					{
+						values = obj.Select(property => property.Value).ToList();
+					}
+					catch (ArgumentException ex)
+					{
+						throw new InvalidOperationException(
+							$"Failed to parse OpenAPI spec: an object at '{obj.GetPath()}' has the same key more than once. {ex.Message}", ex);
+					}
 
-			return c == '{' ? "json" : "yaml";
+					foreach (JsonNode? value in values)
+					{
+						if (value is not null)
+						{
+							pending.Push(value);
+						}
+					}
+
+					break;
+				case JsonArray array:
+					foreach (JsonNode? item in array)
+					{
+						if (item is not null)
+						{
+							pending.Push(item);
+						}
+					}
+
+					break;
+			}
 		}
 
-		return "json";
+		return count;
 	}
 
 	#endregion
@@ -164,12 +224,44 @@ public static class OpenApiParser
 	}
 
 	/// <summary>
+	///     Where one schema walk is: the references being expanded on the way down and how deep it is.
+	/// </summary>
+	private sealed class SchemaWalk
+	{
+		/// <summary>The pointers of the references being expanded, to stop at a cycle.</summary>
+		public HashSet<string> Expanding { get; } = new(StringComparer.Ordinal);
+
+		/// <summary>How many references are expanded on the way down, not counting <c>allOf</c> parts.</summary>
+		public int References { get; set; }
+
+		/// <summary>How many schemas deep the walk is.</summary>
+		public int Depth { get; set; }
+	}
+
+	/// <summary>
 	///     Maps one document. Holds the root so <c>$ref</c> pointers resolve against it.
 	/// </summary>
-	private sealed class DocumentMapper(JsonObject root)
+	/// <remarks>
+	///     A reference is expanded only where nothing above it is a reference already; deeper ones keep their
+	///     name, type, description and values, which is all a page shows of them. Expanding every reference
+	///     made a 2.6 KB document whose schemas each referenced the next one twice take 28 seconds, and nine
+	///     schemas that referenced each other 140 GB. <c>allOf</c> parts are merged at any depth, within a
+	///     budget that grows with the document's size, and a walk stops after <see cref="_maxSchemaDepth" />
+	///     schemas, so a long <c>allOf</c> chain can't overflow the stack.
+	/// </remarks>
+	private sealed class DocumentMapper(JsonObject root, int nodeCount)
 	{
+		private const int _maxSchemaDepth = 64;
+		private const int _maxListedReferences = 10;
+
 		private readonly JsonObject _root = root;
 		private readonly bool _swagger2 = Text(root["swagger"]).StartsWith('2');
+		private readonly List<string> _unresolved = [];
+		private readonly HashSet<string> _unresolvedSeen = new(StringComparer.Ordinal);
+		private readonly List<string> _warnings = [];
+		private int _schemaBudget = 100_000 + (20 * nodeCount);
+		private bool _budgetWarned;
+		private bool _depthWarned;
 
 		public OpenApiSpec Map()
 		{
@@ -178,7 +270,8 @@ public static class OpenApiParser
 			{
 				Title = Text(info?["title"]),
 				Description = Text(info?["description"]),
-				Version = Text(info?["version"])
+				Version = Text(info?["version"]),
+				ExternalDocs = MapExternalDocs(_root["externalDocs"])
 			};
 
 			if (_swagger2)
@@ -199,9 +292,19 @@ public static class OpenApiParser
 			{
 				foreach (JsonObject tag in declaredTags.OfType<JsonObject>())
 				{
-					if (Text(tag["name"]) is { Length: > 0 } name && Text(tag["description"]) is { Length: > 0 } description)
+					if (Text(tag["name"]) is not { Length: > 0 } name)
+					{
+						continue;
+					}
+
+					if (Text(tag["description"]) is { Length: > 0 } description)
 					{
 						spec.TagDescriptions.TryAdd(name, description);
+					}
+
+					if (MapExternalDocs(tag["externalDocs"]) is { } tagDocs)
+					{
+						spec.TagExternalDocs.TryAdd(name, tagDocs);
 					}
 				}
 			}
@@ -213,41 +316,60 @@ public static class OpenApiParser
 			{
 				foreach ((string name, JsonNode? schema) in schemas)
 				{
-					spec.Schemas[name] = MapSchema(schema, []);
+					spec.Schemas[name] = MapSchema(schema);
 				}
 			}
 
 			var tagSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			if (_root["paths"] is JsonObject paths)
+			foreach (OpenApiEndpoint endpoint in MapPathItems(_root["paths"] as JsonObject))
 			{
-				foreach ((string path, JsonNode? pathNode) in paths)
+				foreach (string tag in endpoint.Tags.Where(tagSet.Add))
 				{
-					if (pathNode is not JsonObject pathObject)
-					{
-						continue;
-					}
-
-					JsonObject pathItem = Resolve(pathObject).Target;
-					foreach ((string method, JsonNode? operation) in pathItem)
-					{
-						if (operation is not JsonObject operationObject
-						    || !_methods.Contains(method, StringComparer.OrdinalIgnoreCase))
-						{
-							continue;
-						}
-
-						OpenApiEndpoint endpoint = MapEndpoint(method, path, operationObject, pathItem);
-						foreach (string tag in endpoint.Tags.Where(tagSet.Add))
-						{
-							spec.Tags.Add(tag);
-						}
-
-						spec.Endpoints.Add(endpoint);
-					}
+					spec.Tags.Add(tag);
 				}
+
+				spec.Endpoints.Add(endpoint);
+			}
+
+			// OpenAPI 3.1: requests the API sends, keyed by a name instead of a path.
+			spec.Webhooks.AddRange(MapPathItems(_root["webhooks"] as JsonObject));
+
+			spec.Warnings.AddRange(_warnings);
+			if (_unresolved.Count > 0)
+			{
+				string listed = string.Join(", ", _unresolved.Take(_maxListedReferences).Select(r => $"'{r}'"));
+				string more = _unresolved.Count > _maxListedReferences ? $" and {_unresolved.Count - _maxListedReferences} more" : "";
+				spec.Warnings.Add(
+					$"{_unresolved.Count} $ref value(s) point outside the document or at nothing in it, so they show only their name: {listed}{more}.");
 			}
 
 			return spec;
+		}
+
+		/// <summary>The operations of a <c>paths</c> or <c>webhooks</c> map, in document order.</summary>
+		private IEnumerable<OpenApiEndpoint> MapPathItems(JsonObject? items)
+		{
+			if (items is null)
+			{
+				yield break;
+			}
+
+			foreach ((string path, JsonNode? pathNode) in items)
+			{
+				if (pathNode is not JsonObject pathObject)
+				{
+					continue;
+				}
+
+				JsonObject pathItem = Resolve(pathObject).Target;
+				foreach ((string method, JsonNode? operation) in pathItem)
+				{
+					if (operation is JsonObject operationObject && _methods.Contains(method, StringComparer.OrdinalIgnoreCase))
+					{
+						yield return MapEndpoint(method, path, operationObject, pathItem);
+					}
+				}
+			}
 		}
 
 		#region Endpoints
@@ -262,12 +384,19 @@ public static class OpenApiParser
 				Description = Text(operation["description"]),
 				OperationId = Text(operation["operationId"]),
 				Deprecated = IsTrue(operation["deprecated"]),
-				Security = MapSecurity(operation["security"])
+				Security = MapSecurity(operation["security"]),
+				ExternalDocs = MapExternalDocs(operation["externalDocs"])
 			};
+
+			if (!_swagger2)
+			{
+				endpoint.Servers = MapServerList(operation["servers"]) ?? MapServerList(pathItem["servers"]);
+			}
 
 			if (operation["tags"] is JsonArray tags)
 			{
-				endpoint.Tags.AddRange(tags.Select(Text).Where(tag => tag.Length > 0));
+				// Tags group without regard to case, so ["Users", "users"] listed the endpoint twice on one page.
+				endpoint.Tags.AddRange(tags.Select(Text).Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase));
 			}
 
 			// Path-level parameters first; an operation parameter with the same name and location replaces one.
@@ -325,9 +454,12 @@ public static class OpenApiParser
 
 		private OpenApiParameter MapParameter(JsonObject parameter)
 		{
-			// A 2.0 parameter describes its value itself (type, format, items, enum); 3.x has a schema.
-			JsonNode? schemaNode = _swagger2 ? parameter : parameter["schema"];
-			OpenApiSchema? schema = schemaNode is not null ? MapSchema(schemaNode, []) : null;
+			// A 2.0 parameter describes its value itself (type, format, items, enum); 3.x has a schema, or a
+			// content map with one media type for a value sent as, say, JSON in a query string.
+			JsonNode? schemaNode = _swagger2
+				? parameter
+				: parameter["schema"] ?? ((parameter["content"] as JsonObject)?.FirstOrDefault().Value as JsonObject)?["schema"];
+			OpenApiSchema? schema = schemaNode is not null ? MapSchema(schemaNode) : null;
 			if (_swagger2 && schema is not null)
 			{
 				// The parameter's description is shown in its own column.
@@ -358,7 +490,7 @@ public static class OpenApiParser
 				requestBody.ContentType = contentType;
 				if ((first.Value as JsonObject)?["schema"] is { } schema)
 				{
-					requestBody.Schema = MapSchema(schema, []);
+					requestBody.Schema = MapSchema(schema);
 				}
 			}
 
@@ -382,7 +514,7 @@ public static class OpenApiParser
 					Description = Text(body["description"]),
 					Required = IsTrue(body["required"]),
 					ContentType = consumes.FirstOrDefault() ?? "application/json",
-					Schema = body["schema"] is { } schema ? MapSchema(schema, []) : null
+					Schema = body["schema"] is { } schema ? MapSchema(schema) : null
 				};
 				endpoint.ExampleRequestJson = SchemaExample(body["schema"] as JsonObject);
 				return;
@@ -397,7 +529,7 @@ public static class OpenApiParser
 			var formSchema = new OpenApiSchema { Type = "object" };
 			foreach (JsonObject field in form)
 			{
-				formSchema.Properties[Text(field["name"])] = MapSchema(field, []);
+				formSchema.Properties[Text(field["name"])] = MapSchema(field);
 				if (IsTrue(field["required"]))
 				{
 					formSchema.RequiredProperties.Add(Text(field["name"]));
@@ -429,7 +561,7 @@ public static class OpenApiParser
 					: null;
 			if (schema is not null)
 			{
-				result.Schema = MapSchema(schema, []);
+				result.Schema = MapSchema(schema);
 			}
 
 			return result;
@@ -447,49 +579,64 @@ public static class OpenApiParser
 				return;
 			}
 
-			if (_root["servers"] is not JsonArray servers)
+			spec.Servers.AddRange(MapServerList(_root["servers"]) ?? []);
+		}
+
+		/// <summary>
+		///     A <c>servers</c> list, or <c>null</c> when <paramref name="node" /> isn't one or names no server
+		///     with a URL. A path or operation with such a list uses the servers above it, as with none.
+		/// </summary>
+		private static List<OpenApiServer>? MapServerList(JsonNode? node)
+		{
+			if (node is not JsonArray servers)
 			{
-				return;
+				return null;
 			}
 
+			var result = new List<OpenApiServer>();
 			foreach (JsonObject server in servers.OfType<JsonObject>())
 			{
 				string template = Text(server["url"]);
-				if (template.Length == 0)
+				if (template.Length > 0)
 				{
-					continue;
+					result.Add(MapServer(server, template));
 				}
-
-				var result = new OpenApiServer { Description = Text(server["description"]) };
-				if (server["variables"] is JsonObject variables)
-				{
-					foreach ((string name, JsonNode? node) in variables)
-					{
-						if (node is not JsonObject variable)
-						{
-							continue;
-						}
-
-						var mapped = new OpenApiServerVariable
-						{
-							Name = name,
-							Default = Text(variable["default"]),
-							Description = Text(variable["description"])
-						};
-						if (variable["enum"] is JsonArray values)
-						{
-							mapped.EnumValues.AddRange(values.Select(JsonNodeToScalar));
-						}
-
-						result.Variables.Add(mapped);
-					}
-				}
-
-				result.Url = result.Variables
-					.Where(v => v.Default.Length > 0)
-					.Aggregate(template, (url, v) => url.Replace("{" + v.Name + "}", v.Default, StringComparison.Ordinal));
-				spec.Servers.Add(result);
 			}
+
+			return result.Count > 0 ? result : null;
+		}
+
+		private static OpenApiServer MapServer(JsonObject server, string template)
+		{
+			var result = new OpenApiServer { Description = Text(server["description"]) };
+			if (server["variables"] is JsonObject variables)
+			{
+				foreach ((string name, JsonNode? node) in variables)
+				{
+					if (node is not JsonObject variable)
+					{
+						continue;
+					}
+
+					var mapped = new OpenApiServerVariable
+					{
+						Name = name,
+						Default = Text(variable["default"]),
+						Description = Text(variable["description"])
+					};
+					if (variable["enum"] is JsonArray values)
+					{
+						mapped.EnumValues.AddRange(values.Select(JsonNodeToScalar));
+					}
+
+					result.Variables.Add(mapped);
+				}
+			}
+
+			result.Url = result.Variables
+				.Where(v => v.Default.Length > 0)
+				.Aggregate(template, (url, v) => url.Replace("{" + v.Name + "}", v.Default, StringComparison.Ordinal));
+			return result;
 		}
 
 		/// <summary>
@@ -523,6 +670,12 @@ public static class OpenApiParser
 
 			spec.Servers.AddRange(schemes.Select(scheme => new OpenApiServer { Url = $"{scheme.ToLowerInvariant()}://{host}{path}" }));
 		}
+
+		/// <summary>An <c>externalDocs</c> object, or <c>null</c> when it isn't one or has no URL.</summary>
+		private static OpenApiExternalDocs? MapExternalDocs(JsonNode? node) =>
+			node is JsonObject docs && Text(docs["url"]).Trim() is { Length: > 0 } url
+				? new OpenApiExternalDocs { Url = url, Description = Text(docs["description"]) }
+				: null;
 
 		#endregion
 
@@ -712,7 +865,7 @@ public static class OpenApiParser
 		/// <summary>
 		///     Follows a <c>$ref</c>, and a chain of them, to the object it points at. An object without one
 		///     resolves to itself. A reference that leads outside the document, or nowhere, resolves to an
-		///     empty object and keeps its name.
+		///     empty object, keeps its name and is listed in a warning.
 		/// </summary>
 		private Resolved Resolve(JsonObject node)
 		{
@@ -724,8 +877,18 @@ public static class OpenApiParser
 			var target = new JsonObject();
 			var seen = new HashSet<string>(StringComparer.Ordinal);
 			string? next = reference;
-			while (next is { Length: > 0 } && seen.Add(next) && ResolvePointer(next) is JsonObject found)
+			while (next is { Length: > 0 } && seen.Add(next))
 			{
+				if (ResolvePointer(next) is not JsonObject found)
+				{
+					if (_unresolvedSeen.Add(next))
+					{
+						_unresolved.Add(next);
+					}
+
+					break;
+				}
+
 				target = found;
 				next = Text(found["$ref"]);
 			}
@@ -774,15 +937,21 @@ public static class OpenApiParser
 		#region Schema Mapping
 
 		/// <summary>
+		///     Maps a schema that starts a walk: a component, or the schema of a parameter, a request body or
+		///     a response.
+		/// </summary>
+		private OpenApiSchema MapSchema(JsonNode? node) => MapSchema(node, new SchemaWalk(), false);
+
+		/// <summary>
 		///     Maps a schema to the local model.
 		/// </summary>
 		/// <param name="node">The schema, possibly a <c>$ref</c>.</param>
-		/// <param name="expanding">
-		///     References already being expanded further up the call stack. A self-referencing schema (a
-		///     tree node whose children are the same type, say) would otherwise recurse forever.
-		///     Re-entering a reference already in this set emits the reference name only and stops.
+		/// <param name="walk">
+		///     Where the walk is. A reference already being expanded higher up (a tree node whose children
+		///     are the same type, say) is not expanded again.
 		/// </param>
-		private OpenApiSchema MapSchema(JsonNode? node, HashSet<string> expanding)
+		/// <param name="allOfPart">Whether the schema is an <c>allOf</c> part whose properties merge into its parent's.</param>
+		private OpenApiSchema MapSchema(JsonNode? node, SchemaWalk walk, bool allOfPart)
 		{
 			// A JSON Schema can also be true or false (3.1); true allows anything.
 			if (node is not JsonObject schemaObject)
@@ -791,147 +960,210 @@ public static class OpenApiParser
 			}
 
 			Resolved resolved = Resolve(schemaObject);
-			SchemaView schema = resolved.View;
-			string? refName = resolved.RefName;
-
-			if (resolved.Pointer is { } pointer && !expanding.Add(pointer))
+			if (walk.Depth >= _maxSchemaDepth)
 			{
-				// Cycle: this component is already being expanded higher up the stack.
-				return new OpenApiSchema
-				{
-					RefName = refName,
-					Type = TypeName(schema),
-					Nullable = IsNullable(schema),
-					Description = Text(schema["description"])
-				};
+				Warn(ref _depthWarned, $"A schema nests more than {_maxSchemaDepth} schemas deep; the schemas below that show only their type.");
+				return Stub(resolved);
 			}
 
+			if (walk.Expanding.Count > 0)
+			{
+				_schemaBudget--;
+			}
+
+			if (resolved.Pointer is { } pointer)
+			{
+				if (walk.Expanding.Contains(pointer) || (walk.References > 0 && !allOfPart))
+				{
+					return Stub(resolved);
+				}
+
+				if (_schemaBudget < 0)
+				{
+					Warn(ref _budgetWarned, "The schemas reference each other too often to expand every reference; the rest show only their name.");
+					return Stub(resolved);
+				}
+
+				walk.Expanding.Add(pointer);
+				walk.References += allOfPart ? 0 : 1;
+			}
+
+			walk.Depth++;
 			try
 			{
-				var result = new OpenApiSchema
-				{
-					// Must stay null (not "") for non-references: OpenApiSchema.ToDisplayString
-					// returns RefName whenever it is non-null.
-					RefName = refName,
-					Type = TypeName(schema),
-					Format = Text(schema["format"]),
-					Description = Text(schema["description"]),
-					Nullable = IsNullable(schema)
-				};
-
-				if (_swagger2 && Text(schema["type"]) == "file")
-				{
-					// 2.0's upload type, which 3.x writes as a binary string.
-					result.Type = "string";
-					result.Format = "binary";
-				}
-
-				// allOf parts come first: with inheritance, the base type's properties lead.
-				List<OpenApiSchema> allOf = schema["allOf"] is JsonArray parts
-					? parts.Select(part => MapSchema(part, expanding)).ToList()
-					: [];
-				List<JsonNode?> alternatives = [.. Alternatives(schema, "oneOf"), .. Alternatives(schema, "anyOf")];
-
-				if (allOf.Count == 1 && refName is null && IsBare(schema) && alternatives.Count == 0)
-				{
-					// A wrapper around one schema, which is how OpenAPI 3.0 gives a $ref a description or
-					// nullable: true. It means the schema it wraps.
-					return Unwrap(allOf[0], result);
-				}
-
-				foreach (OpenApiSchema part in allOf)
-				{
-					foreach ((string name, OpenApiSchema property) in part.Properties)
-					{
-						result.Properties.TryAdd(name, property);
-					}
-
-					foreach (string required in part.RequiredProperties.Where(r => !result.RequiredProperties.Contains(r)).ToList())
-					{
-						result.RequiredProperties.Add(required);
-					}
-				}
-
-				if (allOf.Count > 0 && result.Type.Length == 0)
-				{
-					result.Type = "object";
-				}
-
-				// OpenAPI 3.1 (and .NET 10's generator) writes a nullable reference as
-				// oneOf: [{"type": "null"}, {"$ref": ...}], since a $ref can't carry a type of its own.
-				foreach (JsonNode? alternative in alternatives)
-				{
-					if (alternative is JsonObject alternativeObject && !alternativeObject.ContainsKey("$ref")
-					                                                && TypeName(new SchemaView(alternativeObject, null)) == "null")
-					{
-						result.Nullable = true;
-						continue;
-					}
-
-					result.Variants.Add(MapSchema(alternative, expanding));
-				}
-
-				if (result.Variants.Count == 1 && refName is null && allOf.Count == 0 && IsBare(schema))
-				{
-					return Unwrap(result.Variants[0], result);
-				}
-
-				// Array items
-				if (result.Type == "array" && schema["items"] is JsonObject items)
-				{
-					result.Items = MapSchema(items, expanding);
-				}
-
-				// Map values, as for a Dictionary<string, T>
-				if (schema["additionalProperties"] is JsonObject additional)
-				{
-					result.AdditionalProperties = MapSchema(additional, expanding);
-				}
-
-				// Object properties
-				if (schema["properties"] is JsonObject properties)
-				{
-					foreach ((string name, JsonNode? property) in properties)
-					{
-						result.Properties[name] = MapSchema(property, expanding);
-					}
-				}
-
-				// Required properties
-				if (schema["required"] is JsonArray requiredNames)
-				{
-					foreach (string required in requiredNames.Select(Text)
-						         .Where(r => r.Length > 0 && !result.RequiredProperties.Contains(r)))
-					{
-						result.RequiredProperties.Add(required);
-					}
-				}
-
-				// Enum values, and a 3.1 const as the one allowed value
-				if (schema["enum"] is JsonArray values)
-				{
-					result.EnumValues.AddRange(values.Select(JsonNodeToScalar));
-				}
-				else if (schema.Has("const"))
-				{
-					result.EnumValues.Add(JsonNodeToScalar(schema["const"]));
-				}
-
-				if (result.Type.Length == 0 && result.EnumValues.Count > 0)
-				{
-					// Generators leave the type off an enum ("enum": ["Books", "Music"]), which would
-					// otherwise show as "any".
-					result.Type = InferValueType(schema);
-				}
-
-				return result;
+				return MapExpanded(resolved, walk);
 			}
 			finally
 			{
-				if (resolved.Pointer is not null)
+				walk.Depth--;
+				if (resolved.Pointer is { } expanded)
 				{
-					expanding.Remove(resolved.Pointer);
+					walk.Expanding.Remove(expanded);
+					walk.References -= allOfPart ? 0 : 1;
 				}
+			}
+		}
+
+		private OpenApiSchema MapExpanded(Resolved resolved, SchemaWalk walk)
+		{
+			SchemaView schema = resolved.View;
+			string? refName = resolved.RefName;
+			var result = new OpenApiSchema
+			{
+				// Must stay null (not "") for non-references: OpenApiSchema.ToDisplayString
+				// returns RefName whenever it is non-null.
+				RefName = refName,
+				Type = TypeName(schema),
+				Format = Text(schema["format"]),
+				Description = Text(schema["description"]),
+				Nullable = IsNullable(schema),
+				ExternalDocs = MapExternalDocs(schema["externalDocs"])
+			};
+
+			if (_swagger2 && Text(schema["type"]) == "file")
+			{
+				// 2.0's upload type, which 3.x writes as a binary string.
+				result.Type = "string";
+				result.Format = "binary";
+			}
+
+			List<JsonNode?> alternatives = [.. Alternatives(schema, "oneOf"), .. Alternatives(schema, "anyOf")];
+
+			// A single allOf part with nothing else is how OpenAPI 3.0 gives a $ref a description or
+			// nullable: true. It stands for the schema it wraps, so it is expanded like a reference.
+			JsonArray? parts = schema["allOf"] as JsonArray;
+			bool wrapper = parts is { Count: 1 } && refName is null && IsBare(schema) && alternatives.Count == 0;
+
+			// allOf parts come first: with inheritance, the base type's properties lead.
+			List<OpenApiSchema> allOf = parts?.Select(part => MapSchema(part, walk, !wrapper)).ToList() ?? [];
+			if (wrapper)
+			{
+				return Unwrap(allOf[0], result);
+			}
+
+			foreach (OpenApiSchema part in allOf)
+			{
+				foreach ((string name, OpenApiSchema property) in part.Properties)
+				{
+					result.Properties.TryAdd(name, property);
+				}
+
+				foreach (string required in part.RequiredProperties.Where(r => !result.RequiredProperties.Contains(r)).ToList())
+				{
+					result.RequiredProperties.Add(required);
+				}
+			}
+
+			if (allOf.Count > 0 && result.Type.Length == 0)
+			{
+				result.Type = "object";
+			}
+
+			// OpenAPI 3.1 (and .NET 10's generator) writes a nullable reference as
+			// oneOf: [{"type": "null"}, {"$ref": ...}], since a $ref can't carry a type of its own.
+			foreach (JsonNode? alternative in alternatives)
+			{
+				if (IsNullAlternative(alternative))
+				{
+					result.Nullable = true;
+					continue;
+				}
+
+				result.Variants.Add(MapSchema(alternative, walk, false));
+			}
+
+			if (result.Variants.Count == 1 && refName is null && allOf.Count == 0 && IsBare(schema))
+			{
+				return Unwrap(result.Variants[0], result);
+			}
+
+			// Array items
+			if (result.Type == "array" && schema["items"] is JsonObject items)
+			{
+				result.Items = MapSchema(items, walk, false);
+			}
+
+			// Map values, as for a Dictionary<string, T>
+			if (schema["additionalProperties"] is JsonObject additional)
+			{
+				result.AdditionalProperties = MapSchema(additional, walk, false);
+			}
+
+			// Object properties
+			if (schema["properties"] is JsonObject properties)
+			{
+				foreach ((string name, JsonNode? property) in properties)
+				{
+					result.Properties[name] = MapSchema(property, walk, false);
+				}
+			}
+
+			// Required properties
+			if (schema["required"] is JsonArray requiredNames)
+			{
+				foreach (string required in requiredNames.Select(Text)
+					         .Where(r => r.Length > 0 && !result.RequiredProperties.Contains(r)))
+				{
+					result.RequiredProperties.Add(required);
+				}
+			}
+
+			AddValues(result, schema);
+			return result;
+		}
+
+		/// <summary>
+		///     A schema that is not expanded: a reference's name, with the type, description, nullability and
+		///     allowed values of the schema it points at. That is all a page shows of a schema whose
+		///     properties it doesn't list.
+		/// </summary>
+		private static OpenApiSchema Stub(Resolved resolved)
+		{
+			SchemaView schema = resolved.View;
+			var stub = new OpenApiSchema
+			{
+				RefName = resolved.RefName,
+				Type = TypeName(schema),
+				Format = Text(schema["format"]),
+				Description = Text(schema["description"]),
+				Nullable = IsNullable(schema)
+				           || Alternatives(schema, "oneOf").Concat(Alternatives(schema, "anyOf")).Any(IsNullAlternative)
+			};
+			AddValues(stub, schema);
+			return stub;
+		}
+
+		/// <summary>Enum values, and a 3.1 <c>const</c> as the one allowed value.</summary>
+		private static void AddValues(OpenApiSchema result, SchemaView schema)
+		{
+			if (schema["enum"] is JsonArray values)
+			{
+				result.EnumValues.AddRange(values.Select(JsonNodeToScalar));
+			}
+			else if (schema.Has("const"))
+			{
+				result.EnumValues.Add(JsonNodeToScalar(schema["const"]));
+			}
+
+			if (result.Type.Length == 0 && result.EnumValues.Count > 0)
+			{
+				// Generators leave the type off an enum ("enum": ["Books", "Music"]), which would
+				// otherwise show as "any".
+				result.Type = InferValueType(schema);
+			}
+		}
+
+		private static bool IsNullAlternative(JsonNode? alternative) =>
+			alternative is JsonObject alternativeObject && !alternativeObject.ContainsKey("$ref")
+			                                            && TypeName(new SchemaView(alternativeObject, null)) == "null";
+
+		/// <summary>Adds a warning the first time a limit is reached.</summary>
+		private void Warn(ref bool warned, string message)
+		{
+			if (!warned)
+			{
+				warned = true;
+				_warnings.Add(message);
 			}
 		}
 
@@ -950,7 +1182,8 @@ public static class OpenApiParser
 			&& !schema.Has("const");
 
 		/// <summary>
-		///     Returns the schema a wrapper stands for, keeping the wrapper's description and nullability.
+		///     Returns the schema a wrapper stands for, keeping the wrapper's description, nullability and
+		///     external documentation.
 		/// </summary>
 		private static OpenApiSchema Unwrap(OpenApiSchema inner, OpenApiSchema wrapper)
 		{
@@ -960,6 +1193,7 @@ public static class OpenApiParser
 				inner.Description = wrapper.Description;
 			}
 
+			inner.ExternalDocs = wrapper.ExternalDocs ?? inner.ExternalDocs;
 			return inner;
 		}
 

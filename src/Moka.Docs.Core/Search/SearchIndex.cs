@@ -32,6 +32,12 @@ public sealed record SearchEntry
 	/// <summary>Text content snippet for matching and display.</summary>
 	public required string Content { get; init; }
 
+	/// <summary>
+	///     Words from the code blocks in this entry's part of the page, space-separated and without
+	///     repeats, or <c>null</c> when there are none. Matched like <see cref="Content" /> but not shown.
+	/// </summary>
+	public string? Code { get; init; }
+
 	/// <summary>Category for grouping results (e.g., "Documentation", "API Reference").</summary>
 	public string Category { get; init; } = "Documentation";
 

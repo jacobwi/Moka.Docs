@@ -71,6 +71,37 @@ public sealed class MemberIdParserTests
 			.Should().Be("Calculator.Add");
 	}
 
+	[Theory]
+	[InlineData("P:Lib.ShapeExtensions.<G>$0A8A2B8D6C6D4A6ADDD5B3E19BF9CD6D.Perimeter",
+		"<G>$0A8A2B8D6C6D4A6ADDD5B3E19BF9CD6D", "P:Lib.ShapeExtensions.Perimeter")]
+	[InlineData("M:Lib.ShapeExtensions.<G>$2580CBA50C52ABB91465AA64415CDF40`1.Add(`0,System.Int32)",
+		"<G>$2580CBA50C52ABB91465AA64415CDF40`1", "M:Lib.ShapeExtensions.Add(`0,System.Int32)")]
+	[InlineData("T:Lib.ShapeExtensions.<G>$0A8A2B8D6C6D4A6ADDD5B3E19BF9CD6D.<M>$D2B4D929343BC7E41A47F8EA77C785DD",
+		"<G>$0A8A2B8D6C6D4A6ADDD5B3E19BF9CD6D", "T:Lib.ShapeExtensions")]
+	public void ExtensionMemberIds_NameTheGroupingTypeAndTheStaticClass(string memberId, string grouping, string withoutIt)
+	{
+		// The compiler documents extension block members on a nested grouping type with an unspeakable name.
+		MemberIdParser.ExtensionGroupingName(memberId).Should().Be(grouping);
+		MemberIdParser.WithoutExtensionTypes(memberId).Should().Be(withoutIt);
+	}
+
+	[Theory]
+	[InlineData("M:Lib.ShapeExtensions.Grow(Lib.Shape,System.Double)")]
+	[InlineData("T:Lib.Outer`1.Inner")]
+	[InlineData("!:extension(Shape).Grow")]
+	public void WithoutExtensionTypes_LeavesOtherIdsAlone(string memberId)
+	{
+		MemberIdParser.ExtensionGroupingName(memberId).Should().BeNull();
+		MemberIdParser.WithoutExtensionTypes(memberId).Should().Be(memberId);
+	}
+
+	[Fact]
+	public void GetDisplayName_ExtensionMember_ReadsAsAMemberOfTheStaticClass()
+	{
+		MemberIdParser.GetDisplayName("P:Lib.ShapeExtensions.<G>$0A8A2B8D6C6D4A6ADDD5B3E19BF9CD6D.Perimeter")
+			.Should().Be("ShapeExtensions.Perimeter");
+	}
+
 	[Fact]
 	public void ForType_GeneratesCorrectId() => MemberIdParser.ForType("System.String").Should().Be("T:System.String");
 

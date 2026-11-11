@@ -1,4 +1,6 @@
+using System.Reflection;
 using FluentAssertions;
+using Microsoft.CodeAnalysis.CSharp;
 using Moka.Docs.AspNetCore;
 using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Api;
@@ -64,6 +66,33 @@ public sealed class ReflectionFilterTests
 			.Should().Equal("(global)");
 		Namespaces(Build(SourceFixtureAssembly.NoPdb, options => options.ExcludeNamespaces = [entry]))
 			.Should().NotContain("(global)").And.HaveCount(5);
+	}
+
+	[Fact]
+	public void NamespaceEntry_WithAStar_IsAWarning()
+	{
+		var diagnostics = new DiagnosticBag();
+		Build(SourceFixtureAssembly.NoPdb, options => options.IncludeNamespaces = ["Contoso.*"], diagnostics);
+
+		Diagnostic warning = diagnostics.All.Should().ContainSingle().Subject;
+		warning.Severity.Should().Be(DiagnosticSeverity.Warning);
+		warning.Message.Should().Contain("IncludeNamespaces entry 'Contoso.*'").And.Contain("not a wildcard");
+	}
+
+	[Fact]
+	public void NamespaceEntry_ThatMatchesNoNamespace_IsAWarning()
+	{
+		var diagnostics = new DiagnosticBag();
+		Build(SourceFixtureAssembly.NoPdb, options =>
+		{
+			options.IncludeNamespaces = ["Contoso.Api", "contoso.widgets"];
+			options.ExcludeNamespaces = ["Contoso.Api.Nothing", "(global)"];
+		}, diagnostics);
+
+		diagnostics.All.Should().OnlyContain(d => d.Severity == DiagnosticSeverity.Warning);
+		diagnostics.All.Select(d => d.Message).Should().SatisfyRespectively(
+			first => first.Should().StartWith("IncludeNamespaces entry 'contoso.widgets' matches no namespace"),
+			second => second.Should().StartWith("ExcludeNamespaces entry 'Contoso.Api.Nothing' matches no namespace"));
 	}
 
 	[Fact]
@@ -159,6 +188,43 @@ public sealed class ReflectionFilterTests
 			.Contain("'Moka.Docs.SourceFixture.Embedded'").And.Contain("not in Assemblies");
 		// The XML file next to the DLL is still read.
 		Type(model, "Widget").Documentation!.Summary.Should().Be("A widget.");
+	}
+
+	[Fact]
+	public void UnreadableXmlFile_NextToTheAssembly_IsAWarningWithTheReason()
+	{
+		Assembly assembly = FixtureAssembly.Load(
+			FixtureAssembly.CreateCompilation("Moka.Docs.BrokenXmlFixture", "/// <summary>A.</summary>\npublic class A { }",
+				LanguageVersion.Latest),
+			"broken-xml-fixture");
+		string xmlPath = Path.ChangeExtension(assembly.Location, ".xml");
+		File.WriteAllText(xmlPath, "<doc><assembly><name>Moka.Docs.BrokenXmlFixture</name></assembly><members>");
+
+		var diagnostics = new DiagnosticBag();
+		Build(assembly, configure: null, diagnostics);
+
+		Diagnostic warning = diagnostics.All.Should().ContainSingle().Subject;
+		warning.Severity.Should().Be(DiagnosticSeverity.Warning);
+		warning.Message.Should().Contain(xmlPath).And.Contain("'Moka.Docs.BrokenXmlFixture'").And.Contain("could not be read");
+	}
+
+	[Fact]
+	public void UnreadableXmlDocFilesEntry_IsAWarningWithTheReason()
+	{
+		string path = Path.Combine(Path.GetTempPath(), "mokadocs-broken-" + Guid.NewGuid().ToString("N") + ".xml");
+		File.WriteAllText(path, "<doc><assembly><name>Moka.Docs.SourceFixture.NoPdb</name></assembly><members><member>");
+		try
+		{
+			var diagnostics = new DiagnosticBag();
+			Build(SourceFixtureAssembly.NoPdb, options => options.XmlDocFiles = [path], diagnostics);
+
+			diagnostics.All.Should().ContainSingle().Which.Message.Should()
+				.Contain(path).And.Contain("could not be read, so it matches no assembly: ");
+		}
+		finally
+		{
+			File.Delete(path);
+		}
 	}
 
 	[Fact]

@@ -41,13 +41,13 @@ internal sealed class MokaDocsRepl : IDisposable
 	/// <summary>Whether the service exists, which means a worker may have been started.</summary>
 	internal bool IsServiceCreated => _service.IsValueCreated;
 
+	/// <summary>Whether requests from other machines may run code (<see cref="MokaDocsOptions.AllowRemoteRepl" />).</summary>
+	internal bool AllowRemote => _options.AllowRemoteRepl;
+
 	/// <summary>
 	///     Whether a worker can be started. Without <see cref="MokaDocsReplWorker.TryRunAsync" /> in
 	///     Program.cs, starting the executable again would start a second copy of the web app.
 	/// </summary>
-	/// <summary>Whether requests from other machines may run code (<see cref="MokaDocsOptions.AllowRemoteRepl" />).</summary>
-	internal bool AllowRemote => _options.AllowRemoteRepl;
-
 	internal bool CanStartWorker => _options.ReplWorkerStartInfo is not null || MokaDocsReplWorker.IsEntryPointWired;
 
 	/// <summary>The service. Creating it starts nothing; the first run does.</summary>
@@ -80,11 +80,13 @@ internal sealed class MokaDocsRepl : IDisposable
 	/// </summary>
 	internal ProcessStartInfo CreateWorkerStartInfo()
 	{
+		Assembly? entryAssembly = Assembly.GetEntryAssembly();
 		ProcessStartInfo startInfo = _options.ReplWorkerStartInfo?.Invoke()
 		                             ?? MokaDocsReplWorker.CreateStartInfo(
 			                             Environment.ProcessPath,
-			                             Assembly.GetEntryAssembly()?.Location,
-			                             Environment.GetEnvironmentVariable("DOTNET_HOST_PATH"));
+			                             entryAssembly?.Location,
+			                             Environment.GetEnvironmentVariable("DOTNET_HOST_PATH"),
+			                             entryAssembly?.GetName().Name);
 
 		// Set on the child's start info only, so the web app itself never turns into a worker.
 		startInfo.Environment[MokaDocsReplWorker.WorkerVariable] = "1";

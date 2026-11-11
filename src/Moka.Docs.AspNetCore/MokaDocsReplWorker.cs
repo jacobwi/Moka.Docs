@@ -71,29 +71,36 @@ public static class MokaDocsReplWorker
 	/// <param name="processPath">The running executable, <see cref="Environment.ProcessPath" />.</param>
 	/// <param name="entryAssemblyPath">The application's assembly, the entry assembly's location.</param>
 	/// <param name="dotnetHostPath">The <c>DOTNET_HOST_PATH</c> variable, or <c>null</c>.</param>
+	/// <param name="entryAssemblyName">
+	///     The entry assembly's name. A single-file app has one but no assembly location.
+	/// </param>
 	/// <exception cref="InvalidOperationException">The application's assembly is unknown.</exception>
 	internal static ProcessStartInfo CreateStartInfo(string? processPath, string? entryAssemblyPath,
-		string? dotnetHostPath)
+		string? dotnetHostPath, string? entryAssemblyName = null)
 	{
+		string executable = processPath is null ? "" : WithoutExeSuffix(Path.GetFileName(processPath));
+		string? appName = !string.IsNullOrEmpty(entryAssemblyName) ? entryAssemblyName
+			: !string.IsNullOrEmpty(entryAssemblyPath) ? Path.GetFileNameWithoutExtension(entryAssemblyPath)
+			: null;
+
+		// The app's own apphost (MyApp.exe, or MyApp on Linux and macOS), single-file apps included,
+		// which is why this comes before the check for an assembly location.
+		if (processPath is not null && appName is not null
+		                            && executable.Equals(appName, StringComparison.OrdinalIgnoreCase))
+		{
+			return new ProcessStartInfo(processPath);
+		}
+
 		if (string.IsNullOrEmpty(entryAssemblyPath))
 		{
 			throw new InvalidOperationException(
 				"the application's assembly has no file location. Set MokaDocsOptions.ReplWorkerStartInfo.");
 		}
 
-		string executable = processPath is null ? "" : WithoutExeSuffix(Path.GetFileName(processPath));
-		string appName = Path.GetFileNameWithoutExtension(entryAssemblyPath);
-
 		// `dotnet MyApp.dll`: the host needs the assembly path again.
-		if (executable.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+		if (processPath is not null && executable.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
 		{
-			return new ProcessStartInfo(processPath!) { ArgumentList = { entryAssemblyPath } };
-		}
-
-		// The app's own apphost (MyApp.exe, or MyApp on Linux and macOS).
-		if (executable.Equals(appName, StringComparison.OrdinalIgnoreCase))
-		{
-			return new ProcessStartInfo(processPath!);
+			return new ProcessStartInfo(processPath) { ArgumentList = { entryAssemblyPath } };
 		}
 
 		// Someone else's process hosts the runtime: w3wp for IIS in-process hosting, or a test

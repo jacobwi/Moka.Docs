@@ -45,6 +45,8 @@ public sealed class OpenApiPlugin : IMokaPlugin
 	/// <summary>The label used when <see cref="LabelOption" /> is not set.</summary>
 	public const string DefaultLabel = "REST API";
 
+	private static readonly string[] _discoveredNames = ["openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml"];
+
 	/// <inheritdoc />
 	public string Id => "openapi";
 
@@ -93,7 +95,10 @@ public sealed class OpenApiPlugin : IMokaPlugin
 			string? specFullPath = ResolveSpecPath(buildContext, settings.Spec);
 			if (specFullPath is null)
 			{
-				context.LogWarning("OpenAPI plugin: No OpenAPI spec file found. Skipping.");
+				context.LogWarning(settings.Spec is { } configured
+					? $"OpenAPI plugin: The spec file '{FullSpecPath(buildContext, configured)}' does not exist. Skipping."
+					: $"OpenAPI plugin: No OpenAPI spec file found. Looked for {string.Join(", ", _discoveredNames)} " +
+					  $"in '{buildContext.RootDirectory}' and its docs folder. Skipping.");
 				return;
 			}
 
@@ -112,9 +117,10 @@ public sealed class OpenApiPlugin : IMokaPlugin
 		}
 
 		OpenApiSpec spec;
+		bool isJson;
 		try
 		{
-			spec = OpenApiParser.Parse(content);
+			spec = OpenApiParser.Parse(content, out isJson);
 		}
 		catch (Exception ex)
 		{
@@ -122,7 +128,12 @@ public sealed class OpenApiPlugin : IMokaPlugin
 			return;
 		}
 
-		string documentFileName = OpenApiParser.IsJson(content) ? "openapi.json" : "openapi.yaml";
+		foreach (string warning in spec.Warnings)
+		{
+			context.LogWarning($"OpenAPI plugin: {source}: {warning}");
+		}
+
+		string documentFileName = isJson ? "openapi.json" : "openapi.yaml";
 		OpenApiLayout layout = OpenApiLayout.Create(spec, settings.RoutePrefix, documentFileName);
 
 		// OutputPhase writes staged files after it cleans the output, and not at all in a dry run.
@@ -147,15 +158,11 @@ public sealed class OpenApiPlugin : IMokaPlugin
 		// User-specified path
 		if (!string.IsNullOrWhiteSpace(specPath))
 		{
-			string full = Path.IsPathRooted(specPath)
-				? specPath
-				: Path.GetFullPath(Path.Combine(root, specPath));
-
+			string full = FullSpecPath(buildContext, specPath);
 			return File.Exists(full) ? full : null;
 		}
 
 		// Auto-discovery (JSON and YAML)
-		string[] candidates = ["openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml"];
 		string[] directories = [root, Path.Combine(root, buildContext.Config.Content.Docs)];
 
 		foreach (string dir in directories)
@@ -165,7 +172,7 @@ public sealed class OpenApiPlugin : IMokaPlugin
 				continue;
 			}
 
-			foreach (string candidate in candidates)
+			foreach (string candidate in _discoveredNames)
 			{
 				string path = Path.Combine(dir, candidate);
 				if (File.Exists(path))
@@ -177,6 +184,9 @@ public sealed class OpenApiPlugin : IMokaPlugin
 
 		return null;
 	}
+
+	private static string FullSpecPath(BuildContext buildContext, string specPath) =>
+		Path.IsPathRooted(specPath) ? specPath : Path.GetFullPath(Path.Combine(buildContext.RootDirectory, specPath));
 
 	/// <summary>
 	///     Generates all documentation pages from the parsed spec: one index page, one detail page per
@@ -207,8 +217,9 @@ public sealed class OpenApiPlugin : IMokaPlugin
 			},
 			Content = new PageContent
 			{
-				Html = inlineCss + OpenApiPageRenderer.RenderIndexPage(spec, layout),
-				PlainText = $"{settings.Label} - {spec.Title} - {description}"
+				Html = inlineCss + OpenApiPageRenderer.RenderIndexPage(spec, layout, schemaLink),
+				PlainText = string.Join(" ", new[] { $"{settings.Label} - {spec.Title} - {description}" }
+					.Concat(spec.Webhooks.Select(w => $"{w.Method} {w.Path} {w.Summary}".TrimEnd())))
 			},
 			TableOfContents = BuildIndexToc(spec, layout),
 			Route = settings.RoutePrefix,
@@ -299,6 +310,11 @@ public sealed class OpenApiPlugin : IMokaPlugin
 
 		entries.AddRange(layout.TagPages.Select(page =>
 			new TocEntry { Level = 2, Text = page.Tag, Id = layout.TagSectionAnchors[page.Tag] }));
+		if (spec.Webhooks.Count > 0)
+		{
+			entries.Add(new TocEntry { Level = 2, Text = "Webhooks", Id = OpenApiLayout.WebhooksAnchor });
+		}
+
 		return new TableOfContents { Entries = entries };
 	}
 

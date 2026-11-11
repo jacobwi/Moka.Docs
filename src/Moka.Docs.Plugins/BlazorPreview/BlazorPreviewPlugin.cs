@@ -1,9 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Web.HtmlRendering;
@@ -18,6 +21,7 @@ using Moka.Docs.Core;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Parsing.Markdown;
+using Moka.Docs.Serve;
 
 namespace Moka.Docs.Plugins.BlazorPreview;
 
@@ -271,6 +275,38 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	/// </remarks>
 	private const string _generatedHostDirectory = ".mokadocs/preview-host";
 
+	/// <summary>
+	///     Written into <c>publish-output/net10.0/</c> when a publish succeeds. Its time is when the
+	///     publish started, which the stale check compares the host's inputs against.
+	/// </summary>
+	/// <remarks>
+	///     The published <c>blazor.webassembly.js</c> can't serve as that time: publish copies it
+	///     with the time it has in the NuGet package, so it was older than any scaffolded host
+	///     and every new process published again.
+	/// </remarks>
+	private const string _publishStampFile = ".mokadocs-published";
+
+	private const int _maxTimeoutSeconds = 86_400;
+
+	private static readonly TimeSpan _defaultPublishTimeout = TimeSpan.FromMinutes(10);
+	private static readonly TimeSpan _defaultRenderTimeout = TimeSpan.FromSeconds(5);
+
+	private static readonly HashSet<string> _referencedSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+	{
+		".cs", ".razor", ".cshtml", ".css", ".js", ".resx", ".csproj", ".props", ".targets"
+	};
+
+	private static readonly HashSet<string> _skippedReferenceDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+	{
+		"bin", "obj", "publish-output", "node_modules"
+	};
+
+	private static readonly Lazy<string?> _sharedFrameworkRoot =
+		new(() => SharedFrameworkRoot(typeof(object).Assembly.Location));
+
+	private static readonly Lazy<Dictionary<string, string>> _trustedPlatformAssemblies =
+		new(ReadTrustedPlatformAssemblies);
+
 	// ── Instance state ─────────────────────────────────────────────────────────
 
 	private readonly List<string> _extraUsings = [];
@@ -278,6 +314,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	private string _basePathForAssemblyQuery = "";
 	private RoslynCompilationService? _compilationService;
 	private string? _previewHostWwwroot;
+	private TimeSpan _renderTimeout = _defaultRenderTimeout;
 	private bool _servicesInitialized;
 
 	// ── IMokaPlugin ────────────────────────────────────────────────────────────
@@ -311,7 +348,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 				return;
 			}
 
-			if (!InitializeFromOptions(context, buildContext))
+			if (!await InitializeFromOptionsAsync(context, buildContext, ct))
 			{
 				return; // Hard failure already logged.
 			}
@@ -348,7 +385,8 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			: "/" + rawBase.Trim('/');
 
 		ILoggerFactory loggerFactory = context.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance;
-		await using HtmlRenderer htmlRenderer = CreateHtmlRenderer(loggerFactory, _knownDllPaths);
+		await using ServiceProvider renderServices = CreateRenderServices(loggerFactory, _knownDllPaths);
+		var snapshotRenderer = new SnapshotRenderer(renderServices, loggerFactory, _renderTimeout);
 
 		int pagesWithPreview = 0;
 		int blocksCompiled = 0;
@@ -364,7 +402,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			}
 
 			(string rewrittenHtml, int pageCompiled, int pageFailed) = await CompileAndRewritePageAsync(
-				html, _compilationService, _extraUsings, _knownDllPaths, htmlRenderer,
+				page.Route, html, _compilationService, _extraUsings, _knownDllPaths, snapshotRenderer,
 				buildContext, context, _basePathForAssemblyQuery, ct);
 
 			page.Content = page.Content with
@@ -386,7 +424,8 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	// ── One-time initialization: parse options, resolve preview-host, build compile refs ──
 
-	private bool InitializeFromOptions(IPluginContext context, BuildContext buildContext)
+	private async Task<bool> InitializeFromOptionsAsync(IPluginContext context, BuildContext buildContext,
+		CancellationToken ct)
 	{
 		// ── previewHost option (optional, auto-discovered when omitted) ─────
 		string? hostPathRaw = null;
@@ -398,18 +437,33 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		}
 
 		// ── library option (used by the auto-scaffolded preview-host) ───────
-		string? library = null;
+		(string Id, string Version)? library = null;
 		if (context.Options.TryGetValue("library", out object? libObj)
 		    && libObj is string libStr
 		    && !string.IsNullOrWhiteSpace(libStr))
 		{
-			library = libStr;
+			// The id and version go into the scaffolded csproj, where a quote or a $( would
+			// rewrite the project.
+			if (NuGetPackageResolver.TryParsePackageSpec(libStr, out string libraryId, out string? libraryVersion))
+			{
+				library = (libraryId, libraryVersion ?? "*");
+			}
+			else
+			{
+				context.LogWarning(
+					$"mokadocs-blazor-preview: library '{libStr}' is not a NuGet package id with an optional " +
+					"@version (for example MyLibrary@1.2.3). It was ignored, so a scaffolded preview host " +
+					"doesn't reference it.");
+			}
 		}
+
+		TimeSpan publishTimeout = ReadSeconds(context, "publishTimeout", _defaultPublishTimeout);
+		_renderTimeout = ReadSeconds(context, "renderTimeout", _defaultRenderTimeout);
 
 		// Resolve the preview-host directory: explicit option wins, otherwise scan
 		// conventional locations (./preview-host/, ./docs-preview-host/, or any subdir
 		// containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
-		string previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, library, buildContext.RootDirectory);
+		string previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, library is not null, buildContext.RootDirectory);
 
 		// Auto-scaffold a fresh preview-host project from a generic template if the
 		// resolved directory doesn't yet contain a Blazor WASM csproj. The user owns the
@@ -434,7 +488,8 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		// Run `dotnet publish` on the preview-host (incremental - skipped when nothing
 		// upstream of the published wwwroot has changed since the last build).
-		if (!EnsurePreviewHostPublished(previewHostDir, context))
+		if (!await EnsurePreviewHostPublishedAsync(previewHostDir, buildContext.OutputDirectory, publishTimeout,
+			    context, ct))
 		{
 			return false;
 		}
@@ -591,13 +646,13 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///         </list>
 	///     </para>
 	///     <para>
-	///         If nothing is found, returns the scaffold target: <c>./preview-host/</c> when a
-	///         <paramref name="library" /> is set, otherwise <c>./.mokadocs/preview-host/</c>
+	///         If nothing is found, returns the scaffold target: <c>./preview-host/</c> when
+	///         <paramref name="hasLibrary" /> is set, otherwise <c>./.mokadocs/preview-host/</c>
 	///         (<see cref="_generatedHostDirectory" />). The caller scaffolds a project there
 	///         unless one already exists.
 	///     </para>
 	/// </summary>
-	private static string ResolvePreviewHostDirectory(string? explicitPath, string? library, string rootDir)
+	private static string ResolvePreviewHostDirectory(string? explicitPath, bool hasLibrary, string rootDir)
 	{
 		if (!string.IsNullOrWhiteSpace(explicitPath))
 		{
@@ -627,9 +682,9 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		}
 
 		// Default scaffold target if nothing found.
-		return Path.GetFullPath(string.IsNullOrWhiteSpace(library)
-			? Path.Combine(rootDir, _generatedHostDirectory)
-			: Path.Combine(rootDir, conventional[0]));
+		return Path.GetFullPath(hasLibrary
+			? Path.Combine(rootDir, conventional[0])
+			: Path.Combine(rootDir, _generatedHostDirectory));
 	}
 
 	/// <summary>
@@ -665,17 +720,19 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	/// <summary>
 	///     Writes a fresh, library-agnostic Blazor WebAssembly preview-host project (csproj +
 	///     Program.cs + wwwroot/index.html) into <paramref name="dir" />. With a
-	///     <paramref name="librarySpec" />, the consumer's library package id and version go into
+	///     <paramref name="library" />, the consumer's library package id and version go into
 	///     the csproj's <c>PackageReference</c> and into the index.html customization markers;
 	///     without one, the csproj references only <c>Moka.Blazor.Repl.Host</c>. Files are written
 	///     ONLY when they do not already exist - mokadocs never overwrites user edits.
 	/// </summary>
-	private static void ScaffoldPreviewHost(string dir, string? librarySpec, IPluginContext context)
+	/// <param name="dir">The preview-host directory.</param>
+	/// <param name="library">
+	///     The library's package id and version, already checked by
+	///     <see cref="NuGetPackageResolver.TryParsePackageSpec" />, or <c>null</c>.
+	/// </param>
+	/// <param name="context">The plugin context, for logging.</param>
+	private static void ScaffoldPreviewHost(string dir, (string Id, string Version)? library, IPluginContext context)
 	{
-		(string Id, string Version)? library = string.IsNullOrWhiteSpace(librarySpec)
-			? null
-			: ParseLibrarySpec(librarySpec);
-
 		Directory.CreateDirectory(dir);
 		Directory.CreateDirectory(Path.Combine(dir, "wwwroot"));
 
@@ -758,25 +815,27 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	}
 
 	/// <summary>
-	///     Parses a <c>library:</c> yaml value into <c>(packageId, version)</c>.
-	///     <list type="bullet">
-	///         <item>
-	///             <description><c>Foo.Bar@1.2.3</c> → <c>("Foo.Bar", "1.2.3")</c></description>
-	///         </item>
-	///         <item>
-	///             <description><c>Foo.Bar</c>      → <c>("Foo.Bar", "*")</c> (latest)</description>
-	///         </item>
-	///     </list>
+	///     Reads a timeout option given in seconds, falling back to <paramref name="fallback" />
+	///     with a warning when the value isn't a positive number.
 	/// </summary>
-	private static (string id, string version) ParseLibrarySpec(string spec)
+	private static TimeSpan ReadSeconds(IPluginContext context, string option, TimeSpan fallback)
 	{
-		int at = spec.IndexOf('@', StringComparison.Ordinal);
-		if (at < 0)
+		if (!context.Options.TryGetValue(option, out object? value) || value is null)
 		{
-			return (spec.Trim(), "*");
+			return fallback;
 		}
 
-		return (spec[..at].Trim(), spec[(at + 1)..].Trim());
+		string text = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+		if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds)
+		    && seconds > 0 && seconds <= _maxTimeoutSeconds)
+		{
+			return TimeSpan.FromSeconds(seconds);
+		}
+
+		context.LogWarning(
+			$"mokadocs-blazor-preview: {option} '{text}' is not a number of seconds between 0 and " +
+			$"{_maxTimeoutSeconds}; using {fallback.TotalSeconds:0}.");
+		return fallback;
 	}
 
 	/// <summary>
@@ -784,7 +843,13 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///     preview-host project if its publish output is missing or stale relative to its inputs.
 	///     Returns <c>false</c> on hard failure (logged via <paramref name="context" />).
 	/// </summary>
-	private static bool EnsurePreviewHostPublished(string previewHostDir, IPluginContext context)
+	/// <param name="previewHostDir">The preview-host project directory.</param>
+	/// <param name="outputDirectory">The site's output directory, which never counts as an input.</param>
+	/// <param name="timeout">How long the publish may take before it is stopped.</param>
+	/// <param name="context">The plugin context, for logging.</param>
+	/// <param name="ct">The build's cancellation token; cancelling it stops the publish.</param>
+	private static async Task<bool> EnsurePreviewHostPublishedAsync(string previewHostDir, string outputDirectory,
+		TimeSpan timeout, IPluginContext context, CancellationToken ct)
 	{
 		string? csproj = Directory.GetFiles(previewHostDir, "*.csproj", SearchOption.TopDirectoryOnly)
 			.FirstOrDefault();
@@ -796,55 +861,52 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		string publishOut = Path.Combine(previewHostDir, "publish-output", "net10.0");
 		string publishMarker = Path.Combine(publishOut, "wwwroot", "_framework", "blazor.webassembly.js");
+		string publishStamp = Path.Combine(publishOut, _publishStampFile);
 
-		bool needsPublish = !File.Exists(publishMarker);
-		if (!needsPublish)
+		if (File.Exists(publishMarker))
 		{
 			DateTime publishedAt = File.GetLastWriteTimeUtc(publishMarker);
-			DateTime newestInput = GetNewestInputMtime(previewHostDir);
-			if (newestInput > publishedAt)
+			if (File.Exists(publishStamp) && File.GetLastWriteTimeUtc(publishStamp) > publishedAt)
 			{
-				needsPublish = true;
+				publishedAt = File.GetLastWriteTimeUtc(publishStamp);
 			}
-		}
 
-		if (!needsPublish)
-		{
-			return true;
+			DateTime newestInput = GetNewestInputMtime(previewHostDir);
+			DateTime newestReference = GetNewestReferencedProjectMtime(csproj, previewHostDir, outputDirectory);
+			if (newestInput <= publishedAt && newestReference <= publishedAt)
+			{
+				return true;
+			}
 		}
 
 		context.LogInfo(
 			$"mokadocs-blazor-preview: publishing preview-host '{Path.GetFileName(csproj)}' " +
 			$"(this happens once per change to the project; subsequent builds are skipped)...");
 
-		var psi = new ProcessStartInfo("dotnet",
-			$"publish \"{csproj}\" -c Release -f net10.0 -o \"{publishOut}\"")
+		var psi = new ProcessStartInfo("dotnet") { WorkingDirectory = previewHostDir };
+		foreach (string argument in (string[]) ["publish", csproj, "-c", "Release", "-f", "net10.0", "-o", publishOut])
 		{
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-			UseShellExecute = false,
-			CreateNoWindow = true,
-			WorkingDirectory = previewHostDir
-		};
+			psi.ArgumentList.Add(argument);
+		}
 
+		DateTime startedAt = DateTime.UtcNow;
 		try
 		{
-			using var proc = Process.Start(psi);
-			if (proc is null)
+			ChildProcessResult result = await ChildProcessRunner.RunAsync(psi, timeout, ct);
+			if (result.TimedOut)
 			{
-				context.LogError("mokadocs-blazor-preview: failed to start `dotnet publish`.");
+				context.LogError(
+					$"mokadocs-blazor-preview: `dotnet publish` did not finish within {timeout.TotalSeconds:0} seconds " +
+					"and was stopped. Run it yourself to see where it hangs, or raise the publishTimeout option " +
+					"if the first publish needs longer to restore packages.");
 				return false;
 			}
 
-			string stdout = proc.StandardOutput.ReadToEnd();
-			string stderr = proc.StandardError.ReadToEnd();
-			proc.WaitForExit();
-
-			if (proc.ExitCode != 0)
+			if (result.ExitCode != 0)
 			{
 				context.LogError(
-					$"mokadocs-blazor-preview: `dotnet publish` exited with code {proc.ExitCode}.\n" +
-					(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr));
+					$"mokadocs-blazor-preview: `dotnet publish` exited with code {result.ExitCode}.\n" +
+					(string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error));
 				return false;
 			}
 
@@ -855,8 +917,11 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 					"Check your preview-host project for build errors.");
 				return false;
 			}
+
+			await File.WriteAllTextAsync(publishStamp, "", ct);
+			File.SetLastWriteTimeUtc(publishStamp, startedAt);
 		}
-		catch (Exception ex)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
 			context.LogError($"mokadocs-blazor-preview: `dotnet publish` failed: {ex.Message}");
 			return false;
@@ -894,6 +959,122 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	}
 
 	/// <summary>
+	///     Newest source file of the projects the preview host references with
+	///     <c>ProjectReference</c>, followed transitively. A change to a referenced component
+	///     library changes what the published host runs, so it makes the publish stale too.
+	/// </summary>
+	/// <remarks>
+	///     Only source-like files count, and build output, dot folders, the preview host itself and
+	///     the site output are skipped: a library project often sits at the root of the repository
+	///     that also holds the docs, whose build output is rewritten on every build.
+	/// </remarks>
+	private static DateTime GetNewestReferencedProjectMtime(string hostCsproj, string previewHostDir,
+		string outputDirectory)
+	{
+		var skipped = new HashSet<string>(PathComparer)
+		{
+			Path.TrimEndingDirectorySeparator(Path.GetFullPath(previewHostDir)),
+			Path.TrimEndingDirectorySeparator(Path.GetFullPath(outputDirectory))
+		};
+		var scannedDirectories = new HashSet<string>(PathComparer);
+		var visitedProjects = new HashSet<string>(PathComparer) { Path.GetFullPath(hostCsproj) };
+		var pending = new Stack<string>(ReadProjectReferences(hostCsproj));
+		DateTime newest = DateTime.MinValue;
+
+		while (pending.TryPop(out string? project))
+		{
+			if (!visitedProjects.Add(project) || !File.Exists(project))
+			{
+				continue;
+			}
+
+			string projectDirectory = Path.GetDirectoryName(project)!;
+			if (scannedDirectories.Add(projectDirectory))
+			{
+				DateTime projectNewest = GetNewestSourceMtime(projectDirectory, skipped);
+				if (projectNewest > newest)
+				{
+					newest = projectNewest;
+				}
+			}
+
+			foreach (string next in ReadProjectReferences(project))
+			{
+				pending.Push(next);
+			}
+		}
+
+		return newest;
+	}
+
+	private static StringComparer PathComparer =>
+		OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+	private static IEnumerable<string> ReadProjectReferences(string csproj)
+	{
+		XDocument document;
+		try
+		{
+			document = XDocument.Load(csproj);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException)
+		{
+			return [];
+		}
+
+		string directory = Path.GetDirectoryName(Path.GetFullPath(csproj))!;
+		return document.Descendants()
+			.Where(e => e.Name.LocalName == "ProjectReference")
+			.Select(e => (string?)e.Attribute("Include") ?? "")
+			.SelectMany(include => include.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+			.Where(include => !include.Contains('$', StringComparison.Ordinal) && !include.Contains('*', StringComparison.Ordinal))
+			.Select(include => Path.GetFullPath(Path.Combine(directory,
+				include.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar))))
+			.ToList();
+	}
+
+	private static DateTime GetNewestSourceMtime(string root, HashSet<string> skippedDirectories)
+	{
+		DateTime newest = DateTime.MinValue;
+		var pending = new Stack<string>([root]);
+		while (pending.TryPop(out string? directory))
+		{
+			try
+			{
+				foreach (string file in Directory.EnumerateFiles(directory))
+				{
+					if (_referencedSourceExtensions.Contains(Path.GetExtension(file)))
+					{
+						DateTime t = File.GetLastWriteTimeUtc(file);
+						if (t > newest)
+						{
+							newest = t;
+						}
+					}
+				}
+
+				foreach (string child in Directory.EnumerateDirectories(directory))
+				{
+					string name = Path.GetFileName(child);
+					if (name.StartsWith('.') || _skippedReferenceDirectoryNames.Contains(name)
+					                         || skippedDirectories.Contains(child))
+					{
+						continue;
+					}
+
+					pending.Push(child);
+				}
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				// An unreadable folder can't hold an edit the publish would pick up either.
+			}
+		}
+
+		return newest;
+	}
+
+	/// <summary>
 	///     Returns <c>true</c> if an assembly with the given simple-name is already resolvable
 	///     by the host runtime - i.e. it is part of the .NET shared framework (BCL, ASP.NET Core,
 	///     Extensions, JSInterop) that the mokadocs tool itself is running on top of.
@@ -905,49 +1086,73 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	///         whichever runtime mokadocs is executing on is the reference version used.
 	///     </para>
 	///     <para>
-	///         We deliberately use <see cref="Assembly.Load(AssemblyName)" /> instead of a
-	///         hardcoded prefix list: any future framework or extension package added to the
-	///         shared framework is automatically treated as such, with no plugin code change.
+	///         The runtime's trusted platform assembly list says where it would load the name from,
+	///         and the assembly counts when that file sits in a shared framework folder. Nothing is
+	///         loaded to find out.
 	///     </para>
 	/// </summary>
-	private static bool IsFrameworkAssemblyName(string simpleName)
+	internal static bool IsFrameworkAssemblyName(string simpleName)
 	{
 		if (string.IsNullOrEmpty(simpleName))
 		{
 			return false;
 		}
 
-		// Cheap fast path: mscorlib / System / netstandard are always framework.
 		if (simpleName.Equals("mscorlib", StringComparison.OrdinalIgnoreCase)
 		    || simpleName.Equals("netstandard", StringComparison.OrdinalIgnoreCase))
 		{
 			return true;
 		}
 
-		try
-		{
-			var loaded = Assembly.Load(new AssemblyName(simpleName));
-			// Only TRUSTED host runtime locations count - an assembly that the host loaded from
-			// a user-supplied path is not "framework". The shared framework lives under
-			// dotnet/shared or dotnet/packs - both contain "dotnet" in a normalized path.
-			string location = loaded.Location;
-			if (string.IsNullOrEmpty(location))
-			{
-				return false;
-			}
-
-			string normalized = location.Replace('\\', '/').ToLowerInvariant();
-			return normalized.Contains("/dotnet/shared/")
-			       || normalized.Contains("/dotnet/packs/")
-			       || normalized.Contains("/.dotnet/shared/")
-			       || normalized.Contains("/.dotnet/packs/");
-		}
-		catch
-		{
-			return false;
-		}
+		return _sharedFrameworkRoot.Value is { } root
+		       && _trustedPlatformAssemblies.Value.TryGetValue(simpleName, out string? location)
+		       && IsInSharedFramework(location, root);
 	}
 
+	/// <summary>
+	///     The folder that holds the shared frameworks the runtime runs on, found from where
+	///     <c>System.Private.CoreLib</c> was loaded: <c>{dotnet root}/shared</c> for a
+	///     framework-dependent app (whatever the install root is: Program Files, ~/.dotnet, snap,
+	///     Homebrew), or the app's own folder for a self-contained one.
+	/// </summary>
+	/// <param name="coreLibLocation">The path of <c>System.Private.CoreLib.dll</c>.</param>
+	/// <returns>The folder, or <c>null</c> when the runtime has no file location (single-file apps).</returns>
+	internal static string? SharedFrameworkRoot(string coreLibLocation)
+	{
+		if (string.IsNullOrEmpty(coreLibLocation))
+		{
+			return null;
+		}
+
+		DirectoryInfo? versionDirectory = new FileInfo(coreLibLocation).Directory;
+		if (versionDirectory?.Parent is { Name: "Microsoft.NETCore.App" } framework && framework.Parent is { } shared)
+		{
+			return shared.FullName;
+		}
+
+		return versionDirectory?.FullName;
+	}
+
+	/// <summary>Whether <paramref name="assemblyLocation" /> is a file under <paramref name="sharedFrameworkRoot" />.</summary>
+	internal static bool IsInSharedFramework(string assemblyLocation, string sharedFrameworkRoot)
+	{
+		string relative = Path.GetRelativePath(sharedFrameworkRoot, assemblyLocation);
+		return relative != "." && !Path.IsPathRooted(relative)
+		                       && !relative.Equals("..", StringComparison.Ordinal)
+		                       && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+	}
+
+	private static Dictionary<string, string> ReadTrustedPlatformAssemblies()
+	{
+		var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		string paths = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "";
+		foreach (string path in paths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+		{
+			byName.TryAdd(Path.GetFileNameWithoutExtension(path), path);
+		}
+
+		return byName;
+	}
 	/// <summary>
 	///     Looks for the published <c>wwwroot/</c> under <c>{previewHostDir}/publish-output/</c>.
 	///     Accepts either a TFM-subdirectory layout
@@ -1018,7 +1223,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	// ── HtmlRenderer (for SSR fallback) ────────────────────────────────────────
 
-	private static HtmlRenderer CreateHtmlRenderer(ILoggerFactory loggerFactory, IEnumerable<string> knownDllPaths)
+	private static ServiceProvider CreateRenderServices(ILoggerFactory loggerFactory, IEnumerable<string> knownDllPaths)
 	{
 		foreach (string dll in knownDllPaths)
 		{
@@ -1044,18 +1249,18 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// be resolved, SSR falls back to the empty render and the iframe still shows the live
 		// interactive component.
 
-		ServiceProvider sp = services.BuildServiceProvider();
-		return new HtmlRenderer(sp, loggerFactory);
+		return services.BuildServiceProvider();
 	}
 
 	// ── Per-page block compilation + rewrite ───────────────────────────────────
 
 	private static async Task<(string html, int compiled, int failed)> CompileAndRewritePageAsync(
+		string pageRoute,
 		string html,
 		RoslynCompilationService compilationService,
 		List<string> extraUsings,
 		List<string> knownDllPaths,
-		HtmlRenderer htmlRenderer,
+		SnapshotRenderer snapshotRenderer,
 		BuildContext buildContext,
 		IPluginContext context,
 		string basePathForAssemblyQuery,
@@ -1154,9 +1359,10 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 						try
 						{
 							ssrHtml = await RenderComponentAsync(
-								result.AssemblyBytes, result.EntryPointTypeName, knownDllPaths, htmlRenderer, context);
+								result.AssemblyBytes, result.EntryPointTypeName, knownDllPaths, snapshotRenderer,
+								pageRoute, context, ct);
 						}
-						catch
+						catch (Exception) when (!ct.IsCancellationRequested)
 						{
 							ssrHtml = "";
 						}
@@ -1197,7 +1403,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 						failed++;
 					}
 				}
-				catch (Exception ex)
+				catch (Exception ex) when (!ct.IsCancellationRequested)
 				{
 					context.LogWarning($"Blazor preview compile failed: {ex.Message}");
 					sb.Append("<div class=\"blazor-preview-render\"><div class=\"blazor-preview-error\">")
@@ -1269,8 +1475,10 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		byte[] assemblyBytes,
 		string? entryPointTypeName,
 		List<string> knownDllPaths,
-		HtmlRenderer htmlRenderer,
-		IPluginContext context)
+		SnapshotRenderer snapshotRenderer,
+		string pageRoute,
+		IPluginContext context,
+		CancellationToken ct)
 	{
 		var dllLookup = knownDllPaths
 			.GroupBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase)
@@ -1306,23 +1514,98 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 				return "<div class=\"blazor-preview-error\">No renderable component found in assembly.</div>";
 			}
 
-			try
-			{
-				return await htmlRenderer.Dispatcher.InvokeAsync(async () =>
-				{
-					HtmlRootComponent output = await htmlRenderer.RenderComponentAsync(componentType);
-					return output.ToHtmlString();
-				});
-			}
-			catch (Exception ex)
-			{
-				context.LogWarning($"Blazor preview HtmlRenderer error: {ex.Message}");
-				return $"<div class=\"blazor-preview-error\">{WebUtility.HtmlEncode(ex.Message)}</div>";
-			}
+			return await snapshotRenderer.RenderAsync(componentType, pageRoute, context, ct);
 		}
 		finally
 		{
 			loadCtx.Unload();
+		}
+	}
+
+	/// <summary>
+	///     Renders the static <c>&lt;noscript&gt;</c> snapshot of a preview with its own
+	///     <see cref="HtmlRenderer" />, giving up after a timeout.
+	/// </summary>
+	/// <remarks>
+	///     A component whose async work never ends (a timer that calls <c>StateHasChanged</c>
+	///     forever) never reaches quiescence, and waiting for it hung the build, and in the
+	///     ASP.NET Core host the build lock, for good. One renderer per preview means a component
+	///     that is still running can't hold up the next one's dispatcher.
+	/// </remarks>
+	private sealed class SnapshotRenderer(IServiceProvider services, ILoggerFactory loggerFactory, TimeSpan timeout)
+	{
+		private static readonly TimeSpan _cleanupGrace = TimeSpan.FromSeconds(2);
+
+		public async Task<string> RenderAsync(Type componentType, string pageRoute, IPluginContext context,
+			CancellationToken ct)
+		{
+			var renderer = new HtmlRenderer(services, loggerFactory);
+			using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+			limit.CancelAfter(timeout);
+			HtmlRootComponent? root = null;
+			try
+			{
+				// Started off the build's thread: a lifecycle method that blocks keeps the thread
+				// that runs it, and only work the build doesn't run on can be left behind.
+				root = await Task.Run(
+						() => renderer.Dispatcher.InvokeAsync(() => renderer.BeginRenderingComponent(componentType)),
+						CancellationToken.None)
+					.WaitAsync(limit.Token);
+				await root.Value.QuiescenceTask.WaitAsync(limit.Token);
+				return await renderer.Dispatcher.InvokeAsync(root.Value.ToHtmlString);
+			}
+			catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+			{
+				if (root is not { } started)
+				{
+					context.LogWarning(
+						$"mokadocs-blazor-preview: a preview on '{pageRoute}' did not render within " +
+						$"{timeout.TotalSeconds:0.#} seconds, so it has no <noscript> snapshot. A lifecycle " +
+						"method probably blocks; raise renderTimeout if it only needs longer.");
+					return "";
+				}
+
+				context.LogWarning(
+					$"mokadocs-blazor-preview: a preview on '{pageRoute}' was still rendering after " +
+					$"{timeout.TotalSeconds:0.#} seconds; its <noscript> snapshot shows it at that point. " +
+					"Raise renderTimeout if it needs longer to finish.");
+				return await SnapshotAsync(renderer, started);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				context.LogWarning($"Blazor preview HtmlRenderer error: {ex.Message}");
+				return $"<div class=\"blazor-preview-error\">{WebUtility.HtmlEncode(ex.Message)}</div>";
+			}
+			finally
+			{
+				await DisposeQuietlyAsync(renderer);
+			}
+		}
+
+		private static async Task<string> SnapshotAsync(HtmlRenderer renderer, HtmlRootComponent root)
+		{
+			try
+			{
+				return await renderer.Dispatcher.InvokeAsync(root.ToHtmlString).WaitAsync(_cleanupGrace);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				// The component holds the renderer's dispatcher, so there is nothing to read.
+				return "";
+			}
+		}
+
+		private static async Task DisposeQuietlyAsync(HtmlRenderer renderer)
+		{
+			try
+			{
+				await renderer.DisposeAsync().AsTask().WaitAsync(_cleanupGrace);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				// A component that never settled can fail or block its own disposal. The snapshot
+				// is already taken, and the build must not wait on it.
+			}
 		}
 	}
 

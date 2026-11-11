@@ -29,13 +29,16 @@ internal static class ValidateCommand
 		var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
 		var verboseOption = new Option<bool>("--verbose", "-v")
 			{ Description = "Show pipeline logging and informational diagnostics" };
+		var warningsAsErrorsOption = new Option<bool>("--warnings-as-errors")
+			{ Description = "Count warnings as errors (exit 2), like build.strict: true" };
 
 		var command = new Command("validate",
 			"Run the full build without writing output, and report every warning and error")
 		{
 			configOption,
 			draftOption,
-			verboseOption
+			verboseOption,
+			warningsAsErrorsOption
 		};
 
 		command.SetAction(async (parseResult, ct) =>
@@ -43,6 +46,7 @@ internal static class ValidateCommand
 			string? configPath = parseResult.GetValue(configOption);
 			bool draft = parseResult.GetValue(draftOption);
 			bool verbose = parseResult.GetValue(verboseOption);
+			bool warningsAsErrors = parseResult.GetValue(warningsAsErrorsOption);
 
 			// Resolve against the yaml's own folder, as build does, so --config pointing
 			// elsewhere validates that project rather than the working directory.
@@ -94,16 +98,26 @@ internal static class ValidateCommand
 
 			int errors = problems.Count(d => d.Severity == DiagnosticSeverity.Error);
 			int warnings = problems.Count(d => d.Severity == DiagnosticSeverity.Warning);
-			string color = errors > 0 ? "red" : warnings > 0 ? "yellow" : "green";
+			bool strict = warningsAsErrors || config.Build.Strict;
+			int exitCode = ExitCode(errors, warnings, strict);
+			string color = exitCode == 2 ? "red" : exitCode == 1 ? "yellow" : "green";
+			string strictNote = strict && warnings > 0 ? " (warnings count as errors)" : "";
 
 			AnsiConsole.WriteLine();
-			AnsiConsole.MarkupLine($"  [{color}]Result: {errors} error(s), {warnings} warning(s)[/]");
+			AnsiConsole.MarkupLine($"  [{color}]Result: {errors} error(s), {warnings} warning(s){strictNote}[/]");
 
-			return errors > 0 ? 2 : warnings > 0 ? 1 : 0;
+			return exitCode;
 		});
 
 		return command;
 	}
+
+	/// <summary>
+	///     0 when clean, 1 with warnings, 2 with errors, or with warnings when they count as errors
+	///     (<c>build.strict</c> or <c>--warnings-as-errors</c>).
+	/// </summary>
+	internal static int ExitCode(int errors, int warnings, bool warningsAsErrors) =>
+		errors > 0 || (warningsAsErrors && warnings > 0) ? 2 : warnings > 0 ? 1 : 0;
 
 	private static void PrintSummary(BuildContext context, DryRunOutcome outcome)
 	{
@@ -136,45 +150,30 @@ internal static class ValidateCommand
 	/// <summary>
 	///     Everything the build reported, plus plugin declarations that silently did nothing.
 	///     The plugin host only logs those, so without this a misspelled plugin name passes
-	///     validation while its pages never appear.
+	///     validation while its pages never appear. A plugin that failed to load from its
+	///     <c>path</c> is already among the build's errors.
 	/// </summary>
-	private static List<Diagnostic> CollectProblems(SiteConfig config, DryRunOutcome outcome)
+	internal static List<Diagnostic> CollectProblems(SiteConfig config, DryRunOutcome outcome)
 	{
 		var problems = outcome.Context.Diagnostics.All
 			.Where(d => d.Severity != DiagnosticSeverity.Info)
 			.ToList();
 
-		var registered = new HashSet<string>(outcome.RegisteredPluginIds, StringComparer.OrdinalIgnoreCase);
-		var loaded = new HashSet<string>(outcome.LoadedPluginIds, StringComparer.OrdinalIgnoreCase);
+		IEnumerable<string> messages = DoctorChecks.FindIgnoredPluginDeclarations(config.Plugins)
+			.Concat(DoctorChecks.FindUnknownPlugins(config.Plugins, outcome.RegisteredPluginIds)
+				.Select(name => $"Plugin '{name}' is declared but no plugin has that id"))
+			.Concat(DoctorChecks.FindPluginsThatFailedToInitialize(config.Plugins, outcome.RegisteredPluginIds,
+					outcome.LoadedPluginIds, outcome.PluginLoadFailures)
+				.Select(p => string.IsNullOrWhiteSpace(p.Path)
+					? $"Plugin '{p.Name}' failed to initialize (run with --verbose for the reason)"
+					: $"Plugin '{p.Name}' from '{p.Path}' failed to initialize (run with --verbose for the reason)"));
 
-		foreach (string problem in DoctorChecks.FindIgnoredPluginDeclarations(config.Plugins))
+		problems.AddRange(messages.Select(message => new Diagnostic
 		{
-			problems.Add(new Diagnostic
-			{
-				Severity = DiagnosticSeverity.Warning,
-				Message = problem,
-				Source = "Plugins"
-			});
-		}
-
-		foreach (PluginDeclaration declaration in config.Plugins)
-		{
-			if (string.IsNullOrWhiteSpace(declaration.Name) || loaded.Contains(declaration.Name))
-			{
-				continue;
-			}
-
-			string message = registered.Contains(declaration.Name)
-				? $"Plugin '{declaration.Name}' failed to initialize (run with --verbose for the reason)"
-				: $"Plugin '{declaration.Name}' is declared but no plugin has that id";
-
-			problems.Add(new Diagnostic
-			{
-				Severity = DiagnosticSeverity.Warning,
-				Message = message,
-				Source = "Plugins"
-			});
-		}
+			Severity = DiagnosticSeverity.Warning,
+			Message = message,
+			Source = "Plugins"
+		}));
 
 		return problems;
 	}

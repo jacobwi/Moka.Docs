@@ -125,6 +125,65 @@ public sealed class ReplExecutionServiceTests(ReplWorkerFixture fixture) : IClas
 		result.Output!.Length.Should().BeLessThan(100_100);
 	}
 
+	[Fact]
+	public async Task ReturnValue_IsCappedLikeConsoleOutput()
+	{
+		// The value went back whole: returning a 150 MB string took the app to 2.4 GB.
+		ReplResult result = await Service.ExecuteAsync("new string('x', 150_000)", Ct);
+
+		result.Error.Should().BeNullOrEmpty();
+		result.Output.Should().StartWith("xxxx").And.EndWith("[Output truncated after 100000 characters.]");
+		result.Output!.Length.Should().BeLessThan(100_100);
+	}
+
+	[Fact]
+	public async Task AnExceptionMessage_IsCappedLikeConsoleOutput()
+	{
+		ReplResult result = await Service.ExecuteAsync("throw new Exception(new string('x', 150_000));", Ct);
+
+		result.Error.Should().StartWith("Runtime error: xxxx").And.EndWith("[Output truncated after 100000 characters.]");
+		result.Error!.Length.Should().BeLessThan(100_100);
+	}
+
+	[Fact]
+	public async Task AnEndlessLineOnTheProcessOutput_StopsTheWorkerWithAClearError()
+	{
+		// The parent read protocol lines without a limit, so a snippet writing to the process's
+		// standard output directly grew the app's memory until it ran out.
+		await Service.ExecuteAsync("0", Ct);
+		int? worker = Service.WorkerProcessId;
+
+		ReplResult result = await Service.ExecuteAsync(
+			"var stdout = Console.OpenStandardOutput(); var chunk = new byte[1 << 20]; Array.Fill(chunk, (byte)'a'); " +
+			"for (int i = 0; i < 6; i++) stdout.Write(chunk); stdout.Flush(); System.Threading.Thread.Sleep(10000);", Ct);
+
+		result.Error.Should().Contain("wrote too much");
+		HasExited(worker!.Value).Should().BeTrue();
+		(await Service.ExecuteAsync("6 * 7", Ct)).Output.Should().Be("42");
+	}
+
+	[Fact]
+	public async Task AWorkerThatExitsBetweenRuns_IsReplaced_AndTheNextRunGetsItsOwnResult()
+	{
+		// A snippet that ended the process after returning made the next run report "exit code 3".
+		ReplResult first = await Service.ExecuteAsync(
+			"System.Threading.Tasks.Task.Run(async () => { await System.Threading.Tasks.Task.Delay(300); Environment.Exit(3); }); \"x\"",
+			Ct);
+		int? worker = Service.WorkerProcessId;
+		first.Output.Should().Be("x");
+		DateTime until = DateTime.UtcNow.AddSeconds(20);
+		while (!HasExited(worker!.Value) && DateTime.UtcNow < until)
+		{
+			await Task.Delay(50, Ct);
+		}
+
+		ReplResult next = await Service.ExecuteAsync("2 + 2", Ct);
+
+		next.Error.Should().BeNullOrEmpty();
+		next.Output.Should().Be("4");
+		Service.WorkerProcessId.Should().NotBe(worker);
+	}
+
 	private static bool HasExited(int processId)
 	{
 		try

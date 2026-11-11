@@ -210,7 +210,8 @@ public sealed class ApiRelatedMembersTests
 
 	[Theory]
 	[InlineData("Lib.Base<T>", "Lib.Base<int>")] // the CLI
-	[InlineData("Lib.Base", "Base<int>")] // the reflection host leaves type parameters out of the full name
+	[InlineData("Lib.Base", "Lib.Base<int>")] // the reflection host leaves type parameters out of the full name
+	[InlineData("Lib.Base", "Base<int>")] // an unqualified reference
 	public void InheritedMembers_FromAGenericBase_UseTheTypeArguments(string baseFullName, string baseReference)
 	{
 		List<ApiType> types =
@@ -333,6 +334,76 @@ public sealed class ApiRelatedMembersTests
 
 		Render(types, "Lib.Core.FileStream").Should().NotContain("Inherited Members");
 		Render(types, "Lib.App.NetworkStream").Should().NotContain("Inherited Members");
+	}
+
+	[Theory]
+	[InlineData("Lib.Outer<T>", "Lib.Outer<T>.Inner", new string[0], "Peek(T)")] // the CLI
+	[InlineData("Lib.Outer", "Lib.Outer.Inner", new[] { "T" }, "Peek(int)")] // the host lists Outer's T on Inner too
+	public void InheritedMembers_FromANestedTypeOfAGenericType_AreFound(string outerFullName, string innerFullName,
+		string[] innerTypeParameters, string peek)
+	{
+		List<ApiType> types =
+		[
+			Type(outerFullName, typeParameters: ["T"]) with { Name = "Outer" },
+			Type(innerFullName, typeParameters: innerTypeParameters, members: [Method("Peek", "T"), Property("Count")])
+				with { Name = "Inner", Namespace = "Lib" },
+			Type("Lib.Derived", baseType: "Lib.Outer<int>.Inner")
+		];
+
+		string section = Inherited(types, "Lib.Derived");
+
+		section.Should().Contain("<td><a href=\"/api/lib/outer.inner\">Outer&lt;int&gt;.Inner</a></td>")
+			.And.Contain(Link("/api/lib/outer.inner#count", "Count"))
+			.And.Contain(Link("/api/lib/outer.inner#peek", peek));
+	}
+
+	[Fact]
+	public void InheritedMembers_SameNamedMembersOfSiblingInterfaces_AreBothListed()
+	{
+		List<ApiType> types =
+		[
+			Type("Lib.IA", ApiTypeKind.Interface, members: [Method("Reset")]),
+			Type("Lib.IB", ApiTypeKind.Interface, members: [Method("Reset")]),
+			Type("Lib.IC", ApiTypeKind.Interface, interfaces: ["Lib.IA", "Lib.IB"])
+		];
+
+		Inherited(types, "Lib.IC").Should()
+			.Contain(Link("/api/lib/ia#reset", "Reset()"))
+			.And.Contain(Link("/api/lib/ib#reset", "Reset()"));
+	}
+
+	[Fact]
+	public void InheritedMembers_HiddenOnOnePathOfADiamond_StayHidden()
+	{
+		// IA hides IBase.Close with new; C# hides it on every path, so IB's path doesn't bring it back.
+		List<ApiType> types =
+		[
+			Type("Lib.IBase", ApiTypeKind.Interface, members: [Method("Close"), Method("Open")]),
+			Type("Lib.IA", ApiTypeKind.Interface, interfaces: ["Lib.IBase"], members: [Method("Close")]),
+			Type("Lib.IB", ApiTypeKind.Interface, interfaces: ["Lib.IBase"]),
+			Type("Lib.IC", ApiTypeKind.Interface, interfaces: ["Lib.IA", "Lib.IB"])
+		];
+
+		string section = Inherited(types, "Lib.IC");
+
+		section.Should().Contain(Link("/api/lib/ia#close", "Close()"))
+			.And.Contain(Link("/api/lib/ibase#open", "Open()"))
+			.And.NotContain("/api/lib/ibase#close");
+	}
+
+	[Fact]
+	public void TypeGraph_ASubclassOfAnOutsideTypeWithTheSameName_IsNotADerivedType()
+	{
+		List<ApiType> types =
+		[
+			Type("Lib.Exception", members: [Property("Code")]),
+			Type("Lib.App.Failure", baseType: "System.Exception"),
+			Type("Lib.App.Fault", baseType: "Lib.Exception")
+		];
+
+		string page = Render(types, "Lib.Exception");
+
+		page.Should().Contain("class T1[\"Fault\"]").And.NotContain("Failure");
 	}
 
 	#endregion

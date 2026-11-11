@@ -94,8 +94,15 @@ public sealed class AspNetCoreHostTests : IDisposable
 				new PluginEntry { Id = "mokadocs-python-api" },
 				new PluginEntry { Id = "mokadocs-blazor-preview" }
 			])
-			.Should().BeEquivalentTo("openapi", "mokadocs-changelog", "mokadocs-python-api", "mokadocs-blazor-preview");
-		RegisteredIds(_ => { }).Should().BeEquivalentTo("openapi");
+			.Should().BeEquivalentTo("mokadocs-changelog", "mokadocs-python-api", "mokadocs-blazor-preview");
+
+		// openapi was registered for every app, declared or not. It is registered like the others now.
+		RegisteredIds(_ => { }).Should().BeEmpty();
+		RegisteredIds(options => options.OpenApiDocument = "v1").Should().BeEquivalentTo("openapi");
+
+		// The REPL runs code, so only EnableRepl registers it; an entry in Plugins doesn't.
+		RegisteredIds(options => options.Plugins = [new PluginEntry { Id = "mokadocs-repl" }]).Should().BeEmpty();
+		RegisteredIds(options => options.EnableRepl = true).Should().BeEquivalentTo("mokadocs-repl");
 	}
 
 	[Fact]
@@ -202,6 +209,32 @@ public sealed class AspNetCoreHostTests : IDisposable
 		selector.Should().Contain("<div class=\"version-selector\">");
 		selector.Should().Contain("<span class=\"version-label\">v2.1</span>");
 		Html(withoutVersion, "api/index.html").Should().NotContain("<div class=\"version-selector\">");
+	}
+
+	[Fact]
+	public void Style_DefaultsToTheDefaultStyleWithThePicker()
+	{
+		SiteConfig config = SiteConfigFactory.Create(new MokaDocsOptions());
+
+		config.Theme.Options.Style.Should().Be("default");
+		config.Theme.Options.StyleSelector.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task Style_AndStyleSelector_ReachThePages()
+	{
+		InMemorySite styled = await BuildAsync(options =>
+		{
+			options.Style = "classic";
+			options.StyleSelector = false;
+		});
+		InMemorySite unknown = await BuildAsync(options => options.Style = "fancy");
+
+		string page = Html(styled, "api/index.html");
+		page.Should().Contain("data-style=\"classic\"").And.Contain("const s='classic';");
+		page.Should().NotContain("class=\"style-selector\"");
+		Html(unknown, "api/index.html").Should().Contain("data-style=\"default\"").And.Contain("class=\"style-selector\"");
+		unknown.Diagnostics.Should().ContainSingle(d => d.Source == "Render" && d.Message.Contains("'fancy'"));
 	}
 
 	[Fact]

@@ -16,7 +16,6 @@
     <Project Path="src/Moka.Docs.CSharp/Moka.Docs.CSharp.csproj" />
     <Project Path="src/Moka.Docs.Themes/Moka.Docs.Themes.csproj" />
     <Project Path="src/Moka.Docs.Plugins/Moka.Docs.Plugins.csproj" />
-    <Project Path="src/Moka.Docs.Search/Moka.Docs.Search.csproj" />
     <Project Path="src/Moka.Docs.Serve/Moka.Docs.Serve.csproj" />
     <Project Path="src/Moka.Docs.Versioning/Moka.Docs.Versioning.csproj" />
     <Project Path="src/Moka.Docs.Cloud/Moka.Docs.Cloud.csproj" />

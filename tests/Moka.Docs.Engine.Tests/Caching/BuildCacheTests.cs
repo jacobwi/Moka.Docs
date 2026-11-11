@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moka.Docs.Core.Api;
+using Moka.Docs.CSharp.Metadata;
 using Moka.Docs.Engine.Caching;
 
 namespace Moka.Docs.Engine.Tests.Caching;
@@ -48,6 +49,32 @@ public sealed class BuildCacheTests : IDisposable
 
 		hit.Should().NotBeNull();
 		hit!.Namespaces.Single().Types.Single().FullName.Should().Be("Lib.Widget");
+	}
+
+	[Fact]
+	public void TryGet_ExtensionBlockMember_KeepsItsBlock()
+	{
+		var block = new ApiExtensionBlock
+		{
+			Signature = "extension<T>(List<T> list) where T : IComparable<T>",
+			Receiver = new ApiParameter { Name = "list", Type = "List<T>" },
+			TypeParameters = [new ApiTypeParameter { Name = "T", Constraints = ["IComparable<T>"] }],
+			Documentation = new XmlDocBlock { Parameters = new Dictionary<string, string> { ["list"] = "The list." } },
+			DocumentationId = "T:Lib.ListExtensions.<G>$2580`1.<M>$BCD6"
+		};
+		ApiReference model = Model("ListExtensions");
+		model.Namespaces[0].Types[0].Members.Add(new ApiMember
+		{
+			Name = "Largest",
+			Kind = ApiMemberKind.Method,
+			Signature = "public T Largest()",
+			Extension = block
+		});
+
+		_cache.Set(_root, ProjectPath, "fp-1", model);
+
+		ApiMember cached = _cache.TryGet(_root, ProjectPath, "fp-1")!.Namespaces[0].Types[0].Members.Single();
+		cached.Extension.Should().BeEquivalentTo(block);
 	}
 
 	[Fact]
@@ -116,5 +143,46 @@ public sealed class BuildCacheTests : IDisposable
 
 		BuildCache.ComputeFingerprint(dir, false).Should().NotBe(before);
 		BuildCache.ComputeFingerprint(dir, true).Should().NotBe(BuildCache.ComputeFingerprint(dir, false));
+	}
+
+	[Fact]
+	public void ComputeFingerprint_FollowsTheFilesTheProjectCompiles()
+	{
+		// The fingerprint walked the project folder, so an edit to a linked file kept serving the old model,
+		// and an edit to a file the project removes threw the cache away.
+		string dir = Path.Combine(_root, "src", "Lib");
+		Directory.CreateDirectory(dir);
+		File.WriteAllText(ProjectPath, """
+		                               <Project Sdk="Microsoft.NET.Sdk">
+		                                 <ItemGroup>
+		                                   <Compile Remove="Removed.cs" />
+		                                   <Compile Include="../Shared/Linked.cs" />
+		                                 </ItemGroup>
+		                               </Project>
+		                               """);
+		string removed = Path.Combine(dir, "Removed.cs");
+		string linked = Path.Combine(_root, "src", "Shared", "Linked.cs");
+		string preview = Path.Combine(dir, ".mokadocs", "preview-host", "Host.cs");
+		File.WriteAllText(Path.Combine(dir, "Widget.cs"), "public class Widget {}");
+		File.WriteAllText(removed, "public class Removed {}");
+		Directory.CreateDirectory(Path.GetDirectoryName(linked)!);
+		File.WriteAllText(linked, "public class Linked {}");
+		string before = Fingerprint();
+
+		Touch(removed);
+		Directory.CreateDirectory(Path.GetDirectoryName(preview)!);
+		File.WriteAllText(preview, "public class Host {}");
+		Fingerprint().Should().Be(before);
+
+		Touch(linked);
+		Fingerprint().Should().NotBe(before);
+
+		string Fingerprint() => BuildCache.ComputeFingerprint(CSharpProjectInfo.Load(ProjectPath), false);
+
+		static void Touch(string file)
+		{
+			File.AppendAllText(file, "\n// edited");
+			File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(1));
+		}
 	}
 }

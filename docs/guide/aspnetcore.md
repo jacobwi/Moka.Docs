@@ -83,7 +83,10 @@ builder.Services.AddMokaDocs(options =>
 | `IncludeSourceCode` | `bool` | `false` | Whether type pages show the type's declaration, method bodies included, in a View Source section (see View Source). |
 | `PrimaryColor` | `string` | `"#0ea5e9"` | Primary theme color as a CSS hex value. |
 | `AccentColor` | `string` | `"#f59e0b"` | Sets the `--color-accent` CSS variable. |
-| `Version` | `string?` | `null` | Label of the version selector in the header, such as `"v2.0"`. When `null`, the header has no version selector. |
+| `Style` | `string` | `"default"` | The look pages start with: `"default"`, `"moka"`, `"minimal"`, `"classic"` or `"soft"` (see Theme Styles). An unknown name renders as `"default"` and logs a warning. |
+| `StyleSelector` | `bool` | `true` | Shows the header button that lets readers pick another style. When `false`, every page uses `Style`. |
+| `Sidebar` | `string` | `"auto"` | How pages get the sidebar: `"inline"` (all of it in every page), `"shared"` (written once to `{BasePath}/_theme/js/sidebar.js` and loaded by every page) or `"auto"` (inline up to 300 entries, shared above). See Sidebar Size. |
+| `Version` | `string?` | `null` | Label of the version selector in the header, such as `"v2.0"`. When `null`, the header has no version selector. It isn't read from the app's assembly version, which is rarely the version of the library the docs describe. Pages with a front matter `version` range that leaves out this version aren't served. |
 | `EnableRepl` | `bool` | `false` | Adds a Run button to `csharp-repl` code blocks and, in Development, the endpoint that runs them (see Interactive REPL). |
 | `EnableBlazorPreview` | `bool` | `false` | Loads the Blazor preview plugin. Its options go in a `Plugins` entry (see Plugins). |
 | `Plugins` | `List<PluginEntry>` | `[]` | Plugins to run, each with its options (see Plugins). |
@@ -92,6 +95,7 @@ builder.Services.AddMokaDocs(options =>
 | `OpenApiLabel` | `string` | `"REST API"` | Title of the REST API overview page and label of its sidebar entry. Also the default `label` of `openapi` entries in `Plugins`. |
 | `BasePath` | `string` | `"/docs"` | URL prefix the site is served under. The site is built with it, so every link and asset URL includes it. |
 | `CacheOutput` | `bool` | `true` | When `true`, the site is built once (see `BuildOnStartup`) and kept in memory. When `false`, every request rebuilds it. |
+| `Minify` | `bool` | `false` | Minifies the pages and the theme's CSS and JS, like [`build.minify`](/configuration/site-config#minify). |
 | `BuildOnStartup` | `bool` | `true` | Builds the site in the background as soon as the app has started, so the first reader doesn't wait for it. Ignored when `CacheOutput` is `false`. |
 | `WatchDocs` | `bool?` | `null` | Rebuilds the site when a file under `DocsPath` changes. `null` watches in Development only. Ignored when `CacheOutput` is `false`. |
 | `ShowFeedback` | `bool` | `true` | Shows the "Was this page helpful?" widget and maps the endpoint it posts to (see Feedback). |
@@ -100,10 +104,11 @@ builder.Services.AddMokaDocs(options =>
 | `ReplWorkerStartInfo` | `Func<ProcessStartInfo>?` | `null` | The command that starts the REPL worker process, for hosts where the default doesn't work (see Interactive REPL). |
 | `Copyright` | `string?` | `null` | Footer text. `{year}` is replaced with the current year. When `null`, the footer shows `© <current year> <Title>`. |
 | `Nav` | `List<NavEntry>` | `[]` | Sidebar entries. When empty, the sidebar gets the default entries described below. |
+| `Blog` | `MokaDocsBlogOptions?` | `null` | Builds the posts in a folder under `DocsPath` (`blog` by default) into a blog with an index, tag pages and a sidebar entry, without feeds (see [Blog](/guide/blog#in-the-asp.net-core-host)). When `null`, the folder's files are ordinary pages. |
 
 ### Custom Navigation
 
-With an empty `Nav`, the sidebar has an "API Reference" entry for `/api`, listing each namespace with its types, a "REST API" entry when the site has REST API pages (see REST API (OpenAPI)), and, when `DocsPath` is set, a "Guide" entry for `/guide`. Set `Nav` to replace them:
+With an empty `Nav`, the sidebar has an "API Reference" entry for `/api`, listing each namespace with its types, a "REST API" entry when the site has REST API pages (see REST API (OpenAPI)), when `DocsPath` is set a "Guide" entry listing the folder tree below `/guide`, and with `Blog` set an entry for the blog. The API Reference and Guide entries are `AutoGenerate` entries. Set `Nav` to replace them:
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
@@ -145,15 +150,28 @@ Each `NavEntry` supports these properties:
 | `Path` | `string` | URL path (e.g., `"/guide"`). |
 | `Icon` | `string?` | Name of an icon in MokaDocs's built-in Lucide set, such as `"book-open"` or `"code"`. An unknown name shows no icon. |
 | `Expanded` | `bool` | Whether the section starts expanded. |
-| `AutoGenerate` | `bool` | On an entry whose `Path` is `/api`, lists each API namespace with its types. Other entries are unaffected. |
+| `AutoGenerate` | `bool` | Lists everything below `Path` as a tree: each folder is a section, and under `/api` each namespace is a section holding its types. Built by the same code as a `mokadocs` site without a `nav:` list. |
 
 How entries fill in, for the defaults and for your own entries alike:
 
-- An entry lists the pages one folder level below its `Path`. For `Path = "/guide"`, that's the pages in `Docs/guide/`. Pages in a deeper folder are listed only when a page exists at that folder's route, such as `Docs/guide/advanced/index.md`, and they appear under that page.
+- With `AutoGenerate = true`, an entry lists the folder tree below its `Path`: for `Path = "/guide"`, the pages in `Docs/guide/`, and a section for each subfolder, whether it has an `index.md` or not. For `Path = "/api"`, a collapsed heading for each namespace, holding a link to each type; the one with the current page opens. The tree is three levels deep at most, counting the entry; deeper pages are listed after their third-level folder, labeled like `Hooks / Events`.
+- Without it, an entry lists the pages one folder level below its `Path`. Pages in a deeper folder are listed only when a page exists at that folder's route, such as `Docs/guide/advanced/index.md`, and they appear under that page. Type pages sit several route segments below `/api`, so an entry for `/api` gets no children; namespaces and types are listed on the `/api` page only.
 - Children are sorted by their front matter `order`, then by title.
 - When no page exists at the entry's own path, the entry links to its first child.
-- Type pages sit several route segments below `/api`, so an entry for `/api` gets no children from its pages. With `AutoGenerate = true` it lists a heading for each namespace, holding a link to each type. Without it, namespaces and types are listed on the `/api` page only.
 - Pages directly inside the `DocsPath` folder aren't listed under any entry. To link one, add an entry whose `Path` is that page's route.
+
+### Sidebar Size
+
+Every page shows the whole sidebar. With `Sidebar = "inline"` every page also holds a copy of it, which on a big API reference makes up most of each page. With `Sidebar = "shared"`, the sidebar is written once, to `{BasePath}/_theme/js/sidebar.js`, and served from the in-memory site like any other file, with an `ETag`. Each page loads it from a script tag inside the sidebar, with a hash of the file in the URL, and keeps only the top-level entries and the entries along its own path for readers without JavaScript. The default, `"auto"`, is inline up to 300 sidebar entries and shared above that. An unknown value works like `"auto"` and logs a warning.
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.Sidebar = "shared";
+});
+```
+
+See [Large Sidebars](/configuration/navigation#large-sidebars-inline-or-shared) for how the shared sidebar works.
 
 ## Auto-Discovery
 
@@ -175,21 +193,34 @@ builder.Services.AddMokaDocs(options =>
 
 ### What Gets Scanned
 
-`ReflectionApiModelBuilder` reads each assembly's exported (public) types with `System.Reflection`, adds the protected nested types of types a consumer can derive from, and skips compiler-generated types and members. It also skips types and members marked `[EditorBrowsable(EditorBrowsableState.Never)]`, and the namespaces the filters leave out (see Filtering). For each type it collects the members declared on the type itself:
+`ReflectionApiModelBuilder` reads each assembly's exported (public) types with `System.Reflection`, adds the protected nested types of types a consumer can derive from, and skips compiler-generated types and members. It also skips types and members marked `[EditorBrowsable(EditorBrowsableState.Never)]`, and the namespaces the filters leave out (see Filtering). An assembly listed twice in `Assemblies` is read once. For each type it collects the members declared on the type itself:
 
 - **Constructors**: instance constructors, with parameter modifiers (`ref`, `out`, `in`, `params`) and default values
 - **Properties and indexers**, with `init` and accessor accessibility such as `{ get; private set; }`
 - **Methods**, including generic and extension methods. Property and event accessors are skipped.
+- **Extension blocks** (C# 14): the members of each `extension(...)` block, read from the nested types the compiler emits for it, and its receiver, type parameters and documentation. Properties stay properties, and the static methods that implement the members aren't listed as methods of their own.
 - **Operators**: operator overloads and conversion operators
-- **Fields**, with `const` values
+- **Fields**, with `const` values (`const decimal` included), `ref` and `ref readonly` fields, and `fixed` buffers as `public fixed byte Bytes[16]`
 - **Events**
 - **Delegates**: an `Invoke` member with the delegate's parameters and return type
 - **Enum members**, with their numeric values
-- **Type metadata**: base type, interfaces not already inherited, generic constraints and `[Obsolete]`
+- **Type metadata**: base type, interfaces not already inherited, generic constraints, records (record structs included) and `[Obsolete]`. The base type and interfaces are written with their namespaces, as the CLI writes them: `System.Exception`, `System.IEquatable<Contoso.Money>`.
 
-Public members are read on every type. Protected and protected internal members are read too, unless the type is sealed or static, since a consumer reaches them by deriving from the type. Member signatures read like declarations: `protected virtual void OnChanged()`, `public static string Describe(this Shape shape, string? prefix = null)`, `public const int MaxSides = 12`.
+Public members are read on every type. Protected and protected internal members are read too, unless the type is sealed or static, since a consumer reaches them by deriving from the type. Member signatures read like declarations: `protected virtual void OnChanged()`, `public static string Describe(this Shape shape, string? prefix = null)`, `public const int MaxSides = 12`, `public static delegate* unmanaged[Cdecl]<int> Native()`. Attribute arguments are written the way C# source writes them: `[Produces("application/json", "text/plain", Types = new Type[] { typeof(int) })]`, `[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]`.
 
-The pages use the same renderer as the CLI, so the rendering notes in [API Documentation](/guide/api-docs) apply here too. As with the CLI, a type page lists the members it inherits and the extension methods that apply to it, when the types that declare them are in `Assemblies`. Compared with the CLI, the View Source section is opt-in (see View Source), and the `/api` page has no NuGet install widget.
+The compiler marks every ref struct, and the constructors of a type with `required` members, with an `[Obsolete]` of its own so that old compilers refuse them. Those markers aren't shown; an `[Obsolete]` you write, on a constructor too, is.
+
+### Missing Dependencies
+
+A type or member that needs an assembly the app doesn't deploy, such as a package referenced only at compile time, can't be read by reflection. A base type, an interface or an attribute from such an assembly leaves the type out; a parameter, property type or attribute leaves the member out. Each one gets a warning that names it and the missing assembly, and the rest of the API reference is built as usual:
+
+```text
+Type 'Contoso.Api.Handler' in assembly 'Contoso.Api': left out of the API reference. It needs assembly 'Contoso.Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null', which could not be found.
+```
+
+To document those types, deploy the assembly with the app.
+
+The pages use the same renderer as the CLI, so the rendering notes in [API Documentation](/guide/api-docs) apply here too. As with the CLI, a type page lists the members it inherits and the extension methods and extension block members that apply to it, when the types that declare them are in `Assemblies`, and a static class's page groups its extension block members by block (see [Extension Blocks](/guide/api-docs#extension-blocks)). Compared with the CLI, the View Source section is opt-in (see View Source), and the `/api` page has no NuGet install widget.
 
 ### Filtering
 
@@ -207,6 +238,7 @@ builder.Services.AddMokaDocs(options =>
 - An empty `IncludeNamespaces` documents every namespace.
 - An exclude entry wins over an include entry. The example documents `Contoso.Api` and the namespaces below it, except `Contoso.Api.Internal` and the ones below that.
 - Types declared outside any namespace are listed under `(global)`. Use `"(global)"` or an empty string to include or exclude them. Either one matches the global namespace only.
+- `*` is not a wildcard: an entry already covers the namespaces below it. An entry with `*`, or one that matches no namespace in `Assemblies`, gets a warning.
 
 A type the filters leave out gets no page, no sidebar entry and no search entry, and nothing links to it: a `<see cref>` that names it, or a base type in an excluded namespace, shows as plain text. It still counts for `<inheritdoc/>`, so a type you keep inherits documentation from a base type you left out.
 
@@ -237,7 +269,7 @@ builder.Services.AddMokaDocs(options =>
 });
 ```
 
-Each file in `XmlDocFiles` is matched to an assembly by the `<doc><assembly><name>` element inside it, so its file name doesn't matter, and it's read instead of the file next to that assembly's DLL. Two files for the same assembly are combined. A relative path resolves from the content root. A file that doesn't exist, or that documents an assembly not in `Assemblies`, gets a warning. `XmlDocFiles` is ignored when `IncludeXmlDocs` is `false`.
+Each file in `XmlDocFiles` is matched to an assembly by the `<doc><assembly><name>` element inside it, so its file name doesn't matter, and it's read instead of the file next to that assembly's DLL. Two files for the same assembly are combined. A relative path resolves from the content root. A file that doesn't exist, or that documents an assembly not in `Assemblies`, gets a warning. So does an XML file that can't be read, here or next to a DLL, with the parser's reason. `XmlDocFiles` is ignored when `IncludeXmlDocs` is `false`.
 
 Documentation is matched by documentation ID, the `name` attribute in the XML file. A delegate's `<param>` and `<returns>` tags describe its `Invoke` member.
 
@@ -265,7 +297,7 @@ The source text comes from the PDB when it embeds the source files, or else from
 </PropertyGroup>
 ```
 
-A type whose source can't be found has no View Source section. Members are left out of the section by the same rules as the page, `[EditorBrowsable(EditorBrowsableState.Never)]` included, except that enum members always show.
+A type whose source can't be found has no View Source section. Members are left out of the section by the same rules as the page, `[EditorBrowsable(EditorBrowsableState.Never)]` included, on enum members too.
 
 ## Markdown Docs
 
@@ -280,6 +312,10 @@ builder.Services.AddMokaDocs(options =>
 ```
 
 If the folder doesn't exist, the site is built without Markdown pages, and a warning in the log names the path MokaDocs looked in.
+
+The build reads the Markdown files from the folder and the files the site publishes as they are: images, PDFs, MP4 and WebM video, fonts, CSS, JavaScript, JSON, XML, text and `.webmanifest`, plus `CNAME`, `_redirects` and `_headers` at the top. Files and folders whose names start with a dot are skipped, except `.well-known`. A file that can't be read, such as one another process holds open, is left out with a warning, and the rest of the site builds.
+
+Point `DocsPath` at a folder that holds only the docs. The app's settings and build output never reach the site: `appsettings*.json`, `launchSettings.json`, `secrets.json`, `*.deps.json`, `*.runtimeconfig.json`, `*.dll`, `*.pdb` and the `bin`, `obj` and `node_modules` folders are left out wherever they are. When `DocsPath` is the content root (`"."`) or holds any of these, the build logs one warning listing what it left out.
 
 Put guide pages in a `guide` subfolder, since the default Guide entry lists the pages in `Docs/guide/`. `Docs/index.md` becomes the page at `/docs`:
 
@@ -380,6 +416,18 @@ builder.Services.AddMokaDocs(options =>
 });
 ```
 
+### Theme Styles
+
+`Style` picks the whole look of the pages, the same five styles as `theme.options.style` in `mokadocs.yaml` (see [Styles](/themes/customization#styles)): `default`, `moka` (dense and dark first), `minimal`, `classic` and `soft`. Readers can switch styles from the header, and their pick is saved in the browser. `StyleSelector = false` removes that button, so every reader gets `Style`.
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.Style = "classic";
+    options.StyleSelector = false;
+});
+```
+
 ### Branding
 
 `LogoUrl` and `FaviconUrl` take image URLs, and `Copyright` sets the footer text:
@@ -434,6 +482,8 @@ builder.Services.AddMokaDocs(options =>
 
 An id that matches no registered plugin is skipped with a warning in the log. The build's warnings and errors, plugin failures included, are logged and listed in `InMemorySite.Diagnostics`.
 
+A `PluginEntry` has no `path`, unlike a `plugins:` entry in `mokadocs.yaml`: this host doesn't load plugin assemblies. Reference the plugin's project or package from the application and register it as above. A plugin project made with `mokadocs new plugin` works in both.
+
 Notes on the built-in plugins in this host:
 
 - **OpenAPI.** An `openapi` entry without a `routePrefix` or `label` gets `OpenApiRoutePrefix` (`/rest-api`) and `OpenApiLabel`. The plugin's own default prefix, `/api`, is where this host puts the C# API reference. For the app's own document, set `OpenApiDocument` (see REST API (OpenAPI)). To document a second one, add an entry whose `appDocument` option names it, with a `routePrefix` of its own: `new PluginEntry { Id = "openapi", Options = { ["appDocument"] = "internal", ["routePrefix"] = "/internal-api" } }`.
@@ -484,7 +534,9 @@ Search works under the base path: the page script loads `{BasePath}/search-index
 
 For each request, the handler looks for an exact file match first, then tries appending `/index.html`, and then `.html`. A path with no match gets status 404 and the site's `404.html` page.
 
-Every file is served with a strong `ETag` computed from its content. A request whose `If-None-Match` header names it gets `304 Not Modified` with no body, and an unchanged file keeps its `ETag` across rebuilds. CSS, JavaScript, font and image files are served with `Cache-Control: public, max-age=86400` (24 hours). Pages, the search index and every other file get `Cache-Control: no-cache`, so browsers check the `ETag` on each visit and see a rebuilt page right away.
+Every file is served with a strong `ETag` computed from its content and `Cache-Control: no-cache`. A request whose `If-None-Match` header names the tag gets `304 Not Modified` with no body, and an unchanged file keeps its `ETag` across rebuilds, so a browser checks each file on each visit for the cost of a `304` and sees a rebuilt page, or the theme of a new MokaDocs version, right away. No URL carries a hash of its content, so nothing is cached for a fixed time.
+
+Each file's content type comes from its extension: UTF-8 text types for HTML, CSS, JavaScript, JSON, text and YAML, `application/wasm` for WebAssembly, and ASP.NET Core's static file map for the rest, such as PDF, MP4, WebM, AVIF and `.webmanifest`.
 
 ## Feedback
 
@@ -530,14 +582,14 @@ var order = new Order { Id = 42 };
 Console.WriteLine(order.Total);
 ```
 
-The snippet limits are the same as under `mokadocs serve`: 10,000 characters of code, 5 seconds per run and 100,000 characters of output (see [Security](/plugins/repl#security) on the REPL page). The endpoint reads at most 64 KB of request body.
+The snippet limits are the same as under `mokadocs serve`: 10,000 characters of code, 5 seconds per run and 100,000 characters of output, return value and error message (see [Security](/plugins/repl#security) on the REPL page). The endpoint reads at most 64 KB of request body. Runs happen one at a time and up to four more wait; past that, the endpoint answers `429` with the reason in `error`.
 
 ### The worker command
 
 MokaDocs starts the worker with:
 
 - `dotnet MyApp.dll`, when the app runs as `dotnet MyApp.dll`
-- the app's own executable, when it runs from it (`MyApp.exe`, `dotnet run`)
+- the app's own executable, when it runs from it (`MyApp.exe`, `dotnet run`, a single-file app)
 - `dotnet MyApp.dll` otherwise, such as under IIS in-process hosting, with the `dotnet` named by `DOTNET_HOST_PATH` or found on the `PATH`
 
 For any other host, set `ReplWorkerStartInfo` to a function that returns the command. The process has to call `ReplWorker.RunAsync` with its standard input and output, which is what `TryRunAsync` does when the `MOKADOCS_REPL_WORKER` environment variable is `1`. MokaDocs adds that variable and `MOKADOCS_REPL_PARENT_PID` to the start info, so a worker exits when the web app does:
@@ -548,11 +600,23 @@ options.ReplWorkerStartInfo = () => new ProcessStartInfo("/opt/shop/Contoso.Shop
 
 With `ReplWorkerStartInfo` set, MokaDocs doesn't check for the line in `Program.cs`.
 
+### Under dotnet watch
+
+The worker starts from your running app, so it would inherit the environment `dotnet watch` gives the app: `DOTNET_STARTUP_HOOKS` with the hot reload and browser refresh agents, `DOTNET_MODIFIABLE_ASSEMBLIES=debug`, `DOTNET_WATCH*`, `ASPNETCORE_AUTO_RELOAD_*`, `__ASPNETCORE_BROWSER_TOOLS` and the browser refresh entry in `ASPNETCORE_HOSTINGSTARTUPASSEMBLIES`. MokaDocs removes all of them from the worker's start info, a `ReplWorkerStartInfo` command included, so the worker doesn't load the agents and doesn't run in hot reload mode. A startup hook you set yourself is removed from the worker too; the worker runs snippets and needs none.
+
+Hot reload changes the running app in memory and leaves the build output on disk alone. The worker is a separate process that loads the assemblies in `Assemblies` from disk, so snippets run the code of the app's last build, not edits hot reload applied since. They catch up when `dotnet watch` rebuilds and restarts the app, after an edit hot reload can't apply or when you press `Ctrl+R`; the old worker exits with the old app and the next Run starts a new one.
+
 ### Remote REPL
 
-Outside Development, `EnableRepl` keeps the Run buttons but maps no endpoint and logs a warning; a click shows "REPL server unavailable". In Development, a request from another machine gets a 403 and an error in the output panel. That covers an app that listens on every interface, as apps in containers often do: the origin checks stop other web pages, not other machines. The check uses `HttpContext.Connection.RemoteIpAddress`, so behind a proxy on another machine, call `UseForwardedHeaders()` first.
+Outside Development, `EnableRepl` keeps the Run buttons but maps no endpoint and logs a warning; a click shows "REPL server unavailable". In Development, the endpoint runs code only for a request that comes from this machine, and anything else gets a 403, an error in the output panel and a warning in the log naming the reason. A request comes from this machine when:
 
-To allow both, set `AllowRemoteRepl = true` and put the docs behind authorization that only people you would trust with a shell on the server can pass:
+- `HttpContext.Connection.RemoteIpAddress` is a loopback address. That covers an app that listens on every interface, as apps in containers often do: the origin checks stop other web pages, not other machines.
+- The `Host` header is `localhost`, a name under `.localhost`, or a loopback address such as `127.0.0.1` or `[::1]`, on any port. A page on another site can point its own DNS name at `127.0.0.1` (DNS rebinding); its requests then reach the app from a loopback address with that site's name in `Host` and `Origin`, which the origin checks accept.
+- It has no `Forwarded`, `X-Forwarded-For` or `X-Forwarded-Host` header, and none of the `X-Original-*` headers `UseForwardedHeaders()` leaves behind. A proxy or tunnel on the same machine, such as nginx, ngrok or a dev tunnel, makes every caller look local.
+
+So behind a reverse proxy, even one on the same machine, the REPL needs `AllowRemoteRepl`.
+
+To allow other machines and proxies, set `AllowRemoteRepl = true` and put the docs behind authorization that only people you would trust with a shell on the server can pass:
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
@@ -573,9 +637,11 @@ The worker process isolates hangs and crashes. It is not a sandbox: a snippet ca
 
 By default, `CacheOutput` is `true` and the site is built in the background as soon as the app has started (`BuildOnStartup`). The build starts from `IHostApplicationLifetime.ApplicationStarted`, after every endpoint is mapped. Requests that arrive before it finishes wait for it instead of starting builds of their own. Every file is kept in memory as a byte array, and later requests are served from memory without touching the disk.
 
-A startup build that fails is logged, and the first request tries again. With `BuildOnStartup = false`, the first request builds the site. An app that calls `AddMokaDocs()` but never `MapMokaDocs()`, for example one that maps the docs in Development only, builds nothing at startup.
+A build that fails, at startup or later, is logged once. Requests then get the last site that built, or `503` with a `Retry-After` header when no build has succeeded yet, and none of them builds again for the next 5 seconds; after that, the next request tries again. With `BuildOnStartup = false`, the first request builds the site. An app that calls `AddMokaDocs()` but never `MapMokaDocs()`, for example one that maps the docs in Development only, builds nothing at startup.
 
-To rebuild while the app runs, resolve `MokaDocsService` from DI. `RebuildAsync()` builds a new site while requests keep getting the current one, then swaps it in. `InvalidateCache()` drops the site, and the next request waits for a build:
+Requests that arrive during a build share it. A reader who leaves stops waiting, and the build carries on for the others.
+
+To rebuild while the app runs, resolve `MokaDocsService` from DI. `RebuildAsync()` builds a new site while requests keep getting the current one, then swaps it in. `InvalidateCache()` drops the site, and the next request waits for a build; when that build fails, requests get the site from before. `GetSiteAsync()` throws `InvalidOperationException` when the build fails and no earlier build succeeded:
 
 ```csharp
 app.MapPost("/admin/refresh-docs", async (MokaDocsService docsService) =>
@@ -587,7 +653,9 @@ app.MapPost("/admin/refresh-docs", async (MokaDocsService docsService) =>
 
 ### Development Mode
 
-In Development, MokaDocs watches the `DocsPath` folder and rebuilds the site in the background when a file in it changes. Requests get the previous site until the new one is ready, then the new one replaces it. Changes made in quick succession start one rebuild, and files and folders whose names start with a dot are ignored. A rebuild that fails is logged, and the previous site stays.
+In Development, MokaDocs watches the `DocsPath` folder and rebuilds the site in the background when a file in it changes. Requests get the previous site until the new one is ready, then the new one replaces it. Changes made in quick succession start one rebuild, and changes made during a rebuild start one more when it ends. Files and folders whose names start with a dot are ignored, and so are the `bin`, `obj` and `node_modules` folders directly under `DocsPath`. A rebuild that fails is logged, and the previous site stays.
+
+Where the operating system can't watch the folder, such as on Linux past the inotify limits, MokaDocs logs a warning and checks it for changes every second instead. Setting `DOTNET_USE_POLLING_FILE_WATCHER` to `1` or `true` polls from the start, as it does for ASP.NET Core's own file watching.
 
 `WatchDocs` controls this. Its default, `null`, watches in Development only; `true` watches in every environment and `false` turns it off:
 
@@ -623,7 +691,7 @@ The feedback and REPL endpoints accept a POST only from the docs' own pages, or 
 - A `Sec-Fetch-Site` header, when present, has to be `same-origin`.
 - An `Origin` header, when present, has to match the scheme, host and port the request was sent to.
 
-Anything else gets `403`, and the log gets a warning. Requests without either header, such as from `curl`, are accepted. Behind a proxy that terminates TLS, call `app.UseForwardedHeaders()` so the request's scheme and host match what the browser sees, or every vote and Run from a browser gets `403`.
+Anything else gets `403`, and the log gets a warning. Requests without either header, such as from `curl`, are accepted. Behind a proxy that terminates TLS, call `app.UseForwardedHeaders()` so the request's scheme and host match what the browser sees, or every vote and Run from a browser gets `403`. The REPL also needs `AllowRemoteRepl` behind any proxy (see [Remote REPL](#remote-repl)).
 
 To serve the docs only during development:
 

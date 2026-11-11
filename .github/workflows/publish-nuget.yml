@@ -24,10 +24,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           # Both are required: the solution multi-targets net9.0;net10.0.
           dotnet-version: |
@@ -44,16 +44,16 @@ jobs:
           fi
 
       - name: Restore
-        run: dotnet restore MokaDocs.sln
+        run: dotnet restore MokaDocs.slnx
 
       - name: Build
-        run: dotnet build MokaDocs.sln --no-restore -c Release
+        run: dotnet build MokaDocs.slnx --no-restore -c Release
 
       - name: Test
-        run: dotnet test MokaDocs.sln --no-build -c Release
+        run: dotnet test MokaDocs.slnx --no-build -c Release
 
       - name: Pack
-        run: dotnet pack MokaDocs.sln --no-build -c Release -p:PackageVersion=${{ steps.version.outputs.version }} -o ./nupkgs
+        run: dotnet pack MokaDocs.slnx --no-build -c Release -p:PackageVersion=${{ steps.version.outputs.version }} -o ./nupkgs
 
       - name: Push to NuGet.org
         run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

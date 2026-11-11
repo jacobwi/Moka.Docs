@@ -94,7 +94,7 @@ Replace `/my-repo` with your repository name. See [Base Path](#base-path).
 
 ### Last Updated Dates in CI
 
-The "Last updated" date on each page, and `<lastmod>` in `sitemap.xml`, come from the last git commit that changed the page's Markdown file. By default `actions/checkout` fetches only the newest commit, and in that shallow clone every page gets the date of that one commit. `fetch-depth: 0` in the workflow above fetches the full history instead. Other CI systems have their own setting for clone depth.
+The "Last updated" date on each page, and `<lastmod>` in `sitemap.xml`, come from the last git commit that changed the page's Markdown file. By default `actions/checkout` fetches only the newest commit, and in that shallow clone every page gets the date of that one commit. `fetch-depth: 0` in the workflow above fetches the full history instead. Other CI systems have their own setting for clone depth. The contributor list (`theme.options.showContributors`) needs the full history too; a shallow clone credits every page to the author of the newest commit.
 
 Without git on the build machine, or when the docs aren't in a git checkout (a downloaded archive, for example), each page uses its file's modified time, which is usually the time the files were unpacked.
 

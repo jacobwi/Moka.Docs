@@ -1,5 +1,6 @@
 using System.IO.Abstractions;
 using Moka.Docs.Core.Api;
+using Moka.Docs.Core.Blog;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Diagnostics;
@@ -42,6 +43,9 @@ public sealed class BuildContext
 
 	/// <summary>The generated search index.</summary>
 	public SearchIndex? SearchIndex { get; set; }
+
+	/// <summary>The blog's posts, listing pages and feeds, or <c>null</c> when the blog is off.</summary>
+	public BlogSite? Blog { get; set; }
 
 	/// <summary>The current version being built.</summary>
 	public DocVersion? CurrentVersion { get; set; }
@@ -117,7 +121,8 @@ public sealed class BuildContext
 	/// <summary>
 	///     Extra files to write to the output directory after the clean step.
 	///     Keyed by output-relative path (e.g. "preview-wasm/assemblies/abc.dll").
-	///     Populated by plugins during ExecuteAsync; written by OutputPhase.
+	///     Populated by plugins during ExecuteAsync and by the render phase (a shared sidebar);
+	///     written by OutputPhase, except in a dry run.
 	/// </summary>
 	public Dictionary<string, byte[]> DeferredOutputFiles { get; } = new();
 

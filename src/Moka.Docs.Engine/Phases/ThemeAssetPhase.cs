@@ -1,6 +1,9 @@
 using System.IO.Abstractions;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Engine.Minification;
 using Moka.Docs.Themes;
 using Moka.Docs.Themes.Default;
 
@@ -14,6 +17,13 @@ public sealed class ThemeAssetPhase(
 	ThemeLoader themeLoader,
 	ILogger<ThemeAssetPhase> logger) : IBuildPhase
 {
+	private const string _themePrefix = "/_theme/";
+
+	private static readonly IReadOnlyDictionary<string, byte[]> _embeddedAssets = CreateEmbeddedAssets(false);
+
+	private static readonly Lazy<IReadOnlyDictionary<string, byte[]>> _minifiedEmbeddedAssets =
+		new(() => CreateEmbeddedAssets(true));
+
 	/// <inheritdoc />
 	public string Name => "ThemeAssets";
 
@@ -44,21 +54,59 @@ public sealed class ThemeAssetPhase(
 			return Task.CompletedTask;
 		}
 
-		// Write embedded CSS
-		string cssDir = fs.Path.Combine(themeDir, "css");
-		fs.Directory.CreateDirectory(cssDir);
-		fs.File.WriteAllText(
-			fs.Path.Combine(cssDir, "main.css"),
-			EmbeddedThemeProvider.GetCss());
-
-		// Write embedded JS
-		string jsDir = fs.Path.Combine(themeDir, "js");
-		fs.Directory.CreateDirectory(jsDir);
-		fs.File.WriteAllText(
-			fs.Path.Combine(jsDir, "main.js"),
-			EmbeddedThemeProvider.GetJs());
+		foreach ((string url, byte[] bytes) in EmbeddedAssets(context.Config.Build.Minify))
+		{
+			string path = fs.Path.Combine([context.OutputDirectory, .. url.TrimStart('/').Split('/')]);
+			fs.Directory.CreateDirectory(fs.Path.GetDirectoryName(path)!);
+			fs.File.WriteAllBytes(path, bytes);
+		}
 
 		logger.LogInformation("Wrote theme assets to {Path}", themeDir);
 		return Task.CompletedTask;
+	}
+
+	// RenderPhase and the 404 page hash these same bytes into the ?v= of the URLs they write, so the
+	// minified build hashes the minified files.
+	internal static IReadOnlyDictionary<string, byte[]> EmbeddedAssets(bool minify) =>
+		minify ? _minifiedEmbeddedAssets.Value : _embeddedAssets;
+
+	internal static string ContentHash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes))[..10];
+
+	// The ?v= hash makes a browser or CDN holding an old main.css fetch the new one after an upgrade;
+	// without it new HTML ran with old CSS and JS for up to a day. The embedded theme hashes the
+	// bytes this phase writes, a custom theme the files it copies. Other URLs stay as they are.
+	internal static string VersionedUrl(string url, ResolvedTheme theme, BuildContext context)
+	{
+		byte[]? bytes = AssetBytes(url, theme, context);
+		return bytes is null ? url : url + "?v=" + ContentHash(bytes);
+	}
+
+	private static byte[]? AssetBytes(string url, ResolvedTheme theme, BuildContext context)
+	{
+		if (theme.IsEmbedded)
+		{
+			return EmbeddedAssets(context.Config.Build.Minify).GetValueOrDefault(url);
+		}
+
+		if (!url.StartsWith(_themePrefix, StringComparison.Ordinal))
+		{
+			return null;
+		}
+
+		IFileSystem fs = context.FileSystem;
+		string path = fs.Path.Combine(theme.ThemeDirectory!, url[_themePrefix.Length..]);
+		return fs.File.Exists(path) ? fs.File.ReadAllBytes(path) : null;
+	}
+
+	private static Dictionary<string, byte[]> CreateEmbeddedAssets(bool minify)
+	{
+		string css = EmbeddedThemeProvider.GetCss();
+		string js = EmbeddedThemeProvider.GetJs();
+		var utf8 = new UTF8Encoding(false);
+		return new Dictionary<string, byte[]>(StringComparer.Ordinal)
+		{
+			["/_theme/css/main.css"] = utf8.GetBytes(minify ? CssMinifier.Minify(css) : css),
+			["/_theme/js/main.js"] = utf8.GetBytes(minify ? JsMinifier.Minify(js) : js)
+		};
 	}
 }

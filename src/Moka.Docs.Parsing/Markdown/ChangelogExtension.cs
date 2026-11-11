@@ -203,6 +203,19 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 		@"^[-*]\s+(.+)$",
 		RegexOptions.Compiled);
 
+	private static readonly string[] _fullDateFormats =
+	[
+		"yyyy-MM-dd",
+		"yyyy-MM-dd HH:mm",
+		"yyyy-MM-dd HH:mm:ss",
+		"yyyy-MM-ddTHH:mm",
+		"yyyy-MM-ddTHH:mm:ss",
+		"yyyy-MM-ddTHH:mm:ss.FFFFFFF",
+		"yyyy-MM-ddTHH:mmK",
+		"yyyy-MM-ddTHH:mm:ssK",
+		"yyyy-MM-ddTHH:mm:ss.FFFFFFFK"
+	];
+
 	private static readonly Dictionary<string, (string CssClass, string Icon, string Label)> _categoryInfo =
 		new(StringComparer.OrdinalIgnoreCase)
 		{
@@ -315,11 +328,15 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 			return "patch";
 		}
 
-		bool minorIsZero = int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) == 0;
-		bool patchIsZero = !m.Groups[3].Success || int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture) == 0;
+		// Read as digit strings, not int: a timestamp patch number such as 3.1.20251111093000
+		// overflowed int.Parse and the exception dropped the whole page.
+		bool minorIsZero = IsZero(m.Groups[2].Value);
+		bool patchIsZero = !m.Groups[3].Success || IsZero(m.Groups[3].Value);
 
 		return minorIsZero && patchIsZero ? "major" : patchIsZero ? "minor" : "patch";
 	}
+
+	private static bool IsZero(string digits) => digits.AsSpan().TrimStart('0').IsEmpty;
 
 	private static void WriteEntry(HtmlRenderer renderer, ChangelogEntry entry)
 	{
@@ -345,7 +362,7 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 		renderer.Write("<div class=\"changelog-header\">");
 		renderer.Write($"<span class=\"changelog-version\">v{HttpUtility.HtmlEncode(entry.Version)}</span>");
 		renderer.Write(
-			$"<span class=\"changelog-badge changelog-badge-{escapedType}\">{CapitalizeFirst(entry.Type)}</span>");
+			$"<span class=\"changelog-badge changelog-badge-{escapedType}\">{HttpUtility.HtmlEncode(CapitalizeFirst(entry.Type))}</span>");
 
 		if (!string.IsNullOrEmpty(entry.Date))
 		{
@@ -446,14 +463,30 @@ public sealed class ChangelogRenderer : HtmlObjectRenderer<ChangelogBlock>
 		}
 	}
 
-	private static string FormatDate(string dateStr)
+	/// <summary>
+	///     Formats an ISO date for display: <c>2025-06-15</c> as "June 15, 2025", <c>2025-06</c> as
+	///     "June 2025", <c>2025</c> as itself. Anything else is returned unchanged.
+	/// </summary>
+	/// <remarks>
+	///     Only ISO forms are read. A general parse took <c>11/12/2025</c> as November 12 and filled a
+	///     missing day with the 1st, so <c>2025-06</c> showed as June 1, 2025.
+	/// </remarks>
+	internal static string FormatDate(string dateStr)
 	{
-		if (DateTime.TryParse(dateStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt))
+		string value = dateStr.Trim();
+		if (DateTimeOffset.TryParseExact(value, _fullDateFormats, CultureInfo.InvariantCulture,
+			    DateTimeStyles.AssumeUniversal, out DateTimeOffset date))
 		{
-			return dt.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+			return date.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
 		}
 
-		return dateStr;
+		if (DateTime.TryParseExact(value, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None,
+			    out DateTime month))
+		{
+			return month.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+		}
+
+		return value;
 	}
 
 	private static string CapitalizeFirst(string s)

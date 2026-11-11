@@ -1,7 +1,6 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moka.Docs.AspNetCore.Phases;
 using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Configuration;
@@ -10,11 +9,6 @@ using Moka.Docs.CSharp;
 using Moka.Docs.Engine;
 using Moka.Docs.Parsing;
 using Moka.Docs.Plugins;
-using Moka.Docs.Plugins.BlazorPreview;
-using Moka.Docs.Plugins.Changelog;
-using Moka.Docs.Plugins.OpenApi;
-using Moka.Docs.Plugins.PythonApi;
-using Moka.Docs.Plugins.Repl;
 
 namespace Moka.Docs.AspNetCore;
 
@@ -23,6 +17,8 @@ namespace Moka.Docs.AspNetCore;
 /// </summary>
 public static class MokaDocsServiceExtensions
 {
+	private const string _replPluginId = "mokadocs-repl";
+
 	/// <summary>
 	///     Adds MokaDocs documentation services to the application.
 	///     Call <c>app.MapMokaDocs()</c> to serve the documentation site.
@@ -63,33 +59,19 @@ public static class MokaDocsServiceExtensions
 		// Register our reflection-based API page phase
 		services.AddSingleton<IBuildPhase, ReflectionApiPagePhase>();
 
-		// Plugin system
-		services.AddSingleton<PluginHost>();
-		services.AddSingleton<IMokaPlugin, OpenApiPlugin>();
+		// The plugin host runs only the plugins it finds in the container, so the built-ins the site
+		// declares are registered here, through the same method as the CLI's. An application
+		// registers its own plugins itself. The REPL plugin needs EnableRepl, which also maps the
+		// endpoint that runs code: a mokadocs-repl entry in options.Plugins alone doesn't register it.
+		services.AddMokaDocsPlugins(plugins => plugins.BuiltInPlugins = siteConfig.Plugins
+			.Select(p => p.Name ?? "")
+			.Where(id => options.EnableRepl || !string.Equals(id, _replPluginId, StringComparison.OrdinalIgnoreCase))
+			.ToList());
 
 		if (options.EnableRepl)
 		{
-			services.AddSingleton<IMokaPlugin, ReplPlugin>();
-
 			// Owns the worker process; the container disposes it, and the worker with it, on shutdown.
 			services.AddSingleton<MokaDocsRepl>();
-		}
-
-		// The plugin host runs only the plugins it finds in the container, so a built-in declared in
-		// options.Plugins is registered here. An application registers its own plugins itself.
-		if (options.EnableBlazorPreview || SiteConfigFactory.IsDeclared(options, SiteConfigFactory.BlazorPreviewPluginId))
-		{
-			services.TryAddEnumerable(ServiceDescriptor.Singleton<IMokaPlugin, BlazorPreviewPlugin>());
-		}
-
-		if (SiteConfigFactory.IsDeclared(options, "mokadocs-changelog"))
-		{
-			services.TryAddEnumerable(ServiceDescriptor.Singleton<IMokaPlugin, ChangelogPlugin>());
-		}
-
-		if (SiteConfigFactory.IsDeclared(options, "mokadocs-python-api"))
-		{
-			services.TryAddEnumerable(ServiceDescriptor.Singleton<IMokaPlugin, PythonApiPlugin>());
 		}
 
 		// ASP.NET Core integration services

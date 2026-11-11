@@ -17,4 +17,12 @@ var rootCommand =
 		ReplWorkerCommand.Create()
 	};
 
-return await rootCommand.Parse(args).InvokeAsync();
+ParseResult parseResult = rootCommand.Parse(args);
+
+// The REPL worker reports the exit code a snippet passes to Environment.Exit. System.CommandLine's
+// process termination handling replaced it with 143 on net9.0, so the worker runs without it.
+InvocationConfiguration? invocation = parseResult.CommandResult.Command.Name == ReplWorkerCommand.Name
+	? new InvocationConfiguration { ProcessTerminationTimeout = null }
+	: null;
+
+return await parseResult.InvokeAsync(invocation);

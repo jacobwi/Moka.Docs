@@ -3,6 +3,11 @@ namespace Moka.Docs.Core.Theming;
 /// <summary>
 ///     Metadata and configuration for an active theme.
 /// </summary>
+/// <remarks>
+///     Nothing in MokaDocs creates or reads this type; it was only referenced by the unused
+///     <c>DocSite</c>. A custom theme is a folder of layouts, see <c>ThemeResolver</c>.
+/// </remarks>
+[Obsolete("ThemeManifest is not used by MokaDocs. It will be removed in 2.0.")]
 public sealed record ThemeManifest
 {
 	/// <summary>Theme name.</summary>

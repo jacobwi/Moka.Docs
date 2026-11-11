@@ -83,7 +83,7 @@ set "BUILD_FAILED="
 if defined BUILT goto :eof
 echo.
 echo Building solution [first run this session]...
-dotnet build "%ROOT%\MokaDocs.sln" -c Debug -v minimal
+dotnet build "%ROOT%\MokaDocs.slnx" -c Debug -v minimal
 if errorlevel 1 (
 	set "BUILD_FAILED=1"
 	goto :eof
@@ -102,7 +102,7 @@ goto after
 call :ensure_build
 if defined BUILD_FAILED goto failed
 echo.
-dotnet test "%ROOT%\MokaDocs.sln" --no-build -c Debug
+dotnet test "%ROOT%\MokaDocs.slnx" --no-build -c Debug
 goto after
 
 :lib_serve

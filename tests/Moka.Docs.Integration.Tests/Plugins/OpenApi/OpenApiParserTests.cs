@@ -458,6 +458,87 @@ public sealed class OpenApiParserTests
 		string.Join('|', spec.Servers.Select(s => s.Url)).Should().Be(expected);
 	}
 
+	[Fact]
+	public void Servers_OnPathsAndOperations_TheOperationsReplaceThePaths()
+	{
+		const string document = """
+		                        {
+		                          "openapi": "3.0.3",
+		                          "info": { "title": "Files", "version": "1" },
+		                          "servers": [ { "url": "https://api.example.com" } ],
+		                          "paths": {
+		                            "/files": {
+		                              "servers": [ { "url": "https://files.example.com", "description": "Files" } ],
+		                              "get": { "responses": {} },
+		                              "post": { "servers": [ { "url": "https://{region}.upload.example.com",
+		                                "variables": { "region": { "default": "eu", "enum": ["eu", "us"] } } } ], "responses": {} },
+		                              "put": { "servers": [], "responses": {} },
+		                              "delete": { "servers": [ { "description": "No URL" } ], "responses": {} }
+		                            },
+		                            "/plain": { "get": { "responses": {} } }
+		                          }
+		                        }
+		                        """;
+
+		OpenApiSpec spec = OpenApiParser.Parse(document);
+
+		Endpoint(spec, "GET", "/files").Servers!.Select(s => $"{s.Url} {s.Description}").Should().Equal("https://files.example.com Files");
+		OpenApiServer upload = Endpoint(spec, "POST", "/files").Servers.Should().ContainSingle().Subject;
+		upload.Url.Should().Be("https://eu.upload.example.com");
+		upload.Variables.Single().EnumValues.Should().Equal("eu", "us");
+		Endpoint(spec, "PUT", "/files").Servers!.Select(s => s.Url).Should().Equal(["https://files.example.com"], "an empty list is no list");
+		Endpoint(spec, "DELETE", "/files").Servers!.Select(s => s.Url).Should().Equal(["https://files.example.com"], "a server needs a URL");
+		Endpoint(spec, "GET", "/plain").Servers.Should().BeNull();
+		spec.Servers.Select(s => s.Url).Should().Equal("https://api.example.com");
+	}
+
+	[Fact]
+	public void Servers_Swagger20_OperationsHaveNone()
+	{
+		const string document = """
+		                        { "swagger": "2.0", "info": { "title": "Old", "version": "1" }, "host": "old.example.com",
+		                          "paths": { "/a": { "servers": [ { "url": "https://x.example.com" } ],
+		                            "get": { "servers": [ { "url": "https://y.example.com" } ], "responses": {} } } } }
+		                        """;
+
+		OpenApiParser.Parse(document).Endpoints.Single().Servers.Should().BeNull();
+	}
+
+	[Fact]
+	public void ExternalDocs_AreReadFromTheDocumentTagsOperationsAndSchemas()
+	{
+		const string document = """
+		                        {
+		                          "openapi": "3.0.3",
+		                          "info": { "title": "Pets", "version": "1" },
+		                          "externalDocs": { "url": " https://example.com/guide ", "description": "The *guide*" },
+		                          "tags": [
+		                            { "name": "Pets", "externalDocs": { "url": "https://example.com/pets" } },
+		                            { "name": "Owners", "description": "People", "externalDocs": { "description": "No URL" } }
+		                          ],
+		                          "paths": { "/pets": { "get": { "tags": ["Pets"], "externalDocs": { "url": "https://example.com/list", "description": "Listing" },
+		                            "responses": {} } } },
+		                          "components": { "schemas": {
+		                            "Pet": { "type": "object", "externalDocs": { "url": "https://example.com/pet" } },
+		                            "Named": { "allOf": [ { "$ref": "#/components/schemas/Pet" } ], "externalDocs": { "url": "https://example.com/named" } },
+		                            "Plain": { "type": "string" }
+		                          } }
+		                        }
+		                        """;
+
+		OpenApiSpec spec = OpenApiParser.Parse(document);
+
+		spec.ExternalDocs!.Url.Should().Be("https://example.com/guide");
+		spec.ExternalDocs.Description.Should().Be("The *guide*");
+		spec.TagExternalDocs.Should().ContainKey("pets").WhoseValue.Url.Should().Be("https://example.com/pets");
+		spec.TagExternalDocs.Should().NotContainKey("Owners", "an externalDocs without a URL is no link");
+		spec.TagDescriptions.Should().ContainKey("Owners");
+		spec.Endpoints.Single().ExternalDocs!.Description.Should().Be("Listing");
+		spec.Schemas["Pet"].ExternalDocs!.Url.Should().Be("https://example.com/pet");
+		spec.Schemas["Named"].ExternalDocs!.Url.Should().Be("https://example.com/named", "a wrapper keeps its own link");
+		spec.Schemas["Plain"].ExternalDocs.Should().BeNull();
+	}
+
 	[Theory]
 	[InlineData("aspnetcore-openapi-9.json")]
 	[InlineData("aspnetcore-openapi-10.json")]
@@ -605,5 +686,126 @@ public sealed class OpenApiParserTests
 		OpenApiSchema parent = Schema(spec, "Category").Properties["parent"];
 		parent.Properties["children"].Items!.RefName.Should().Be("Category");
 		parent.Properties["children"].Items!.Properties.Should().BeEmpty();
+	}
+
+	[Theory]
+	[InlineData("\uFEFF{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"bom\",\"version\":\"1\"},\"paths\":{}}", true)]
+	[InlineData("\uFEFFopenapi: 3.0.0\r\ninfo:\r\n  title: bom\r\n  version: '1'\r\npaths: {}\r\n", false)]
+	[InlineData("// Generated\n{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"bom\",\"version\":\"1\"},\"paths\":{}}", true)]
+	[InlineData("/* Generated */ {\"openapi\":\"3.0.0\",\"info\":{\"title\":\"bom\",\"version\":\"1\"},\"paths\":{}}", true)]
+	[InlineData("{openapi: 3.0.0, info: {title: bom, version: \"1\"}, paths: {}}", false)]
+	public void Document_WithABomACommentOrYamlFlowStyle_IsRead(string content, bool json)
+	{
+		OpenApiSpec spec = OpenApiParser.Parse(content, out bool isJson);
+
+		spec.Title.Should().Be("bom");
+		isJson.Should().Be(json);
+	}
+
+	[Fact]
+	public void JsonKeyWrittenTwice_IsAParseError()
+	{
+		// It threw an ArgumentException from somewhere in the middle of mapping, which callers didn't expect.
+		Action parse = () => OpenApiParser.Parse("{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"a\",\"title\":\"b\"},\"paths\":{}}");
+
+		parse.Should().Throw<InvalidOperationException>()
+			.WithMessage("Failed to parse OpenAPI spec: an object at '$.info' has the same key more than once*");
+	}
+
+	[Fact]
+	public void YamlKeyWrittenTwice_IsAParseError()
+	{
+		Action parse = () => OpenApiParser.Parse("openapi: 3.0.0\nopenapi: 3.1.0\npaths: {}\n");
+
+		parse.Should().Throw<InvalidOperationException>().WithMessage("Failed to parse OpenAPI spec*Duplicate key*");
+	}
+
+	[Fact]
+	public void BrokenJson_ReportsTheJsonError_NotTheYamlOne()
+	{
+		Action parse = () => OpenApiParser.Parse("{ \"openapi\": \"3.0.0\", \"paths\": { ] }");
+
+		parse.Should().Throw<InvalidOperationException>().Which.InnerException.Should().BeAssignableTo<System.Text.Json.JsonException>();
+	}
+
+	[Fact]
+	public void ParameterDescribedWithContent_UsesTheMediaTypesSchema()
+	{
+		const string document = """
+		                        {
+		                          "openapi": "3.0.3",
+		                          "info": { "title": "Pets", "version": "1" },
+		                          "paths": { "/pets": { "get": {
+		                            "parameters": [ { "name": "filter", "in": "query",
+		                              "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Filter" } } } } ],
+		                            "responses": {} } } },
+		                          "components": { "schemas": { "Filter": { "type": "object", "properties": { "kind": { "type": "string" } } } } }
+		                        }
+		                        """;
+
+		OpenApiParameter filter = Endpoint(OpenApiParser.Parse(document), "GET", "/pets").Parameters.Single();
+
+		filter.SchemaType.Should().Be("Filter");
+		filter.Schema!.Properties.Keys.Should().Equal("kind");
+	}
+
+	[Fact]
+	public void UnresolvedReferences_KeepTheirNameAndAreListedInAWarning()
+	{
+		const string document = """
+		                        {
+		                          "openapi": "3.0.3",
+		                          "info": { "title": "Pets", "version": "1" },
+		                          "paths": { "/pets": { "get": { "parameters": [ { "$ref": "#/components/parameters/Gone" } ], "responses": {} } } },
+		                          "components": { "schemas": { "Pet": { "type": "object", "properties": {
+		                            "owner": { "$ref": "people.yaml#/Owner" },
+		                            "tag": { "$ref": "#/components/schemas/Missing" },
+		                            "again": { "$ref": "#/components/schemas/Missing" },
+		                            "self": { "$ref": "#/components/schemas/Pet" } } } } }
+		                        }
+		                        """;
+
+		OpenApiSpec spec = OpenApiParser.Parse(document);
+
+		Property(spec, "Pet", "owner").Should().Be("Owner");
+		Property(spec, "Pet", "tag").Should().Be("Missing");
+		spec.Warnings.Should().ContainSingle().Which.Should().Be(
+			"3 $ref value(s) point outside the document or at nothing in it, so they show only their name: " +
+			"'people.yaml#/Owner', '#/components/schemas/Missing', '#/components/parameters/Gone'.");
+	}
+
+	[Fact]
+	public void DocumentWithEverythingResolved_HasNoWarnings()
+	{
+		OpenApiParser.Parse(Fixture("aspnetcore-openapi-10.json")).Warnings.Should().BeEmpty();
+		OpenApiParser.Parse(Fixture("swashbuckle-10.json")).Warnings.Should().BeEmpty();
+	}
+
+	[Fact]
+	public void Webhooks_OpenApi31_AreRead()
+	{
+		const string document = """
+		                        {
+		                          "openapi": "3.1.0",
+		                          "info": { "title": "Pets", "version": "1" },
+		                          "webhooks": {
+		                            "newPet": { "post": { "summary": "A pet was added", "tags": ["Pets"],
+		                              "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Pet" } } } },
+		                              "responses": { "200": { "description": "Received" } } } },
+		                            "petGone": { "$ref": "#/components/pathItems/Gone" }
+		                          },
+		                          "components": {
+		                            "pathItems": { "Gone": { "delete": { "summary": "A pet was removed", "responses": {} } } },
+		                            "schemas": { "Pet": { "type": "object", "properties": { "name": { "type": "string" } } } }
+		                          }
+		                        }
+		                        """;
+
+		OpenApiSpec spec = OpenApiParser.Parse(document);
+
+		spec.Endpoints.Should().BeEmpty("webhooks are not endpoints of the API");
+		spec.Tags.Should().BeEmpty();
+		spec.Webhooks.Select(w => $"{w.Method} {w.Path} {w.Summary}").Should().Equal("POST newPet A pet was added", "DELETE petGone A pet was removed");
+		spec.Webhooks[0].RequestBody!.Schema!.ToDisplayString().Should().Be("Pet");
 	}
 }

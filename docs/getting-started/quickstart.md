@@ -101,7 +101,7 @@ This builds the site, serves it at `http://localhost:5080` and opens your browse
 The dev server watches the docs folder (`content.docs`) and `mokadocs.yaml`. Saving a file there triggers a rebuild, then the browser reloads. Two limits:
 
 - C# source files aren't watched. Your changes to them show up on the next rebuild or after you restart `serve`.
-- Editing `mokadocs.yaml` triggers a rebuild, but `serve` keeps using the config it loaded at startup. Restart `serve` to apply config changes.
+- Editing `mokadocs.yaml` reloads it before the rebuild, except for `build.basePath`, `build.output` and `content.docs`, which need a restart. A file with an error keeps the last good site up until you fix it.
 :::
 
 See [Dev Server & Hot Reload](/advanced/dev-server) for the other options.

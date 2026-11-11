@@ -13,13 +13,14 @@ MokaDocs generates the sidebar from your page routes, unless `mokadocs.yaml` has
 
 ### How It Works
 
-1. Each public page goes into a group named after the first segment of its route. `/guides/theming` and `/guides/advanced/plugins` both belong to `guides`.
-2. Each group becomes a top-level sidebar item. When a page exists at the group's own route (a folder's `index.md`, or a top-level file such as `changelog.md`), the item links to that page and takes its `title`, `icon`, `order` and `expanded` values.
-3. The rest of the group's pages are listed under the item as one flat list, however deeply their files are nested. Subfolders don't create nested sections.
+1. The sidebar is a tree of the page routes. Every folder is a section and every page is an entry in its folder's section, so `/guides/theming` sits in `Guides` and `/guides/advanced/plugins` in `Advanced` inside `Guides`.
+2. When a page exists at a section's own route (a folder's `index.md`), the section header links to it and takes its `title`, `icon`, `order` and `expanded` values. A folder without one is labeled from its name.
+3. Generated API type pages are grouped by namespace under the `/api` section instead of by route, one collapsed section per namespace. See [API Reference Items](#api-reference-items).
 4. The root `index.md` (route `/`) is a top-level item like any other.
-5. Top-level items, and the pages under each one, are sorted by `order` and then by title.
+5. The entries of every section, and the top-level items, are sorted by `order` and then by title.
+6. The tree is at most three levels deep, the depth the default theme renders. The pages below a third-level folder are listed after it, prefixed with the folders they are in: `Advanced / Caching`.
 
-Groups follow routes, not folders, so a page with a `route` override is grouped by its new route. Hidden and draft pages are left out; see `visibility` in [Front Matter](/configuration/front-matter).
+The tree follows routes, not files, so a page with a `route` override goes where its new route puts it. Hidden and draft pages are left out; see `visibility` in [Front Matter](/configuration/front-matter).
 
 ### Example
 
@@ -55,7 +56,7 @@ Getting Started
   Quick Start
 Guides
   Advanced
-  Plugins
+    Plugins
   Theming
   Writing Content
 Changelog
@@ -63,7 +64,7 @@ Changelog
 
 - `Home` comes first because the root `index.md` has `order: -1`.
 - `reference/` has no `index.md`, so its label comes from the folder name and its header doesn't link anywhere. With no `order` it counts as `0`, which puts it between `Home` and `Getting Started`.
-- `advanced/index.md` and `advanced/plugins.md` are listed flat under `Guides`, sorted by title with the other pages.
+- `advanced/` is a section inside `Guides`, titled and linked by its `index.md`, and sorted by title with the other entries of `Guides`.
 
 ---
 
@@ -128,15 +129,15 @@ Each item in the `nav` list supports the following properties:
 | `icon` | `string` | none | Icon name from the list in [Icon Support](#icon-support). |
 | `order` | `int` | `0` | Position among sibling items. Lower values come first. Items with the same value keep their order from `mokadocs.yaml`. |
 | `expanded` | `bool` | `false` | Whether the item's children start expanded. |
+| `autoGenerate` | `bool` | `false` | List everything below `path` as a tree, the way the sidebar is built without a `nav` section. Ignored when the item has `children`. |
 | `children` | `list` | `[]` | Child items. |
-
-MokaDocs also accepts an `autoGenerate` key on nav items, but nothing reads it.
 
 ### How Items Are Built
 
 - **With `children`**: the listed children are used and nothing is generated.
+- **With `path` and `autoGenerate: true`**: the children are the part of the [auto-generated tree](#how-it-works) below `path`. Every folder is a section, with or without an `index.md`, and under `/api` the type pages are grouped by namespace. The tree still stops at the third level of the sidebar, counting the item's own level.
 - **With `path` and no `children`**: public pages exactly one route segment below `path` become the children, sorted by front matter `order` and then title. Each of those pages gets its own children the same way, so a subfolder with an `index.md` becomes a nested section. Pages in a subfolder without an `index.md` don't appear, because there is no page at the subfolder's route to list them under.
-- **Link target**: the item links to `path`. When no page exists there and the item has children, it links to its first child instead.
+- **Link target**: the item links to `path`. When no page exists there and the item has children, it links to its first child instead. When there is no page at `path`, no children, and no page further below it, the link is dead and the build warns about the item by label.
 - **Without `path`**: the header is a plain label. An item with neither `path` nor `children` renders as a link with an empty `href`.
 
 A few details about `path`:
@@ -156,7 +157,26 @@ nav:
     icon: code
 ```
 
-Without a `nav` section, the type pages are listed flat under an `API Reference` item.
+With `autoGenerate: true`, the item lists one section per namespace, each holding its types sorted by name. The namespace sections start collapsed; the one that holds the current page opens. A namespace has no page of its own, so its header is a plain label.
+
+```yaml
+nav:
+  - label: "API Reference"
+    path: /api
+    icon: code
+    autoGenerate: true
+```
+
+```
+API Reference
+  Contoso.Sdk
+    ContosoClient
+    ContosoOptions
+  Contoso.Sdk.Models
+    Order
+```
+
+Without a `nav` section, the `API Reference` item has the same namespace sections. The ASP.NET Core host builds its `AutoGenerate` entries with the same code, so both give the same sidebar.
 
 ---
 
@@ -169,7 +189,7 @@ Front matter `order` sorts pages in auto-generated navigation and among the chil
 1. Pages are sorted by `order`, lowest first.
 2. A page without `order` counts as `0`, so it sorts before pages with `order: 1` or higher.
 3. Pages with the same `order` are sorted by title, ignoring case.
-4. In auto-generated navigation, a top-level section's position comes from the `order` in its folder's `index.md`. A folder without an `index.md` counts as `0`.
+4. In auto-generated navigation, a section's position among its siblings comes from the `order` in its folder's `index.md`. A folder without an `index.md` counts as `0`. Sections and pages are sorted together.
 
 ### Example
 
@@ -206,7 +226,7 @@ order: -1
 
 ### Section (Directory) Ordering
 
-To order the top-level sections of auto-generated navigation, set `order` in each section's `index.md`:
+To order the sections of auto-generated navigation, set `order` in each section's `index.md`:
 
 ```
 docs/
@@ -243,7 +263,7 @@ Names ignore case. Any other name renders nothing, and the build warns once for 
 
 - **`nav` items** show their own `icon`. They don't fall back to the front matter `icon` of the page at `path`.
 - **Pages a nav item pulls in through `path`** show their front matter `icon`.
-- **Auto-generated navigation** shows the front matter `icon` of every page in the sidebar. A top-level section takes its icon from its folder's `index.md`, so a folder without one has no icon.
+- **Auto-generated navigation** shows the front matter `icon` of every page in the sidebar. A section takes its icon from its folder's `index.md`, so a folder without one has no icon.
 - **Depth:** the default theme draws icons on top-level items and on second-level items without children. Second-level section headers and third-level items don't get one.
 
 ### Using Icons in Front Matter
@@ -276,9 +296,9 @@ nav:
 
 ### Creating Nested Sections
 
-Auto-generated navigation has one level of sections. Pages in subfolders are listed under their top-level section without further nesting. To nest sections, use a `nav` section: nest items with `children`, or point `path` at a folder whose subfolders have an `index.md`.
+Auto-generated navigation nests a section for every subfolder. In a `nav` section, nest items with `children`, point `path` at a folder whose subfolders have an `index.md`, or add `autoGenerate: true` to list a folder's whole tree.
 
-The default theme renders three levels at most: top-level items, their children and their grandchildren. Deeper items are not shown.
+The default theme renders three levels at most: top-level items, their children and their grandchildren. Auto-generated navigation, with or without `nav`, lists the pages below the third level right after their third-level folder, labeled with the folders they are in: under `Guides` > `Advanced`, a page at `/guides/advanced/plugins/hooks/events` shows as `Plugins / Hooks / Events`, after the `Plugins` page. In items you write in `nav`, anything deeper than three levels is not shown.
 
 Given this layout, where each page's `title` matches its name and no page sets `order`:
 
@@ -296,19 +316,7 @@ docs/
       plugins.md
 ```
 
-Auto-generated navigation lists every page under `Guides`:
-
-```
-Guides
-  Advanced
-  Basics
-  Custom Components
-  Front Matter
-  Markdown Syntax
-  Plugins
-```
-
-A nav item with `path: /guides` nests the subfolders:
+Auto-generated navigation, and a nav item with `path: /guides`, both nest the subfolders:
 
 ```yaml
 nav:
@@ -331,6 +339,7 @@ Guides
 | Section | Starts | Change it with |
 |---|---|---|
 | Auto-generated section | Expanded | `expanded: false` in the folder's `index.md` |
+| Auto-generated API namespace | Collapsed | Can't be changed |
 | `nav` item | Collapsed | `expanded: true` on the item |
 | Page pulled in by a nav `path` that has pages below it | Expanded | `expanded: false` in that page's front matter |
 
@@ -365,11 +374,43 @@ nav:
 
 ---
 
+## Large Sidebars: Inline or Shared
+
+Every page shows the whole sidebar, and by default every page also holds a copy of it. That is fine for a few hundred entries, and the pages work without JavaScript. On a big site the copies are most of the output: 5000 pages with an entry each wrote 6.5 GB of HTML, about 1.3 MB per page, and took 65 seconds to build.
+
+`theme.options.sidebar` picks how pages get the sidebar:
+
+| Mode | What pages hold |
+|---|---|
+| `auto` (default) | `inline` up to `theme.options.sidebarInlineLimit` entries (default `300`), `shared` above that |
+| `inline` | The whole sidebar, in every page |
+| `shared` | The top-level entries and the entries along the path to the page. The whole sidebar is written once, to `_theme/js/sidebar.js` |
+
+```yaml
+theme:
+  options:
+    sidebar: shared          # auto | inline | shared
+    sidebarInlineLimit: 300  # used by auto
+```
+
+The limit counts every entry of the sidebar, links and section headings alike, not the pages of the site. `MOKADOCS_SIDEBAR` and `MOKADOCS_SIDEBAR_INLINE_LIMIT` override both settings. An unknown mode works like `auto`, and the build warns about it.
+
+How a shared sidebar works:
+
+- Each page loads `_theme/js/sidebar.js?v=<hash>` from a `<script>` tag inside the sidebar. The `v` value is a hash of the file, so a rebuild that changes the sidebar changes the URL, and browsers can keep the file cached between pages.
+- The script runs before the rest of the page is shown. It puts the whole sidebar in place of the page's short one, marks the current page and opens the sections around it the same way the inline sidebar does, and scrolls the sidebar so the current page is in view. The reader never sees the tree collapsed or the short sidebar swapped out.
+- Without JavaScript, and for crawlers, the page keeps its short sidebar: every top-level entry, and the entries of each section on the path to the page. A section off that path links to its own route (or to its first page when it has none), so every part of the site stays reachable. The previous and next links at the bottom of each page follow the whole sidebar either way.
+- The default theme only. A custom theme always gets the whole sidebar in every page; asking it for `shared` is a warning.
+
+On the 5000-page site, the shared sidebar file is 503 KB (34 KB with gzip), a page is about 42 KB, and the build wrote 258 MB in 10 seconds.
+
+---
+
 ## Active State Highlighting
 
 ### Current Page
 
-The sidebar link for the current page gets the `current` CSS class. The default theme draws it in the primary color with a tinted background, bold text and a left border.
+The sidebar link for the current page gets the `current` CSS class. The default theme draws it in the primary color with a tinted background, bold text and a left border. With a [shared sidebar](#large-sidebars-inline-or-shared), the script adds this class and the ones below, so the markup ends up the same.
 
 ### Parent Active State
 
@@ -394,15 +435,15 @@ The wrapper element also gets an `active` class when it is or contains the curre
 
 ### `index.md` Behavior
 
-In auto-generated navigation, a top-level folder's `index.md` is the page for its section:
+In auto-generated navigation, a folder's `index.md` is the page for its section, at any depth:
 
 - Its `title` is the section label. Without a `title`, the label is "Untitled".
-- Its `icon` is shown next to the label.
-- Its `order` sets the section's position.
+- Its `icon` is shown next to the label (on top-level sections; see [Where Icons Appear](#where-icons-appear)).
+- Its `order` sets the section's position among its siblings.
 - Its `expanded` sets whether the section starts expanded.
 - The section header links to it.
 
-An `index.md` with only front matter still produces a page, so the header links to it. An `index.md` in a nested folder is an ordinary page in its section's flat list.
+An `index.md` with only front matter still produces a page, so the header links to it.
 
 ### How Section Headers Behave
 
@@ -467,9 +508,9 @@ Routes that differ only by case count as the same route. This happens when a `ro
 
 ### Recommended Approach
 
-1. Start with auto-generated navigation. Give each top-level folder an `index.md` with a `title` and an `order`, and order the pages inside with front matter.
-2. Add a `nav` section when you need nested sections or labels that differ from page titles.
-3. Inside `nav`, use `path` without `children` to list a folder's pages without naming each one. Use `children` when you want to choose and order them by hand.
+1. Start with auto-generated navigation. Give each folder an `index.md` with a `title` and an `order`, and order the pages inside with front matter.
+2. Add a `nav` section when you need labels that differ from page titles, or a sidebar that doesn't follow the folders.
+3. Inside `nav`, use `path` with `autoGenerate: true` to list a folder's whole tree without naming each page, or `path` alone for the pages one level down. Use `children` when you want to choose and order them by hand.
 
 ### Example: Mixed Navigation
 

@@ -24,4 +24,34 @@ public sealed class MarkdownParsePhaseRouteTests
 
 		MarkdownParsePhase.BuildRoute(file, frontMatter).Should().Be(expected);
 	}
+
+	[Theory]
+	[InlineData("notes.md-old/page.md", "/notes.md-old/page")]
+	[InlineData("a.md.md", "/a.md")]
+	[InlineData("guide/Readme.MD", "/guide/Readme")]
+	[InlineData("guide/INDEX.md", "/guide")]
+	public void BuildRoute_RemovesOnlyTheTrailingExtension(string file, string expected)
+	{
+		// ".md" was removed anywhere in the path, so notes.md-old/page.md became /notes-old/page.
+		MarkdownParsePhase.BuildRoute(file, new FrontMatter { Title = "T" }).Should().Be(expected);
+	}
+
+	[Theory]
+	[InlineData("../../outside-escape")]
+	[InlineData("/guide/../../x")]
+	[InlineData("/faq?lang=en")]
+	[InlineData("/faq#answers")]
+	[InlineData("/Admin: Users")]
+	[InlineData("/a|b")]
+	[InlineData("C:\\Users\\x")]
+	public void FindRouteOverrideProblem_UnsafeOrNonPortableRoutes_AreRefused(string route) =>
+		MarkdownParsePhase.FindRouteOverrideProblem(route).Should().NotBeNull();
+
+	[Theory]
+	[InlineData("/help/faq")]
+	[InlineData(" help/faq/ ")]
+	[InlineData("/")]
+	[InlineData("/v1.2/release-notes")]
+	public void FindRouteOverrideProblem_OrdinaryRoutes_AreAccepted(string route) =>
+		MarkdownParsePhase.FindRouteOverrideProblem(route).Should().BeNull();
 }

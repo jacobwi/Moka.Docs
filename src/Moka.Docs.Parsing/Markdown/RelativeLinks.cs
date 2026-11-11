@@ -1,3 +1,4 @@
+using Markdig.Helpers;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 
@@ -17,7 +18,8 @@ namespace Moka.Docs.Parsing.Markdown;
 public static class RelativeLinks
 {
 	/// <summary>
-	///     Rewrites every relative link and image in a parsed document.
+	///     Rewrites every relative link and image in a parsed document, in Markdown syntax and in raw
+	///     HTML tags (<c>src</c>, <c>href</c>, <c>srcset</c> and <c>poster</c> attributes).
 	/// </summary>
 	/// <param name="document">The parsed Markdown.</param>
 	/// <param name="sourcePath">The file's path relative to the docs folder.</param>
@@ -28,6 +30,22 @@ public static class RelativeLinks
 			if (link.Url is { } url && ToRootRelative(url, sourcePath) is { } rewritten)
 			{
 				link.Url = rewritten;
+			}
+		}
+
+		// Raw HTML such as <img src="./diagram.png" width="400"> was written as is, so the image
+		// resolved against the page's URL instead of the file, like Markdown links once did.
+		foreach (HtmlInline html in document.Descendants<HtmlInline>())
+		{
+			html.Tag = RawHtmlLinks.Rewrite(html.Tag, sourcePath);
+		}
+
+		foreach (HtmlBlock block in document.Descendants<HtmlBlock>())
+		{
+			if (block.Type is HtmlBlockType.InterruptingBlock or HtmlBlockType.NonInterruptingBlock
+			    or HtmlBlockType.ScriptPreOrStyle)
+			{
+				RewriteBlock(block, sourcePath);
 			}
 		}
 	}
@@ -89,6 +107,25 @@ public static class RelativeLinks
 		}
 
 		return "/" + string.Join('/', segments) + suffix;
+	}
+
+	private static void RewriteBlock(HtmlBlock block, string sourcePath)
+	{
+		string original = block.Lines.ToString();
+		string rewritten = RawHtmlLinks.Rewrite(original, sourcePath);
+		if (ReferenceEquals(original, rewritten))
+		{
+			return;
+		}
+
+		string[] lines = rewritten.Split('\n');
+		var group = new StringLineGroup(lines.Length);
+		foreach (string line in lines)
+		{
+			group.Add(new StringSlice(line.TrimEnd('\r')));
+		}
+
+		block.Lines = group;
 	}
 
 	// mailto:, https:, data: and the like. A colon after the first slash is part of a path.

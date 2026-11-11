@@ -21,17 +21,23 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 	/// <inheritdoc />
 	public Task ExecuteAsync(BuildContext context, CancellationToken ct = default)
 	{
-		var items = new List<NavigationNode>();
+		List<NavigationNode> items;
+		AutoNavigation? auto = null;
+		AutoNavigation Auto() => auto ??= AutoNavigation.Build(context.Pages, context.ApiModel);
 
 		// If explicit nav config exists, use it as the skeleton
 		if (context.Config.Nav.Count > 0)
 		{
-			items = BuildFromConfig(context.Config.Nav, context.Pages);
+			var deadLinks = new List<string>();
+			items = BuildFromConfig(context.Config.Nav, context.Pages, Auto, 1, deadLinks);
+			foreach (string deadLink in deadLinks)
+			{
+				context.Diagnostics.Warning(deadLink, Name);
+			}
 		}
 		else
-			// Auto-generate from page routes
 		{
-			items = BuildFromPages(context.Pages);
+			items = Auto().TopLevel();
 		}
 
 		context.Navigation = new NavigationTree { Items = items };
@@ -41,7 +47,8 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 		return Task.CompletedTask;
 	}
 
-	private static List<NavigationNode> BuildFromConfig(List<NavItem> navItems, List<DocPage> pages)
+	private static List<NavigationNode> BuildFromConfig(List<NavItem> navItems, List<DocPage> pages,
+		Func<AutoNavigation> auto, int depth, List<string> deadLinks)
 	{
 		return navItems.Select(item =>
 		{
@@ -53,8 +60,10 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 			string? normalizedPath = NormalizePath(item.Path);
 
 			List<NavigationNode> children = item.Children.Count > 0
-				? BuildFromConfig(item.Children, pages)
-				: BuildChildrenFromPath(normalizedPath ?? "", pages);
+				? BuildFromConfig(item.Children, pages, auto, depth + 1, deadLinks)
+				: item.AutoGenerate && !string.IsNullOrEmpty(normalizedPath)
+					? auto().Below(normalizedPath, depth + 1)
+					: BuildChildrenFromPath(normalizedPath ?? "", pages);
 
 			// Check if the nav item's path points to an actual page.
 			// Match against both the normalized path and the raw path so that users
@@ -68,6 +77,16 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 			if (matchingPage is null && !string.IsNullOrEmpty(normalizedPath) && children.Count > 0)
 			{
 				resolvedRoute = children[0].Route;
+			}
+
+			// A section folder with pages deeper down still gets a redirect page, so only a path
+			// with nothing at or below it is a dead link.
+			if (matchingPage is null && children.Count == 0 && !string.IsNullOrEmpty(normalizedPath)
+			    && (normalizedPath == "/"
+			        || !pages.Any(p => p.Route.StartsWith(normalizedPath + "/", StringComparison.OrdinalIgnoreCase))))
+			{
+				deadLinks.Add(
+					$"Nav item '{item.Label}' points to '{item.Path}', which matches no page, so its sidebar link is dead");
 			}
 
 			return new NavigationNode
@@ -129,67 +148,6 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 			.ToList();
 	}
 
-	private static List<NavigationNode> BuildFromPages(List<DocPage> pages)
-	{
-		var publicPages = pages
-			.Where(p => p.FrontMatter.Visibility == PageVisibility.Public)
-			.OrderBy(p => p.FrontMatter.Order)
-			.ThenBy(p => p.FrontMatter.Title, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-
-		// Group by top-level path segment
-		var groups = new Dictionary<string, List<DocPage>>(StringComparer.OrdinalIgnoreCase);
-
-		foreach (DocPage page in publicPages)
-		{
-			string[] segments = page.Route.Trim('/').Split('/', 2);
-			string topLevel = segments.Length > 0 ? segments[0] : "";
-
-			if (!groups.TryGetValue(topLevel, out List<DocPage>? list))
-			{
-				list = [];
-				groups[topLevel] = list;
-			}
-
-			list.Add(page);
-		}
-
-		return groups.Select(g =>
-			{
-				DocPage? rootPage = g.Value.FirstOrDefault(p =>
-					p.Route.Trim('/') == g.Key ||
-					p.Route.Trim('/') == g.Key + "/index");
-
-				string label = rootPage?.FrontMatter.Title ?? FormatLabel(g.Key);
-
-				return new NavigationNode
-				{
-					Label = label,
-					Route = rootPage?.Route ?? "/" + g.Key,
-					Order = rootPage?.FrontMatter.Order ?? 0,
-					// A section's index page supplies its icon and whether it starts collapsed.
-					// The icon was never copied, so top-level entries had no icons.
-					Icon = rootPage?.FrontMatter.Icon,
-					Expanded = rootPage?.FrontMatter.Expanded ?? true,
-					Children = g.Value
-						.Where(p => p != rootPage)
-						.Select(p => new NavigationNode
-						{
-							Label = p.FrontMatter.Title,
-							Route = p.Route,
-							Icon = p.FrontMatter.Icon,
-							Order = p.FrontMatter.Order
-						})
-						.OrderBy(n => n.Order)
-						.ThenBy(n => n.Label, StringComparer.OrdinalIgnoreCase)
-						.ToList()
-				};
-			})
-			.OrderBy(n => n.Order)
-			.ThenBy(n => n.Label, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-	}
-
 	/// <summary>
 	///     Warns about sidebar icons that are not in the icon set. The theme renders nothing
 	///     for them, so a typo (or a Lucide name MokaDocs does not ship) silently lost the icon.
@@ -224,15 +182,5 @@ public sealed class NavigationBuildPhase(ILogger<NavigationBuildPhase> logger) :
 				Collect(node.Children);
 			}
 		}
-	}
-
-	private static string FormatLabel(string pathSegment)
-	{
-		if (string.IsNullOrEmpty(pathSegment))
-		{
-			return "Home";
-		}
-
-		return char.ToUpper(pathSegment[0]) + pathSegment[1..].Replace('-', ' ');
 	}
 }

@@ -29,4 +29,8 @@
     <EmbeddedResource Include="PythonApi\mokadocs_python_analyzer.py" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.Integration.Tests" />
+  </ItemGroup>
+
 </Project>

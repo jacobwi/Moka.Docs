@@ -166,20 +166,32 @@ internal static class FixtureAssembly
 	                               }
 	                               """;
 
-	private static Assembly Compile()
+	private static Assembly Compile() =>
+		Compile("Moka.Docs.ReflectionFixture", _source, LanguageVersion.Latest, "reflection-fixture");
+
+	internal static Assembly Compile(string assemblyName, string source, LanguageVersion languageVersion, string folder,
+		IEnumerable<MetadataReference>? extraReferences = null, bool allowUnsafe = false) =>
+		Load(CreateCompilation(assemblyName, source, languageVersion, extraReferences, allowUnsafe), folder);
+
+	internal static CSharpCompilation CreateCompilation(string assemblyName, string source, LanguageVersion languageVersion,
+		IEnumerable<MetadataReference>? extraReferences = null, bool allowUnsafe = false)
 	{
 		string platformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "";
 		IEnumerable<MetadataReference> references = platformAssemblies
 			.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
 			.Select(path => MetadataReference.CreateFromFile(path));
 
-		CSharpCompilation compilation = CSharpCompilation.Create(
-			"Moka.Docs.ReflectionFixture",
-			[CSharpSyntaxTree.ParseText(_source, new CSharpParseOptions(LanguageVersion.Latest, DocumentationMode.Diagnose))],
-			references,
-			new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+		return CSharpCompilation.Create(
+			assemblyName,
+			[CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(languageVersion, DocumentationMode.Diagnose))],
+			references.Concat(extraReferences ?? []),
+			new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable,
+				allowUnsafe: allowUnsafe));
+	}
 
-		string directory = Path.Combine(AppContext.BaseDirectory, "reflection-fixture");
+	internal static Assembly Load(CSharpCompilation compilation, string folder)
+	{
+		string directory = Path.Combine(AppContext.BaseDirectory, folder);
 		try
 		{
 			return Assembly.LoadFrom(Emit(compilation, directory));
@@ -199,7 +211,7 @@ internal static class FixtureAssembly
 	private static string Emit(CSharpCompilation compilation, string directory)
 	{
 		Directory.CreateDirectory(directory);
-		string dllPath = Path.Combine(directory, "Moka.Docs.ReflectionFixture.dll");
+		string dllPath = Path.Combine(directory, compilation.AssemblyName + ".dll");
 
 		using FileStream pe = File.Create(dllPath);
 		using FileStream xml = File.Create(Path.ChangeExtension(dllPath, ".xml"));

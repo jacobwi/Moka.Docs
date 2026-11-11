@@ -1,7 +1,7 @@
 ---
 title: Blazor Component Preview
 description: Write Blazor components in your docs and see live previews
-sidebar_position: 5
+order: 5
 ---
 
 # Blazor Component Preview

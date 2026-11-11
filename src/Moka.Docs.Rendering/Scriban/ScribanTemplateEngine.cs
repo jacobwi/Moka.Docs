@@ -1,8 +1,9 @@
 using System.Globalization;
 using System.Net;
-using System.Text.RegularExpressions;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core;
+using Moka.Docs.Core.Blog;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Navigation;
@@ -10,6 +11,7 @@ using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Core.Theming;
 using Scriban;
 using Scriban.Runtime;
+using Scriban.Syntax;
 
 namespace Moka.Docs.Rendering.Scriban;
 
@@ -18,7 +20,18 @@ namespace Moka.Docs.Rendering.Scriban;
 /// </summary>
 public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 {
+	private const int _outputLimit = 64 * 1024 * 1024;
+
+	private static readonly string _mokaVersion = ReadMokaVersion();
+
 	private readonly Dictionary<string, Template> _templateCache = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	///     How long one page may take to render. A layout still running after that is stopped and
+	///     reported as an error, since a template loop that never ends would otherwise hang the build.
+	///     Defaults to 30 seconds.
+	/// </summary>
+	public TimeSpan RenderTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
 	/// <summary>
 	///     Renders a page using the specified layout template.
@@ -26,8 +39,24 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 	/// <param name="page">The page to render.</param>
 	/// <param name="themeContext">The theme rendering context with templates, config, nav, etc.</param>
 	/// <returns>The fully rendered HTML string.</returns>
-	public string RenderPage(DocPage page, ThemeRenderContext themeContext)
+	public string RenderPage(DocPage page, ThemeRenderContext themeContext) =>
+		RenderPage(page, themeContext, CancellationToken.None);
+
+	/// <summary>
+	///     Renders a page using the specified layout template, stopping when
+	///     <paramref name="cancellationToken" /> is cancelled or <see cref="RenderTimeout" /> runs out.
+	/// </summary>
+	/// <param name="page">The page to render.</param>
+	/// <param name="themeContext">The theme rendering context with templates, config, nav, etc.</param>
+	/// <param name="cancellationToken">Cancels the render.</param>
+	/// <returns>The fully rendered HTML string.</returns>
+	/// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+	/// <exception cref="InvalidOperationException">The layout is missing, has errors, failed or timed out.</exception>
+	public string RenderPage(DocPage page, ThemeRenderContext themeContext, CancellationToken cancellationToken)
 	{
+		ArgumentNullException.ThrowIfNull(page);
+		ArgumentNullException.ThrowIfNull(themeContext);
+
 		string layoutName = page.FrontMatter.Layout;
 		string templateContent = themeContext.GetTemplate(layoutName)
 		                         ?? themeContext.GetTemplate("default")
@@ -51,11 +80,97 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		// shifted code inside <pre>. A pass that stripped the common indent of <pre> blocks
 		// afterwards also stripped the code's own indent (Python method bodies ended up at
 		// column 0) and missed <pre class="..."> blocks such as Mermaid diagrams.
-		var context = new TemplateContext { AutoIndent = false };
+		// Scriban's loop and string limits suit untrusted templates, not a docs layout. LoopLimit (1000)
+		// counts every iteration under the outer `for item in nav`, so a sidebar of about 1000 entries
+		// failed every page; LimitToString (1 MB) also capped the output and cut big pages off with
+		// "...". A runaway loop is stopped by the time budget, and by an output cap far above any real
+		// page that throws instead of truncating.
+		using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		budget.CancelAfter(RenderTimeout);
+		var context = new TemplateContext
+		{
+			AutoIndent = false,
+			LoopLimit = 0,
+			LimitToString = 0,
+			OutputLimit = _outputLimit,
+			OnOutputLimit = ScriptLimitBehavior.Throw,
+			CancellationToken = budget.Token
+		};
 		context.PushGlobal(scriptObject);
 		context.MemberRenamer = member => member.Name;
 
-		return template.Render(context);
+		try
+		{
+			return template.Render(context);
+		}
+		catch (ScriptAbortException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw new OperationCanceledException(cancellationToken);
+		}
+		catch (ScriptAbortException)
+		{
+			throw new InvalidOperationException(
+				$"Layout '{layoutName}' did not finish within {RenderTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} s; a loop in the template may never end");
+		}
+	}
+
+	/// <summary>
+	///     Renders the sidebar markup of a theme once for the whole site, with no current page, for a
+	///     sidebar that pages share instead of each holding a copy. The template sees the same
+	///     <c>nav</c> variable as a layout.
+	/// </summary>
+	/// <param name="sidebarTemplate">The theme's Scriban markup for the sidebar.</param>
+	/// <param name="themeContext">The render context, for the navigation and the base path.</param>
+	/// <param name="cancellationToken">Cancels the render.</param>
+	/// <returns>The rendered sidebar.</returns>
+	/// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+	/// <exception cref="InvalidOperationException">The template has errors, failed or timed out.</exception>
+	public string RenderSidebar(string sidebarTemplate, ThemeRenderContext themeContext,
+		CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(sidebarTemplate);
+		ArgumentNullException.ThrowIfNull(themeContext);
+
+		// A name no layout can have, so a page's layout never gets this template from the cache.
+		Template template = GetOrParseTemplate("\0sidebar", sidebarTemplate);
+		if (template.HasErrors)
+		{
+			throw new InvalidOperationException(
+				$"The sidebar template has errors: {string.Join("; ", template.Messages.Select(m => m.ToString()))}");
+		}
+
+		string bp = themeContext.Config.Build.BasePath;
+		var scriptObject = new ScriptObject();
+		scriptObject.SetValue("base_path", bp == "/" ? "" : bp, false);
+		scriptObject.SetValue("nav", BuildNavObject(themeContext.Navigation, null, themeContext.Index, bp, false), false);
+
+		using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		budget.CancelAfter(RenderTimeout);
+		var context = new TemplateContext
+		{
+			AutoIndent = false,
+			LoopLimit = 0,
+			LimitToString = 0,
+			OutputLimit = _outputLimit,
+			OnOutputLimit = ScriptLimitBehavior.Throw,
+			CancellationToken = budget.Token
+		};
+		context.PushGlobal(scriptObject);
+		context.MemberRenamer = member => member.Name;
+
+		try
+		{
+			return template.Render(context);
+		}
+		catch (ScriptAbortException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw new OperationCanceledException(cancellationToken);
+		}
+		catch (ScriptAbortException)
+		{
+			throw new InvalidOperationException(
+				$"The sidebar did not finish within {RenderTimeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} s");
+		}
 	}
 
 	private Template GetOrParseTemplate(string name, string content)
@@ -86,18 +201,13 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return basePath + (route.StartsWith('/') ? route : "/" + route);
 	}
 
-	private static string RewriteContentLinks(string html, string basePath)
+	// InformationalVersion is the <Version> from Directory.Build.props; AssemblyVersion stays 1.0.0.0.
+	private static string ReadMokaVersion()
 	{
-		if (basePath == "/" || string.IsNullOrEmpty(html))
-		{
-			return html;
-		}
-
-		// Rewrite href="/..." and src="/..." in rendered markdown content
-		return Regex.Replace(
-			html,
-			"""(href|src)="(/(?!/)(?![a-zA-Z]+:))""",
-			$"""$1="{basePath}$2""");
+		string version = typeof(ScribanTemplateEngine).Assembly
+			.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+		int plus = version.IndexOf('+', StringComparison.Ordinal);
+		return plus > 0 ? version[..plus] : version;
 	}
 
 	/// <summary>
@@ -165,7 +275,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			// Compared before the base path is added: page.route is prefixed, so the NuGet
 			// widget's route check never matched on a site built with --base-path.
 			{ "is_api_index", page.Route == "/api" },
-			{ "content", RewriteContentLinks(page.Content.Html, bp) },
+			{ "content", ContentLinkRewriter.Rewrite(page.Content.Html, bp) },
 			{ "route", PrefixRoute(page.Route, bp) },
 			{ "toc", BuildTocObject(page.TableOfContents) },
 			{
@@ -179,13 +289,17 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			// used in URLs (edit links), where Windows backslashes do not belong.
 			{ "source_path", page.SourcePath?.Replace('\\', '/') ?? "" },
 			{ "last_modified", page.LastModified?.ToString("yyyy-MM-dd") ?? "" },
+			{ "contributors", BuildContributors(page.Contributors) },
 			{ "is_api", page.Origin == PageOrigin.ApiGenerated },
 			{ "features", BuildFeatures(page.FrontMatter.Features, bp) },
 			{ "features_title", page.FrontMatter.FeaturesTitle },
-			{ "features_subtitle", page.FrontMatter.FeaturesSubtitle }
+			{ "features_subtitle", page.FrontMatter.FeaturesSubtitle },
+			{ "is_blog_post", ctx.Blog?.FindPost(page.Route) is not null }
 		}, false);
 
 		#endregion
+
+		so.SetValue("blog", BuildBlogObject(ctx.Blog, bp), false);
 
 		#region Site Config
 
@@ -226,10 +340,13 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "code_theme", ctx.Config.Theme.Options.CodeTheme },
 			{ "show_edit_link", ctx.Config.Theme.Options.ShowEditLink },
 			{ "show_last_updated", ctx.Config.Theme.Options.ShowLastUpdated },
+			{ "show_contributors", ctx.Config.Theme.Options.ShowContributors },
 			{ "color_themes", ctx.Config.Theme.Options.ColorThemes },
 			{ "code_theme_selector", ctx.Config.Theme.Options.CodeThemeSelector },
 			{ "code_style", ctx.Config.Theme.Options.CodeStyle },
 			{ "code_style_selector", ctx.Config.Theme.Options.CodeStyleSelector },
+			{ "style", ThemeStyles.Resolve(ctx.Config.Theme.Options.Style) },
+			{ "style_selector", ctx.Config.Theme.Options.StyleSelector },
 			{ "show_feedback", ctx.Config.Theme.Options.ShowFeedback },
 			{ "show_dark_mode_toggle", ctx.Config.Theme.Options.ShowDarkModeToggle },
 			{ "show_animations", ctx.Config.Theme.Options.ShowAnimations },
@@ -254,20 +371,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		#endregion
 
-		// MokaDocs version for footer/header branding. Use InformationalVersion (set from
-		// <Version> in Directory.Build.props, e.g. "1.4.1+commithash") rather than
-		// AssemblyVersion (which stays at 1.0.0.0 unless explicitly overridden).
-		// Strip the "+commithash" suffix so the display is clean.
-		string mokaVersion = System.Reflection.CustomAttributeExtensions
-			.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(ScribanTemplateEngine).Assembly)
-			?.InformationalVersion ?? "0.0.0";
-		int plusIdx = mokaVersion.IndexOf('+');
-		if (plusIdx > 0)
-		{
-			mokaVersion = mokaVersion[..plusIdx];
-		}
-
-		so.SetValue("mokadocs_version", mokaVersion, false);
+		so.SetValue("mokadocs_version", _mokaVersion, false);
 
 		// Edit link
 		// Generated pages (API, OpenAPI, Python) have no source file. They used to get an edit
@@ -282,11 +386,16 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		#region Navigation and Breadcrumbs
 
-		var pageRoutes = new HashSet<string>(ctx.AllPages.Select(p => p.Route), StringComparer.OrdinalIgnoreCase);
-		so.SetValue("nav", BuildNavObject(ctx.Navigation, page.Route, pageRoutes, bp), false);
+		RenderIndex index = ctx.Index;
+		bool sharedSidebar = !string.IsNullOrEmpty(ctx.SidebarScriptUrl);
+		so.SetValue("nav", BuildNavObject(ctx.Navigation, page.Route, index, bp, sharedSidebar), false);
+		so.SetValue("sidebar_script", sharedSidebar ? PrefixRoute(ctx.SidebarScriptUrl!, bp) : "", false);
 
 		so.SetValue("breadcrumbs",
-			BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, pageRoutes, bp), false);
+			BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, index.PageRoutes, bp), false);
+
+		string firstNavRoute = index.FirstSidebarRouteOtherThan(page.Route);
+		so.SetValue("first_nav_route", firstNavRoute.Length > 0 ? PrefixRoute(firstNavRoute, bp) : "", false);
 
 		#endregion
 
@@ -304,12 +413,15 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			var versionsArray = new ScriptArray();
 			foreach (DocVersion v in ctx.Versions)
 			{
+				bool isCurrent = ctx.CurrentVersion is { } current && current.Slug == v.Slug;
 				versionsArray.Add(new ScriptObject
 				{
 					{ "label", v.Label },
 					{ "slug", v.Slug },
 					{ "is_default", v.IsDefault },
-					{ "is_prerelease", v.IsPrerelease }
+					{ "is_prerelease", v.IsPrerelease },
+					{ "is_current", isCurrent },
+					{ "url", VersionUrl(v, isCurrent, page.Route, bp) }
 				});
 			}
 
@@ -336,39 +448,39 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		#region Prev/Next Page Navigation
 
-		var orderedPages = ctx.AllPages
-			.Where(p => p.FrontMatter.Visibility == PageVisibility.Public && p.FrontMatter.Layout == "default")
-			.OrderBy(p => p.FrontMatter.Order)
-			.ThenBy(p => p.Route, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-
-		int currentIndex = orderedPages.FindIndex(p => p.Route == page.Route);
-		if (currentIndex >= 0)
+		(PageLink? previous, PageLink? next) = index.Neighbors(page.Route);
+		if (previous is not null)
 		{
-			if (currentIndex > 0)
-			{
-				DocPage prev = orderedPages[currentIndex - 1];
-				so.SetValue("prev_page", new ScriptObject
-				{
-					{ "title", prev.FrontMatter.Title },
-					{ "route", PrefixRoute(prev.Route, bp) }
-				}, false);
-			}
+			so.SetValue("prev_page",
+				new ScriptObject { { "title", previous.Title }, { "route", PrefixRoute(previous.Route, bp) } }, false);
+		}
 
-			if (currentIndex < orderedPages.Count - 1)
-			{
-				DocPage next = orderedPages[currentIndex + 1];
-				so.SetValue("next_page", new ScriptObject
-				{
-					{ "title", next.FrontMatter.Title },
-					{ "route", PrefixRoute(next.Route, bp) }
-				}, false);
-			}
+		if (next is not null)
+		{
+			so.SetValue("next_page",
+				new ScriptObject { { "title", next.Title }, { "route", PrefixRoute(next.Route, bp) } }, false);
 		}
 
 		#endregion
 
 		return so;
+	}
+
+	/// <summary>
+	///     Where a version dropdown entry links from this page: the page itself for the current version,
+	///     the same page in another version when that version has it, else that version's home page.
+	/// </summary>
+	private static string VersionUrl(DocVersion version, bool isCurrent, string route, string basePath)
+	{
+		if (isCurrent)
+		{
+			return PrefixRoute(route, basePath);
+		}
+
+		string sitePrefix = basePath == "/" ? "" : basePath;
+		string root = version.UrlPath ?? (version.IsDefault ? sitePrefix : sitePrefix + "/" + version.Slug);
+		string path = route.StartsWith('/') ? route : "/" + route;
+		return path != "/" && version.Routes?.Contains(route) == true ? root + path : root + "/";
 	}
 
 	/// <summary>Replaces <c>{year}</c> in the copyright notice with the current year.</summary>
@@ -427,39 +539,59 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return obj;
 	}
 
-	private static ScriptArray BuildNavObject(NavigationTree? nav, string activeRoute, HashSet<string> pageRoutes,
-		string basePath)
+	/// <summary>
+	///     The sidebar entries for a page. With <paramref name="pathOnly" />, the shared sidebar's short
+	///     stand-in: the top-level entries and the entries along the path to the page, each other
+	///     section shown as a link to its route.
+	/// </summary>
+	private static ScriptArray BuildNavObject(NavigationTree? nav, string? activeRoute, RenderIndex index,
+		string basePath, bool pathOnly)
 	{
 		if (nav is null)
 		{
 			return [];
 		}
 
+		IReadOnlySet<NavigationNode> ancestors = index.AncestorsOf(activeRoute);
 		var arr = new ScriptArray();
 		foreach (NavigationNode node in nav.Items)
 		{
-			arr.Add(BuildNavNodeObject(node, activeRoute, pageRoutes, basePath));
+			if (BuildNavNodeObject(node, activeRoute, ancestors, index.PageRoutes, basePath, pathOnly) is { } obj)
+			{
+				arr.Add(obj);
+			}
 		}
 
 		return arr;
 	}
 
-	private static ScriptObject BuildNavNodeObject(NavigationNode node, string activeRoute, HashSet<string> pageRoutes,
-		string basePath)
+	private static ScriptObject? BuildNavNodeObject(NavigationNode node, string? activeRoute,
+		IReadOnlySet<NavigationNode> ancestors, HashSet<string> pageRoutes, string basePath, bool pathOnly)
 	{
-		bool hasActiveChild = HasActiveDescendant(node, activeRoute);
-		bool hasChildren = node.Children.Count > 0;
-		bool hasPage = !string.IsNullOrEmpty(node.Route) && pageRoutes.Contains(node.Route);
+		bool hasActiveChild = ancestors.Contains(node);
+		bool isOnRoute = activeRoute is not null && node.Route == activeRoute;
+		bool keepChildren = !pathOnly || hasActiveChild || isOnRoute;
+
+		// A section without a route of its own (an API namespace, a nav group) links to its first
+		// entry instead, so the short sidebar still leads into it without JavaScript.
+		string? route = keepChildren || !string.IsNullOrEmpty(node.Route) ? node.Route : FirstRoute(node.Children);
+		if (!keepChildren && node.Children.Count > 0 && string.IsNullOrEmpty(route))
+		{
+			return null;
+		}
+
+		bool hasChildren = keepChildren && node.Children.Count > 0;
+		bool hasPage = !string.IsNullOrEmpty(route) && pageRoutes.Contains(route);
 
 		// A node is "active" only if its route matches AND it doesn't have an active child.
 		// This prevents parent sections from showing as "current" when their route was
 		// resolved to a child's route (e.g. /guide → /guide/getting-started).
-		bool isActive = node.Route == activeRoute && !hasActiveChild;
+		bool isActive = isOnRoute && !hasActiveChild;
 
 		var obj = new ScriptObject
 		{
 			{ "label", node.Label },
-			{ "route", !string.IsNullOrEmpty(node.Route) ? PrefixRoute(node.Route, basePath) : "" },
+			{ "route", !string.IsNullOrEmpty(route) ? PrefixRoute(route, basePath) : "" },
 			{ "icon", ResolveIcon(node.Icon) },
 			{ "expanded", node.Expanded || hasActiveChild },
 			{ "is_active", isActive },
@@ -469,9 +601,15 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		};
 
 		var children = new ScriptArray();
-		foreach (NavigationNode child in node.Children)
+		if (keepChildren)
 		{
-			children.Add(BuildNavNodeObject(child, activeRoute, pageRoutes, basePath));
+			foreach (NavigationNode child in node.Children)
+			{
+				if (BuildNavNodeObject(child, activeRoute, ancestors, pageRoutes, basePath, pathOnly) is { } childObj)
+				{
+					children.Add(childObj);
+				}
+			}
 		}
 
 		obj.SetValue("children", children, false);
@@ -479,22 +617,22 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return obj;
 	}
 
-	private static bool HasActiveDescendant(NavigationNode node, string activeRoute)
+	private static string? FirstRoute(List<NavigationNode> nodes)
 	{
-		foreach (NavigationNode child in node.Children)
+		foreach (NavigationNode node in nodes)
 		{
-			if (child.Route == activeRoute)
+			if (!string.IsNullOrEmpty(node.Route))
 			{
-				return true;
+				return node.Route;
 			}
 
-			if (HasActiveDescendant(child, activeRoute))
+			if (FirstRoute(node.Children) is { } route)
 			{
-				return true;
+				return route;
 			}
 		}
 
-		return false;
+		return null;
 	}
 
 	/// <summary>
@@ -523,6 +661,51 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 				{ "icon", icon },
 				{ "icon_svg", icon.Length > 0 ? LucideIcons.Get(icon) ?? "" : "" },
 				{ "link", link }
+			});
+		}
+
+		return arr;
+	}
+
+	/// <summary>
+	///     The blog for every page: whether there is one, its title and index route, and the feeds
+	///     the head links with <c>rel="alternate"</c>. Feed URLs are already absolute.
+	/// </summary>
+	private static ScriptObject BuildBlogObject(BlogSite? blog, string basePath)
+	{
+		var feeds = new ScriptArray();
+		foreach (BlogFeed feed in blog?.Feeds ?? [])
+		{
+			feeds.Add(new ScriptObject
+			{
+				{ "format", feed.Format },
+				{ "type", feed.MediaType },
+				{ "title", feed.Title },
+				{ "url", feed.Url }
+			});
+		}
+
+		return new ScriptObject
+		{
+			{ "enabled", blog is not null },
+			{ "title", blog?.Title ?? "" },
+			{ "route", blog is null ? "" : PrefixRoute(blog.Route, basePath) },
+			{ "feeds", feeds }
+		};
+	}
+
+	// The email stays out of the template data: the theme has no use for it, and a page shouldn't
+	// publish an address because a template printed the whole object.
+	private static ScriptArray BuildContributors(IReadOnlyList<PageContributor> contributors)
+	{
+		var arr = new ScriptArray();
+		foreach (PageContributor contributor in contributors)
+		{
+			arr.Add(new ScriptObject
+			{
+				{ "name", contributor.Name },
+				{ "initials", contributor.Initials },
+				{ "commits", contributor.Commits }
 			});
 		}
 
@@ -654,6 +837,8 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 /// </summary>
 public sealed class ThemeRenderContext
 {
+	private RenderIndex? _index;
+
 	/// <summary>Site configuration.</summary>
 	public required SiteConfig Config { get; init; }
 
@@ -672,7 +857,12 @@ public sealed class ThemeRenderContext
 	/// <summary>JS file paths relative to output root.</summary>
 	public List<string> JsFiles { get; init; } = [];
 
-	/// <summary>All pages in the site, used for prev/next navigation.</summary>
+	/// <summary>
+	///     All pages in the site, used for prev/next navigation. The page routes, sidebar order and
+	///     prev/next links derived from this list and <see cref="Navigation" /> are computed when
+	///     the first page renders and reused for every page rendered with this context, so a page
+	///     added to the list or a route changed afterwards needs a new context.
+	/// </summary>
 	public IReadOnlyList<DocPage> AllPages { get; init; } = [];
 
 	/// <summary>All configured documentation versions.</summary>
@@ -691,6 +881,23 @@ public sealed class ThemeRenderContext
 	///     <c>null</c> leaves every configured URL in place.
 	/// </summary>
 	public IReadOnlyDictionary<string, string>? BrandAssetFiles { get; init; }
+
+	/// <summary>
+	///     The blog (<see cref="BuildContext.Blog" />), or <c>null</c> without one. Its posts link to
+	///     the next newer and older posts as their previous and next page, and its feeds are linked
+	///     from every page's head.
+	/// </summary>
+	public BlogSite? Blog { get; init; }
+
+	/// <summary>
+	///     The site-relative URL of the shared sidebar script, such as
+	///     <c>/_theme/js/sidebar.js?v=0123456789</c>, or <c>null</c> when every page holds the whole
+	///     sidebar. When set, pages get the URL as <c>sidebar_script</c> and a <c>nav</c> with only
+	///     the top-level entries and the entries along the path to the page.
+	/// </summary>
+	public string? SidebarScriptUrl { get; init; }
+
+	internal RenderIndex Index => _index ??= new RenderIndex(AllPages, Navigation, Blog);
 
 	/// <summary>Gets a template by layout name.</summary>
 	public string? GetTemplate(string layoutName) => Templates.GetValueOrDefault(layoutName);

@@ -267,4 +267,70 @@ public sealed class InheritDocResolverTests
 	}
 
 	#endregion
+
+	#region Reflection host names
+
+	private static ApiType Generic(string fullName, string name, string memberDoc, params string[] typeParameters) => new()
+	{
+		Name = name,
+		FullName = fullName,
+		Namespace = "Lib",
+		Kind = ApiTypeKind.Class,
+		TypeParameters = typeParameters.Select(tp => new ApiTypeParameter { Name = tp }).ToList(),
+		Members =
+		[
+			new ApiMember
+			{
+				Name = "Execute",
+				Kind = ApiMemberKind.Method,
+				Signature = "Task Execute()",
+				Documentation = new XmlDocBlock { Summary = memberDoc }
+			}
+		]
+	};
+
+	private static string ResolvedSummary(ApiReference model) =>
+		model.Namespaces.SelectMany(n => n.Types).Single(t => t.Name == "Phase").Members[0].Documentation!.Summary;
+
+	[Theory]
+	[InlineData("Lib.Base<T>", "Lib.Base<int>")] // the CLI
+	[InlineData("Lib.Base", "Lib.Base<int>")] // the reflection host leaves type parameters out of the full name
+	public void Resolve_QualifiedGenericBase_InheritsMemberDoc(string baseFullName, string reference)
+	{
+		ApiReference resolved = _resolver.Resolve(Model(
+			Generic(baseFullName, "Base", "Runs the base.", "T"),
+			Implementation(reference) with { FullName = "Lib.Phase", Namespace = "Lib" }));
+
+		ResolvedSummary(resolved).Should().Be("Runs the base.");
+	}
+
+	[Theory]
+	[InlineData("Lib.Outer<T>", "Lib.Outer<T>.Inner", new string[0])] // the CLI
+	[InlineData("Lib.Outer", "Lib.Outer.Inner", new[] { "T" })] // the host lists the containing type's T on Inner too
+	public void Resolve_NestedTypeOfAGenericType_InheritsMemberDoc(string outerFullName, string innerFullName,
+		string[] innerTypeParameters)
+	{
+		ApiReference resolved = _resolver.Resolve(Model(
+			Generic(outerFullName, "Outer", "Runs the outer type.", "T"),
+			Generic(innerFullName, "Inner", "Runs the inner type.", innerTypeParameters),
+			Implementation("Lib.Outer<int>.Inner") with { FullName = "Lib.Phase", Namespace = "Lib" }));
+
+		ResolvedSummary(resolved).Should().Be("Runs the inner type.");
+	}
+
+	[Fact]
+	public void Resolve_InheritDocCrefToAHostGenericType_FindsIt()
+	{
+		ApiType phase = Implementation("Lib.Other") with { FullName = "Lib.Phase", Namespace = "Lib" };
+		phase = phase with
+		{
+			Members = [phase.Members[0] with { Documentation = new XmlDocBlock { HasInheritDocTag = true, InheritDocCref = "M:Lib.Base`1.Execute" } }]
+		};
+
+		ApiReference resolved = _resolver.Resolve(Model(Generic("Lib.Base", "Base", "Runs the base.", "T"), phase));
+
+		ResolvedSummary(resolved).Should().Be("Runs the base.");
+	}
+
+	#endregion
 }
