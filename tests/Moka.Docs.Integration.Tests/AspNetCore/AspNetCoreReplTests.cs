@@ -257,13 +257,31 @@ public sealed class AspNetCoreReplTests : IDisposable
 		MokaDocsReplWorker.IsEntryPointWired.Should().BeTrue();
 	}
 
+	// Environment.ProcessPath is a native path. Only Windows splits "C:\apps\x.exe" into a folder and
+	// a file name; "/" separates on every OS.
+	public static TheoryData<string, string?, string, bool> WorkerStartInfoCases()
+	{
+		var cases = new TheoryData<string, string?, string, bool>
+		{
+			{ "/usr/share/dotnet/dotnet", null, "/usr/share/dotnet/dotnet", true },
+			{ "/apps/shop/Contoso.Shop", null, "/apps/shop/Contoso.Shop", false },
+			{ "/opt/tests/testhost", "/usr/share/dotnet/dotnet", "/usr/share/dotnet/dotnet", true },
+			{ "/opt/tests/testhost", null, "dotnet", true }
+		};
+
+		if (OperatingSystem.IsWindows())
+		{
+			cases.Add(@"C:\Program Files\dotnet\dotnet.exe", null, @"C:\Program Files\dotnet\dotnet.exe", true);
+			cases.Add(@"C:\apps\shop\Contoso.Shop.exe", null, @"C:\apps\shop\Contoso.Shop.exe", false);
+			cases.Add(@"C:\Windows\System32\inetsrv\w3wp.exe", @"C:\dotnet\dotnet.exe", @"C:\dotnet\dotnet.exe", true);
+			cases.Add(@"C:\Windows\System32\inetsrv\w3wp.exe", null, "dotnet", true);
+		}
+
+		return cases;
+	}
+
 	[Theory]
-	[InlineData(@"C:\Program Files\dotnet\dotnet.exe", null, @"C:\Program Files\dotnet\dotnet.exe", true)]
-	[InlineData("/usr/share/dotnet/dotnet", null, "/usr/share/dotnet/dotnet", true)]
-	[InlineData(@"C:\apps\shop\Contoso.Shop.exe", null, @"C:\apps\shop\Contoso.Shop.exe", false)]
-	[InlineData("/apps/shop/Contoso.Shop", null, "/apps/shop/Contoso.Shop", false)]
-	[InlineData(@"C:\Windows\System32\inetsrv\w3wp.exe", @"C:\dotnet\dotnet.exe", @"C:\dotnet\dotnet.exe", true)]
-	[InlineData(@"C:\Windows\System32\inetsrv\w3wp.exe", null, "dotnet", true)]
+	[MemberData(nameof(WorkerStartInfoCases))]
 	public void WorkerStartInfo_StartsThisAppAgain(string processPath, string? dotnetHostPath, string fileName,
 		bool passesTheAssembly)
 	{
