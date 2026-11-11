@@ -50,7 +50,7 @@ features:
   versioning:
     enabled: true
     versions:
-      - label: "v1.7"
+      - label: "v1.8"
         default: true
 
 plugins:
