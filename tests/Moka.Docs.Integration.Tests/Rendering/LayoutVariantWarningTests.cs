@@ -36,7 +36,8 @@ public sealed class LayoutVariantWarningTests
 
 		Diagnostic warning = RenderDiagnostics(context).Should().ContainSingle("three pages render, one warning").Subject;
 		warning.Severity.Should().Be(DiagnosticSeverity.Warning);
-		warning.Message.Should().Be("Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide; using 'default'");
+		warning.Message.Should().Be(
+			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent; using 'default'");
 	}
 
 	[Fact]
@@ -48,19 +49,43 @@ public sealed class LayoutVariantWarningTests
 			Navbar = "tbs",
 			Footer = "fat",
 			Toc = "side",
-			Breadcrumbs = "arrows",
-			PageNav = "cards"
+			Breadcrumbs = "slashes",
+			PageNav = "cards",
+			Sidebar = "tree",
+			SidebarScope = "page",
+			Home = "landing",
+			Hero = "big",
+			HeroBackground = "stripes",
+			Features = "grid",
+			Admonitions = "boxed",
+			Tables = "zebra",
+			Density = "cozy",
+			Font = "comic",
+			Headings = "boxed",
+			Links = "bold"
 		};
 
 		(BuildContext context, _) = await MockSite.BuildAsync(Config(layout), Files(), dryRun: true);
 
 		RenderDiagnostics(context).Select(d => d.Message).Should().Equal(
-			"Layout width 'huge' is not one of default, wide, full, boxed; using 'default'",
-			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide; using 'default'",
-			"Layout footer 'fat' is not one of default, minimal, columns, none; using 'default'",
-			"Layout toc 'side' is not one of default, minimal, inline, floating; using 'default'",
-			"Layout breadcrumbs 'arrows' is not one of default, chevrons, pills, path, back; using 'default'",
-			"Layout pageNav 'cards' is not one of default, minimal, stacked; using 'default'");
+			"Layout width 'huge' is not one of default, wide, wider, full, boxed, narrow; using 'default'",
+			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent; using 'default'",
+			"Layout footer 'fat' is not one of default, minimal, columns, none, centered, compact; using 'default'",
+			"Layout toc 'side' is not one of default, minimal, inline, floating, numbered, timeline, bordered; using 'default'",
+			"Layout breadcrumbs 'slashes' is not one of default, chevrons, pills, path, back, arrows, dots; using 'default'",
+			"Layout pageNav 'cards' is not one of default, minimal, stacked, split, compact; using 'default'",
+			"Layout sidebar 'tree' is not one of default, lines, pills, compact, accent, cards, minimal; using 'default'",
+			"Layout sidebarScope 'page' is not one of default, section; using 'default'",
+			"Layout home 'landing' is not one of default, portal, showcase, minimal, docs; using 'default'",
+			"Layout hero 'big' is not one of default, split, minimal, banner; using 'default'",
+			"Layout heroBackground 'stripes' is not one of default, dots, gradient, none, mesh, lines; using 'default'",
+			"Layout features 'grid' is not one of default, list, icons, compact, bento; using 'default'",
+			"Layout admonitions 'boxed' is not one of default, filled, minimal, github, outlined, callout; using 'default'",
+			"Layout tables 'zebra' is not one of default, striped, bordered, minimal, compact, rounded; using 'default'",
+			"Layout density 'cozy' is not one of default, compact, spacious; using 'default'",
+			"Layout font 'comic' is not one of default, system, serif, mono, rounded, humanist; using 'default'",
+			"Layout headings 'boxed' is not one of default, underlined, accent, numbered; using 'default'",
+			"Layout links 'bold' is not one of default, underlined, subtle; using 'default'");
 		context.Diagnostics.All.Should().NotContain(d => d.Severity == DiagnosticSeverity.Error);
 	}
 
@@ -74,7 +99,19 @@ public sealed class LayoutVariantWarningTests
 			Footer = "none",
 			Toc = "Floating",
 			Breadcrumbs = "back",
-			PageNav = "stacked"
+			PageNav = "stacked",
+			Sidebar = "Pills",
+			SidebarScope = "section",
+			Home = " Portal ",
+			Hero = " split ",
+			HeroBackground = "NONE",
+			Features = "BENTO",
+			Admonitions = "github",
+			Tables = "minimal",
+			Density = "spacious",
+			Font = "Serif",
+			Headings = " Numbered ",
+			Links = "SUBTLE"
 		};
 
 		(BuildContext context, _) = await MockSite.BuildAsync(Config(layout), Files(), dryRun: true);

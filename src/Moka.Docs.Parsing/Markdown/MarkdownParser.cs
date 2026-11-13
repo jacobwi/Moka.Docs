@@ -52,8 +52,26 @@ public sealed class MarkdownParser
 	///     are rewritten to site-root links; see <see cref="RelativeLinks" />.
 	/// </param>
 	/// <returns>The fully parsed result.</returns>
-	public MarkdownParseResult Parse(string markdown, string? sourcePath)
+	public MarkdownParseResult Parse(string markdown, string? sourcePath) => Parse(markdown, sourcePath, ContentReferences.None);
+
+	/// <summary>
+	///     Parses a Markdown file into structured content, resolving its relative links and what it refers to
+	///     outside itself: <c>xref:</c> links, glossary terms and package versions.
+	/// </summary>
+	/// <param name="markdown">The raw Markdown content (may include YAML front matter).</param>
+	/// <param name="sourcePath">
+	///     The file's path relative to the docs folder, or <c>null</c>. When given, relative links and images
+	///     are rewritten to site-root links; see <see cref="RelativeLinks" />.
+	/// </param>
+	/// <param name="references">
+	///     The API types, glossary and package versions the page can refer to. An <c>xref:</c> or a term that
+	///     isn't in them is a warning in <see cref="MarkdownParseResult.Warnings" />, with its line.
+	/// </param>
+	/// <returns>The fully parsed result.</returns>
+	public MarkdownParseResult Parse(string markdown, string? sourcePath, ContentReferences references)
 	{
+		ArgumentNullException.ThrowIfNull(references);
+
 		// Step 1: Extract front matter
 		FrontMatterResult fmResult = _frontMatterExtractor.Extract(markdown);
 
@@ -65,8 +83,11 @@ public sealed class MarkdownParser
 			GroupIds.ScopeToPage(document, sourcePath);
 		}
 
+		ContentResolution.Apply(document, references);
+		ContentText.Attach(document, references.Text);
+
 		// Step 3: Generate ToC
-		TableOfContents toc = _tocGenerator.Generate(document);
+		TableOfContents toc = _tocGenerator.Generate(document, fmResult.FrontMatter.Title);
 
 		// Step 4: Render HTML
 		using var writer = new StringWriter();
@@ -83,14 +104,161 @@ public sealed class MarkdownParser
 		{
 			FrontMatter = fmResult.FrontMatter,
 			FrontMatterError = fmResult.Error,
-			Warnings = fmResult.Warnings,
+			Warnings = [.. fmResult.Warnings, .. BodyWarnings(markdown, fmResult.Body, document)],
 			Html = html,
 			PlainText = plainText,
 			TableOfContents = toc
 		};
 	}
 
+	/// <summary>
+	///     A page's Markdown for a reader outside the site: the body without its front matter, under
+	///     an <c>h1</c> with <paramref name="title" /> when it doesn't start with one, and with each
+	///     Markdown link and image that is relative to the file or to the site root pointing at
+	///     <paramref name="siteRoot" /> instead. Everything else stays as written, MokaDocs blocks,
+	///     includes and raw HTML too.
+	/// </summary>
+	/// <param name="markdown">The file's content, front matter included.</param>
+	/// <param name="sourcePath">The file's path relative to the docs folder.</param>
+	/// <param name="title">The page title.</param>
+	/// <param name="siteRoot">
+	///     What a link from the site root gets in front of it: the site's URL with its base path, such
+	///     as <c>https://example.com/docs</c>, else the base path alone, or an empty string.
+	/// </param>
+	/// <returns>The Markdown, with <c>\n</c> line endings.</returns>
+	public string ToStandaloneMarkdown(string markdown, string sourcePath, string title, string siteRoot) =>
+		ToStandaloneMarkdown(markdown, sourcePath, title, siteRoot, null);
+
+	/// <summary>
+	///     A page's Markdown for a reader outside the site, as
+	///     <see cref="ToStandaloneMarkdown(string, string, string, string)" /> makes it, with each <c>xref:</c>
+	///     link that <paramref name="resolveXref" /> resolves pointing at the API page instead:
+	///     <c>[text](xref:Ns.Type)</c> keeps its text and <c>&lt;xref:Ns.Type&gt;</c> becomes a link named after
+	///     the type. References that don't resolve stay as written.
+	/// </summary>
+	/// <param name="markdown">The file's content, front matter included.</param>
+	/// <param name="sourcePath">The file's path relative to the docs folder.</param>
+	/// <param name="title">The page title.</param>
+	/// <param name="siteRoot">What a link from the site root gets in front of it.</param>
+	/// <param name="resolveXref">Resolves an <c>xref:</c> reference, or <c>null</c> to leave them all as written.</param>
+	/// <returns>The Markdown, with <c>\n</c> line endings.</returns>
+	public string ToStandaloneMarkdown(string markdown, string sourcePath, string title, string siteRoot,
+		Func<string, XrefTarget?>? resolveXref)
+	{
+		string body = _frontMatterExtractor.Extract(markdown).Body;
+		MarkdownDocument document = Markdig.Markdown.Parse(body, _pipeline);
+
+		var edits = new List<(int Start, int Length, string Url)>();
+		foreach (LinkInline link in document.Descendants<LinkInline>())
+		{
+			if (!link.IsAutoLink && link.Reference is null && link.UrlSpan is { IsEmpty: false } span)
+			{
+				if (ContentResolution.IsXref(link.Url))
+				{
+					AddXrefEdit(edits, body, span, link.Url!, siteRoot, resolveXref, false);
+					continue;
+				}
+
+				AddLinkEdit(edits, body, span, link.Url, sourcePath, siteRoot);
+			}
+		}
+
+		foreach (LinkReferenceDefinition definition in document.Descendants<LinkReferenceDefinition>())
+		{
+			if (definition.UrlSpan is { IsEmpty: false } span)
+			{
+				if (ContentResolution.IsXref(definition.Url))
+				{
+					AddXrefEdit(edits, body, span, definition.Url!, siteRoot, resolveXref, false);
+					continue;
+				}
+
+				AddLinkEdit(edits, body, span, definition.Url, sourcePath, siteRoot);
+			}
+		}
+
+		foreach (AutolinkInline autolink in document.Descendants<AutolinkInline>())
+		{
+			if (!autolink.IsEmail && ContentResolution.IsXref(autolink.Url) && !autolink.Span.IsEmpty)
+			{
+				AddXrefEdit(edits, body, autolink.Span, autolink.Url, siteRoot, resolveXref, true);
+			}
+		}
+
+		// A video file next to the page plays from the site, like an image.
+		foreach (VideoBlock video in document.Descendants<VideoBlock>())
+		{
+			if (!video.UrlSpan.IsEmpty)
+			{
+				AddLinkEdit(edits, body, video.UrlSpan, video.Url, sourcePath, siteRoot);
+			}
+		}
+
+		var sb = new StringBuilder(body);
+		foreach ((int start, int length, string url) in edits.OrderByDescending(e => e.Start))
+		{
+			sb.Remove(start, length).Insert(start, url);
+		}
+
+		string standalone = sb.ToString().Trim();
+		if (document.FirstOrDefault(b => b is not LinkReferenceDefinitionGroup) is not HeadingBlock { Level: 1 })
+		{
+			standalone = $"# {title}\n\n{standalone}";
+		}
+
+		return standalone.ReplaceLineEndings("\n").TrimEnd() + "\n";
+	}
+
 	#region Private Helpers
+
+	// A resolved xref: the link's URL made absolute, or an <xref:...> autolink turned into [Name](url).
+	private static void AddXrefEdit(List<(int Start, int Length, string Url)> edits, string body, SourceSpan span,
+		string url, string siteRoot, Func<string, XrefTarget?>? resolveXref, bool autolink)
+	{
+		if (resolveXref?.Invoke(ContentResolution.Reference(url)) is not { } target || span.End >= body.Length)
+		{
+			return;
+		}
+
+		string absolute = target.Url.StartsWith('/') ? siteRoot + target.Url : target.Url;
+		string text = target.Text.Replace("\\", "\\\\").Replace("[", "\\[").Replace("]", "\\]");
+		edits.Add((span.Start, span.Length, autolink ? $"[{text}]({absolute})" : absolute));
+	}
+
+	// Body warnings carry the line within the body; the file's line adds the front matter's lines.
+	private static IEnumerable<string> BodyWarnings(string markdown, string body, MarkdownDocument document)
+	{
+		IReadOnlyList<(int Line, string Message)> warnings = MarkdownWarnings.Of(document);
+		if (warnings.Count == 0)
+		{
+			return [];
+		}
+
+		int bodyStart = Math.Max(0, markdown.Length - body.Length);
+		int offset = markdown.AsSpan(0, bodyStart).Count('\n');
+		return warnings.OrderBy(w => w.Line).Select(w => $"{w.Message} (line {offset + w.Line + 1})");
+	}
+
+	private static void AddLinkEdit(List<(int Start, int Length, string Url)> edits, string body, SourceSpan span,
+		string? url, string sourcePath, string siteRoot)
+	{
+		if (string.IsNullOrEmpty(url) || span.End >= body.Length)
+		{
+			return;
+		}
+
+		string? fromRoot = url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal)
+			? url
+			: RelativeLinks.ToRootRelative(url, sourcePath);
+		if (fromRoot is null)
+		{
+			return;
+		}
+
+		bool bracketed = body[span.Start] == '<';
+		string absolute = siteRoot + fromRoot;
+		edits.Add((span.Start, span.Length, bracketed ? $"<{absolute}>" : absolute));
+	}
 
 	private static MarkdownPipeline BuildPipeline(MarkdownParserOptions options)
 	{
@@ -125,6 +293,10 @@ public sealed class MarkdownParser
 		// Markdig only adds an extension once, so it never applied. Switching to GitHub-style ids
 		// now would change the anchors of existing pages.
 
+		// Highlighted code blocks with fence options. Mermaid, Blazor preview and REPL wrap its
+		// renderer, so it comes first.
+		builder.Extensions.AddIfNotAlready<CodeBlockExtension>();
+
 		// Mermaid diagram support - renders ```mermaid blocks as <pre class="mermaid">
 		builder.Extensions.AddIfNotAlready<MermaidExtension>();
 
@@ -150,17 +322,39 @@ public sealed class MarkdownParser
 			{
 				ParagraphBlock paragraph => paragraph.Inline,
 				HeadingBlock heading => heading.Inline,
+				ComponentLabelBlock label => label.Inline,
 				_ => null
 			};
 
 			if (inline is not null)
 			{
-				InlineText.Append(sb, inline);
+				InlineText.Append(sb, inline, true);
 				sb.AppendLine();
+				continue;
+			}
+
+			string? text = block switch
+			{
+				ParagraphBlock { Inline: null, ProcessInlines: false } entry => FileTreeText(entry),
+				PackageBlock { PackageId.Length: > 0 } package => package.PackageId,
+				GlossaryBlock glossary => string.Join(Environment.NewLine, glossary.Terms.Select(t => $"{t.Key} {t.Value}")),
+				VideoBlock { Title: { } title } => title,
+				_ => null
+			};
+
+			if (!string.IsNullOrEmpty(text))
+			{
+				sb.AppendLine(text);
 			}
 		}
 
 		return sb.ToString().Trim();
+	}
+
+	private static string FileTreeText(ParagraphBlock entry)
+	{
+		FileTreeEntry parsed = FileTreeEntry.Parse(FileTreeEntry.RawText(entry));
+		return $"{parsed.Name} {parsed.Comment}".Trim();
 	}
 
 	#endregion

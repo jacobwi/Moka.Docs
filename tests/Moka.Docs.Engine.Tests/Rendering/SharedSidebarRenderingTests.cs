@@ -71,8 +71,9 @@ public sealed class SharedSidebarRenderingTests
 	private static string Sidebar(string html) =>
 		Regex.Match(html, "<aside class=\"sidebar\".*?</aside>", RegexOptions.Singleline).Value;
 
+	// Links only: the icons' <use href> point into the sprite.
 	private static List<string> Links(string html) =>
-		Regex.Matches(html, "href=\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToList();
+		Regex.Matches(html, "<a [^>]*?href=\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToList();
 
 	private string Render(string route, ThemeRenderContext context) =>
 		_engine.RenderPage(_pages.Single(p => p.Route == route), context, TestContext.Current.CancellationToken);
@@ -86,7 +87,7 @@ public sealed class SharedSidebarRenderingTests
 		// leads nowhere and is left out.
 		Links(sidebar).Should().Equal(
 			"/guide", "/guide/intro", "/guide/advanced", "/guide/advanced/caching", "/reference", "/api/contoso/canvas", "/");
-		sidebar.Should().Contain("<a class=\"nav-link current\" href=\"/guide/advanced/caching\">Caching</a>");
+		sidebar.Should().Contain("<a class=\"nav-link current\" href=\"/guide/advanced/caching\" aria-current=\"page\">Caching</a>");
 		sidebar.Should().NotContain("Empty group");
 		sidebar.Should().Contain("data-nav-route=\"/guide/advanced/caching\"");
 		sidebar.Should().Contain($"<script src=\"{_script}\"></script></aside>");
@@ -109,7 +110,7 @@ public sealed class SharedSidebarRenderingTests
 		Links(sidebar).Should().Equal("/guide", "/guide/intro", "/guide/advanced", "/guide/advanced/caching",
 			"/reference/cli", "/reference/config", "/api/contoso/canvas", "", "/");
 		sidebar.Should().NotContain("<script").And.NotContain("data-nav-route");
-		sidebar.Should().StartWith("<aside class=\"sidebar\" id=\"sidebar\">");
+		sidebar.Should().StartWith("<aside class=\"sidebar\" id=\"mokadocs-sidebar\">");
 	}
 
 	[Fact]

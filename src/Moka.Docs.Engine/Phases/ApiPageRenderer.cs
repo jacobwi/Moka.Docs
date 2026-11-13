@@ -106,6 +106,11 @@ public static partial class ApiPageRenderer
 
 		#region Type Header with Badge
 
+		// The page's title, which the layout doesn't write: type pages had no h1 at all. It has no id, so
+		// it adds no anchor and the table of contents starts at the member sections.
+		ApiTypeRoutes routes = ApiTypeRoutes.For(allTypes ?? [type]);
+		sb.AppendLine($"<h1 class=\"api-type-title\">{Esc(routes.DisplayName(type))}</h1>");
+
 		string kindBadge = type.Kind.ToString().ToLowerInvariant();
 		sb.AppendLine("<div class=\"api-type-header\">");
 		sb.AppendLine($"<span class=\"api-badge api-badge-{kindBadge}\">{type.Kind}</span>");
@@ -134,9 +139,10 @@ public static partial class ApiPageRenderer
 		#endregion
 
 		// Signature
+		string language = CodeLanguage(type);
 		string declaration = WithAttributes(type.Attributes, IsPython(type), type.IsObsolete,
 			type.Signature ?? BuildTypeSignature(type));
-		sb.AppendLine($"<pre class=\"api-signature\"><code class=\"language-csharp\">{Esc(declaration)}</code></pre>");
+		sb.AppendLine($"<pre class=\"api-signature\"><code class=\"language-{language}\">{Esc(declaration)}</code></pre>");
 
 		// Namespace
 		if (!string.IsNullOrEmpty(type.Namespace))
@@ -265,7 +271,7 @@ public static partial class ApiPageRenderer
 				"<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"16 18 22 12 16 6\"/><polyline points=\"8 6 2 12 8 18\"/></svg>");
 			sb.AppendLine("View Source");
 			sb.AppendLine("</summary>");
-			sb.AppendLine($"<pre><code class=\"language-csharp\">{Esc(type.SourceCode)}</code></pre>");
+			sb.AppendLine($"<pre><code class=\"language-{language}\">{Esc(type.SourceCode)}</code></pre>");
 			sb.AppendLine("</details>");
 		}
 
@@ -308,6 +314,7 @@ public static partial class ApiPageRenderer
 	{
 		IReadOnlyDictionary<ApiMember, string> anchors = links.GetAnchors(parentType);
 		bool python = IsPython(parentType);
+		string language = CodeLanguage(parentType);
 
 		sb.AppendLine(
 			"<div class=\"table-responsive\"><table class=\"api-member-table\"><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>");
@@ -373,7 +380,7 @@ public static partial class ApiPageRenderer
 			sb.AppendLine($"<h3 id=\"{Esc(anchor)}\">{Esc(MemberTitle(member, parentType, false))}</h3>");
 
 			string signature = WithAttributes(member.Attributes, python, member.IsObsolete, member.Signature);
-			sb.AppendLine($"<pre class=\"api-signature\"><code class=\"language-csharp\">{Esc(signature)}</code></pre>");
+			sb.AppendLine($"<pre class=\"api-signature\"><code class=\"language-{language}\">{Esc(signature)}</code></pre>");
 
 			if (member.IsObsolete)
 			{
@@ -598,6 +605,9 @@ public static partial class ApiPageRenderer
 	internal static bool IsPython(ApiType type) =>
 		type.SourcePath?.EndsWith(".py", StringComparison.OrdinalIgnoreCase) == true;
 
+	/// <summary>The language of a type's declarations and source, for their <c>language-*</c> class.</summary>
+	private static string CodeLanguage(ApiType type) => IsPython(type) ? "python" : "csharp";
+
 	/// <summary>
 	///     The name a member is shown under: <c>operator +</c> rather than <c>op_Addition</c>,
 	///     <c>this[]</c> for an indexer and the type name for a constructor.
@@ -716,6 +726,11 @@ public static partial class ApiPageRenderer
 
 	private static string BuildTypeSignature(ApiType type)
 	{
+		if (IsPython(type))
+		{
+			return BuildPythonTypeSignature(type);
+		}
+
 		var sb = new StringBuilder();
 
 		sb.Append(type.Accessibility switch
@@ -772,6 +787,21 @@ public static partial class ApiPageRenderer
 		}
 
 		return sb.ToString();
+	}
+
+	/// <summary>
+	///     A Python type's declaration: <c>class Name(Base, Mixin):</c>, or <c>import package.module</c>
+	///     for the page of a module's functions. The analyzer gives types no signature of their own.
+	/// </summary>
+	private static string BuildPythonTypeSignature(ApiType type)
+	{
+		if (type.Attributes.Any(a => a.Name == "module"))
+		{
+			return $"import {type.FullName}";
+		}
+
+		List<string> bases = type.BaseType is { } baseType ? [baseType, .. type.ImplementedInterfaces] : type.ImplementedInterfaces;
+		return bases.Count == 0 ? $"class {type.Name}:" : $"class {type.Name}({string.Join(", ", bases)}):";
 	}
 
 	/// <summary>

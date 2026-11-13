@@ -19,7 +19,10 @@ public sealed class AspNetCoreLayoutOptionsTests
 		new[]
 			{
 				options.Layout.Width, options.Layout.Navbar, options.Layout.Footer, options.Layout.Toc,
-				options.Layout.Breadcrumbs, options.Layout.PageNav
+				options.Layout.Breadcrumbs, options.Layout.PageNav, options.Layout.Sidebar, options.Layout.SidebarScope,
+				options.Layout.Home, options.Layout.Hero, options.Layout.HeroBackground, options.Layout.Features,
+				options.Layout.Admonitions, options.Layout.Tables, options.Layout.Density, options.Layout.Font,
+				options.Layout.Headings, options.Layout.Links
 			}
 			.Should().AllBe("default");
 	}
@@ -36,7 +39,19 @@ public sealed class AspNetCoreLayoutOptionsTests
 				Footer = "none",
 				Toc = "inline",
 				Breadcrumbs = "path",
-				PageNav = "stacked"
+				PageNav = "stacked",
+				Sidebar = "lines",
+				SidebarScope = "Section",
+				Home = "Docs",
+				Hero = "split",
+				HeroBackground = "dots",
+				Features = "list",
+				Admonitions = "filled",
+				Tables = "striped",
+				Density = "compact",
+				Font = "system",
+				Headings = "Accent",
+				Links = "underlined"
 			}
 		};
 
@@ -47,8 +62,27 @@ public sealed class AspNetCoreLayoutOptionsTests
 			Footer = "none",
 			Toc = "inline",
 			Breadcrumbs = "path",
-			PageNav = "stacked"
+			PageNav = "stacked",
+			Sidebar = "lines",
+			SidebarScope = "Section",
+			Home = "Docs",
+			Hero = "split",
+			HeroBackground = "dots",
+			Features = "list",
+			Admonitions = "filled",
+			Tables = "striped",
+			Density = "compact",
+			Font = "system",
+			Headings = "Accent",
+			Links = "underlined"
 		});
+	}
+
+	[Fact]
+	public void SidebarToggle_IsOffByDefaultAndReachesTheSiteConfig()
+	{
+		SiteConfigFactory.Create(new MokaDocsOptions()).Theme.Options.SidebarToggle.Should().BeFalse();
+		SiteConfigFactory.Create(new MokaDocsOptions { SidebarToggle = true }).Theme.Options.SidebarToggle.Should().BeTrue();
 	}
 
 	[Fact]
@@ -66,6 +100,6 @@ public sealed class AspNetCoreLayoutOptionsTests
 		InMemorySite site = await provider.GetRequiredService<MokaDocsService>().GetSiteAsync(TestContext.Current.CancellationToken);
 
 		site.Diagnostics.Should().ContainSingle(d => d.Source == "Render")
-			.Which.Message.Should().Be("Layout footer 'fat' is not one of default, minimal, columns, none; using 'default'");
+			.Which.Message.Should().Be("Layout footer 'fat' is not one of default, minimal, columns, none, centered, compact; using 'default'");
 	}
 }

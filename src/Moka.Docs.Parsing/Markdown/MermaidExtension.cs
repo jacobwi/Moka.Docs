@@ -23,15 +23,16 @@ public sealed class MermaidExtension : IMarkdownExtension
 	{
 		if (renderer is HtmlRenderer htmlRenderer)
 		{
-			// Replace the default CodeBlockRenderer with our wrapper that
-			// handles mermaid blocks specially and delegates everything else.
-			CodeBlockRenderer? defaultRenderer = htmlRenderer.ObjectRenderers.FindExact<CodeBlockRenderer>();
-			if (defaultRenderer != null)
+			// Wrap whichever renderer handles code blocks now (Markdig's, or CodeBlockExtension's)
+			// and delegate everything that isn't a mermaid block to it.
+			var existingRenderer =
+				htmlRenderer.ObjectRenderers.FirstOrDefault(r => r is HtmlObjectRenderer<CodeBlock>) as HtmlObjectRenderer<CodeBlock>;
+			if (existingRenderer != null)
 			{
-				htmlRenderer.ObjectRenderers.Remove(defaultRenderer);
+				htmlRenderer.ObjectRenderers.Remove(existingRenderer);
 			}
 
-			htmlRenderer.ObjectRenderers.AddIfNotAlready(new MermaidCodeBlockRenderer(defaultRenderer));
+			htmlRenderer.ObjectRenderers.AddIfNotAlready(new MermaidCodeBlockRenderer(existingRenderer));
 		}
 	}
 }
@@ -39,11 +40,11 @@ public sealed class MermaidExtension : IMarkdownExtension
 /// <summary>
 ///     Custom renderer for <see cref="CodeBlock" /> that intercepts mermaid fenced code blocks
 ///     and renders them as <c>&lt;pre class="mermaid"&gt;</c>. All other code blocks are
-///     delegated to the default <see cref="CodeBlockRenderer" />.
+///     delegated to the renderer it wraps.
 /// </summary>
-internal sealed class MermaidCodeBlockRenderer(CodeBlockRenderer? defaultRenderer) : HtmlObjectRenderer<CodeBlock>
+internal sealed class MermaidCodeBlockRenderer(HtmlObjectRenderer<CodeBlock>? defaultRenderer) : HtmlObjectRenderer<CodeBlock>
 {
-	private readonly CodeBlockRenderer? _defaultRenderer = defaultRenderer ?? new CodeBlockRenderer();
+	private readonly HtmlObjectRenderer<CodeBlock> _defaultRenderer = defaultRenderer ?? new CodeBlockRenderer();
 
 	protected override void Write(HtmlRenderer renderer, CodeBlock block)
 	{
@@ -54,7 +55,7 @@ internal sealed class MermaidCodeBlockRenderer(CodeBlockRenderer? defaultRendere
 		else
 			// Delegate to the default renderer for all non-mermaid code blocks
 		{
-			_defaultRenderer!.Write(renderer, block);
+			_defaultRenderer.Write(renderer, block);
 		}
 	}
 

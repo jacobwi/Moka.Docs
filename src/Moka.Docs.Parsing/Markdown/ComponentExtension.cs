@@ -11,8 +11,9 @@ using Moka.Docs.Core.Theming;
 namespace Moka.Docs.Parsing.Markdown;
 
 /// <summary>
-///     Markdig extension for UI components (card, steps, link-cards, code-group).
-///     Uses the <c>::: type{attrs}</c> syntax.
+///     Markdig extension for UI components: the <c>::: type{attrs}</c> blocks (card, steps, link-cards,
+///     code-group, details, faq, columns, file-tree, timeline, video, figure, package, glossary) and the
+///     inline <c>:badge[...]</c>, <c>:kbd[...]</c> and <c>:term[...]</c>.
 /// </summary>
 public sealed class ComponentExtension : IMarkdownExtension
 {
@@ -24,6 +25,24 @@ public sealed class ComponentExtension : IMarkdownExtension
 			// (which also handles ::: syntax but renders generic <div> elements)
 		{
 			pipeline.BlockParsers.Insert(0, new ComponentParser());
+		}
+
+		// Ahead of the emoji parser, which also opens on ':'. It declines anything that isn't one of
+		// its three names followed by '[', so :smile: still reaches it.
+		if (!pipeline.InlineParsers.Contains<ComponentInlineParser>())
+		{
+			pipeline.InlineParsers.Insert(0, new ComponentInlineParser());
+		}
+
+		// Generic attributes read the first '{' of a heading as the heading's attributes and drop the rest
+		// of the line, so "## Setup :badge[New]{variant=success} more" lost its badge's variant and the
+		// words after it. Headings start looking after the last inline component instead; a trailing
+		// {#id} still works. GenericAttributes sets the delegate in its own Setup, which runs before this
+		// one because UseAdvancedExtensions comes first.
+		if (pipeline.BlockParsers.Find<HeadingBlockParser>() is { TryParseAttributes: { } original } headings
+		    && original.Target is not HeadingAttributesAfterComponents)
+		{
+			headings.TryParseAttributes = new HeadingAttributesAfterComponents(original).TryParse;
 		}
 	}
 
@@ -50,6 +69,24 @@ public sealed class ComponentExtension : IMarkdownExtension
 			if (!htmlRenderer.ObjectRenderers.Contains<CodeGroupRenderer>())
 			{
 				htmlRenderer.ObjectRenderers.Add(new CodeGroupRenderer());
+			}
+
+			if (!htmlRenderer.ObjectRenderers.Contains<DetailsRenderer>())
+			{
+				htmlRenderer.ObjectRenderers.Add(new DetailsRenderer());
+				htmlRenderer.ObjectRenderers.Add(new FaqRenderer());
+				htmlRenderer.ObjectRenderers.Add(new ColumnsRenderer());
+				htmlRenderer.ObjectRenderers.Add(new ColumnRenderer());
+				htmlRenderer.ObjectRenderers.Add(new FileTreeRenderer());
+				htmlRenderer.ObjectRenderers.Add(new TimelineRenderer());
+				htmlRenderer.ObjectRenderers.Add(new VideoRenderer());
+				htmlRenderer.ObjectRenderers.Add(new FigureRenderer());
+				htmlRenderer.ObjectRenderers.Add(new PackageRenderer());
+				htmlRenderer.ObjectRenderers.Add(new GlossaryRenderer());
+				htmlRenderer.ObjectRenderers.Add(new ComponentLabelRenderer());
+				htmlRenderer.ObjectRenderers.Add(new BadgeRenderer());
+				htmlRenderer.ObjectRenderers.Add(new KbdRenderer());
+				htmlRenderer.ObjectRenderers.Add(new TermRenderer());
 			}
 		}
 	}
@@ -99,14 +136,18 @@ public sealed class CodeGroupBlock(BlockParser parser) : ContainerBlock(parser)
 #region Parser
 
 /// <summary>
-///     Parses <c>::: card{title="..." icon="..." variant="..."}</c>, <c>::: steps</c>,
-///     <c>::: link-cards</c>, and <c>::: code-group</c> blocks.
+///     Parses the component blocks: <c>::: card{title="..." icon="..." variant="..."}</c>, <c>::: steps</c>,
+///     <c>::: link-cards</c>, <c>::: code-group</c>, <c>::: details Summary</c>, <c>::: faq</c>,
+///     <c>::: columns</c> and <c>::: column</c>, <c>::: file-tree</c>, <c>::: timeline</c>,
+///     <c>::: video URL</c>, <c>::: figure Caption</c>, <c>::: package Name [version]</c> and
+///     <c>::: glossary</c>.
 /// </summary>
 public sealed class ComponentParser : BlockParser
 {
 	private static readonly HashSet<string> _validTypes = new(StringComparer.OrdinalIgnoreCase)
 	{
-		"card", "steps", "link-cards", "code-group"
+		"card", "steps", "link-cards", "code-group", "details", "faq", "columns", "column", "file-tree", "timeline",
+		"video", "figure", "package", "glossary"
 	};
 
 	/// <summary>Creates a parser that opens on <c>:</c>.</summary>
@@ -137,70 +178,43 @@ public sealed class ComponentParser : BlockParser
 			return BlockState.None;
 		}
 
-		line.TrimStart();
-		string remaining = line.ToString().Trim();
-
-		if (string.IsNullOrEmpty(remaining))
+		ComponentHeader? header = ComponentHeader.Parse(line);
+		if (header is null || !_validTypes.Contains(header.Name))
 		{
 			return BlockState.None;
 		}
 
-		// Parse type and optional attributes: card{title="..." icon="..."}
-		int braceIndex = remaining.IndexOf('{');
-		string typeName;
-		string? attrString = null;
-
-		if (braceIndex > 0)
-		{
-			typeName = remaining[..braceIndex].Trim();
-			int closeBrace = remaining.LastIndexOf('}');
-			if (closeBrace > braceIndex)
-			{
-				attrString = remaining[(braceIndex + 1)..closeBrace];
-			}
-		}
-		else
-		{
-			// Could have a space-separated rest (but for components we only use the type)
-			int spaceIndex = remaining.IndexOf(' ');
-			typeName = spaceIndex > 0 ? remaining[..spaceIndex] : remaining;
-		}
-
-		if (!_validTypes.Contains(typeName))
-		{
-			return BlockState.None;
-		}
-
-		Dictionary<string, string> attrs = ParseAttributes(attrString);
-
-		ContainerBlock block = typeName.ToLowerInvariant() switch
+		Dictionary<string, string> attrs = header.Attributes;
+		ContainerBlock block = header.Name.ToLowerInvariant() switch
 		{
 			"card" => new CardBlock(this)
 			{
 				Title = attrs.GetValueOrDefault("title"),
 				Icon = attrs.GetValueOrDefault("icon"),
-				Variant = attrs.GetValueOrDefault("variant", "default"),
-				Span = new SourceSpan(start, line.End),
-				Column = processor.Column
+				Variant = attrs.GetValueOrDefault("variant", "default")
 			},
-			"steps" => new StepsBlock(this)
-			{
-				Span = new SourceSpan(start, line.End),
-				Column = processor.Column
-			},
-			"link-cards" => new LinkCardsBlock(this)
-			{
-				Span = new SourceSpan(start, line.End),
-				Column = processor.Column
-			},
-			"code-group" => new CodeGroupBlock(this)
-			{
-				GroupId = $"codegroup-{processor.LineIndex + 1}",
-				Span = new SourceSpan(start, line.End),
-				Column = processor.Column
-			},
-			_ => throw new InvalidOperationException($"Unexpected component type: {typeName}")
+			"steps" => new StepsBlock(this),
+			"link-cards" => new LinkCardsBlock(this),
+			"code-group" => new CodeGroupBlock(this) { GroupId = $"codegroup-{processor.LineIndex + 1}" },
+			"details" => new DetailsBlock(this) { Open = attrs.ContainsKey("open") },
+			"faq" => new FaqBlock(this),
+			"columns" => new ColumnsBlock(this),
+			"column" => new ColumnBlock(this),
+			"file-tree" => new FileTreeBlock(this),
+			"timeline" => new TimelineBlock(this),
+			"video" => CreateVideo(processor, header),
+			"figure" => new FigureBlock(this),
+			"package" => CreatePackage(processor, header),
+			"glossary" => new GlossaryBlock(this),
+			_ => throw new InvalidOperationException($"Unexpected component type: {header.Name}")
 		};
+
+		block.Span = new SourceSpan(start, line.End);
+		block.Column = processor.Column;
+		if (block is DetailsBlock or FigureBlock)
+		{
+			AddLabel(processor, block, header);
+		}
 
 		ContainerFence.Set(block, colons);
 		processor.NewBlocks.Push(block);
@@ -235,70 +249,110 @@ public sealed class ComponentParser : BlockParser
 			processor.Line = saved;
 		}
 
+		// Give the content back the indentation Markdig read before this check, as its own fenced
+		// containers do. Without it a nested list item ("  - b") lost its indent and became a sibling of
+		// its parent, so every list inside a container came out flat.
+		processor.GoToColumn(processor.ColumnBeforeIndent);
 		return BlockState.Continue;
 	}
 
-	/// <summary>
-	///     Parses key="value" pairs from an attribute string.
-	/// </summary>
-	private static Dictionary<string, string> ParseAttributes(string? attrString)
+	/// <inheritdoc />
+	public override bool Close(BlockProcessor processor, Block block)
 	{
-		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-		if (string.IsNullOrWhiteSpace(attrString))
+		switch (block)
 		{
-			return result;
-		}
-
-		ReadOnlySpan<char> span = attrString.AsSpan();
-		while (span.Length > 0)
-		{
-			span = span.TrimStart();
-			if (span.Length == 0)
-			{
-				break;
-			}
-
-			// Find key
-			int eqIndex = span.IndexOf('=');
-			if (eqIndex <= 0)
-			{
-				break;
-			}
-
-			string key = span[..eqIndex].Trim().ToString();
-			span = span[(eqIndex + 1)..].TrimStart();
-
-			// Find value (quoted)
-			if (span.Length > 0 && (span[0] == '"' || span[0] == '\''))
-			{
-				char quote = span[0];
-				span = span[1..];
-				int endQuote = span.IndexOf(quote);
-				if (endQuote < 0)
+			case FileTreeBlock tree:
+				// Inline Markdown would turn __init__.py into a bold "init.py". The renderer reads each
+				// entry's raw text instead.
+				foreach (ParagraphBlock paragraph in tree.Descendants<ParagraphBlock>())
 				{
-					break;
+					if (paragraph.Parent is ListItemBlock)
+					{
+						paragraph.ProcessInlines = false;
+					}
 				}
 
-				string value = span[..endQuote].ToString();
-				result[key] = value;
-				span = span[(endQuote + 1)..];
-			}
-			else
-			{
-				// Unquoted value - read until space
-				int spaceIdx = span.IndexOf(' ');
-				if (spaceIdx < 0)
-				{
-					result[key] = span.ToString();
-					break;
-				}
-
-				result[key] = span[..spaceIdx].ToString();
-				span = span[spaceIdx..];
-			}
+				break;
+			case ColumnsBlock columns when columns.Count > ColumnsRenderer.MaxColumns:
+				MarkdownWarnings.Add(processor.Document, columns.Line,
+					$"':::columns' has {columns.Count} columns; at most {ColumnsRenderer.MaxColumns} sit side by side, " +
+					"the rest wrap onto another row");
+				break;
 		}
 
-		return result;
+		return base.Close(processor, block);
+	}
+
+	// The summary of a details block or the caption of a figure, parsed as inline Markdown. The slice
+	// points into the source, so links in it keep their real positions (the Markdown copies edit them).
+	private static void AddLabel(BlockProcessor processor, ContainerBlock block, ComponentHeader header)
+	{
+		if (header.TextStart < 0)
+		{
+			return;
+		}
+
+		var label = new ComponentLabelBlock(null)
+		{
+			Line = processor.LineIndex,
+			Column = processor.Column,
+			Span = new SourceSpan(header.TextStart, header.TextEnd),
+			IsOpen = false
+		};
+		var text = new StringSlice(processor.Line.Text, header.TextStart, header.TextEnd);
+		label.AppendLine(ref text, processor.Column, processor.LineIndex, processor.CurrentLineStartPosition, false);
+		block.Add(label);
+	}
+
+	private VideoBlock CreateVideo(BlockProcessor processor, ComponentHeader header)
+	{
+		var video = new VideoBlock(this)
+		{
+			Url = header.Text,
+			Title = header.Attributes.GetValueOrDefault("title") is { Length: > 0 } title ? title : null,
+			Poster = header.Attributes.GetValueOrDefault("poster") is { Length: > 0 } poster ? poster : null
+		};
+		if (header.TextStart >= 0)
+		{
+			video.UrlSpan = new SourceSpan(header.TextStart, header.TextEnd);
+		}
+
+		if (header.Text.Length == 0)
+		{
+			MarkdownWarnings.Add(processor.Document, processor.LineIndex, "':::video' needs a URL after it, so nothing is shown");
+		}
+		else if (VideoSource.Resolve(header.Text) is null)
+		{
+			MarkdownWarnings.Add(processor.Document, processor.LineIndex,
+				$"':::video {header.Text}' is not a YouTube or Vimeo address or a video file (.mp4, .webm, .ogv, .mov), " +
+				"so no player is shown");
+		}
+
+		return video;
+	}
+
+	private PackageBlock CreatePackage(BlockProcessor processor, ComponentHeader header)
+	{
+		string[] words = header.Text.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+		string id = words.Length > 0 ? words[0] : "";
+		string? version = header.Attributes.GetValueOrDefault("version") is { Length: > 0 } attribute
+			? attribute
+			: words.Length > 1 ? words[1] : null;
+
+		if (!PackageRenderer.IsPackageId(id))
+		{
+			MarkdownWarnings.Add(processor.Document, processor.LineIndex, id.Length == 0
+				? "':::package' needs a package ID after it, so nothing is shown"
+				: $"':::package' has '{id}', which is not a NuGet package ID, so nothing is shown");
+		}
+		else if (version is not null && !PackageRenderer.IsVersion(version))
+		{
+			MarkdownWarnings.Add(processor.Document, processor.LineIndex,
+				$"':::package {id}' has the version '{version}', which is not a NuGet version; the latest is shown instead");
+			version = null;
+		}
+
+		return new PackageBlock(this) { PackageId = id, Version = version };
 	}
 }
 

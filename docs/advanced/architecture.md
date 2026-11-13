@@ -28,7 +28,7 @@ The pipeline also has a plugin hook. It runs once, just before the first phase w
 
 | Order | Phase | What it does |
 |-------|-------|--------------|
-| 200 | `DiscoveryPhase` | Lists Markdown files and static assets under `content.docs`, skipping anything inside `build.output`. Checks which `content.projects` files exist and resolves `site.logo` and `site.favicon` |
+| 200 | `DiscoveryPhase` | Lists Markdown files and static assets under `content.docs`, skipping anything inside `build.output` and any folder holding a `.mokadocs-output` file (a site MokaDocs built), with a warning for each such folder. Checks which `content.projects` files exist and resolves `site.logo`, `site.favicon` and `site.image` |
 | 300 | `CSharpAnalysisPhase` | Reads the `.cs` files of each configured project with Roslyn, using the settings and references from its project files, or loads the result from the build cache. Adds the `/api` index page and one page per type, and reads the package name and version from the first project that produces a package |
 | 400 | `MarkdownParsePhase` | Turns each Markdown file into a `DocPage`: front matter, HTML, table of contents and route |
 | 450 | `VersionGatePhase` | Removes pages whose front matter `version` range doesn't include the version being built. Does nothing without versioning |
@@ -38,12 +38,13 @@ The pipeline also has a plugin hook. It runs once, just before the first phase w
 | 600 | `NavigationBuildPhase` | Builds the sidebar tree from the `nav` section, or from page routes when there is no `nav` |
 | 650 | `BlogNavigationPhase` | Lists the latest posts under the blog's sidebar entry |
 | 700 | `SearchIndexPhase` | Creates a search entry for each page and for each heading in its table of contents, with the text and code words under that heading. Skipped when `features.search.enabled` is false |
-| 900 | `RenderPhase` | Renders each page through its layout template |
-| 1100 | `OutputPhase` | Checks the output directory and duplicate routes, deletes the output directory when `build.clean` is on, then writes pages, section redirect pages, `404.html`, `.nojekyll`, `search-index.json`, static assets and files registered by plugins. With `build.minify`, pages and `404.html` are minified as they are written |
-| 1150 | `ThemeAssetPhase` | Writes the default theme's `_theme/css/main.css` and `_theme/js/main.js` (minified with `build.minify`), or copies a custom theme's `css/`, `js/` and `assets/` folders into `_theme/` |
+| 800 | `LlmsPhase` | With `build.llms` (the default) and outside a dry run: stages a Markdown copy of each public page, `llms.txt` and `llms-full.txt` for `OutputPhase` |
+| 900 | `RenderPhase` | Renders each page through its layout template, and `404.html` through the default layout. Theme file URLs and the search index URL get a `?v=` hash of the bytes the later phases write |
+| 1100 | `OutputPhase` | Checks the output directory and duplicate routes, deletes the output directory when `build.clean` is on, then writes pages, section redirect pages, `.nojekyll`, `search-index.json`, static assets and the files the render phase and plugins staged (`404.html` among them). With `build.minify`, pages and `404.html` are minified |
+| 1150 | `ThemeAssetPhase` | Writes the default theme's files: `_theme/css/main.css`, a `_theme/css/style-<name>.css` for each style other than `default`, `_theme/css/layouts.css`, `_theme/icons.svg` and `_theme/js/main.js` (the stylesheets and script minified with `build.minify`). With a custom theme it copies the theme's `css/`, `js/` and `assets/` folders into `_theme/` instead |
 | 1200 | `PostProcessPhase` | Writes `sitemap.xml` (only when `site.url` is set) and `robots.txt` |
 
-`--verbose` logs each phase by its `Name` as it starts and how long it took when it ends: `Discovery`, `CSharpAnalysis`, `MarkdownParse`, `FeatureGate`, `Blog`, `NavigationBuild`, `BlogNavigation`, `SearchIndex`, `Render`, `Output`, `ThemeAssets` and `PostProcess`. A last line lists every phase with its time, the plugin hook as `Plugins`. `BuildPipeline.LastTimings` holds the same numbers for a host that wants them.
+`--verbose` logs each phase by its `Name` as it starts and how long it took when it ends: `Discovery`, `CSharpAnalysis`, `MarkdownParse`, `FeatureGate`, `Blog`, `NavigationBuild`, `BlogNavigation`, `SearchIndex`, `Llms`, `Render`, `Output`, `ThemeAssets` and `PostProcess`. A last line lists every phase with its time, the plugin hook as `Plugins`. `BuildPipeline.LastTimings` holds the same numbers for a host that wants them.
 
 `MarkdownParsePhase` parses files in parallel, and `OutputPhase` writes pages in parallel when the build runs on the real disk. Pages and diagnostics are still added in discovery order, and pages sharing a route still leave the last one written, so the output is the same as a sequential build.
 
@@ -218,7 +219,7 @@ public sealed record SearchEntry
 }
 ```
 
-Each page gets one entry, plus one entry per heading with an anchor route (one per member on an API type page). `SearchIndexPhase` splits the page body at its headings to give each heading entry the text and code words of its section. `OutputPhase` writes the index to `search-index.json` with short keys (`t`, `s`, `r`, `c`, `x`, `g`, `k`), adds the base path to each route and keeps the first 300 characters of `Content`. See [Search](/guide/search).
+Each page gets one entry, plus one entry per heading with an anchor route (one per member on an API type page). `SearchIndexPhase` splits the page body at its headings to give each heading entry the text and code words of its section. `OutputPhase` writes the index to `search-index.json` with short keys (`t`, `s`, `r`, `c`, `x`, `g`, `k`), adds the base path to each route and keeps the first 300 characters of `Content`. `RenderPhase` serializes the same bytes first, to put their hash in `search_index_url`. See [Search](/guide/search).
 
 ### ApiType
 
@@ -271,21 +272,25 @@ Scriban's own loop and string limits are off, so a sidebar with thousands of ent
 | `page` | The page being rendered (fields below) |
 | `site` | Values from `site:` in `mokadocs.yaml` (fields below) |
 | `theme` | Values from `theme.options` (fields below) |
-| `nav` | Sidebar items with `label`, `route`, `icon` (SVG markup), `expanded`, `is_active`, `has_active_child`, `has_children`, `has_page` and `children`. With a shared sidebar, only the top-level items and the items along the path to the page |
+| `nav` | Sidebar items with `label`, `route`, `icon` (SVG markup; with the default theme an `<svg>` around a `<use>` of the icon sprite), `expanded`, `is_active`, `has_active_child`, `has_children`, `has_page` and `children`. With a shared sidebar, only the top-level items and the items along the path to the page |
 | `sidebar_script` | URL of the shared sidebar script, base path and `?v=` hash included, or an empty string when the sidebar is inline |
-| `breadcrumbs` | Trail items with `label`, `url`, `is_current` and `has_page`, starting with Home |
+| `breadcrumbs` | Trail items with `label`, `url`, `is_current` and `has_page`, starting with Home. The sections above the page in the sidebar, with their sidebar labels, or the page's route folders when the sidebar doesn't list it. Every item has a `url`: a section without a page of its own (`has_page` false) links to its first page |
 | `prev_page`, `next_page` | `title` and `route` of the previous and next page, when there is one. The order follows `nav` depth first, then the public pages it doesn't list by `order` and route. Only pages with the default layout take part. On a blog post they are the next newer and older post, and the blog's generated pages have neither |
 | `blog` | `enabled`, `title`, `route` (base path included) and `feeds`, each with `format` (`rss` or `atom`), `type` (the media type), `title` and `url` (absolute). Empty values without a blog; `feeds` is empty without `site.url` |
+| `home_sections` | On a `landing` page with `theme.options.layout.home: portal`, one item per top-level sidebar entry that leads to a page: `title`, `url` (its own page, else the first page below it), `icon` (SVG markup, or empty when the entry has no bundled icon) and `links`, its first five pages, each with `label` and `url`. Base path included; a top-level entry for the landing page itself is left out. Empty on other pages and with other variants |
 | `first_nav_route` | The first route in `nav` order that isn't this page, preferring one that has a page, base path included. Empty when there is none. The landing layout's Get Started button links to it |
 | `base_path` | `build.basePath`, or an empty string for a site at the root |
 | `search_enabled` | True when `features.search.enabled` and `theme.options.showSearch` are both true |
-| `css_files`, `js_files` | Theme stylesheet and script URLs, base path included, each ending in `?v=` and a hash of the file |
+| `css_files`, `js_files` | Theme stylesheet and script URLs, base path included, each ending in `?v=` and a hash of the file. With the default theme, `css_files` is `main.css`, the configured style's stylesheet unless it is `default`, and `layouts.css` when a layout variant is set, in that order |
+| `icon_sprite` | The default theme's SVG sprite, base path and `?v=` hash included, such as `/_theme/icons.svg?v=0123456789`. Icons are drawn as `<svg ...><use href="{icon_sprite}#name"/></svg>`. Empty with a custom theme, whose `nav` icons, `social_links` and `page.features` icons stay whole SVG markup |
+| `search_index_url` | The URL of `search-index.json`, base path and `?v=` hash included, or an empty string when the build writes no index |
 | `partials` | The theme's partials as raw strings, keyed by file name |
 | `versions` | Configured versions with `label`, `slug`, `is_default`, `is_prerelease`, `is_current` and `url`, the link from this page: the same page in that version when it has one, else its home page. Empty without versioning |
 | `current_version` | Label of the version being built, or an empty string |
 | `package` | `name` and `version` from the first C# project. Only set when a project was analyzed |
 | `edit_url` | The "Edit this page" URL. Only set when `site.editLink` is configured, `theme.options.showEditLink` is true and the page has a source file, so generated pages have none |
 | `mokadocs_version` | The MokaDocs version, such as `1.6.0` |
+| `t` | The theme's text in the site's language, one variable per key in snake case: `t.toc_title` for `toc.title` (see [Languages](/guide/languages#in-a-custom-theme)) |
 
 Values are raw text unless a field says it holds HTML. The default layouts pass every value they write into an attribute through `html.escape`, so a route or label with `"` or `<` in it can't end the attribute early.
 
@@ -295,25 +300,37 @@ Values are raw text unless a field says it holds HTML. The default layouts pass 
 |-------|----------|
 | `page.title`, `page.description` | Front matter values |
 | `page.meta_description` | `description`, or `site.description` when the page has none |
-| `page.canonical_url` | Absolute URL built from `site.url`, the base path and the route, with each segment percent-encoded and a trailing `/`. Empty without `site.url` |
+| `page.canonical_url` | Absolute URL built from `site.url`, the base path and the route, with each segment percent-encoded and a trailing `/`. Empty without `site.url`, and on the 404 page |
+| `page.noindex` | True on the 404 page, which the default layout marks with `<meta name="robots" content="noindex">` |
+| `page.image_url` | The absolute URL of the page's link preview image: front matter `image`, else `site.image_url`. Empty when there is none or it can't be made absolute |
+| `page.markdown_url` | The URL of the page's Markdown copy, base path included, or an empty string when `build.llms` is off or the page has none |
 | `page.content` | The page HTML, with the base path added to root-relative URLs in `href`, `src` and `srcset` attributes, quoted or not |
 | `page.route` | The route, base path included |
-| `page.toc` | Headings with `level`, `text`, `id` and `children` |
-| `page.show_toc` | True when front matter `toc` and `theme.options.showTableOfContents` are true and the page has headings |
+| `page.toc` | Headings with `level`, `text`, `id` and `children`, down to `theme.options.tocDepth`, without the page's own title heading |
+| `page.show_toc` | True when front matter `toc` and `theme.options.showTableOfContents` are true and `page.toc` has at least two entries, counting nested ones |
 | `page.tags`, `page.layout` | Front matter values |
 | `page.source_path` | Path relative to `content.docs` with forward slashes, empty for generated pages |
 | `page.last_modified` | The date as `yyyy-MM-dd`, or an empty string |
+| `page.last_modified_display` | The same date written out in the site's language, such as `November 12, 2026`, or an empty string |
 | `page.contributors` | The people who committed to the page's file, most commits first, each with `name`, `initials` (up to two letters) and `commits`. Empty unless `theme.options.showContributors` is on |
 | `page.is_api`, `page.is_api_index` | Whether the page was generated by C# analysis, and whether it is `/api` |
 | `page.features` | Cards from the `features` front matter, each with `title`, `description`, `icon`, `icon_svg` (SVG markup when `icon` names a bundled icon, otherwise empty) and `link` (a link starting with `/` includes the base path). Text is not escaped |
 | `page.features_title`, `page.features_subtitle` | Front matter `featuresTitle` and `featuresSubtitle`, not escaped |
+| `page.hero_code` | HTML: front matter `heroCode` as a highlighted code block in the `heroCodeLanguage`, or an empty string |
+| `page.hero_image` | Front matter `heroImage`, resolved against the page's file, with the base path added to a path from the site root. Empty when there is none |
+| `page.showcase_code` | HTML: front matter `showcaseCode` as a highlighted code block in the `showcaseCodeLanguage`, or an empty string |
+| `page.showcase_title`, `page.showcase_text` | Front matter `showcaseTitle` and `showcaseText`, not escaped |
+| `page.stats` | Figures from the `stats` front matter, each with `value` and `label`, not escaped |
+| `page.cta` | The `cta` front matter with `title`, `text`, `link` (a link starting with `/` includes the base path; empty for no button) and `link_text` ("Get Started" when not set), not escaped. Null when the page has none |
 | `page.is_blog_post` | Whether the page is a listed blog post. The default layout labels its previous and next links "Newer post" and "Older post" then |
 
-`site` fields: `title`, `description`, `url`, `copyright` (with `{year}` replaced), `logo` and `favicon` (the raw values from `mokadocs.yaml`), `logo_url` and `favicon_url` (resolved URLs, with the base path added for local files, or empty when a local file is missing), and `repo_url` (`site.editLink.repo`).
+`site` fields: `title`, `description`, `url`, `copyright` (with `{year}` replaced), `logo` and `favicon` (the raw values from `mokadocs.yaml`), `logo_url` and `favicon_url` (resolved URLs, with the base path added for local files, or empty when a local file is missing), `image_url` (the absolute URL of `site.image` under `site.url` and the base path, or empty), `repo_url` (`site.editLink.repo`), `language` (the page language, such as `pt-BR`), `direction` (`ltr` or `rtl`) and `og_locale` (such as `pt_BR`, or empty; see [Languages](/guide/languages)).
 
-`theme` fields: `primary_color`, `accent_color`, `code_theme`, `code_style`, `style` (the configured style in lower case, `default` when it names none), `default_color_theme`, `initial_color_theme` (the preset applied on a first visit, empty when none is), `toc_depth`, `social_links` (each with `icon`, `url` and `icon_svg`), and one boolean per option: `color_themes`, `code_theme_selector`, `code_style_selector`, `style_selector`, `show_edit_link`, `show_last_updated`, `show_contributors`, `show_feedback`, `show_dark_mode_toggle`, `show_animations`, `show_search`, `show_table_of_contents`, `show_prev_next`, `show_breadcrumbs`, `show_back_to_top`, `show_copy_button`, `show_line_numbers`, `show_version_selector` and `show_built_with`.
+`theme` fields: `primary_color`, `accent_color`, `code_theme`, `code_style`, `style` (the configured style in lower case, `default` when it names none), `default_color_theme`, `initial_color_theme` (the preset applied on a first visit, empty when none is), `toc_depth`, `social_links` (each with `icon`, `url` and `icon_svg`), `style_files` (the default theme's style stylesheets, each with `name` and `version`, the `?v=` hash of `_theme/css/style-<name>.css`; empty with a custom theme), `layout` (the variant of each part of `theme.options.layout`, resolved to a known name or `default`, keyed in snake case: `width`, `navbar`, `footer`, `toc`, `breadcrumbs`, `page_nav`, `sidebar`, `sidebar_scope`, `home`, `hero`, `hero_background`, `features`, `admonitions`, `tables`, `density`, `font`, `headings` and `links`), and one boolean per option: `color_themes`, `code_theme_selector`, `code_style_selector`, `style_selector`, `text_size_selector`, `width_selector`, `show_edit_link`, `show_last_updated`, `show_contributors`, `show_feedback`, `show_dark_mode_toggle`, `show_animations`, `show_search`, `show_table_of_contents`, `show_prev_next`, `show_breadcrumbs`, `show_back_to_top`, `show_copy_button`, `show_line_numbers`, `image_zoom`, `sidebar_toggle`, `show_version_selector` and `show_built_with`.
 
-There is no variable for the search index. The default theme's script fetches `{base_path}/search-index.json` when the search dialog opens.
+`theme.layout_selector` is `theme.options.layoutSelector`. `theme.layout_parts` lists the parts readers can switch in the Appearance panel's Layout section, each with `key` (its name in `theme.layout`, such as `page_nav`), `name` (its attribute without `data-`, such as `page-nav`) and `names` (every variant, space separated). With `layout_selector` on, `layout_tabs` and `footer_columns` are filled whatever `navbar` and `footer` are set to.
+
+The default theme's search dialog carries `search_index_url` in its `data-index` attribute, and the script fetches that URL when the dialog first opens. The hash changes when the index does, so a browser can keep the file cached between pages and visits.
 
 ### Partials
 

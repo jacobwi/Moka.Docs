@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Phases;
 
 namespace Moka.Docs.AspNetCore.Phases;
@@ -62,12 +63,16 @@ public sealed class ReflectionApiPagePhase(
 		ApiTypeRoutes routes = ApiTypeRoutes.For(allTypes);
 
 		// Generate API index page listing all namespaces and types
+		ThemeText text = ThemeText.For(context.Config);
 		var indexHtml = new StringBuilder();
+		indexHtml.AppendLine($"<h1>{HttpUtility.HtmlEncode(text["api.title"])}</h1>");
 		foreach (ApiNamespace ns in context.ApiModel.Namespaces)
 		{
 			indexHtml.AppendLine($"<h2>{HttpUtility.HtmlEncode(ns.Name)}</h2>");
 			indexHtml.AppendLine("<div class=\"table-responsive\"><table class=\"api-member-table\">");
-			indexHtml.AppendLine("<thead><tr><th>Name</th><th>Kind</th><th>Description</th></tr></thead>");
+			indexHtml.AppendLine(
+				$"<thead><tr><th>{HttpUtility.HtmlEncode(text["api.name"])}</th><th>{HttpUtility.HtmlEncode(text["api.kind"])}</th>" +
+				$"<th>{HttpUtility.HtmlEncode(text["api.description"])}</th></tr></thead>");
 			indexHtml.AppendLine("<tbody>");
 			foreach (ApiType type in ns.Types)
 			{
@@ -88,7 +93,7 @@ public sealed class ReflectionApiPagePhase(
 
 		context.Pages.Add(new DocPage
 		{
-			FrontMatter = new FrontMatter { Title = "API Reference", Layout = "default" },
+			FrontMatter = new FrontMatter { Title = text["api.title"], Layout = "default" },
 			Content = new PageContent { Html = indexHtml.ToString(), PlainText = "" },
 			Route = "/api",
 			Origin = PageOrigin.ApiGenerated

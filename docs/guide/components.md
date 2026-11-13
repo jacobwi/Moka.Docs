@@ -5,7 +5,28 @@ order: 2
 
 # UI Components
 
-MokaDocs adds four block components to Markdown: cards, steps, link cards and code groups. Each one is a `:::` block named after the component, and they can be nested inside each other (see [Combining Components](#combining-components)).
+MokaDocs adds components to Markdown. Most are blocks: a `:::` line named after the component opens one and a `:::` line closes it, and they can be nested inside each other (see [Combining Components](#combining-components)).
+
+| Component | Syntax |
+|-----------|--------|
+| [Cards](#cards) | `:::card{title="..." icon="..." variant="..."}` |
+| [Steps](#steps) | `:::steps` with `###` headings |
+| [Link cards](#link-cards) | `:::link-cards` with a list of links |
+| [Code groups](#code-groups) | `:::code-group` with code blocks |
+| [Collapsible details](#collapsible-details) | `:::details Summary`, `:::details{open} Summary` |
+| [FAQ](#faq) | `:::faq` with `###` questions |
+| [Columns](#columns) | `::::columns` with `:::column` blocks |
+| [File trees](#file-trees) | `:::file-tree` with a nested list |
+| [Timelines](#timelines) | `:::timeline` with `**date**` list items or `###` dates |
+| [Videos](#videos) | `:::video URL` |
+| [Figures](#figures) | `:::figure Caption` around an image |
+| [Package install](#package-install) | `:::package Name [version]` |
+| [Glossary](#glossary) | `:term[text]` and `:::glossary` |
+| [API cross-references](#api-cross-references) | `[text](xref:Namespace.Type)`, `<xref:Namespace.Type.Member>` |
+| [Badges](#badges) | `:badge[text]{variant}` |
+| [Keyboard keys](#keyboard-keys) | `:kbd[Ctrl+K]` |
+
+Attributes go in braces right after the name, as `name="value"` pairs (single quotes or no quotes work too) or single words such as `open`. Text you write in a component, titles and attributes included, is escaped, so `List<T>` shows as written. The [Markdown copies](/configuration/site-config#llms) of pages keep components as written.
 
 ## Cards
 
@@ -287,7 +308,7 @@ A card can link to any URL. Links open in the same tab.
 
 ## Code Groups
 
-`:::code-group` shows fenced code blocks as tabs, one tab per block. Use it when every tab holds only code. For tabs that mix prose and code, use [tabbed content](/guide/markdown#tabbed-content).
+`:::code-group` shows fenced code blocks as tabs, one tab per block. Use it when every tab holds only code. For tabs that mix prose and code, use [tabbed content](/guide/markdown#tabbed-content). Code groups and tabbed content share one choice: picking "C#" in one group picks "C#" in every group on the page, and later pages start on it.
 
 Put only fenced code blocks in a code group. When a group has any, everything else inside it, such as a paragraph of explanation, is not rendered.
 
@@ -425,6 +446,334 @@ Install-Package MyLibrary -Version 1.0.0
 
 - Each tab is an ordinary code block, so it gets highlighting, line numbers and a copy button under the same rules as any other (see [Syntax Highlighting](/guide/markdown#syntax-highlighting)).
 - The first tab is selected when the page loads. The selection is not remembered across page loads, and code groups do not switch together.
+
+## Collapsible Details
+
+`:::details` hides its content behind a summary line that readers click to open. The text after `details` is the summary, and it can hold inline Markdown such as code and emphasis.
+
+```markdown
+:::details Why does the build warn about an unknown key?
+Keys in `mokadocs.yaml` are case sensitive. `basepath` is not `basePath`,
+so the build reports it and uses the default.
+:::
+```
+
+:::details Why does the build warn about an unknown key?
+Keys in `mokadocs.yaml` are case sensitive. `basepath` is not `basePath`, so the build reports it and uses the default.
+:::
+
+Add `{open}` after `details` to start the block open:
+
+```markdown
+:::details{open} What the dev server watches
+Markdown files, `mokadocs.yaml` and the C# projects listed under `content.projects`.
+:::
+```
+
+:::details{open} What the dev server watches
+Markdown files, `mokadocs.yaml` and the C# projects listed under `content.projects`.
+:::
+
+Without a summary the block reads "Details". It is a native `<details>` element, so it works without JavaScript, the browser's find-in-page searches inside closed blocks, and a link to a heading inside one opens it. Printing opens every block.
+
+## FAQ
+
+`:::faq` turns `###` headings into a list of questions. Each question opens to show the content up to the next `###`:
+
+```markdown
+:::faq
+### Does MokaDocs need Node.js?
+No. It is a .NET tool, and the generated site is static HTML, CSS and JavaScript.
+
+### Can I host the site on GitHub Pages?
+Yes. Build with `--base-path /your-repo` and publish the output folder.
+:::
+```
+
+:::faq
+### Does MokaDocs need Node.js?
+No. It is a .NET tool, and the generated site is static HTML, CSS and JavaScript.
+
+### Can I host the site on GitHub Pages?
+Yes. Build with `--base-path /your-repo` and publish the output folder.
+:::
+
+The questions are headings, so they appear in the table of contents and in search, and you can link to them. A `:::details` block inside the FAQ is a question too (give the FAQ the longer fence, `::::faq`). Content before the first question stays above the list.
+
+The page also gets [FAQPage](https://schema.org/FAQPage) structured data for search engines: one block for all the questions on the page, with plain-text answers.
+
+## Columns
+
+`:::columns` puts its `:::column` blocks side by side. Use two to four columns; they stack into one on phones, and three or four become two on tablets.
+
+```markdown
+::::columns
+:::column
+**CLI**
+
+Build a static site with `mokadocs build` and host it anywhere.
+:::
+:::column
+**ASP.NET Core**
+
+Serve the same docs from your app with `AddMokaDocs()` and `MapMokaDocs()`.
+:::
+::::
+```
+
+::::columns
+:::column
+**CLI**
+
+Build a static site with `mokadocs build` and host it anywhere.
+:::
+:::column
+**ASP.NET Core**
+
+Serve the same docs from your app with `AddMokaDocs()` and `MapMokaDocs()`.
+:::
+::::
+
+The columns block needs the longer fence because the columns nest inside it. With more than four columns the build warns and the rest wrap onto another row. Anything written straight into `:::columns`, outside a `:::column`, is a column of its own.
+
+## File Trees
+
+`:::file-tree` turns a nested list into a folder tree with an icon for each entry:
+
+```markdown
+:::file-tree
+- docs/
+  - guide/
+    - **components.md** # this page
+    - markdown.md
+  - glossary.yml # terms for :term[...]
+  - index.md
+- src/
+  - Program.cs
+- mokadocs.yaml
+- ...
+:::
+```
+
+:::file-tree
+- docs/
+  - guide/
+    - **components.md** # this page
+    - markdown.md
+  - glossary.yml # terms for :term[...]
+  - index.md
+- src/
+  - Program.cs
+- mokadocs.yaml
+- ...
+:::
+
+- An entry with nested entries, or a name ending in `/`, is a folder. Folders with entries can be collapsed; they start open.
+- Text after ` # ` (a space, `#` and a space) is a comment. Comments can hold `` `code` ``.
+- `**name**` highlights the entry.
+- The icon follows the extension: code, data and configuration, text, images, media, archives, and other files. `...` shows as is, without an icon.
+
+Entries are read as plain text, so names such as `__init__.py` keep their underscores. Readers get the tree as nested lists, with each folder announced as a folder.
+
+## Timelines
+
+`:::timeline` shows dated entries along a vertical line. Start each list item with the date in bold:
+
+```markdown
+:::timeline
+- **2026-01-12** Plan: pick the pages the first release needs.
+- **2026-02-02** Write: guides, then the API comments.
+- **2026-03-16** Release: publish the site with the package.
+:::
+```
+
+:::timeline
+- **2026-01-12** Plan: pick the pages the first release needs.
+- **2026-02-02** Write: guides, then the API comments.
+- **2026-03-16** Release: publish the site with the package.
+:::
+
+A colon or hyphen after the date is dropped. For longer entries, use `###` headings as the dates; the content up to the next `###` is the entry, and the dates appear in the table of contents:
+
+```markdown
+:::timeline
+### 2026-03-16
+The first release. This entry can hold lists, code and other blocks.
+
+### 2026-05-04
+The second release.
+:::
+```
+
+A date written as `2026`, `2026-11` or `2026-11-12` is marked up as a `<time>` element. Other text, such as "Q3 2026", shows as written.
+
+## Videos
+
+`:::video` embeds a video from its URL:
+
+```markdown
+:::video https://www.youtube.com/watch?v=aqz-KE-bpKQ
+Big Buck Bunny, a short film by the Blender Foundation
+:::
+```
+
+:::video https://www.youtube.com/watch?v=aqz-KE-bpKQ
+Big Buck Bunny, a short film by the Blender Foundation
+:::
+
+- **YouTube** (`youtube.com/watch?v=`, `youtu.be/`, `/embed/`, `/shorts/` and `/live/` addresses) plays in an iframe from `youtube-nocookie.com`. A `t=` or `start=` time in the address (`90`, `1m30s`) starts it there.
+- **Vimeo** (`vimeo.com/123456789`, with the hash of an unlisted video after the number) plays in an iframe from `player.vimeo.com` with `dnt=1`, which turns off tracking.
+- **A video file** (`.mp4`, `.webm`, `.ogv` or `.mov`), on the web or next to the page (`./media/intro.mp4`), plays in a `<video>` element with the browser's controls.
+
+The content of the block is the video's title and its caption. Without content, write the title as an attribute, `:::video{title="Install walkthrough"} URL`, or the title is made from the URL ("YouTube video aqz-KE-bpKQ"), which is less useful to screen reader users. A video file can have a still image to show before it plays: `:::video{poster="./intro.png"} ./intro.mp4`.
+
+The player keeps a 16:9 frame at any width. Nothing loads until the reader scrolls near an iframe, and a video file loads only when played. No third-party script is added to the page. Any other web address is a warning and shows as a link.
+
+## Figures
+
+`:::figure` gives an image (or a diagram, table or code block) a caption. The text after `figure` is the caption:
+
+```markdown
+:::figure The MokaDocs logo
+![MokaDocs logo](../icon.png)
+:::
+```
+
+:::figure The MokaDocs logo
+![MokaDocs logo](../icon.png)
+:::
+
+The caption can also follow the image on the next line, or come as paragraphs after it:
+
+```markdown
+:::figure
+![MokaDocs logo](../icon.png)
+The logo, at its full size.
+:::
+```
+
+The first block in the figure is the figure itself; everything after it is the caption. Image zoom works on figures as it does on any image.
+
+## Package Install
+
+`:::package` shows the NuGet install widget from the API reference for any package, with Package Manager, .NET CLI and PackageReference commands and copy buttons:
+
+```markdown
+:::package Moka.Docs.Core
+:::
+```
+
+:::package Moka.Docs.Core
+:::
+
+A version after the ID (`:::package Moka.Docs.Core 1.9.0`, or `:::package{version="1.9.0"} Moka.Docs.Core`) goes into every command and the NuGet link. Without one, the commands install the latest version and the PackageReference uses `Version="*"`, except for the package of the first project under `content.projects`, which gets that project's version. Use the block as often as you like on a page. An ID that isn't a valid NuGet ID is a warning and shows nothing.
+
+## Glossary
+
+Define terms once and show their definitions where you use them. Put the terms under `glossary:` in `mokadocs.yaml` (see [`glossary`](/configuration/site-config#glossary-section)), or in a `glossary.yml` file at the root of the docs folder:
+
+```yaml
+API: The types and members a library makes public, and what the API reference documents.
+Front matter: The YAML block at the top of a Markdown page, between two --- lines.
+```
+
+### Terms in Text
+
+`:term[...]` marks a term. Its definition shows when the reader hovers over it, moves the keyboard focus to it, or taps it:
+
+```markdown
+Every page starts with :term[front matter]. The :term[API] reference
+is generated from your projects.
+```
+
+Every page starts with :term[front matter]. The :term[API] reference is generated from your projects.
+
+Terms match without regard to case, and a plural finds its singular (`:term[APIs]` finds "API"). To show other text, name the term: `:term[public surface]{term="API"}`. Escape hides the definition; it stays while the pointer moves onto it. A term that isn't in the glossary is a warning with its line, and shows as plain text.
+
+### The Glossary List
+
+`:::glossary` lists every term with its definition, sorted by term. Each term gets an anchor, such as `#glossary-api`:
+
+```markdown
+:::glossary
+:::
+```
+
+:::glossary
+:::
+
+Content inside the block shows above the list. Definitions are plain text, with `` `code` `` for code.
+
+## API Cross-References
+
+Link to a type or member of the generated API reference by its name, with `xref:` instead of a URL:
+
+```markdown
+The configuration is a [`SiteConfig`](xref:Moka.Docs.Core.Configuration.SiteConfig) record.
+Its build options are in <xref:Moka.Docs.Core.Configuration.SiteConfig.Build>.
+```
+
+The configuration is a [`SiteConfig`](xref:Moka.Docs.Core.Configuration.SiteConfig) record. Its build options are in <xref:Moka.Docs.Core.Configuration.SiteConfig.Build>.
+
+A link with text keeps it. `<xref:...>` shows the type's name, or the type and member for a member. The link goes to the type's page, and to the member's section for a member, at the same addresses the API pages use.
+
+| You write | Links to |
+|-----------|----------|
+| `xref:MyLib.Text.Parser` | The type |
+| ``xref:MyLib.Result`1``, `xref:MyLib.Result{T}`, `xref:MyLib.Result<T>` | The generic type |
+| `xref:MyLib.Text.Parser.Parse` | The member; with overloads, the first one |
+| `xref:MyLib.Text.Parser.Parse(System.String)` | That overload |
+| `xref:MyLib.Text.Parser.#ctor` | The constructor |
+| `xref:M:MyLib.Text.Parser.Parse(System.String)` | A documentation ID, as in `<see cref>`, works as written |
+| `xref:Parser`, `xref:Parser.Parse` | The one type (or member) with that name, when the name is unique |
+| `xref:System.String` | The page on learn.microsoft.com, for `System.*` and `Microsoft.*` names |
+
+A reference that matches nothing is a build warning with the page and line, and shows as text: the link's own text, or the reference as code. Cross-references work with the API pages of the CLI and of the ASP.NET Core host. The Markdown copies of pages (`build.llms`) get the resolved links too.
+
+## Inline Components
+
+Three components go inside a line of text, including headings. They share one syntax: a colon, the name, the text in brackets, and options in braces.
+
+### Badges
+
+`:badge[...]` adds a small label:
+
+```markdown
+#### Glossary terms :badge[New]{variant=success}
+
+A :badge[Beta]{warning} feature, a :badge[Deprecated]{danger} one,
+one that arrived :badge[Since 2.0]{neutral} and a plain :badge[Info] badge.
+```
+
+#### Glossary terms :badge[New]{variant=success}
+
+A :badge[Beta]{warning} feature, a :badge[Deprecated]{danger} one, one that arrived :badge[Since 2.0]{neutral} and a plain :badge[Info] badge.
+
+| Variant | Use |
+|---------|-----|
+| `info` | The default: notes, versions |
+| `success` | New or recommended |
+| `warning` | Beta, experimental, changing |
+| `danger` | Deprecated, removed, breaking |
+| `neutral` | Plain labels such as "Since 1.9" |
+
+Write the variant as `{variant=success}` or just `{success}`. Another name is a warning, and the badge uses `info`. In a heading, the badge isn't part of the heading's anchor or its table of contents entry, so adding or removing one doesn't break links.
+
+### Keyboard Keys
+
+`:kbd[...]` shows keys, one key cap per key, with `+` between them:
+
+```markdown
+Open search with :kbd[Ctrl+K]. Zoom in with :kbd[Ctrl++].
+```
+
+Open search with :kbd[Ctrl+K]. Zoom in with :kbd[Ctrl++].
+
+Keys show as written; write the names your readers know. A `+` next to another `+` is the plus key itself.
+
+### Escaping
+
+Text in brackets is plain text. Write `\]` for a closing bracket inside it. A name right after a letter or digit (`word:badge[x]`) is left alone.
 
 ## Combining Components
 

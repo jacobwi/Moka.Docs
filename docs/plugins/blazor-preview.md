@@ -47,17 +47,20 @@ build finds one, the plugin:
 2. Runs `dotnet publish -c Release -f net10.0` on that project, unless it was
    published after the last change to its files (files under `bin/`, `obj/`
    and `publish-output/` don't count) and to the source files of the projects
-   it references with `ProjectReference`. A successful publish writes
-   `publish-output/net10.0/.mokadocs-published`, which records when it
-   started. A publish that runs past `publishTimeout` (10 minutes by default)
-   is stopped along with every process it started, and the build reports an
-   error.
-3. Copies the published `wwwroot` to `_site/_preview-wasm/`.
+   it references with `ProjectReference`. Before publishing it empties
+   `publish-output/net10.0/`, so files from an earlier publish don't ship. A
+   successful publish writes `publish-output/net10.0/.mokadocs-published`,
+   which records when it started. A publish that runs past `publishTimeout`
+   (10 minutes by default) is stopped along with every process it started,
+   and the build reports an error.
+3. Copies the published `wwwroot` to `_site/_preview-wasm/`, adding a
+   Content-Security-Policy and a message guard to its pages (see
+   [Security](#security)).
 4. Compiles every ` ```blazor-preview ` block with Roslyn against the preview
-   host's `bin/Release` assemblies and writes one `.dll` per block to
-   `_site/_preview-assemblies/{hash}.dll`.
+   host's `bin/Release` assemblies and writes one assembly per block to
+   `_site/_preview-assemblies/{hash}.bin`.
 5. Replaces each block with an `<iframe loading="lazy">` pointing at
-   `/_preview-wasm/index.html?assembly=/_preview-assemblies/{hash}.dll&entry=...`.
+   `/_preview-wasm/index.html?assembly=/_preview-assemblies/{hash}.bin&entry=...`.
 
 Once steps 1 and 2 succeed, the plugin doesn't repeat them for the rest of the
 process, so `mokadocs serve` and `mokadocs build --watch` don't republish the
@@ -70,7 +73,8 @@ Requirements:
 - A preview host that targets `net10.0`
 
 `mokadocs validate` and `mokadocs doctor` run plugins too, so they can also
-scaffold and publish the preview host.
+scaffold and publish the preview host. Set [`publishHost`](#publishhost) to
+`false` to keep the plugin from scaffolding or publishing anything.
 
 ---
 
@@ -90,12 +94,12 @@ scaffold and publish the preview host.
 │                          ↓ copied into the site                        │
 │  _site/                                                                │
 │    ├── _preview-wasm/          (the published wwwroot)                 │
-│    │   ├── index.html                                                  │
+│    │   ├── index.html          (+ CSP and message guard)               │
 │    │   ├── _framework/         (Blazor WASM runtime + your library)    │
 │    │   └── _content/           (static web assets, scoped CSS)         │
 │    └── _preview-assemblies/                                            │
-│        ├── a1b2c3d4e5f6.dll    (compiled from one preview block)       │
-│        └── 7890abcdef01.dll                                            │
+│        ├── 3f9a…c41e.bin       (compiled from one preview block)       │
+│        └── 81d0…77ab.bin                                               │
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
                                     ↓
@@ -104,13 +108,13 @@ scaffold and publish the preview host.
               │  <iframe loading="lazy"                    │
               │    src="/_preview-wasm/index.html          │
               │      ?assembly=/_preview-assemblies/       │
-              │      a1b2c3d4e5f6.dll&entry=...">          │
+              │      3f9a…c41e.bin&entry=...">             │
               │                                            │
               │  The iframe boots when it scrolls into     │
               │  view. App (from Moka.Blazor.Repl.Host)    │
               │  reads the assembly and entry query        │
-              │  parameters, fetches the DLL, loads it     │
-              │  and renders the entry component.          │
+              │  parameters, fetches the assembly, loads   │
+              │  it and renders the entry component.       │
               │                                            │
               └────────────────────────────────────────────┘
 ```
@@ -118,10 +122,16 @@ scaffold and publish the preview host.
 **Why iframes?** Each preview gets its own document, so components that render
 into `document.body` (dialogs, popovers, toasts, drawers) stay inside their
 preview instead of spilling into the docs page. With `loading="lazy"`, a
-preview doesn't boot the Blazor runtime until the reader scrolls to it. All
-iframes on a page load the same `_framework/` files, which the browser can
-serve from its cache. A script on the page resizes each iframe to the height
-its preview reports.
+preview doesn't boot the Blazor runtime until the reader scrolls to it. A
+script on the page resizes each iframe to the height its preview reports.
+
+All iframes on a page load the same `_framework/` files. Whether the browser
+takes the second and later copies from its cache depends on the server:
+`mokadocs serve` sends `no-store`, so under serve every preview downloads the
+runtime again, while the ASP.NET Core host lets browsers keep the
+fingerprinted `_framework/` files, the `?v=` versioned files and the
+`_preview-assemblies/` files for good. Static hosts use their own cache
+rules (GitHub Pages caches for 10 minutes).
 
 The build also renders each compiled component to static HTML inside a
 `<noscript>` element, for readers without JavaScript. Apart from logging, that
@@ -216,6 +226,10 @@ plugins:
       # any immediate subdirectory containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
       previewHost: ./preview-host
 
+      # Optional - false: never scaffold or run dotnet publish; use what previewHost
+      # already holds, or show only static renders (default true)
+      publishHost: true
+
       # Optional - namespaces added as global usings to every compiled preview.
       # Same effect as @using lines at the top of every block.
       usings:
@@ -274,7 +288,35 @@ there. The scaffold only writes files that don't exist yet, so mokadocs never
 overwrites an existing project.
 
 The project must target `net10.0`: the plugin publishes it with
-`-f net10.0` into `publish-output/net10.0/`.
+`-f net10.0` into `publish-output/net10.0/` and copies that folder's
+`wwwroot`.
+
+### `publishHost`
+
+Whether the plugin may scaffold and publish the preview host. Default: `true`.
+
+With `false`, the plugin never writes a project and never runs
+`dotnet publish`. It looks for a published app under `previewHost`: the
+newest of `publish-output/wwwroot/`, `publish-output/{tfm}/wwwroot/`, the
+`previewHost` folder itself and its `wwwroot/`, whichever has
+`_framework/blazor.webassembly.js` (or its fingerprinted
+`blazor.webassembly.{fingerprint}.js`). So `previewHost` can name the project
+you publish yourself, or a copy of its published output. Compile references
+still come from the project's `bin/Release/`, plus `references`.
+
+Without `previewHost`, or when it holds no published app, the build reports a
+warning once and each block shows its static render (the same HTML the
+`<noscript>` fallback holds) instead of an iframe. The ASP.NET Core host turns
+`publishHost` off outside the Development environment, so an app never runs
+`dotnet publish` in production.
+
+```yaml
+plugins:
+  - name: mokadocs-blazor-preview
+    options:
+      publishHost: false
+      previewHost: ./preview-host   # published in CI with dotnet publish -o publish-output/net10.0
+```
 
 ### `usings`
 
@@ -350,6 +392,20 @@ preview-host/
     └── index.html                ← loads wasmPreview.js + blazor.webassembly.js
 ```
 
+The project sets `OverrideHtmlAssetPlaceholders`, and `index.html` has the
+placeholders .NET 10 fills in when it publishes: `<link rel="preload"
+id="webassembly" />` and `<script type="importmap"></script>` in the head, and
+`_framework/blazor.webassembly#[.{fingerprint}].js` as the Blazor script. The
+published framework files then carry a content hash in their names and are
+preloaded, so a browser or CDN can keep them until they change. See
+[Fingerprint client-side static assets](https://learn.microsoft.com/aspnet/core/blazor/fundamentals/static-files#fingerprint-client-side-static-assets-in-standalone-blazor-webassembly-apps)
+in the Blazor docs.
+
+Hosts scaffolded by earlier versions don't have this, and mokadocs never
+rewrites them. `mokadocs validate` and `mokadocs doctor` warn about a published
+host without fingerprinting; add the property and the three placeholders to
+upgrade it.
+
 **Commit all of these to your repo.** They're source code you own, not
 generated artifacts. The `bin/`, `obj/`, and `publish-output/` subdirectories
 are fine to gitignore.
@@ -407,9 +463,15 @@ library's **scoped** CSS into `DocsPreviewHost.styles.css`, but global tokens
 <link rel="stylesheet" href="DocsPreviewHost.styles.css" />
 ```
 
+The SDK only writes `DocsPreviewHost.styles.css` when the host or a library it references has scoped (`.razor.css`) styles. When the publish has none, mokadocs leaves the link out of the copy in the site, so previews don't request a file that isn't there.
+
 You can also add custom fonts, data attributes for theme toggles, or
 inline `<style>` blocks that control how the preview iframe body renders
-its content.
+its content. The page gets a Content-Security-Policy when it's copied into
+the site, so keep to what it allows (see [Security](#security)): scripts and
+stylesheets from the docs origin or from origins the page links to directly,
+inline `<script>` blocks, no inline event handlers such as `onclick="..."`,
+and requests (`fetch`, `HttpClient`) to the docs origin only.
 
 ---
 
@@ -420,27 +482,87 @@ After a build with `library: MyLibrary@1.2.3`:
 ```
 _site/
 ├── .nojekyll                      ← written for every site, see below
+├── .gitattributes                 ← *.js binary, see below
 ├── _preview-wasm/                 ← copy of preview-host/publish-output/net10.0/wwwroot
-│   ├── index.html
-│   ├── DocsPreviewHost.styles.css
+│   ├── index.html                 ← with the CSP and message guard added
+│   ├── index.html.br / .gz        ← compressed again from the new index.html
+│   ├── DocsPreviewHost.styles.css ← only when there are scoped styles
 │   ├── _framework/
-│   │   ├── blazor.webassembly.js
-│   │   ├── dotnet.js + dotnet.native.wasm
-│   │   └── *.wasm                 ← compiled assemblies (MyLibrary + deps)
+│   │   ├── blazor.webassembly.{fingerprint}.js
+│   │   ├── dotnet.{fingerprint}.js + dotnet.native.{fingerprint}.wasm
+│   │   └── *.{fingerprint}.wasm   ← compiled assemblies (MyLibrary + deps)
 │   └── _content/
 │       ├── MyLibrary/             ← scoped CSS bundles + static web assets
 │       └── Moka.Blazor.Repl.Host/
 │           └── wasmPreview.js     ← resize + postMessage bridge
-└── _preview-assemblies/
-    ├── a1b2c3d4e5f6.dll           ← one DLL per blazor-preview block
-    └── 7890abcdef01.dll
+├── _preview-assemblies/
+│   ├── 3f9a…c41e.bin              ← one assembly per blazor-preview block
+│   └── 81d0…77ab.bin
+└── _preview-assets/
+    ├── blazor-preview.css         ← tabs, iframe and error styles
+    └── blazor-preview.js          ← tabs and iframe resizing
 ```
 
-Each iframe loads `/_preview-wasm/index.html?assembly=/_preview-assemblies/{hash}.dll&entry={type}`.
-The hash is the first 12 hex characters of the SHA-256 of the block's source.
+Each iframe loads `/_preview-wasm/index.html?assembly=/_preview-assemblies/{hash}.bin&entry={type}`.
+The hash is the SHA-256 of the compiled assembly (64 hex characters), so a
+file name always stands for the same bytes. Pages with previews link
+`_preview-assets/blazor-preview.css` and `.js` with a `?v=` content hash
+instead of carrying their own copy of the styles and script.
 
-If the preview host also has a `publish-output/wwwroot/` folder, the plugin
-copies that one instead of `publish-output/net10.0/wwwroot/`.
+---
+
+## Security
+
+The preview page (`_preview-wasm/index.html`) runs .NET code it is given: an
+assembly named by its `?assembly=` parameter, or one posted to it by the page
+around it. As `Moka.Blazor.Repl.Host` ships it, the page takes both from
+anywhere, so any site could open your docs' preview page and run code in your
+docs' origin (in an app that serves its docs with `MapMokaDocs`, the app's
+origin). mokadocs closes that when it copies the page into the site, for the
+host it generates and for your own `previewHost` alike. Your project's files
+are not changed.
+
+Right after `<meta charset>`, before anything that loads, every page at the top
+of the published `wwwroot` gets:
+
+- **A guard script.** It drops every `message` event that doesn't come from the
+  page's parent frame or the page itself on the same origin, before the preview
+  bridge sees it. It stops the page from loading when `?assembly=` names
+  anything other than a `_preview-assemblies/{sha256}.bin` file next to the
+  preview host: another origin, an absolute URL, another folder.
+- **A Content-Security-Policy `<meta>` tag**, adapted from the client-side
+  example in the Blazor docs'
+  [Content Security Policy](https://learn.microsoft.com/aspnet/core/blazor/security/content-security-policy)
+  article:
+
+  ```
+  base-uri 'self'; default-src 'self'; img-src 'self' data: https:;
+  font-src 'self' data: https:; object-src 'none';
+  script-src 'self' 'wasm-unsafe-eval' <origins> <hashes>;
+  style-src 'self' 'unsafe-inline' <origins>; connect-src 'self'
+  ```
+
+  `<hashes>` are the SHA-256 hashes of the page's inline scripts: the guard,
+  the import map .NET 10 writes, and any `<script>` block of your own.
+  `<origins>` are the origins of `<script src>` and stylesheet `<link href>`
+  URLs the page names directly, so a host that loads a library from a CDN keeps
+  working. `connect-src 'self'` means previews can only make requests to the
+  docs origin.
+
+Building again replaces what an earlier build added. The page's `.br` and `.gz`
+copies are compressed again from the new page, so a server that negotiates
+encodings never serves the old one. If your `index.html` has a
+Content-Security-Policy of its own, the build warns: the browser enforces both,
+and yours has to allow the added inline scripts.
+
+The preview iframes have no `sandbox` attribute. On a frame from the docs' own
+origin, `allow-scripts allow-same-origin` let the framed page remove its own
+sandbox, so it protected nothing, and without `allow-forms` it blocked
+`EditForm` submits inside previews.
+
+A `<meta>` policy can't set `frame-ancestors`. The ASP.NET Core host sends
+`frame-ancestors 'self'` as a header for `_preview-wasm/`; static hosts such as
+GitHub Pages can't send headers, but the guard doesn't depend on it.
 
 ---
 
@@ -456,6 +578,15 @@ or not it uses this plugin. **Without it**, Jekyll (GitHub Pages' default
 processor) strips every directory starting with `_`, including
 `_preview-wasm/`, `_preview-assemblies/`, `_framework/`, and `_content/`, and
 the previews silently disappear from the deployed site.
+
+### `.gitattributes`
+
+When the site has a preview host, the build also writes a `.gitattributes`
+file holding `*.js binary` at the site root. If you deploy by committing the
+site to a branch (`gh-pages`), Git would otherwise convert line endings in the
+framework scripts, their hashes would no longer match the integrity values the
+runtime checks, and previews would fail to load. Deploys that upload the
+folder as an artifact (the workflow below) don't need it.
 
 ### Subpath deploys (`username.github.io/my-project/`)
 
@@ -538,6 +669,27 @@ Common causes:
    The symptom is `TypeLoadException` or `MissingMethodException` in the
    browser console. If you see it, check that nothing in your build turns
    trimming back on for the preview host.
+
+### Previews show a static render instead of an iframe
+
+The build found no published preview host to use: `publishHost` is `false`
+and `previewHost` isn't set or holds no published app, or the published
+`wwwroot` has no `index.html`. The build's warning says which. Publish the
+host into `previewHost`, or turn `publishHost` back on.
+
+### "Refused to load" or "violates the following Content Security Policy directive"
+
+The preview page's policy (see [Security](#security)) blocked something your
+preview host or a preview does. The browser console names the URL or the
+inline code. Common causes:
+
+- A script or stylesheet loaded by a library at runtime from another origin.
+  Link it from `wwwroot/index.html` instead, which adds its origin, or serve
+  a copy from the host's `wwwroot`.
+- An inline event handler (`onclick="..."`) in `index.html`. Move it into a
+  script file or an inline `<script>` block.
+- A preview that calls an API on another origin with `HttpClient`. Previews
+  can only reach the docs origin.
 
 ### "Dynamic root components have not been enabled in this application"
 

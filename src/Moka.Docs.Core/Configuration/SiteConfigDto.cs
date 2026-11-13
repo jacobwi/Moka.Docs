@@ -11,6 +11,7 @@ internal sealed class SiteConfigDto
 	public List<PluginDeclarationDto>? Plugins { get; set; }
 	public CloudConfigDto? Cloud { get; set; }
 	public BuildConfigDto? Build { get; set; }
+	public Dictionary<string, string?>? Glossary { get; set; }
 }
 
 /// <summary>DTO for site metadata.</summary>
@@ -21,8 +22,11 @@ internal sealed class SiteMetadataDto
 	public string? Url { get; set; }
 	public string? Logo { get; set; }
 	public string? Favicon { get; set; }
+	public string? Image { get; set; }
 	public string? Copyright { get; set; }
 	public EditLinkConfigDto? EditLink { get; set; }
+	public string? Language { get; set; }
+	public string? Direction { get; set; }
 }
 
 /// <summary>DTO for edit link config.</summary>
@@ -68,11 +72,16 @@ internal sealed class ThemeOptionsDto
 	public bool? CodeThemeSelector { get; set; }
 	public string? CodeStyle { get; set; }
 	public bool? CodeStyleSelector { get; set; }
+	public string? Preset { get; set; }
 	public string? Style { get; set; }
 	public bool? StyleSelector { get; set; }
+	public bool? TextSizeSelector { get; set; }
+	public bool? WidthSelector { get; set; }
+	public bool? LayoutSelector { get; set; }
 	public ThemeLayoutDto? Layout { get; set; }
 	public string? Sidebar { get; set; }
 	public int? SidebarInlineLimit { get; set; }
+	public bool? SidebarToggle { get; set; }
 	public bool? ShowFeedback { get; set; }
 	public bool? ShowDarkModeToggle { get; set; }
 	public bool? ShowAnimations { get; set; }
@@ -83,11 +92,14 @@ internal sealed class ThemeOptionsDto
 	public bool? ShowBackToTop { get; set; }
 	public bool? ShowCopyButton { get; set; }
 	public bool? ShowLineNumbers { get; set; }
+	public bool? ImageZoom { get; set; }
 	public int? TocDepth { get; set; }
 	public bool? ShowVersionSelector { get; set; }
 	public bool? ShowBuiltWith { get; set; }
 	public List<SocialLinkDto>? SocialLinks { get; set; }
 	public string? DefaultColorTheme { get; set; }
+	public ThemeBannerDto? Banner { get; set; }
+	public Dictionary<string, string?>? Strings { get; set; }
 }
 
 /// <summary>DTO for <c>theme.options.layout</c>.</summary>
@@ -99,6 +111,29 @@ internal sealed class ThemeLayoutDto
 	public string? Toc { get; set; }
 	public string? Breadcrumbs { get; set; }
 	public string? PageNav { get; set; }
+	public string? Sidebar { get; set; }
+	public string? SidebarScope { get; set; }
+	public string? Home { get; set; }
+	public string? Hero { get; set; }
+	public string? HeroBackground { get; set; }
+	public string? Features { get; set; }
+	public string? Admonitions { get; set; }
+	public string? Tables { get; set; }
+	public string? Density { get; set; }
+	public string? Font { get; set; }
+	public string? Headings { get; set; }
+	public string? Links { get; set; }
+}
+
+/// <summary>DTO for <c>theme.options.banner</c>.</summary>
+internal sealed class ThemeBannerDto
+{
+	public string? Text { get; set; }
+	public string? Link { get; set; }
+	public string? LinkText { get; set; }
+	public string? Id { get; set; }
+	public bool? Dismissible { get; set; }
+	public string? Variant { get; set; }
 }
 
 /// <summary>DTO for a social link.</summary>
@@ -211,6 +246,7 @@ internal sealed class BuildConfigDto
 	public bool? Minify { get; set; }
 	public bool? Sitemap { get; set; }
 	public bool? Robots { get; set; }
+	public bool? Llms { get; set; }
 	public bool? Cache { get; set; }
 	public bool? Strict { get; set; }
 	public string? BasePath { get; set; }

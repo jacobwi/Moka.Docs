@@ -5,6 +5,286 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-11-13
+
+### 🔒 Security
+
+- **Any site could run script in the docs origin through a Blazor preview.** The
+  Moka.Blazor.Repl.Host page loaded whatever assembly `?assembly=` named and ran `run` messages
+  from any window. Staged preview pages, from generated hosts and your own, now carry a Content
+  Security Policy and a guard script: only the parent page or the preview itself can post to it,
+  and `?assembly=` only loads `_preview-assemblies/{sha256}.bin` from the docs origin. The iframe
+  `sandbox` attribute is gone: on a same-origin frame it isolated nothing, and it blocked
+  `EditForm` submits.
+- **Any web page could connect to `mokadocs serve`'s hot reload socket.** Browsers send no CORS
+  preflight for WebSockets; the socket now refuses other origins (403). On Kestrel, serve answers
+  only `localhost`, `127.0.0.1` and `[::1]` Host headers (400 otherwise), as HttpListener did, so
+  DNS rebinding stays blocked, and every `/api` request other than GET and HEAD goes through the
+  same-origin check.
+- **ASP.NET Core host headers.** Every docs response carries `X-Content-Type-Options: nosniff`,
+  and `_preview-wasm` gets `Content-Security-Policy: frame-ancestors 'self'` and
+  `Cross-Origin-Opener-Policy: same-origin`. Outside Development the Blazor preview plugin gets
+  `publishHost: false`, so a running app never scaffolds or publishes a preview host.
+- **Mermaid is pinned** to 11.17.2 with Subresource Integrity instead of loading whatever
+  `mermaid@11` the CDN served.
+
+### 🔄 Changed
+
+- **`mokadocs serve` runs on Kestrel** instead of HttpListener. It listens on loopback only, on
+  `[::1]` on every OS, and ignores `ASPNETCORE_URLS` and the project's `appsettings.json`. Range
+  requests work, so videos seek, and a REPL run is cancelled with its request.
+- **Code is highlighted at build time**, with the same colors, in 26 languages, and it shows
+  without JavaScript; main.js no longer carries a highlighter. API signatures, plugin output and
+  raw `<pre><code>` blocks are highlighted too. The copy button, language label and line numbers
+  stay in place when a block scrolls sideways, screen readers skip the label and numbers, the
+  keyboard can scroll a block, and Copy works over plain http and announces "Copied".
+- **Lighter pages.** Each style other than the default ships as `_theme/css/style-<name>.css` and
+  the layout variants as `_theme/css/layouts.css`, and a page links only what it uses: main.css,
+  with the default style, the code themes and the components, is 157 KB (30 KB gzipped), and each
+  other style adds 25 to 42 KB. Icons come from one cached `_theme/icons.svg` instead of inline
+  SVG, the templates lost their indentation (over a third of every page), and the Appearance panel
+  builds its lists when it first opens. This repository's pages went from 15.3 MB to 9.6 MB (2.25
+  to 1.71 MB gzipped) with that change. `search-index.json` is fetched with a `?v=` hash.
+- **The ASP.NET Core host compresses and caches.** Responses are Brotli or gzip by
+  `Accept-Encoding`, compressed once per build, with `Vary` and an ETag per encoding; the Blazor
+  preview host uses its published `.br` and `.gz` files once they check out, and went from 26.8 MB
+  to 8 MB on the wire. URLs that name their content (theme files with `?v=`, the search index,
+  fingerprinted `_framework` files, preview assemblies) are cached as immutable for a year, private
+  when the reader is signed in; everything else stays `no-cache`. The staged preview host is read
+  once per change. Feedback and REPL requests share their handling with `serve`, and JSON answers
+  carry `Content-Length`.
+- **Blazor preview delivery.** Preview assemblies are named after the SHA-256 of their bytes
+  (`{hash}.bin`), preview CSS and JS are versioned files under `_preview-assets/` instead of inline
+  in every page, new preview hosts use .NET 10 fingerprinting and preload, `publish-output/net10.0`
+  is emptied before each publish, and one shared `HttpClient` is used. The unused
+  Moka.Blazor.Repl.Wasm reference, a 155 MB restore, is gone.
+- **The 404 page is rendered with the theme**: the site's style, dark mode, colors, favicon and
+  layout variants, `noindex`, and links home and to search.
+- **Table of contents.** The page title is no longer its root entry; it starts at h2, nests to
+  `tocDepth` (up to h6), and is hidden with fewer than two entries. A caret folds an entry's
+  subsections, so clicking the entry only navigates. "On this page" is no longer an h4.
+- **Breadcrumbs follow the sidebar's sections and labels**, and every crumb is a link. Section
+  redirects go to the section's first page in sidebar order and are full pages (charset, `lang`,
+  viewport, `noindex`, an absolute canonical and a visible link).
+- **Navigation chrome.** The version menu is a plain list of links with arrow keys; search shows
+  Ctrl K or Cmd K by platform, has a close button on touch screens and keeps the last query; heading
+  `#` links come after the text and show on focus. Previous/next and feedback sit under the article
+  in the content column, and phones stack previous and next. `width: boxed` frames the top bar and
+  footer too.
+- **The default style meets WCAG AA** throughout: gradient titles, admonition titles, active tabs,
+  filled buttons, feedback, API badges, the search highlight, the code label and Copy. A custom
+  `primaryColor` gets text shades worked out at build time for 4.5:1 in light and dark. The presets'
+  text shades shifted slightly, and the token colors of the original seven code themes were
+  adjusted to AA (catppuccin-latte the most).
+- **Wide diagrams on narrow screens** stop shrinking at 60% of their size and scroll sideways, with
+  the left edge reachable.
+
+### ⚠️ Behavior changes
+
+- **Builds write Markdown copies and llms files.** Every public Markdown page and C# API page gets
+  a `<route>.md` copy, and the site gets `llms.txt` and `llms-full.txt`, unless
+  `build.llms: false`.
+- **The header pickers are gone.** Style, color, code theme and code style moved into the
+  Appearance panel (see New), and on phones dark mode moves there too. A reader's stored choice
+  applies only while its section is on, System forgets the saved mode, and pages without a saved
+  mode follow the OS as it changes. The dark mode button no longer saves the code theme as a pick.
+- **Every font size in the theme is rem** (body text 1rem), so text follows the browser's font size
+  setting.
+- **Code block HTML changed**: a `.code-block` wrapper, `.line` spans and `tabindex` on `<code>`.
+  Code-heavy pages are 3 to 6% larger gzipped. A line ending in a `[!code ...]` comment is now a
+  marker; write `[!!code ...]` to show one.
+- **Theme assets.** `EmbeddedThemeProvider.GetCss()` returns main.css only; `GetStyleCss`,
+  `GetLayoutsCss` and `GetIconSprite` return the rest. A style picked in the Appearance panel applies
+  once its stylesheet has loaded, and a stored style loads right after main.css. Icons are `<use>`
+  references, so on a first visit they can appear just after the page. The embedded templates have
+  their whitespace compacted.
+- **API pages start with an h1**, type pages and the API index alike, and search has no separate
+  entry for a page's own h1.
+- **Theme names are forgiving.** `defaultColorTheme`, `codeTheme` and `codeStyle` match without
+  regard to case, and an unknown name renders the default with a warning (embedded theme).
+- **Markdown.** `details`, `faq`, `columns`, `column`, `figure`, `video`, `timeline`, `glossary`,
+  `package` and `file-tree` after `:::` are components, not generic `<div>` containers. Content
+  indented four spaces or more inside `:::` or `===` is a code block, as it is outside them. A front
+  matter `image` is resolved to a site-root path when the page is parsed.
+- **Tabs remember.** Choosing a tab label selects it in every group on the page and on later pages.
+- **Landing code blocks use the code theme's colors**, and filled buttons in dark mode use dark
+  text on a lighter fill.
+- **Reading width Wide** also widens the page to 1680px on sites with the default or narrow width.
+  `hero: banner` hides the hero backdrop.
+- **Dev server.** Files whose extension has no content type get 404 (CNAME, `_redirects`,
+  `_headers`), a cross-origin OPTIONS to `/api` gets 403, and a busy port surfaces as an
+  `IOException` from `DevServer.StartAsync`.
+- **ASP.NET Core host.** Requests no longer wait for the first build: they get 503 with
+  `Retry-After: 2`, and browsers get a page that reloads itself. After `InvalidateCache` readers get
+  the previous site until the new one is ready. The preview host's `.br` and `.gz` files are no
+  longer served at their own URLs.
+- **Blazor previews** can only fetch from the docs origin, inline event handlers in a preview host's
+  `index.html` are blocked, and a leftover `publish-output/wwwroot` no longer wins over a fresh
+  `net10.0` publish.
+
+- **"Last updated" is a long date in the site's language** inside `<time datetime>`, for English
+  "November 12, 2026" instead of the ISO date, and every page and stub carries `dir`. main.js
+  holds the texts it uses, so it differs per language and per override, and its `?v=` follows.
+
+### ✨ New
+
+- **Appearance panel.** One header button opens Light, Dark or System, the style, the color preset,
+  the code theme and code style, text size (90 to 125%), reading width (narrow, default, wide, wider
+  or full) and Reset to site defaults, on every screen size. `textSizeSelector` and `widthSelector`
+  (on by default, `MOKADOCS_SHOW_TEXT_SIZE_SELECTOR`, `MOKADOCS_SHOW_WIDTH_SELECTOR`) show or hide
+  the new sections. `layoutSelector` (off, `MOKADOCS_SHOW_LAYOUT_SELECTOR`) adds a Layout section
+  where readers switch 13 parts of a docs page; their picks apply before the first paint and the
+  site's variants stay the defaults. It adds 4 to 9 KB per page (1 to 2 KB gzipped).
+- **Theme presets.** `theme.options.preset` sets a style, layout variants and appearance defaults
+  in one line: `reference`, `terminal`, `book`, `product`, `minimal`, `accessible` or `moka`.
+  Options you set win over the preset. `MOKADOCS_THEME_PRESET` and `MokaDocsOptions.Preset`; an
+  unknown name warns.
+- **Five more styles**: `terminal` (monospace, dark first), `paper` (a serif book page),
+  `contrast` (7:1 body text, underlined links, thick focus rings), `glass` (translucent blurred
+  panels with solid fallbacks) and `brutal` (thick lines, flat fills, hard shadows).
+- **More colors and code themes.** Color presets `slate`, `teal`, `indigo`, `orange` and `graphite`;
+  code themes Tokyo Night, Gruvbox dark and light, Solarized dark and light, Rose Pine, Rose Pine
+  Dawn, Night Owl and Monokai, adjusted to AA. Dark mode swaps the Gruvbox, Solarized and Rose Pine
+  pairs like the Catppuccin and GitHub ones. The lists are public (`ThemeStyles.All`,
+  `ColorPresets`, `CodeThemes`, `CodeStyles`) and reach templates as `theme.style_options`,
+  `theme.color_presets`, `theme.code_themes` and `theme.code_styles`.
+- **Twelve more layout parts.** `sidebar` (lines, pills, compact, accent, cards, minimal),
+  `sidebarScope` (section), `hero` (split, minimal, banner), `heroBackground` (dots, gradient, none,
+  mesh, lines), `admonitions` (filled, minimal, github, outlined, callout), `tables` (striped,
+  bordered, minimal, compact, rounded), `density` (compact, spacious), `font` (system, serif, mono,
+  rounded, humanist), `headings` (underlined, accent, numbered), `links` (underlined, subtle),
+  `home` and `features` (below). The first six parts gained `width: narrow` and `wider`, navbar
+  `centered` and `transparent`, footer `centered` and `compact`, toc `numbered`, `timeline` and
+  `bordered`, breadcrumbs `arrows` and `dots`, and pageNav `split` and `compact`. Each part has a
+  `MOKADOCS_LAYOUT_*` variable and a `MokaDocsLayoutOptions` property, and every variant meets AA in
+  every style, preset and mode.
+- **Home page variants.** `layout.home` is `portal` (a search box and a card for each top-level
+  section), `showcase` (a code band, figures and a call to action), `minimal` or `docs` (the
+  landing page as a docs page with the sidebar), and `layout.features` lays the feature cards out as
+  `list`, `icons`, `compact` or `bento`. New landing front matter: `heroCode`, `heroCodeLanguage`
+  and `heroImage` for `hero: split`, and `showcaseCode`, `showcaseCodeLanguage`, `showcaseTitle`,
+  `showcaseText`, `stats` and `cta`. Landing code is highlighted at build time.
+- **Announcement banner.** `theme.options.banner` (`text`, `link`, `linkText`, `id`,
+  `dismissible`, `variant` of `info`, `warning` or `accent`) puts a line above the header.
+  Dismissal is remembered per id, so a new announcement shows again. `MOKADOCS_BANNER_TEXT` and
+  `MOKADOCS_BANNER_LINK` set it without editing mokadocs.yaml, and `MokaDocsOptions.Banner` in the
+  host.
+- **Sidebar toggle.** `theme.options.sidebarToggle` (`MOKADOCS_SIDEBAR_TOGGLE`,
+  `MokaDocsOptions.SidebarToggle`) adds a button that hides the sidebar on wide screens,
+  remembered per reader.
+- **Theme lab in `mokadocs serve`.** A button at the bottom left of every served page previews
+  presets, styles, colors, code themes, code styles, every layout part, the sidebar toggle and the
+  banner on your own pages, then saves them to mokadocs.yaml keeping its comments and formatting.
+  It writes only after the edited file loads to the values you picked, and refuses a file it can't
+  edit safely while offering the YAML to paste. `--no-lab` turns it off; `mokadocs build` never
+  includes it.
+- **Code block options.** Fences take `title="..."`, line highlights (`{1,3-5}`),
+  `showLineNumbers`, `noLineNumbers` and `wrap`; `[!code highlight]`, `[!code ++]`,
+  `[!code --]` and `[!code focus]` comments mark lines; `diff` and `diff-<language>` blocks show
+  added and removed lines. Copy copies the code as it reads after the change.
+- **Markdown components.** `:::details` and `:::faq` (with FAQPage structured data), `:::columns`,
+  `:::file-tree`, `:::timeline`, `:::video` (YouTube through youtube-nocookie.com, Vimeo with
+  tracking off, or a video file), `:::figure`, `:::package` (the NuGet install widget for any
+  package), and inline `:badge[...]` and `:kbd[...]`.
+- **API cross-references.** `[text](xref:Ns.Type)` and `<xref:Ns.Type.Member>` link to API pages
+  by name or documentation ID, in the CLI and the ASP.NET Core host; `System.*` and `Microsoft.*`
+  names go to learn.microsoft.com. A reference that matches nothing is a warning with its line. The
+  Markdown copies get the resolved links.
+- **Glossary.** Terms from `glossary:` in mokadocs.yaml, a `glossary.yml` in the docs folder or
+  `MokaDocsOptions.Glossary` show their definition on `:term[...]` (hover, focus or tap), and
+  `:::glossary` lists them all.
+- **Markdown copies and llms.txt.** `build.llms` (on by default, `MOKADOCS_LLMS`,
+  `MokaDocsOptions.Llms`) writes a `.md` copy of each Markdown page and C# API page (links made
+  absolute) plus `llms.txt` and `llms-full.txt`, and those pages get Copy page and View as
+  Markdown. A `llms.txt` of your own in the docs folder wins. Both hosts serve `.md` as
+  `text/markdown; charset=utf-8`.
+- **Link preview images.** `site.image` (`MOKADOCS_SITE_IMAGE`, `MokaDocsOptions.SocialImage`) and
+  front matter `image` fill `og:image` and `twitter:image` with a large card, and landing pages write
+  their Open Graph and Twitter tags. The host's `SiteUrl` enables canonical links and preview tags.
+- **Image zoom.** Content images open full size on click (`theme.options.imageZoom`, on by default,
+  `MOKADOCS_IMAGE_ZOOM`, `MokaDocsOptions.ImageZoom`).
+- **Search forgives one typo** in words of five letters or more, ranked below exact matches.
+- **Accessibility and print.** A skip link, `<main>` on landing pages, a mobile sidebar that closes
+  on Escape or an outside click, an "On this page" drawer that dims the page and returns focus,
+  arrow keys in the install widget's tabs, a fallback without JavaScript, a print stylesheet and
+  Windows high contrast (forced colors) support.
+- **ASP.NET Core host.** `PathBase` for apps behind a path base, with a warning when requests
+  arrive with another one; `ConfigureFeedbackEndpoint` and `ConfigureReplEndpoint` for endpoint
+  conventions; `SiteUrl`, `SocialImage`, `Llms`, `Preset`, `Banner`, `Glossary`, `SidebarToggle`,
+  `TextSizeSelector`, `WidthSelector` and `LayoutSelector`.
+- **Moka.Docs.Serve:** `IDevServerExtension` and `DevServer.Extensions` add dev-only endpoints and
+  page HTML; `DevServer` is `IAsyncDisposable`.
+- **Blazor previews:** a `publishHost` option (off: use an already published host and never run
+  `dotnet publish`), a `.gitattributes` with `*.js binary` whenever previews ship (a branch deploy
+  that rewrites line endings breaks the framework's integrity checks), and `validate` and `doctor`
+  warn about a preview host that doesn't fingerprint its framework files.
+- **Translations.** `site.language` sets `<html lang>`, `og:locale`, dates, plurals and every text
+  of the theme, with built-in Spanish, French, German, Brazilian Portuguese, Japanese and
+  simplified Chinese. `theme.options.strings` overrides any of the 236 texts (an unknown key
+  warns, with a suggestion). `site.direction`, set automatically for Arabic, Hebrew, Persian,
+  Urdu and others, writes `dir` and loads a mirrored `rtl.css` after the other stylesheets, so
+  left-to-right pages are unchanged. Chinese, Japanese and Korean search terms also match by
+  character pairs. Host options `Language`, `Direction` and `Strings`; custom themes get `t.*`,
+  `site.language`, `site.direction`, `site.og_locale` and `page.last_modified_display`.
+
+### 🐛 Fixed
+
+- **Mermaid diagrams were tiny on most sites.** With `showAnimations: false`, the default, or for
+  readers who prefer reduced motion, every element got a 0.01ms transition, Mermaid measured each
+  node mid-transition, and diagrams were laid out thousands of pixels wide and shrunk to fit.
+  Diagrams now get no transitions. Gantt charts were 300px wide in any column; they take the
+  column's width (at least 600px).
+- The sidebar's `id="sidebar"` collided with the id of any "Sidebar" heading; it is
+  `mokadocs-sidebar` now.
+- Code blocks: line numbers drifted from their lines in every code style, and `c#` fences weren't
+  highlighted.
+- Markdown: lists nested inside `:::` blocks and tabs came out flat, code inside admonitions lost
+  its first level of indentation, and package install commands were unreadable with a dark code
+  theme on a light page.
+- Theme script: storage blocked by privacy settings stopped every script on the page; header menus
+  opened under the "On this page" drawer at 769 to 1200px; search said "No results" while the index
+  loaded, and a result on the current page didn't close the dialog; the contents highlight ignored
+  the navbar height, short windows and the last headings; copying a heading link failed over http;
+  collapsed sidebar sections could be focused and were read aloud; the sidebar lacked
+  `aria-current` and didn't scroll to the current page; back to top was a tab stop while hidden;
+  smooth scrolling ignored reduced motion and `showAnimations: false`; the tabs row didn't scroll
+  to the current tab; and the progress bar forced a layout on every frame.
+- Styles: moka painted light code themes near-black in dark mode, classic's focus ring vanished on
+  its light header bar, and the Copy button's focus ring was hard to see on code blocks.
+- Layout: back to top and the "On this page" button covered the footer's last line, a page without
+  previous or next rendered an empty navigation, the footer's "More" column took one of the four
+  section columns, and phone readers could only change dark mode.
+- A folder holding an old build (such as `docs/_site` after `build.output` moved) was read as docs
+  and republished; it is skipped with a warning, in the CLI and the ASP.NET Core host.
+- ASP.NET Core host: links and assets 404ed behind a path base, and `?v=` assets were revalidated
+  on every view.
+- Blazor previews: `EditForm` submits didn't work, stale publish files shipped, and a host without
+  scoped styles requested a missing `DocsPreviewHost.styles.css`. Preview frames got the dev
+  server's reload script.
+- Python API pages were labelled and highlighted as C#, and their declarations now read
+  `class Name(Base):` and `import pkg.module`.
+
+### 🧪 Tests
+
+- Tests: TODO. New coverage includes the theme's runtime and head scripts under Node, contrast
+  of every style, preset and code theme in light and dark, the per-style CSS split, build-time
+  highlighting and fence options, the Markdown components, xref and glossary resolution, the llms
+  output, the dev server on Kestrel, the theme lab's YAML editing, saves and rebuilds, the ASP.NET
+  Core host's compression, caching and path base, and the Blazor preview hardening.
+
+### 📚 Docs
+
+- Theme customization: theme presets, the Appearance panel, reading width, the new layout parts and
+  variants, home page variants, the announcement banner, image zoom, keyboard and accessibility,
+  and printing. The components guide covers the new components, the glossary, API
+  cross-references and the inline badges, keys and terms; the Markdown guide covers code block
+  options, line markers and diffs.
+- Dev server: the theme lab and its endpoints. ASP.NET Core guide: presets, the banner, link
+  previews, compression, cache and response headers, path base and endpoint conventions. Blazor
+  preview: `publishHost`, security, `.gitattributes` and troubleshooting. Front matter: the hero and
+  showcase keys and `image`. The configuration reference lists every new key, and this site's own
+  terms live in `docs/glossary.yml`.
+
 ## [1.9.0] - 2026-11-11
 
 ### ✨ New

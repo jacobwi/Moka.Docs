@@ -45,6 +45,61 @@ public sealed class FileDiscoveryServiceTests
 	}
 
 	[Fact]
+	public void Discover_FolderHoldingAnOldBuild_IsSkippedWithOneWarning()
+	{
+		// build --output elsewhere left the previous ./docs/_site in the docs folder, and its search
+		// index, theme files and Markdown copies were read as content.
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/_site/.mokadocs-output", new MockFileData("") },
+			{ "/project/docs/_site/guide/intro.md", new MockFileData("# Copy") },
+			{ "/project/docs/_site/search-index.json", new MockFileData("[]") },
+			{ "/project/docs/_site/_theme/css/main.css", new MockFileData("body {}") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig(output: "/elsewhere/_site"));
+
+		result.MarkdownFiles.Should().Equal("index.md");
+		result.AssetFiles.Should().BeEmpty();
+		result.Warnings.Should().ContainSingle().Which.Should().Contain("'_site'").And.Contain(".mokadocs-output");
+	}
+
+	[Fact]
+	public void Discover_MarkerInTheDocsFolderItself_DoesNotSkipTheDocs()
+	{
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/.mokadocs-output", new MockFileData("") },
+			{ "/project/docs/index.md", new MockFileData("# Home") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig());
+
+		result.MarkdownFiles.Should().Equal("index.md");
+		result.Warnings.Should().BeEmpty();
+	}
+
+	[Fact]
+	public void Discover_TheConfiguredOutputFolder_IsSkippedWithoutAWarning()
+	{
+		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("# Home") },
+			{ "/project/docs/_site/.mokadocs-output", new MockFileData("") },
+			{ "/project/docs/_site/index.md", new MockFileData("# Copy") }
+		});
+
+		var service = new FileDiscoveryService(fs, NullLogger<FileDiscoveryService>.Instance);
+		DiscoveryResult result = service.Discover("/project", CreateConfig(output: "./docs/_site"));
+
+		result.MarkdownFiles.Should().Equal("index.md");
+		result.Warnings.Should().BeEmpty();
+	}
+
+	[Fact]
 	public void Discover_WithNoDocsDirectory_ReturnsEmpty()
 	{
 		var fs = new MockFileSystem(new Dictionary<string, MockFileData>());

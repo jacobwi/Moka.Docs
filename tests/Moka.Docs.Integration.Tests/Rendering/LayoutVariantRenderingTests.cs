@@ -75,10 +75,23 @@ public sealed class LayoutVariantRenderingTests
 		"toc" => new ThemeLayoutOptions { Toc = variant },
 		"breadcrumbs" => new ThemeLayoutOptions { Breadcrumbs = variant },
 		"pageNav" => new ThemeLayoutOptions { PageNav = variant },
+		"sidebar" => new ThemeLayoutOptions { Sidebar = variant },
+		"sidebarScope" => new ThemeLayoutOptions { SidebarScope = variant },
+		"home" => new ThemeLayoutOptions { Home = variant },
+		"hero" => new ThemeLayoutOptions { Hero = variant },
+		"heroBackground" => new ThemeLayoutOptions { HeroBackground = variant },
+		"features" => new ThemeLayoutOptions { Features = variant },
+		"admonitions" => new ThemeLayoutOptions { Admonitions = variant },
+		"tables" => new ThemeLayoutOptions { Tables = variant },
+		"density" => new ThemeLayoutOptions { Density = variant },
+		"font" => new ThemeLayoutOptions { Font = variant },
+		"headings" => new ThemeLayoutOptions { Headings = variant },
+		"links" => new ThemeLayoutOptions { Links = variant },
 		_ => throw new ArgumentOutOfRangeException(nameof(part), part, null)
 	};
 
-	private static string Attribute(string part) => part == "pageNav" ? "data-page-nav" : "data-" + part;
+	private static string Attribute(string part) =>
+		"data-" + string.Concat(part.Select(c => char.IsUpper(c) ? "-" + char.ToLowerInvariant(c) : c.ToString()));
 
 	private static string HtmlTag(string page)
 	{
@@ -120,6 +133,35 @@ public sealed class LayoutVariantRenderingTests
 	}
 
 	[Fact]
+	public async Task EveryPartAtOnce_IsWrittenOnTheHtmlStartTagOfBothLayouts()
+	{
+		// The headings and links attributes sit on a second template line joined with {{- so the start
+		// tag stays on one line.
+		var layout = new ThemeLayoutOptions
+		{
+			Width = "narrow", Navbar = "transparent", Footer = "compact", Toc = "timeline", Breadcrumbs = "dots",
+			PageNav = "split", Sidebar = "cards", SidebarScope = "section", Home = "showcase", Hero = "banner",
+			HeroBackground = "mesh", Features = "bento", Admonitions = "callout", Tables = "rounded", Density = "compact",
+			Font = "humanist", Headings = "numbered", Links = "subtle"
+		};
+
+		MockFileSystem fs = await BuildAsync(layout);
+		MockFileSystem plain = await BuildAsync(new ThemeLayoutOptions());
+
+		foreach (string path in new[] { _page, _landing })
+		{
+			string tag = HtmlTag(fs.File.ReadAllText(path));
+			foreach (ThemeLayoutPart part in ThemeLayouts.Parts)
+			{
+				tag.Should().Contain($"{Attribute(part.Key)}=\"{layout.NameOf(part)}\"");
+			}
+
+			tag.Should().NotContain("\n").And.Contain("data-font=\"humanist\" data-headings=\"numbered\" data-links=\"subtle\"");
+			HtmlTag(plain.File.ReadAllText(path)).Should().NotContain("\n");
+		}
+	}
+
+	[Fact]
 	public async Task NavbarTabs_LinkEachTopLevelSectionAndMarkTheCurrentOne()
 	{
 		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions { Navbar = "tabs" }, "/Repo");
@@ -152,6 +194,45 @@ public sealed class LayoutVariantRenderingTests
 			page.Should().Contain("<div class=\"footer-bottom\">").And.Contain("Copyright Test").And.Contain("Built with");
 			page.Should().NotContain("<div class=\"footer-inner\">").And.NotContain("class=\"landing-footer\"");
 		}
+	}
+
+	[Fact]
+	public async Task FooterColumns_TopLevelPagesFollowFourSectionColumns()
+	{
+		// Top-level pages without entries below shared a column that came first and took one of the
+		// four places, so the fourth section went missing.
+		var files = new Dictionary<string, MockFileData>
+		{
+			[MockSite.Root + "/docs/index.md"] = new("---\ntitle: Home\n---\n# Home\n"),
+			[MockSite.Root + "/docs/changelog.md"] = new("---\ntitle: Changelog\n---\n# Changelog\n")
+		};
+		var nav = new List<NavItem> { new() { Label = "Home", Path = "/" } };
+		foreach (string section in new[] { "one", "two", "three", "four", "five" })
+		{
+			files[$"{MockSite.Root}/docs/{section}/page.md"] = new($"---\ntitle: Page {section}\n---\n# Page\n");
+			nav.Add(new NavItem
+			{
+				Label = "Section " + section,
+				Path = "/" + section,
+				Children = [new NavItem { Label = "Page " + section, Path = $"/{section}/page" }]
+			});
+		}
+
+		nav.Add(new NavItem { Label = "Changelog", Path = "/changelog" });
+		SiteConfig config = MockSite.Config() with
+		{
+			Nav = nav,
+			Theme = new ThemeConfig { Options = new ThemeOptions { Layout = new ThemeLayoutOptions { Footer = "columns" } } }
+		};
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, files);
+
+		string page = fs.File.ReadAllText(MockSite.Root + "/_site/one/page/index.html");
+		List<string> titles = System.Text.RegularExpressions.Regex.Matches(page, "<p class=\"footer-col-title\">([^<]*)</p>")
+			.Select(m => m.Groups[1].Value).ToList();
+		titles.Should().Equal("Section one", "Section two", "Section three", "Section four", "More");
+		int more = page.IndexOf("<p class=\"footer-col-title\">More</p>", StringComparison.Ordinal);
+		page[more..].Should().Contain("href=\"/\">Home</a>").And.Contain("href=\"/changelog\">Changelog</a>");
 	}
 
 	[Fact]
@@ -211,5 +292,149 @@ public sealed class LayoutVariantRenderingTests
 		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, Files());
 
 		fs.File.ReadAllText(_page).Should().NotContain("toc-inline").And.NotContain("toc-sidebar");
+	}
+
+	private static async Task<string> BuildLandingAsync(string frontMatter, ThemeLayoutOptions layout, string basePath = "/")
+	{
+		Dictionary<string, MockFileData> files = Files();
+		files[MockSite.Root + "/docs/index.md"] =
+			new MockFileData("---\ntitle: Home\ndescription: The home page\nlayout: landing\n" + frontMatter + "---\n# Home\n");
+		SiteConfig config = MockSite.Config() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { Layout = layout } },
+			Build = new BuildConfig { BasePath = basePath }
+		};
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, files);
+		return fs.File.ReadAllText(_landing);
+	}
+
+	private const string _heroCode = "heroCodeLanguage: csharp\nheroCode: |\n  var list = new List<int>();\n  list.Add(1);\n";
+
+	[Fact]
+	public async Task HeroSplit_PutsTheHighlightedCodeBesideTheText()
+	{
+		string landing = await BuildLandingAsync(_heroCode, new ThemeLayoutOptions { Hero = "split" });
+
+		landing.Should().Contain("<section class=\"landing-hero landing-hero-split\">");
+		landing.Should().Contain("<div class=\"landing-hero-media landing-content\">");
+		landing.Should().Contain("<div class=\"code-block\" data-line-numbers=\"false\" data-lang=\"csharp\">");
+		landing.Should().Contain("data-highlighted=\"true\"").And.Contain("<span class=\"token keyword\">new</span>");
+		landing.Should().Contain("&lt;").And.NotContain("List<int>");
+		int text = landing.IndexOf("<div class=\"landing-hero-text\">", StringComparison.Ordinal);
+		text.Should().BeGreaterThan(0);
+		text.Should().BeLessThan(landing.IndexOf("<h1 class=\"landing-hero-title\">", StringComparison.Ordinal));
+		landing.IndexOf("landing-hero-media", StringComparison.Ordinal)
+			.Should().BeGreaterThan(landing.IndexOf("<div class=\"landing-hero-actions\">", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[InlineData("images/hero.png", "/", "/images/hero.png")]
+	[InlineData("./images/hero.png", "/Repo", "/Repo/images/hero.png")]
+	[InlineData("/media/hero.png", "/Repo", "/Repo/media/hero.png")]
+	[InlineData("https://cdn.example.com/hero.png", "/Repo", "https://cdn.example.com/hero.png")]
+	public async Task HeroSplit_ShowsTheImageResolvedLikeOtherLinks(string image, string basePath, string expected)
+	{
+		string landing = await BuildLandingAsync($"heroImage: {image}\n", new ThemeLayoutOptions { Hero = "split" }, basePath);
+
+		landing.Should().Contain("<section class=\"landing-hero landing-hero-split\">");
+		landing.Should().Contain($"<img src=\"{expected}\" alt=\"\" />");
+	}
+
+	[Fact]
+	public async Task HeroSplit_PrefersTheCodeOverTheImage()
+	{
+		string landing = await BuildLandingAsync(_heroCode + "heroImage: images/hero.png\n", new ThemeLayoutOptions { Hero = "split" });
+
+		landing.Should().Contain("class=\"code-block\"").And.NotContain("images/hero.png");
+	}
+
+	[Fact]
+	public async Task HeroSplit_WithoutCodeOrImage_KeepsTheCenteredHero()
+	{
+		string landing = await BuildLandingAsync("", new ThemeLayoutOptions { Hero = "split" });
+
+		landing.Should().Contain("<section class=\"landing-hero\">");
+		landing.Should().NotContain("landing-hero-split").And.NotContain("landing-hero-text").And.NotContain("landing-hero-media");
+		landing.Should().Contain("data-hero=\"split\"");
+	}
+
+	[Theory]
+	[InlineData("default")]
+	[InlineData("minimal")]
+	public async Task HeroWithoutSplit_LeavesOutTheCode(string hero)
+	{
+		string landing = await BuildLandingAsync(_heroCode, new ThemeLayoutOptions { Hero = hero });
+
+		landing.Should().Contain("<section class=\"landing-hero\">");
+		landing.Should().NotContain("landing-hero-media").And.NotContain("class=\"code-block\"");
+	}
+
+	[Fact]
+	public async Task HeroMinimal_LeavesOutTheIcon()
+	{
+		string minimal = await BuildLandingAsync("", new ThemeLayoutOptions { Hero = "minimal" });
+		string standard = await BuildLandingAsync("", new ThemeLayoutOptions());
+
+		minimal.Should().NotContain("landing-hero-icon").And.Contain("<h1 class=\"landing-hero-title\">");
+		standard.Should().Contain("<div class=\"landing-hero-icon\">");
+	}
+
+	[Fact]
+	public async Task PrevNextAndFeedback_SitInTheContentColumnAfterTheArticle()
+	{
+		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions());
+
+		string page = fs.File.ReadAllText(_page);
+		int article = page.IndexOf("</article>", StringComparison.Ordinal);
+		int feedback = page.IndexOf("<div class=\"feedback-widget\"", StringComparison.Ordinal);
+		int nav = page.IndexOf("<nav class=\"page-nav\"", StringComparison.Ordinal);
+		int main = page.IndexOf("</main>", StringComparison.Ordinal);
+		article.Should().BePositive();
+		feedback.Should().BeGreaterThan(article);
+		nav.Should().BeGreaterThan(feedback);
+		main.Should().BeGreaterThan(nav);
+	}
+
+	[Fact]
+	public async Task PrevNext_IsLeftOutOnAPageWithNeither()
+	{
+		var files = new Dictionary<string, MockFileData>
+		{
+			[MockSite.Root + "/docs/only.md"] = new("---\ntitle: Only\n---\n# Only\n")
+		};
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(MockSite.Config(), files);
+
+		fs.File.ReadAllText(MockSite.Root + "/_site/only/index.html").Should().NotContain("class=\"page-nav\"");
+	}
+
+	[Fact]
+	public async Task SidebarToggle_IsOffByDefault()
+	{
+		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions());
+
+		fs.File.ReadAllText(_page).Should().NotContain("sidebarToggle").And.NotContain("mokadocs-sidebar-hidden");
+	}
+
+	[Fact]
+	public async Task SidebarToggle_AddsAButtonAndAppliesTheStoredChoiceRightAfterTheSidebar()
+	{
+		SiteConfig config = MockSite.Config() with { Theme = new ThemeConfig { Options = new ThemeOptions { SidebarToggle = true } } };
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, Files());
+
+		string page = fs.File.ReadAllText(_page);
+		const string button =
+			"<button class=\"sidebar-toggle js-only\" id=\"sidebarToggle\" type=\"button\" aria-label=\"Toggle sidebar\" aria-controls=\"mokadocs-sidebar\" aria-expanded=\"true\">";
+		page.Should().Contain(button);
+		int aside = page.IndexOf("</aside>", StringComparison.Ordinal);
+		int toggle = page.IndexOf(button, StringComparison.Ordinal);
+		int script = page.IndexOf("<script>try{if(localStorage.getItem('mokadocs-sidebar-hidden')==='true')", StringComparison.Ordinal);
+		toggle.Should().BeGreaterThan(aside);
+		script.Should().BeGreaterThan(toggle);
+		script.Should().BeLessThan(page.IndexOf("<main", StringComparison.Ordinal));
+		page[..page.IndexOf("</head>", StringComparison.Ordinal)].Should().NotContain("mokadocs-sidebar-hidden");
+		fs.File.ReadAllText(_landing).Should().NotContain("sidebarToggle");
 	}
 }

@@ -72,8 +72,63 @@ public sealed class AspNetCoreRebuildTests : IDisposable
 
 		host.Startup.StartupBuild.Should().BeNull();
 		host.Docs.CurrentSite.Should().BeNull();
-		(await host.GetTextAsync("/docs")).Should().Contain("Version one");
+		(await PollAsync(host, "/docs", html => html.Contains("Version one"))).Should().Contain("Version one");
 		host.Docs.CurrentSite.Should().NotBeNull();
+	}
+
+	[Fact]
+	public async Task DuringTheFirstBuild_RequestsGet503WithRetryAfter_InsteadOfWaiting()
+	{
+		// Requests waited on the build lock for as long as the build took, minutes with a Blazor
+		// preview host to publish.
+		var gate = new GatePlugin(1);
+		await using DocsTestHost host = await StartAsync(
+			options => options.Plugins = [new PluginEntry { Id = GatePlugin.PluginId }],
+			register: services => services.AddSingleton<IMokaPlugin>(gate),
+			waitForStartupBuild: false);
+		await gate.RebuildStarted.Task.WaitAsync(_wait, Ct);
+
+		HttpResponseMessage page = await host.SendAsync(HttpMethod.Get, "/docs",
+			request => request.Headers.Accept.ParseAdd("text/html")).WaitAsync(TimeSpan.FromSeconds(10), Ct);
+		HttpResponseMessage script = await host.GetAsync("/docs/_theme/js/main.js").WaitAsync(TimeSpan.FromSeconds(10), Ct);
+		HttpResponseMessage head = await host.SendAsync(HttpMethod.Head, "/docs");
+
+		foreach (HttpResponseMessage response in (HttpResponseMessage[]) [page, script, head])
+		{
+			response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+			response.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromSeconds(MokaDocsService.BuildingRetryAfterSeconds));
+			response.Headers.CacheControl!.NoStore.Should().BeTrue();
+		}
+
+		page.Content.Headers.ContentType!.MediaType.Should().Be("text/html");
+		(await page.Content.ReadAsStringAsync(Ct)).Should().Contain("<meta http-equiv=\"refresh\" content=\"2\">");
+		script.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
+		(await head.Content.ReadAsByteArrayAsync(Ct)).Should().BeEmpty();
+		gate.Builds.Should().Be(1, "requests during the build don't start builds of their own");
+
+		gate.Release.SetResult();
+		(await PollAsync(host, "/docs", html => html.Contains("Version one"))).Should().Contain("Version one");
+		gate.Builds.Should().Be(1);
+	}
+
+	[Fact]
+	public async Task InvalidateCache_RequestsGetThePreviousSiteWhileTheNextBuildRuns()
+	{
+		var gate = new GatePlugin();
+		await using DocsTestHost host = await StartAsync(
+			options => options.Plugins = [new PluginEntry { Id = GatePlugin.PluginId }],
+			register: services => services.AddSingleton<IMokaPlugin>(gate));
+		(await host.GetTextAsync("/docs")).Should().Contain("Version one");
+
+		WriteHome("Version two");
+		host.Docs.InvalidateCache();
+		(await host.GetTextAsync("/docs").WaitAsync(TimeSpan.FromSeconds(10), Ct)).Should().Contain("Version one");
+		await gate.RebuildStarted.Task.WaitAsync(_wait, Ct);
+		(await host.GetTextAsync("/docs").WaitAsync(TimeSpan.FromSeconds(10), Ct)).Should().Contain("Version one");
+
+		gate.Release.SetResult();
+		(await PollAsync(host, "/docs", html => html.Contains("Version two"))).Should().Contain("Version two");
+		gate.Builds.Should().Be(2);
 	}
 
 	[Fact]
@@ -183,19 +238,22 @@ public sealed class AspNetCoreRebuildTests : IDisposable
 			register: services => services.AddSingleton<IBuildPhase>(failing));
 		host.Docs.FailureRetryDelay = TimeSpan.FromMinutes(5);
 
-		HttpResponseMessage[] responses = await Task.WhenAll(Enumerable.Range(0, 6)
+		HttpResponseMessage[] building = await Task.WhenAll(Enumerable.Range(0, 6)
 			.Select(_ => host.GetAsync("/docs")));
-
-		responses.Should().AllSatisfy(r => r.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable));
-		responses[0].Headers.RetryAfter.Should().NotBeNull();
-		failing.Runs.Should().Be(1);
-		host.Logs.Messages(LogLevel.Error).Where(m => m.Contains("The MokaDocs build failed")).Should().ContainSingle();
 		await FluentActions.Awaiting(() => host.Docs.GetSiteAsync(Ct))
 			.Should().ThrowAsync<InvalidOperationException>().WithMessage("*failed to build*phase failed*");
+		HttpResponseMessage[] failed = await Task.WhenAll(Enumerable.Range(0, 6)
+			.Select(_ => host.GetAsync("/docs")));
+
+		building.Concat(failed).Should().AllSatisfy(r => r.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable));
+		failed.Should().AllSatisfy(r => r.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromMinutes(5)));
+		(await failed[0].Content.ReadAsStringAsync(Ct)).Should().Contain("failed to build");
+		failing.Runs.Should().Be(1);
+		host.Logs.Messages(LogLevel.Error).Where(m => m.Contains("The MokaDocs build failed")).Should().ContainSingle();
 
 		failing.Failing = false;
 		host.Docs.FailureRetryDelay = TimeSpan.Zero;
-		(await host.GetTextAsync("/docs")).Should().Contain("Version one");
+		(await PollAsync(host, "/docs", html => html.Contains("Version one"))).Should().Contain("Version one");
 		failing.Runs.Should().Be(2);
 	}
 
@@ -205,6 +263,7 @@ public sealed class AspNetCoreRebuildTests : IDisposable
 		var failing = new FailingPhase();
 		await using DocsTestHost host = await StartAsync(options => options.BuildOnStartup = false,
 			register: services => services.AddSingleton<IBuildPhase>(failing));
+		await host.Docs.GetSiteAsync(Ct);
 		(await host.GetTextAsync("/docs")).Should().Contain("Version one");
 
 		failing.Failing = true;
@@ -212,6 +271,7 @@ public sealed class AspNetCoreRebuildTests : IDisposable
 		host.Docs.InvalidateCache();
 
 		(await host.GetTextAsync("/docs")).Should().Contain("Version one");
+		await host.Docs.GetSiteAsync(Ct);
 		(await host.GetTextAsync("/docs")).Should().Contain("Version one");
 		failing.Runs.Should().Be(2, "the second request reuses the failure instead of building again");
 	}
@@ -296,6 +356,7 @@ public sealed class AspNetCoreRebuildTests : IDisposable
 			options.DocsPath = ".";
 			options.BuildOnStartup = false;
 		});
+		await host.Docs.GetSiteAsync(Ct);
 
 		(await host.GetTextAsync("/docs")).Should().Contain("Root docs.");
 		(await host.GetTextAsync("/docs/data.json")).Should().Contain("public");
@@ -330,23 +391,29 @@ public sealed class AspNetCoreRebuildTests : IDisposable
 	}
 
 	private Task<DocsTestHost> StartAsync(Action<MokaDocsOptions>? configure = null, Action<WebApplication>? map = null,
-		Action<IServiceCollection>? register = null) =>
+		Action<IServiceCollection>? register = null, bool waitForStartupBuild = true) =>
 		DocsTestHost.StartAsync(_root, options =>
 		{
 			options.DocsPath = "docs";
 			configure?.Invoke(options);
-		}, map, register: register);
+		}, map, register: register, waitForStartupBuild: waitForStartupBuild);
 
+	/// <summary>Requests a page until it is served and <paramref name="done" />; a 503 means a build is still running.</summary>
 	private static async Task<string> PollAsync(DocsTestHost host, string path, Func<string, bool> done)
 	{
 		DateTime until = DateTime.UtcNow + _wait;
-		string html;
+		string html = "";
 		do
 		{
-			html = await host.GetTextAsync(path);
-			if (done(html))
+			HttpResponseMessage response = await host.GetAsync(path);
+			if (response.StatusCode != HttpStatusCode.ServiceUnavailable)
 			{
-				break;
+				response.StatusCode.Should().Be(HttpStatusCode.OK, "GET {0} should be served", path);
+				html = await response.Content.ReadAsStringAsync(Ct);
+				if (done(html))
+				{
+					break;
+				}
 			}
 
 			await Task.Delay(100, Ct);

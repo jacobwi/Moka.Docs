@@ -1,6 +1,7 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Moka.Docs.AspNetCore.Phases;
 using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Configuration;
@@ -43,9 +44,10 @@ public static class MokaDocsServiceExtensions
 		// Create SiteConfig from options
 		SiteConfig siteConfig = SiteConfigFactory.Create(options);
 
-		// Register options and config
+		// Register options and config. The plugin host reads plugin options from the registered
+		// config, and the Blazor preview's depend on the environment, which only the container knows.
 		services.AddSingleton(options);
-		services.AddSingleton(siteConfig);
+		services.AddSingleton(provider => SiteConfigFactory.Create(options, provider.GetService<IHostEnvironment>()));
 
 		// Register filesystem abstraction
 		services.AddSingleton<IFileSystem>(new FileSystem());

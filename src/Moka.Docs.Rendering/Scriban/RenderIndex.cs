@@ -11,14 +11,25 @@ internal sealed class RenderIndex
 	private static readonly HashSet<NavigationNode> _noNodes = new(ReferenceEqualityComparer.Instance);
 
 	private readonly Dictionary<string, HashSet<NavigationNode>> _ancestors = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, string?> _firstPagesUnder = new(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, NavigationNode?> _sectionsByFolder = new(StringComparer.OrdinalIgnoreCase);
 	private readonly Dictionary<string, (PageLink? Previous, PageLink? Next)> _neighbors = new(StringComparer.Ordinal);
 	private readonly NavigationTree? _navigation;
+	private readonly List<string> _pagesInOrder;
+	private Dictionary<string, NavigationNode[]>? _sidebarPaths;
 	private IReadOnlyList<NavSection>? _topSections;
 
 	public RenderIndex(IReadOnlyList<DocPage> pages, NavigationTree? navigation, BlogSite? blog = null)
 	{
 		_navigation = navigation;
 		PageRoutes = new HashSet<string>(pages.Select(p => p.Route), StringComparer.OrdinalIgnoreCase);
+		_pagesInOrder = pages
+			.Where(p => p.FrontMatter.Visibility != PageVisibility.Draft)
+			.OrderBy(p => p.FrontMatter.Visibility == PageVisibility.Public ? 0 : 1)
+			.ThenBy(p => p.FrontMatter.Order)
+			.ThenBy(p => p.Route, StringComparer.OrdinalIgnoreCase)
+			.Select(p => p.Route)
+			.ToList();
 
 		var sidebarRoutes = new List<string>();
 		if (navigation is not null)
@@ -62,6 +73,80 @@ internal sealed class RenderIndex
 	// The top-level sidebar entries that lead somewhere, each with the entries directly under it, for
 	// the header tabs and the footer columns.
 	public IReadOnlyList<NavSection> TopSections => _topSections ??= BuildTopSections();
+
+	// The sidebar entries from the top level down to the route's own entry, or none when the sidebar
+	// doesn't list the route. A section whose route was resolved to its first page shares that route,
+	// so the deepest entry wins within a branch; across branches, the first one in sidebar order.
+	public IReadOnlyList<NavigationNode> SidebarPath(string route)
+	{
+		_sidebarPaths ??= BuildSidebarPaths();
+		return _sidebarPaths.TryGetValue(route, out NavigationNode[]? path) ? path : [];
+	}
+
+	// Whether the entry's route is a page of its own, not a page below it that the sidebar resolved
+	// the section's route to.
+	public bool HasOwnPage(NavigationNode node) =>
+		!string.IsNullOrEmpty(node.Route) && PageRoutes.Contains(node.Route)
+		                                 && (node.Children.Count == 0
+		                                     || !string.Equals(node.Children[0].Route, node.Route, StringComparison.OrdinalIgnoreCase));
+
+	public string? FirstPageRoute(NavigationNode node) => PageRouteOf(node);
+
+	// The sidebar section holding a route folder's pages, for a page the sidebar doesn't list: the
+	// first entry with entries below it whose routes are all inside the folder, one of them directly.
+	// A section of a subfolder (an API namespace below /api/lib) doesn't stand for the folder.
+	public NavigationNode? SectionFor(string folderRoute)
+	{
+		string prefix = folderRoute.TrimEnd('/') + "/";
+		if (!_sectionsByFolder.TryGetValue(prefix, out NavigationNode? section))
+		{
+			section = Find(_navigation?.Items ?? []);
+			_sectionsByFolder[prefix] = section;
+		}
+
+		return section;
+
+		NavigationNode? Find(List<NavigationNode> nodes)
+		{
+			foreach (NavigationNode node in nodes)
+			{
+				if (node.Children.Count > 0)
+				{
+					var routes = new List<string>();
+					CollectRoutes([node], routes);
+					if (routes.Count > 0
+					    && routes.TrueForAll(r => r.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+					    && routes.Exists(r => r.Length > prefix.Length && r.IndexOf('/', prefix.Length) < 0))
+					{
+						return node;
+					}
+				}
+
+				if (Find(node.Children) is { } below)
+				{
+					return below;
+				}
+			}
+
+			return null;
+		}
+	}
+
+	// The page a route folder without a page of its own leads to, as its redirect stub does: the first
+	// below it in sidebar order, else the first by visibility, order and route.
+	public string? FirstPageUnder(string route)
+	{
+		string prefix = route.TrimEnd('/') + "/";
+		if (!_firstPagesUnder.TryGetValue(prefix, out string? first))
+		{
+			first = SidebarRoutes.FirstOrDefault(r =>
+				        r.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && PageRoutes.Contains(r))
+			        ?? _pagesInOrder.FirstOrDefault(r => r.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+			_firstPagesUnder[prefix] = first;
+		}
+
+		return first;
+	}
 
 	// A section path the sidebar lists without a page of its own is only a redirect, so a route
 	// that is a page wins over one earlier in the sidebar that isn't.
@@ -156,6 +241,31 @@ internal sealed class RenderIndex
 			{
 				path.Add(node);
 				CollectAncestors(node.Children, path);
+				path.RemoveAt(path.Count - 1);
+			}
+		}
+	}
+
+	private Dictionary<string, NavigationNode[]> BuildSidebarPaths()
+	{
+		var paths = new Dictionary<string, NavigationNode[]>(StringComparer.OrdinalIgnoreCase);
+		var path = new List<NavigationNode>();
+		Walk(_navigation?.Items ?? []);
+		return paths;
+
+		void Walk(List<NavigationNode> nodes)
+		{
+			foreach (NavigationNode node in nodes)
+			{
+				path.Add(node);
+				if (!string.IsNullOrEmpty(node.Route)
+				    && (!paths.TryGetValue(node.Route, out NavigationNode[]? earlier)
+				        || path.Exists(n => ReferenceEquals(n, earlier[^1]))))
+				{
+					paths[node.Route] = [.. path];
+				}
+
+				Walk(node.Children);
 				path.RemoveAt(path.Count - 1);
 			}
 		}

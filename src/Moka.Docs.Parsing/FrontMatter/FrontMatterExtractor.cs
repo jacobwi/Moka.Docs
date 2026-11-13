@@ -30,6 +30,8 @@ public sealed class FrontMatterExtractor
 
 	private static readonly HashSet<string> _knownKeys = KeysOf<FrontMatterDto>();
 	private static readonly HashSet<string> _knownFeatureKeys = KeysOf<LandingFeatureDto>();
+	private static readonly HashSet<string> _knownStatKeys = KeysOf<LandingStatDto>();
+	private static readonly HashSet<string> _knownCtaKeys = KeysOf<LandingCallToActionDto>();
 
 	private static readonly Regex _yamlLocationPrefix = new(
 		@"^\(Line: \d+, Col: \d+, Idx: \d+\) - \(Line: \d+, Col: \d+, Idx: \d+\): ",
@@ -201,29 +203,43 @@ public sealed class FrontMatterExtractor
 				continue;
 			}
 
-			if (name != "features" || value is not YamlSequenceNode features)
+			switch (name)
 			{
-				continue;
-			}
-
-			foreach (YamlNode feature in features)
-			{
-				if (feature is not YamlMappingNode card)
-				{
-					continue;
-				}
-
-				foreach (YamlNode cardKey in card.Children.Keys)
-				{
-					if (cardKey is YamlScalarNode { Value: { } cardName } && !_knownFeatureKeys.Contains(cardName))
-					{
-						warnings.Add(UnknownKey(cardName, $"features[].{cardName}", cardKey, firstYamlLine, _knownFeatureKeys));
-					}
-				}
+				case "features" when value is YamlSequenceNode features:
+					AddUnknownItemKeys(features, "features[]", _knownFeatureKeys);
+					break;
+				case "stats" when value is YamlSequenceNode stats:
+					AddUnknownItemKeys(stats, "stats[]", _knownStatKeys);
+					break;
+				case "cta" when value is YamlMappingNode cta:
+					AddUnknownKeys(cta, "cta", _knownCtaKeys);
+					break;
 			}
 		}
 
 		return warnings;
+
+		void AddUnknownItemKeys(YamlSequenceNode items, string path, HashSet<string> knownKeys)
+		{
+			foreach (YamlNode item in items)
+			{
+				if (item is YamlMappingNode mapping)
+				{
+					AddUnknownKeys(mapping, path, knownKeys);
+				}
+			}
+		}
+
+		void AddUnknownKeys(YamlMappingNode mapping, string path, HashSet<string> knownKeys)
+		{
+			foreach (YamlNode itemKey in mapping.Children.Keys)
+			{
+				if (itemKey is YamlScalarNode { Value: { } itemName } && !knownKeys.Contains(itemName))
+				{
+					warnings.Add(UnknownKey(itemName, $"{path}.{itemName}", itemKey, firstYamlLine, knownKeys));
+				}
+			}
+		}
 	}
 
 	private static string UnknownKey(string name, string shownName, YamlNode key, int firstYamlLine,
@@ -266,6 +282,15 @@ public sealed class FrontMatterExtractor
 			Features = MapFeatures(dto.Features),
 			FeaturesTitle = dto.FeaturesTitle?.Trim() ?? "",
 			FeaturesSubtitle = dto.FeaturesSubtitle?.Trim() ?? "",
+			HeroCode = string.IsNullOrWhiteSpace(dto.HeroCode) ? null : dto.HeroCode.TrimEnd(),
+			HeroCodeLanguage = string.IsNullOrWhiteSpace(dto.HeroCodeLanguage) ? null : dto.HeroCodeLanguage.Trim(),
+			HeroImage = string.IsNullOrWhiteSpace(dto.HeroImage) ? null : dto.HeroImage.Trim(),
+			ShowcaseCode = string.IsNullOrWhiteSpace(dto.ShowcaseCode) ? null : dto.ShowcaseCode.TrimEnd(),
+			ShowcaseCodeLanguage = string.IsNullOrWhiteSpace(dto.ShowcaseCodeLanguage) ? null : dto.ShowcaseCodeLanguage.Trim(),
+			ShowcaseTitle = dto.ShowcaseTitle?.Trim() ?? "",
+			ShowcaseText = dto.ShowcaseText?.Trim() ?? "",
+			Stats = MapStats(dto.Stats),
+			Cta = MapCallToAction(dto.Cta),
 			Date = MapDate(dto.Date, problems),
 			Authors = [..MapNames("author", dto.Author, problems), ..MapNames("authors", dto.Authors, problems)],
 			Summary = string.IsNullOrWhiteSpace(dto.Summary) ? null : dto.Summary.Trim(),
@@ -364,6 +389,39 @@ public sealed class FrontMatterExtractor
 		return cards;
 	}
 
+	private static List<LandingStat> MapStats(List<LandingStatDto?>? stats)
+	{
+		var figures = new List<LandingStat>();
+		foreach (LandingStatDto? stat in stats ?? [])
+		{
+			string value = stat?.Value?.Trim() ?? "";
+			string label = stat?.Label?.Trim() ?? "";
+			if (value.Length > 0 || label.Length > 0)
+			{
+				figures.Add(new LandingStat { Value = value, Label = label });
+			}
+		}
+
+		return figures;
+	}
+
+	private static LandingCallToAction? MapCallToAction(LandingCallToActionDto? cta)
+	{
+		if (cta is null)
+		{
+			return null;
+		}
+
+		var action = new LandingCallToAction
+		{
+			Title = cta.Title?.Trim() ?? "",
+			Text = cta.Text?.Trim() ?? "",
+			Link = string.IsNullOrWhiteSpace(cta.Link) ? null : cta.Link.Trim(),
+			LinkText = string.IsNullOrWhiteSpace(cta.LinkText) ? null : cta.LinkText.Trim()
+		};
+		return action.Title.Length > 0 || action.Text.Length > 0 || action.Link is not null ? action : null;
+	}
+
 	/// <summary>
 	///     The <c>version</c> value as one range: a list becomes its items joined with <c>||</c>, which
 	///     means the same thing. <c>null</c> for a mapping or a list holding anything but scalars.
@@ -429,6 +487,15 @@ internal sealed class FrontMatterDto
 	public List<LandingFeatureDto?>? Features { get; set; }
 	public string? FeaturesTitle { get; set; }
 	public string? FeaturesSubtitle { get; set; }
+	public string? HeroCode { get; set; }
+	public string? HeroCodeLanguage { get; set; }
+	public string? HeroImage { get; set; }
+	public string? ShowcaseCode { get; set; }
+	public string? ShowcaseCodeLanguage { get; set; }
+	public string? ShowcaseTitle { get; set; }
+	public string? ShowcaseText { get; set; }
+	public List<LandingStatDto?>? Stats { get; set; }
+	public LandingCallToActionDto? Cta { get; set; }
 	public string? Date { get; set; }
 	public object? Author { get; set; }
 	public object? Authors { get; set; }
@@ -444,6 +511,22 @@ internal sealed class LandingFeatureDto
 	public string? Description { get; set; }
 	public string? Icon { get; set; }
 	public string? Link { get; set; }
+}
+
+/// <summary>DTO for one item of the <c>stats</c> front matter list.</summary>
+internal sealed class LandingStatDto
+{
+	public string? Value { get; set; }
+	public string? Label { get; set; }
+}
+
+/// <summary>DTO for the <c>cta</c> front matter mapping.</summary>
+internal sealed class LandingCallToActionDto
+{
+	public string? Title { get; set; }
+	public string? Text { get; set; }
+	public string? Link { get; set; }
+	public string? LinkText { get; set; }
 }
 
 #endregion

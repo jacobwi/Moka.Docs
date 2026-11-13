@@ -52,6 +52,31 @@ public sealed class FrontMatterWarningsTests
 	}
 
 	[Fact]
+	public void UnknownKeyInAStatOrTheCallToAction_IsReported()
+	{
+		const string input = """
+		                     ---
+		                     title: Home
+		                     stats:
+		                       - value: 2M
+		                         lable: Downloads
+		                     cta:
+		                       title: Start
+		                       href: /start
+		                       LinkText: Go
+		                     ---
+		                     Body
+		                     """;
+
+		FrontMatterResult result = _extractor.Extract(input);
+
+		result.Warnings.Should().Equal(
+			"unknown front matter key 'stats[].lable' (line 5)",
+			"unknown front matter key 'cta.href' (line 8)",
+			"unknown front matter key 'cta.LinkText' (line 9); keys are case sensitive, did you mean 'linkText'?");
+	}
+
+	[Fact]
 	public void LineNumbers_CountFromTheTopOfTheFile()
 	{
 		const string input = "\n\n---\ntitle: X\nbogus: 1\n---\nBody";
@@ -85,6 +110,18 @@ public sealed class FrontMatterWarningsTests
 		                         description: b
 		                         icon: zap
 		                         link: /x
+		                     showcaseTitle: t
+		                     showcaseText: s
+		                     showcaseCode: x
+		                     showcaseCodeLanguage: csharp
+		                     stats:
+		                       - value: "1"
+		                         label: l
+		                     cta:
+		                       title: t
+		                       text: s
+		                       link: /y
+		                       linkText: Go
 		                     ---
 		                     """;
 

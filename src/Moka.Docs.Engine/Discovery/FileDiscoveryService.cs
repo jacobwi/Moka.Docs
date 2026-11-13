@@ -141,6 +141,18 @@ public sealed class FileDiscoveryService(IFileSystem fileSystem, ILogger<FileDis
 				return;
 			}
 
+			// An older build left in the docs folder (./docs/_site after build.output moved elsewhere) was
+			// read as content: its search index, theme files and images were published again inside the
+			// new site, and its Markdown copies of the pages would become pages.
+			if (!directory.Equals(root, StringComparison.Ordinal)
+			    && entries.Any(e => fs.Path.GetFileName(e) == OutputDirectoryGuard.MarkerFileName))
+			{
+				warnings.Add(
+					$"Skipped '{fs.Path.GetRelativePath(docsPath, directory)}': it holds a site MokaDocs built " +
+					$"({OutputDirectoryGuard.MarkerFileName}), not docs. Delete it or move it out of the docs folder.");
+				return;
+			}
+
 			files.AddRange(entries);
 
 			foreach (string subdirectory in subdirectories.Order(StringComparer.Ordinal))

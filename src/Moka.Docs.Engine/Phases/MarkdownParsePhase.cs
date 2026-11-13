@@ -1,7 +1,9 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
+using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Discovery;
 using Moka.Docs.Parsing.Markdown;
 
@@ -27,6 +29,7 @@ public sealed class MarkdownParsePhase(
 			context.FileSystem.Path.Combine(context.RootDirectory, context.Config.Content.Docs));
 
 		GitFileHistory history = await ReadGitHistoryAsync(context, docsPath, ct);
+		ContentReferences references = BuildReferences(context, docsPath);
 
 		List<string> files = context.DiscoveredMarkdownFiles;
 		var parsed = new ParsedFile[files.Count];
@@ -66,7 +69,7 @@ public sealed class MarkdownParsePhase(
 
 			try
 			{
-				MarkdownParseResult result = markdownParser.Parse(markdown, files[i]);
+				MarkdownParseResult result = markdownParser.Parse(markdown, files[i], references);
 				DateTimeOffset? modified = concurrentReads ? GetLastModified(context, docsPath, files[i]) : null;
 				parsed[i] = new ParsedFile(result, modified, null);
 			}
@@ -121,6 +124,18 @@ public sealed class MarkdownParsePhase(
 			frontMatter = frontMatter with { Route = null };
 		}
 
+		// Resolved here, once, so the link preview image and the blog's cover image agree on a path
+		// written relative to the page's file.
+		if (frontMatter.Image is { } image && RelativeLinks.ToRootRelative(image, relativePath) is { } rootedImage)
+		{
+			frontMatter = frontMatter with { Image = rootedImage };
+		}
+
+		if (frontMatter.HeroImage is { } heroImage && RelativeLinks.ToRootRelative(heroImage, relativePath) is { } rootedHeroImage)
+		{
+			frontMatter = frontMatter with { HeroImage = rootedHeroImage };
+		}
+
 		string route = BuildRoute(relativePath, frontMatter);
 
 		string gitPath = relativePath.Replace('\\', '/');
@@ -147,6 +162,81 @@ public sealed class MarkdownParsePhase(
 				? contributors
 				: []
 		});
+	}
+
+	/// <summary>
+	///     What the pages can refer to: the API model (C# analysis and the ASP.NET Core host's reflection both
+	///     run before this phase) for <c>xref:</c> links, the glossary, and the documented package's version.
+	/// </summary>
+	private ContentReferences BuildReferences(BuildContext context, string docsPath)
+	{
+		var versions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		if (context.PackageInfo is { } package)
+		{
+			versions[package.Name] = package.Version;
+		}
+
+		return new ContentReferences
+		{
+			ResolveXref = ApiCrefResolver.XrefResolver(context.ApiModel),
+			Glossary = ReadGlossary(context, docsPath),
+			PackageVersions = versions,
+			Text = ThemeText.For(context.Config)
+		};
+	}
+
+	/// <summary>
+	///     The glossary from mokadocs.yaml, plus a glossary.yml (or .yaml) file at the root of the docs folder.
+	///     A term in both keeps the mokadocs.yaml definition.
+	/// </summary>
+	private Dictionary<string, string> ReadGlossary(BuildContext context, string docsPath)
+	{
+		var glossary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		foreach ((string term, string definition) in context.Config.Glossary)
+		{
+			if (!glossary.TryAdd(term, definition))
+			{
+				context.Diagnostics.Warning(
+					$"mokadocs.yaml: the glossary has '{term}' more than once (terms ignore case); the first definition is used", Name);
+			}
+		}
+
+		foreach (string name in GlossaryFile.FileNames)
+		{
+			string path = context.FileSystem.Path.Combine(docsPath, name);
+			if (!context.FileSystem.File.Exists(path))
+			{
+				continue;
+			}
+
+			string yaml;
+			try
+			{
+				yaml = context.FileSystem.File.ReadAllText(path);
+			}
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+			{
+				context.Diagnostics.Warning($"{name}: the glossary could not be read and was ignored ({ex.Message})", Name);
+				continue;
+			}
+
+			GlossaryReadResult file = GlossaryFile.Parse(yaml);
+			foreach (string warning in file.Warnings)
+			{
+				context.Diagnostics.Warning($"{name}: {warning}", Name);
+			}
+
+			foreach ((string term, string definition) in file.Terms)
+			{
+				if (!glossary.TryAdd(term, definition))
+				{
+					context.Diagnostics.Warning(
+						$"{name}: '{term}' is already in the glossary (terms ignore case); the definition read first is used", Name);
+				}
+			}
+		}
+
+		return glossary;
 	}
 
 	/// <summary>

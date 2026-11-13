@@ -8,7 +8,6 @@
 	<ItemGroup>
 		<!-- CLI & Console -->
 		<PackageVersion Include="Moka.Blazor.Repl.Compiler" Version="1.3.6" />
-		<PackageVersion Include="Moka.Blazor.Repl.Wasm" Version="1.3.6" />
 		<PackageVersion Include="System.CommandLine" Version="3.0.0" />
 		<PackageVersion Include="Spectre.Console" Version="0.57.2" />
 		<!-- Markdown -->

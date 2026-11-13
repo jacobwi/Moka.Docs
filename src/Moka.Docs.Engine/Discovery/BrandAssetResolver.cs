@@ -30,6 +30,7 @@ public sealed class BrandAssetResolver(IFileSystem fileSystem, ILogger<BrandAsse
 		SiteMetadata site = context.Config.Site;
 		AddIfPresent(context, site.Logo, "site.logo", "the header shows the theme's default logo instead");
 		AddIfPresent(context, site.Favicon, "site.favicon", "pages get no favicon link");
+		AddIfPresent(context, site.Image, "site.image", "link previews get no image");
 	}
 
 	private void AddIfPresent(BuildContext context, SiteAssetReference? asset, string label, string consequence)

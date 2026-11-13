@@ -22,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.AspNetCore" />
     <InternalsVisibleTo Include="Moka.Docs.Integration.Tests" />
   </ItemGroup>
 

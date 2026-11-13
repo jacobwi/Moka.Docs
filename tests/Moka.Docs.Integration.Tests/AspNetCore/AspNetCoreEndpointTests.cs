@@ -1,10 +1,13 @@
+using System.Diagnostics;
 using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -237,6 +240,21 @@ public sealed class AspNetCoreEndpointTests : IDisposable
 	}
 
 	[Fact]
+	public async Task Feedback_Answer_IsJsonWithItsLength()
+	{
+		// The answers come from the code the dev server uses, which sets Content-Length instead of
+		// streaming the JSON.
+		await using DocsTestHost host = await StartAsync();
+
+		HttpResponseMessage response = await host.PostAsync("/docs/api/feedback", """{"page":"/docs/api","helpful":true}""");
+
+		response.Content.Headers.ContentType!.ToString().Should().Be("application/json; charset=utf-8");
+		response.Content.Headers.ContentLength.Should().Be("""{"ok":true}""".Length);
+		response.Headers.TransferEncodingChunked.Should().NotBe(true);
+		(await response.Content.ReadAsStringAsync(Ct)).Should().Be("""{"ok":true}""");
+	}
+
+	[Fact]
 	public async Task Feedback_TurnedOff_HidesTheWidgetAndMapsNoEndpoint()
 	{
 		bool called = false;
@@ -308,6 +326,153 @@ public sealed class AspNetCoreEndpointTests : IDisposable
 
 		((int)response.StatusCode).Should().Be(status);
 		calls.Should().Be(status == 200 ? 1 : 0);
+	}
+
+	[Fact]
+	public async Task PathBase_StartsEveryLink_AndARequestWithAnotherPathBaseIsLoggedOnce()
+	{
+		// Links were built from BasePath alone, so behind UsePathBase, an IIS sub-application or
+		// X-Forwarded-Prefix every style, script and link of the docs 404ed.
+		await using DocsTestHost host = await StartAsync(options => options.PathBase = "/shop/", app =>
+		{
+			app.UsePathBase("/shop");
+			app.UseRouting();
+			app.MapMokaDocs();
+		});
+
+		string page = await host.GetTextAsync("/shop/docs/api");
+		page.Should().Contain("href=\"/shop/docs/api/fixture/shapes/money\"").And.Contain("data-base-path=\"/shop/docs\"");
+		Match css = Regex.Match(page, "href=\"(/shop/docs/_theme/css/main\\.css\\?v=[0-9a-f]{10})\"");
+		css.Success.Should().BeTrue("the stylesheet's URL should start with the path base");
+		(await host.GetAsync(css.Groups[1].Value)).StatusCode.Should().Be(HttpStatusCode.OK);
+		host.Logs.Messages(LogLevel.Warning).Should().NotContain(m => m.Contains("path base"));
+
+		(await host.GetTextAsync("/docs/api")).Should().Contain("href=\"/shop/docs/api/");
+		(await host.GetTextAsync("/docs/search-index.json")).Should().NotBeEmpty();
+
+		host.Logs.Messages(LogLevel.Warning).Where(m => m.Contains("path base")).Should().ContainSingle()
+			.Which.Should().Contain("path base \"\"").And.Contain("\"/shop\"").And.Contain("MokaDocsOptions.PathBase");
+	}
+
+	[Fact]
+	public async Task PathBase_NotSet_BehindUsePathBase_LogsWhatToSet()
+	{
+		await using DocsTestHost host = await StartAsync(map: app =>
+		{
+			app.UsePathBase("/shop");
+			app.UseRouting();
+			app.MapMokaDocs();
+		});
+
+		(await host.GetTextAsync("/shop/docs/api")).Should().Contain("href=\"/docs/api/fixture/shapes/money\"");
+
+		host.Logs.Messages(LogLevel.Warning).Should().ContainSingle(m => m.Contains("path base \"/shop\""));
+	}
+
+	[Theory]
+	[InlineData(null, "/docs", "/docs")]
+	[InlineData("", "/docs", "/docs")]
+	[InlineData("/", "/docs", "/docs")]
+	[InlineData("/shop", "/docs", "/shop/docs")]
+	[InlineData("shop/", "docs/", "/shop/docs")]
+	[InlineData("/shop/eu", "/docs", "/shop/eu/docs")]
+	[InlineData("/shop", "/", "/shop")]
+	[InlineData(null, "/", "/")]
+	public void PathBase_AndBasePath_MakeTheBuildsBasePath(string? pathBase, string basePath, string expected)
+	{
+		var options = new MokaDocsOptions { PathBase = pathBase, BasePath = basePath };
+
+		SiteConfigFactory.Create(options).Build.BasePath.Should().Be(expected);
+	}
+
+	[Fact]
+	public async Task ImmutableFiles_AreCachedPrivately_ForSignedInReaders()
+	{
+		// A shared cache keeps a response for everyone, so docs behind sign-in stay in the reader's browser.
+		await using DocsTestHost host = await StartAsync(
+			map: app =>
+			{
+				app.UseAuthentication();
+				app.UseAuthorization();
+				app.MapMokaDocs().RequireAuthorization("Admins");
+			},
+			register: AddHeaderAuthentication);
+		InMemorySite site = await host.Docs.GetSiteAsync(Ct);
+		string url = "/docs/_theme/css/main.css?v=" + site.Files["_theme/css/main.css"].ContentHash[..10];
+
+		HttpResponseMessage response = await SendAsync(host, "GET", url, "ada", "admin");
+
+		response.StatusCode.Should().Be(HttpStatusCode.OK);
+		response.Headers.NonValidated["Cache-Control"].ToString().Should().Be("private, max-age=31536000, immutable");
+	}
+
+	[Fact]
+	public async Task ConfigureFeedbackEndpoint_RateLimitsTheFeedbackEndpointAlone()
+	{
+		// MapMokaDocs returned only the group, so a rate limit on votes limited every page and asset too.
+		await using DocsTestHost host = await StartAsync(
+			options => options.ConfigureFeedbackEndpoint = endpoint => endpoint.RequireRateLimiting("votes"),
+			app =>
+			{
+				app.UseRateLimiter();
+				app.MapMokaDocs();
+			},
+			services => services.AddRateLimiter(limiter =>
+			{
+				limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+				limiter.AddFixedWindowLimiter("votes", window =>
+				{
+					window.PermitLimit = 1;
+					window.Window = TimeSpan.FromHours(1);
+				});
+			}));
+		const string vote = """{"page":"/docs/api","helpful":true}""";
+
+		(await host.PostAsync("/docs/api/feedback", vote)).StatusCode.Should().Be(HttpStatusCode.OK);
+		HttpResponseMessage limited = await host.PostAsync("/docs/api/feedback", vote);
+
+		limited.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+		for (int i = 0; i < 3; i++)
+		{
+			(await host.GetAsync("/docs/api")).StatusCode.Should().Be(HttpStatusCode.OK);
+		}
+	}
+
+	[Fact]
+	public async Task ConfigureReplEndpoint_AuthorizesTheReplAlone()
+	{
+		IEndpointConventionBuilder? feedback = null;
+		await using DocsTestHost host = await DocsTestHost.StartAsync(_root, options =>
+			{
+				options.DocsPath = "docs";
+				options.EnableRepl = true;
+				options.ReplWorkerStartInfo = () => new ProcessStartInfo("never-started");
+				options.ConfigureReplEndpoint = endpoint => endpoint.RequireAuthorization("Admins");
+				options.ConfigureFeedbackEndpoint = endpoint => feedback = endpoint;
+			}, app =>
+			{
+				app.UseAuthentication();
+				app.UseAuthorization();
+				app.MapMokaDocs();
+			}, "Development", AddHeaderAuthentication);
+
+		// Invalid JSON is turned away before a worker starts, once authorization lets the request in.
+		(await host.PostAsync("/docs/api/repl/execute", "not json")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+		(await host.PostAsync("/docs/api/repl/execute", "not json",
+				configure: request => request.Headers.Add(HeaderAuthHandler.UserHeader, "reader")))
+			.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+		HttpResponseMessage admin = await host.PostAsync("/docs/api/repl/execute", "not json", configure: request =>
+		{
+			request.Headers.Add(HeaderAuthHandler.UserHeader, "ada");
+			request.Headers.Add(HeaderAuthHandler.RoleHeader, "admin");
+		});
+
+		admin.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+		admin.Headers.GetValues("X-Content-Type-Options").Should().Equal("nosniff");
+		(await host.GetAsync("/docs/api")).StatusCode.Should().Be(HttpStatusCode.OK);
+		(await host.PostAsync("/docs/api/feedback", """{"page":"/docs/api","helpful":true}""")).StatusCode
+			.Should().Be(HttpStatusCode.OK);
+		feedback.Should().NotBeNull();
 	}
 
 	private Task<DocsTestHost> StartAsync(Action<MokaDocsOptions>? configure = null, Action<WebApplication>? map = null,

@@ -103,6 +103,8 @@ public sealed class VersionedBuildTests(VersionedSiteFixture site) : IClassFixtu
 		{
 			Exists(folder + ".mokadocs-output").Should().BeTrue(folder);
 			Exists(folder + "_theme/css/main.css").Should().BeTrue(folder);
+			Exists(folder + "_theme/css/style-moka.css").Should().BeTrue(folder);
+			Exists(folder + "_theme/icons.svg").Should().BeTrue(folder);
 		}
 	}
 
@@ -114,7 +116,9 @@ public sealed class VersionedBuildTests(VersionedSiteFixture site) : IClassFixtu
 		Read("v2.0/guide/intro/index.html").Should().Contain("<span class=\"version-label\">v2.0</span>")
 			.And.NotContain("Lib Docs (old)");
 		Read("v1.0/guide/intro/index.html").Should().Contain("data-base-path=\"/v1.0\"")
-			.And.Contain("href=\"/v1.0/_theme/css/main.css?v=");
+			.And.Contain("href=\"/v1.0/_theme/css/main.css?v=")
+			.And.Contain("<use href=\"/v1.0/_theme/icons.svg?v=")
+			.And.Contain("document.write('<link rel=\"stylesheet\" href=\"/v1.0/_theme/css/style-'+s+'.css?v='+v[s]+'\" />')");
 	}
 
 	[Fact]

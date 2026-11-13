@@ -45,13 +45,10 @@ public sealed class MarkdownParserTests
 
 		MarkdownParseResult result = _parser.Parse(md);
 
-		result.TableOfContents.Entries.Should().HaveCount(1); // H1 is the root
-		TocEntry h1 = result.TableOfContents.Entries[0];
-		h1.Text.Should().Be("Introduction");
-		h1.Level.Should().Be(1);
-		h1.Children.Should().HaveCount(3); // Getting Started, Installation, Usage
-		h1.Children[1].Text.Should().Be("Installation");
-		h1.Children[1].Children.Should().HaveCount(1); // Prerequisites
+		// The h1 is the page's title, so the h2 headings are the roots.
+		result.TableOfContents.Entries.Select(e => e.Text).Should().Equal("Getting Started", "Installation", "Usage");
+		result.TableOfContents.Entries.Should().OnlyContain(e => e.Level == 2);
+		result.TableOfContents.Entries[1].Children.Should().ContainSingle().Which.Text.Should().Be("Prerequisites");
 	}
 
 	[Fact]
@@ -106,8 +103,8 @@ public sealed class MarkdownParserTests
 
 		MarkdownParseResult result = _parser.Parse(md);
 
-		result.Html.Should().Contain("<code class=\"language-csharp\">");
-		result.Html.Should().Contain("Console.WriteLine");
+		result.Html.Should().Contain("<code class=\"language-csharp\" data-highlighted=\"true\"");
+		result.Html.Should().Contain("<span class=\"token type-name\">Console</span>.<span class=\"token type-name\">WriteLine</span>");
 	}
 
 	[Fact]

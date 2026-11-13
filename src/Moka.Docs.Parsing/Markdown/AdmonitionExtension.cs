@@ -162,6 +162,10 @@ public sealed class AdmonitionParser : BlockParser
 			processor.Line = saved;
 		}
 
+		// Give the content back the indentation Markdig read before this check, as its own fenced
+		// containers do. Without it a nested list item ("  - b") lost its indent and became a sibling of
+		// its parent, so every list inside a container came out flat.
+		processor.GoToColumn(processor.ColumnBeforeIndent);
 		return BlockState.Continue;
 	}
 }
@@ -186,7 +190,8 @@ public sealed class AdmonitionRenderer : HtmlObjectRenderer<AdmonitionBlock>
 	protected override void Write(HtmlRenderer renderer, AdmonitionBlock block)
 	{
 		string type = block.AdmonitionType;
-		string title = block.Title ?? char.ToUpper(type[0]) + type[1..];
+		string title = block.Title
+		               ?? (ContentText.Of(block).Strings.TryGetValue("admonition." + type, out string? named) ? named : char.ToUpper(type[0]) + type[1..]);
 		string icon = _icons.GetValueOrDefault(type, "📝");
 
 		renderer.EnsureLine();

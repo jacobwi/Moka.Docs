@@ -160,23 +160,24 @@ public sealed class MinifierTests
 		JsMinifier.Minify(js).Should().Be(expected);
 
 	[Fact]
-	public void ThemeScript_StillParsesAndKeepsEveryHighlighterPattern()
+	public void ThemeScript_StillParsesAndKeepsItsRegexLiterals()
 	{
 		string js = EmbeddedThemeProvider.GetJs();
 		string minified = JsMinifier.Minify(js);
 
 		minified.Length.Should().BeLessThan(js.Length * 4 / 5);
-		// Each language's patterns hold "//", quotes and backticks; a tokenizer that lost track of one
-		// would cut the rest of the line as a comment or merge it with the next.
+		// Regex literals hold quotes, slashes and brackets; a tokenizer that lost track of one would cut
+		// the rest of the line as a comment or merge it with the next. Most of them were in the syntax
+		// highlighter until highlighting moved to the build; the cases above keep its patterns covered.
 		HashSet<string> minifiedLines = minified.Split('\n').Select(Squeeze).ToHashSet(StringComparer.Ordinal);
-		string[] highlighterLines = js.Split('\n').Where(l => l.Contains("keywords: /", StringComparison.Ordinal)).ToArray();
-		highlighterLines.Should().HaveCountGreaterThan(10);
-		foreach (string line in highlighterLines)
+		string[] regexLines = js.Split('\n')
+			.Where(l => l.Contains(".replace(/", StringComparison.Ordinal) || l.Contains(".split(/", StringComparison.Ordinal))
+			.ToArray();
+		regexLines.Should().HaveCountGreaterThanOrEqualTo(2);
+		foreach (string line in regexLines)
 		{
 			minifiedLines.Should().Contain(Squeeze(line));
 		}
-
-		minified.Should().Contain("|yield from)", "spaces inside a regex are content");
 
 		Assert.SkipUnless(_nodeAvailable.Value, "node is not on PATH");
 		string path = Path.Combine(Path.GetTempPath(), "mokadocs-min-" + Guid.NewGuid().ToString("N") + ".js");

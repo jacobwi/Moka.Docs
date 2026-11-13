@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moka.Docs.Cli.Commands;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
+using Moka.Docs.Parsing.Highlighting;
 
 namespace Moka.Docs.Integration.Tests.Cli;
 
@@ -93,9 +94,9 @@ public sealed class ApiExtensionBlockPagesTests : IDisposable
 		extensions.Content.Html.Should().Contain("<h2 id=\"extension-shape\">extension(Shape shape)</h2>")
 			.And.Contain("<tr><td><code>shape</code></td><td><code>Shape</code></td><td>The shape to extend.</td></tr>")
 			.And.Contain("<h3 id=\"perimeter\">Perimeter</h3>")
-			.And.Contain("<code class=\"language-csharp\">public double Perimeter { get; }</code>")
-			.And.Contain("<code class=\"language-csharp\">public static Shape Unit()</code>")
-			.And.Contain("extension(Shape shape)\n    {");
+			.And.Contain(OnlyLine("public double Perimeter { get; }"))
+			.And.Contain(OnlyLine("public static Shape Unit()"))
+			.And.Contain(SyntaxHighlighter.Highlight("extension(Shape shape)", "csharp") + "</span>\n<span class=\"line\">    {</span>");
 		extensions.TableOfContents.Entries.Select(e => e.Id).Should().Equal("methods", "extension-shape");
 
 		DocPage circle = outcome.Context.Pages.Single(p => p.Route == "/api/lib/shapes/circle");
@@ -107,4 +108,8 @@ public sealed class ApiExtensionBlockPagesTests : IDisposable
 		outcome.Context.Pages.Single(p => p.Route == "/api/lib/shapes/shape").Content.Html.Should()
 			.Contain("Measure it with <a href=\"/api/lib/shapes/shapeextensions#perimeter\">ShapeExtensions.Perimeter</a>.");
 	}
+
+	// A one-line C# block as the build writes it: highlighted, in a line span, ending the <code>.
+	private static string OnlyLine(string code) =>
+		"aria-label=\"C# code\"><span class=\"line\">" + SyntaxHighlighter.Highlight(code, "csharp") + "</span></code>";
 }

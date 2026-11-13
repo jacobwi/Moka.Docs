@@ -5,7 +5,7 @@ order: 5
 
 # Deployment
 
-`mokadocs build` writes a static site to `build.output` (`./_site` by default): the HTML pages, `404.html`, the theme's CSS and JavaScript under `_theme/`, `search-index.json` and `robots.txt`, plus `sitemap.xml` when `site.url` is set. Any static host can serve it.
+`mokadocs build` writes a static site to `build.output` (`./_site` by default): the HTML pages, `404.html`, the theme's CSS, JavaScript and icons under `_theme/`, `search-index.json` and `robots.txt`, plus `sitemap.xml` when `site.url` is set. With [`build.llms`](/configuration/site-config#llms) on (the default) it also writes a Markdown copy next to each page (`guide/intro.md` beside `guide/intro/index.html`), `llms.txt` and `llms-full.txt`. Any static host can serve it.
 
 The dev server's `/api/*` endpoints don't exist on a static host. REPL blocks can't run there, and feedback votes are only stored in the reader's browser.
 
@@ -288,7 +288,7 @@ server {
 }
 ```
 
-The theme's files keep the same names on every build (`/_theme/css/main.css`, `/_theme/js/main.js`), so don't serve them with long-lived `immutable` cache headers. Readers would keep the old CSS and JavaScript after a deploy.
+Pages link the theme's files and `search-index.json` with `?v=` and a hash of the file, so a build that changes a file changes the URL pages use. The file names stay the same on every build (`/_theme/css/main.css`, `/_theme/js/main.js`), though, so don't give these paths long-lived `immutable` headers in a cache that ignores the query string: readers would keep the old CSS and JavaScript after a deploy.
 
 ### Build and Run
 
@@ -403,7 +403,7 @@ Every page is written to `<route>/index.html`:
 /api/mylibrary/widget     ->  api/mylibrary/widget/index.html
 ```
 
-API routes are lowercase: the namespace becomes folders, followed by the type name. A folder that has pages under it but no page of its own gets an `index.html` that redirects to its first subfolder with a page, in alphabetical order.
+API routes are lowercase: the namespace becomes folders, followed by the type name. A folder that has pages under it but no page of its own gets an `index.html` that redirects to its first page in sidebar order, or, for a folder the sidebar doesn't list, its first page by `order` and URL. The redirect page has `noindex` and, when `site.url` is set, an absolute canonical link to the target.
 
 Hosts that serve a folder's `index.html` for the folder URL need no extra configuration. The nginx example above shows the equivalent rule for a server you configure yourself.
 

@@ -8,7 +8,8 @@ namespace Moka.Docs.Integration.Tests.Plugins;
 /// <summary>
 ///     The Blazor preview plugin scaffolds a preview host when it finds none. Each test fakes a
 ///     publish output newer than the scaffolded files, so the plugin skips <c>dotnet publish</c>,
-///     which downloads packages and takes minutes, and still compiles the block.
+///     which downloads packages and takes minutes, and still compiles the block. The fake is
+///     fingerprinted, as a host published from the scaffold is.
 /// </summary>
 public sealed class BlazorPreviewScaffoldTests : IDisposable
 {
@@ -87,12 +88,34 @@ public sealed class BlazorPreviewScaffoldTests : IDisposable
 		Directory.Exists(Path.Combine(_root, "preview-host")).Should().BeFalse();
 	}
 
+	[Fact]
+	public async Task ScaffoldedHost_UsesDotNet10FingerprintingAndPreloading()
+	{
+		// static-files.md, "Fingerprint client-side static assets in standalone Blazor WebAssembly apps"
+		// and "Preloaded Blazor framework static assets".
+		string host = FakePublishedHost(Path.Combine(".mokadocs", "preview-host"));
+
+		await BuildAsync(new Dictionary<string, object>());
+
+		File.ReadAllText(Path.Combine(host, "DocsPreviewHost.csproj"))
+			.Should().Contain("<OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>");
+		string index = File.ReadAllText(Path.Combine(host, "wwwroot", "index.html"));
+		index.Should().Contain("<link rel=\"preload\" id=\"webassembly\" />")
+			.And.Contain("<script type=\"importmap\"></script>")
+			.And.Contain("<script src=\"_framework/blazor.webassembly#[.{fingerprint}].js\"></script>")
+			.And.NotContain("src=\"_framework/blazor.webassembly.js\"");
+		index.IndexOf("wasmPreview.js", StringComparison.Ordinal)
+			.Should().BeLessThan(index.IndexOf("blazor.webassembly#", StringComparison.Ordinal));
+	}
+
 	private string FakePublishedHost(string relativeDirectory)
 	{
 		string host = Path.Combine(_root, relativeDirectory);
-		string framework = Path.Combine(host, "publish-output", "net10.0", "wwwroot", "_framework");
+		string wwwroot = Path.Combine(host, "publish-output", "net10.0", "wwwroot");
+		string framework = Path.Combine(wwwroot, "_framework");
 		Directory.CreateDirectory(framework);
-		string marker = Path.Combine(framework, "blazor.webassembly.js");
+		File.WriteAllText(Path.Combine(wwwroot, "index.html"), "<!DOCTYPE html><html><head></head><body></body></html>");
+		string marker = Path.Combine(framework, "blazor.webassembly.0a1b2c3d4e.js");
 		File.WriteAllText(marker, "");
 		File.SetLastWriteTimeUtc(marker, DateTime.UtcNow.AddDays(1));
 

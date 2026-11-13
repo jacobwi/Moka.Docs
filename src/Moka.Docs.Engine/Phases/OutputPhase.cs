@@ -1,12 +1,10 @@
 using System.IO.Abstractions;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Web;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
-using Moka.Docs.Core.Search;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Minification;
 using Moka.Docs.Themes;
 
@@ -18,13 +16,6 @@ namespace Moka.Docs.Engine.Phases;
 /// </summary>
 public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase> logger) : IBuildPhase
 {
-	private static readonly JsonSerializerOptions _searchJsonOptions = new()
-	{
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-		WriteIndented = false
-	};
-
 	/// <inheritdoc />
 	public string Name => "Output";
 
@@ -368,36 +359,18 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 
 	private void WriteSearchIndex(BuildContext context)
 	{
-		SearchIndex? searchIndex = context.SearchIndex;
-		if (searchIndex is null || searchIndex.Count == 0)
+		byte[]? bytes = SearchIndexFile.Bytes(context);
+		if (bytes is null)
 		{
 			logger.LogDebug("No search index to write");
 			return;
 		}
 
 		IFileSystem fs = context.FileSystem;
-		string outputPath = fs.Path.Combine(context.OutputDirectory, "search-index.json");
-
-		// Serialize entries with compact field names for smaller payload
-		string bp = context.Config.Build.BasePath;
-		var entries = searchIndex.Entries.Select(e => new
-		{
-			t = e.Title,
-			s = e.Section ?? "",
-			r = bp == "/" ? e.Route : bp + e.Route,
-			c = e.Content.Length > 300 ? e.Content[..300] : e.Content,
-			x = e.Code,
-			g = e.Category,
-			// Front matter tags. They were collected but never written, so tags did not help
-			// anyone find a page. Null is omitted from the JSON.
-			k = e.Tags.Count > 0 ? string.Join(' ', e.Tags) : null
-		});
-
-		string json = JsonSerializer.Serialize(entries, _searchJsonOptions);
-		fs.File.WriteAllText(outputPath, json);
+		fs.File.WriteAllBytes(fs.Path.Combine(context.OutputDirectory, SearchIndexFile.FileName), bytes);
 
 		logger.LogInformation("Wrote search index ({Count} entries, {Size} bytes)",
-			searchIndex.Count, json.Length);
+			context.SearchIndex?.Count ?? 0, bytes.Length);
 	}
 
 	/// <summary>
@@ -428,12 +401,20 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 		logger.LogDebug("Wrote .nojekyll marker");
 	}
 
+	/// <summary>
+	///     Writes a plain <c>404.html</c> when the render phase couldn't stage the theme's own (a
+	///     layout that fails to render). That one is written with the other staged files.
+	/// </summary>
 	private void Write404Page(BuildContext context)
 	{
+		if (context.DeferredOutputFiles.ContainsKey(RenderPhase.NotFoundPagePath))
+		{
+			return;
+		}
+
 		IFileSystem fs = context.FileSystem;
 		SiteConfig config = context.Config;
-		string path = fs.Path.Combine(context.OutputDirectory, "404.html");
-
+		string path = fs.Path.Combine(context.OutputDirectory, RenderPhase.NotFoundPagePath);
 		string bp = config.Build.BasePath == "/" ? "" : config.Build.BasePath;
 
 		// Versioned like every page's links: the unversioned URLs kept serving a cached stylesheet
@@ -441,50 +422,32 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 		ResolvedTheme theme = themeResolver.Resolve(config, context.RootDirectory, fs);
 		string cssUrl = HttpUtility.HtmlAttributeEncode(
 			bp + ThemeAssetPhase.VersionedUrl("/_theme/css/main.css", theme, context));
-		string jsUrl = HttpUtility.HtmlAttributeEncode(
-			bp + ThemeAssetPhase.VersionedUrl("/_theme/js/main.js", theme, context));
+		ThemeText text = ThemeText.For(config);
+		string title = HttpUtility.HtmlEncode(text["notFound.title"]);
+		string home = $"<a href=\"{HttpUtility.HtmlAttributeEncode(bp)}/\">{HttpUtility.HtmlEncode(text["notFound.home"])}</a>";
 		string html = $"""
 		               <!DOCTYPE html>
-		               <html lang="en" data-theme="light" data-code-theme="{HttpUtility.HtmlAttributeEncode(config.Theme.Options.CodeTheme)}">
+		               {HtmlStart(config, text)}
 		               <head>
-		                   <meta charset="utf-8" />
-		                   <meta name="viewport" content="width=device-width, initial-scale=1" />
-		                   <title>Page Not Found - {HttpUtility.HtmlEncode(config.Site.Title)}</title>
-		                   <link rel="stylesheet" href="{cssUrl}" />
+		               <meta charset="utf-8">
+		               <meta name="viewport" content="width=device-width, initial-scale=1">
+		               <meta name="robots" content="noindex">
+		               <title>{title} - {HttpUtility.HtmlEncode(config.Site.Title)}</title>
+		               <link rel="stylesheet" href="{cssUrl}">
 		               </head>
 		               <body>
-		                   <header class="site-header">
-		                       <div class="header-inner">
-		                           <a class="site-logo" href="{bp}/">
-		                               <span class="site-name">{HttpUtility.HtmlEncode(config.Site.Title)}</span>
-		                           </a>
-		                           <div class="header-actions">
-		                               <button class="theme-toggle" aria-label="Toggle dark mode">
-		                                   <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-		                                   <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-		                               </button>
-		                           </div>
-		                       </div>
-		                   </header>
-		                   <main style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 200px);text-align:center;padding:2rem;">
-		                       <h1 style="font-size:6rem;font-weight:800;color:var(--color-primary);margin:0;line-height:1;">404</h1>
-		                       <p style="font-size:1.25rem;color:var(--color-text-secondary);margin:1rem 0 2rem;">This page could not be found.</p>
-		                       <a href="{bp}/" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.625rem 1.5rem;background:var(--color-primary);color:white;border-radius:var(--radius);font-weight:600;text-decoration:none;transition:opacity 150ms;">
-		                           ← Back to Home
-		                       </a>
-		                   </main>
-		                   <footer class="site-footer">
-		                       <div class="footer-inner">
-		                           <span class="built-with">Built with <a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a></span>
-		                       </div>
-		                   </footer>
-		                   <script src="{jsUrl}"></script>
+		               <main class="content"><article class="page-content">
+		               <h1>{title}</h1>
+		               <p>{HttpUtility.HtmlEncode(text["notFound.text"])}</p>
+		               <p>{HttpUtility.HtmlEncode(text["notFound.linksNoSearch"]).Replace("{home}", home, StringComparison.Ordinal)}</p>
+		               </article></main>
 		               </body>
 		               </html>
+
 		               """;
 
 		fs.File.WriteAllText(path, config.Build.Minify ? HtmlMinifier.Minify(html) : html);
-		logger.LogInformation("Generated 404.html");
+		logger.LogInformation("Generated a plain 404.html");
 	}
 
 	private int GenerateSectionIndexPages(BuildContext context, string outputDir, List<PageWrite> pageWrites)
@@ -493,6 +456,7 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 		string basePath = context.Config.Build.BasePath;
 		string basePrefix = string.IsNullOrEmpty(basePath) || basePath == "/" ? "" : "/" + basePath.Trim('/');
 		int count = 0;
+		SectionTargets targets = new(pageWrites.Select(w => w.Page), NavigationOrder.Routes(context.Navigation));
 
 		// The planned paths are full and normalized, and every one is inside the output directory.
 		// Comparing raw combined paths let a route with ".." walk "parents" above the output and
@@ -525,25 +489,11 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 					break;
 				}
 
-				// Find the first child subdirectory (alphabetically) that has an index.html
-				var childDirs = fs.Directory.GetDirectories(parent)
-					.OrderBy(d => fs.Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
-					.ToList();
-
-				string? targetSubDir = null;
-				foreach (string child in childDirs)
+				string relativeDir = parent[outputDir.Length..]
+					.Trim(fs.Path.DirectorySeparatorChar, fs.Path.AltDirectorySeparatorChar)
+					.Replace('\\', '/');
+				if (targets.FirstPageUnder("/" + relativeDir) is not { } target)
 				{
-					string childIndex = fs.Path.Combine(child, "index.html");
-					if (fs.File.Exists(childIndex))
-					{
-						targetSubDir = fs.Path.GetFileName(child);
-						break;
-					}
-				}
-
-				if (targetSubDir is null)
-				{
-					// No child with an index page; skip.
 					parent = fs.Path.GetDirectoryName(parent);
 					continue;
 				}
@@ -551,19 +501,8 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 				// Root-relative, like every other link on the site. "./child/" resolved against the
 				// parent when a host served /docs/guide without a trailing slash, sending the
 				// browser to /docs/child/ instead of /docs/guide/child/.
-				string relativeDir = parent[outputDir.Length..]
-					.Trim(fs.Path.DirectorySeparatorChar, fs.Path.AltDirectorySeparatorChar)
-					.Replace('\\', '/');
-				string redirectUrl = $"{basePrefix}/{relativeDir}/{targetSubDir}/";
-				string redirectHtml = $"""
-				                       <!DOCTYPE html>
-				                       <html>
-				                       <head><meta http-equiv="refresh" content="0; url={redirectUrl}"><link rel="canonical" href="{redirectUrl}"></head>
-				                       <body><p>Redirecting to <a href="{redirectUrl}">{redirectUrl}</a>...</p></body>
-				                       </html>
-				                       """;
-
-				fs.File.WriteAllText(parentIndex, redirectHtml);
+				string redirectUrl = $"{basePrefix}/{target.Route.Trim('/')}/";
+				fs.File.WriteAllText(parentIndex, SectionRedirectHtml(context.Config, target, redirectUrl));
 				count++;
 
 				string relativePath = parentIndex[outputDir.Length..].TrimStart(
@@ -608,5 +547,78 @@ public sealed class OutputPhase(ThemeResolver themeResolver, ILogger<OutputPhase
 		}
 	}
 
+	/// <summary>
+	///     The page a section folder without an index page redirects to. The stub tells search engines
+	///     not to index it, and names the target as canonical when <c>site.url</c> is set: a relative
+	///     canonical URL is invalid.
+	/// </summary>
+	private static string SectionRedirectHtml(SiteConfig config, DocPage target, string redirectUrl)
+	{
+		string title = HttpUtility.HtmlEncode(target.FrontMatter.Title);
+		string href = HttpUtility.HtmlAttributeEncode(redirectUrl);
+		string canonical = SiteUrls.Absolute(config.Site.Url, config.Build.BasePath, target.Route);
+		string canonicalLink = canonical.Length > 0
+			? $"<link rel=\"canonical\" href=\"{HttpUtility.HtmlAttributeEncode(canonical)}\">"
+			: "";
+		ThemeText text = ThemeText.For(config);
+		string link = $"<a href=\"{href}\">{title}</a>";
+
+		return $"""
+		        <!DOCTYPE html>
+		        {HtmlStart(config, text)}
+		        <head>
+		        <meta charset="utf-8">
+		        <meta name="viewport" content="width=device-width, initial-scale=1">
+		        <meta name="robots" content="noindex">
+		        <title>{title}</title>
+		        <meta http-equiv="refresh" content="0; url={href}">{canonicalLink}
+		        </head>
+		        <body>
+		        <p>{HttpUtility.HtmlEncode(text["redirect.section"]).Replace("{link}", link, StringComparison.Ordinal)}</p>
+		        </body>
+		        </html>
+
+		        """;
+	}
+
+	/// <summary>The <c>&lt;html&gt;</c> start tag of a page MokaDocs writes itself, with the site's language and direction.</summary>
+	internal static string HtmlStart(SiteConfig config, ThemeText text) =>
+		$"<html lang=\"{HttpUtility.HtmlAttributeEncode(text.Language)}\" dir=\"{SiteLanguages.Direction(text.Language, config.Site.Direction)}\">";
+
 	private sealed record PageWrite(DocPage Page, string FullPath);
+
+	/// <summary>
+	///     Where a section folder leads: its first page in sidebar order, else the first page below it
+	///     by <c>order</c> and route, public pages first. The alphabetically first subfolder was used,
+	///     which skipped the page the sidebar opens the section with.
+	/// </summary>
+	private sealed class SectionTargets(IEnumerable<DocPage> pages, List<string> sidebarRoutes)
+	{
+		private readonly Dictionary<string, DocPage> _pages = pages
+			.GroupBy(p => Normalize(p.Route), StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(g => g.Key, g => g.Last(), StringComparer.OrdinalIgnoreCase);
+
+		public DocPage? FirstPageUnder(string folderRoute)
+		{
+			string prefix = Normalize(folderRoute) + "/";
+			foreach (string route in sidebarRoutes)
+			{
+				if (_pages.TryGetValue(Normalize(route), out DocPage? page)
+				    && Normalize(route).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+				{
+					return page;
+				}
+			}
+
+			return _pages
+				.Where(p => p.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+				.Select(p => p.Value)
+				.OrderBy(p => p.FrontMatter.Visibility == PageVisibility.Public ? 0 : 1)
+				.ThenBy(p => p.FrontMatter.Order)
+				.ThenBy(p => p.Route, StringComparer.OrdinalIgnoreCase)
+				.FirstOrDefault();
+		}
+
+		private static string Normalize(string route) => "/" + route.Trim('/');
+	}
 }

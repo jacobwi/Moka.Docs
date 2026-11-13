@@ -116,7 +116,7 @@ public sealed class RelativeLinksTests
 
 		string html = new MarkdownParser().Parse(md, "guide/page.md").Html;
 
-		html.Should().Contain("&lt;img src=&quot;./in-a-code-block.png&quot;&gt;")
+		html.Should().Contain("&quot;./in-a-code-block.png&quot;")
 			.And.Contain("&lt;img src=&quot;./in-code.png&quot;&gt;")
 			.And.Contain("<img src=\"./commented.png\">")
 			.And.Contain("'<img src=\"./in-script.png\">'")

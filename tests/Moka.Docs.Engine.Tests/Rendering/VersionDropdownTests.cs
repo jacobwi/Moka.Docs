@@ -82,6 +82,22 @@ public sealed class VersionDropdownTests
 		links["v1.0"].Should().Be("/docs/v1.0/");
 	}
 
+	[Theory]
+	[InlineData("default")]
+	[InlineData("landing")]
+	public void Menu_IsAListOfLinksNotAListboxOfOptions(string layout)
+	{
+		// Options wrapping links read as neither: screen readers announced a listbox whose items
+		// couldn't be selected.
+		string menu = Regex.Match(Render("/guide/intro", _v2, layout), "<div class=\"version-selector\">.*?</ul>", RegexOptions.Singleline).Value;
+
+		Regex.Match(menu, "<button class=\"version-trigger\"[^>]*>").Value.Should()
+			.Contain("aria-expanded=\"false\"").And.Contain("aria-controls=\"versionMenu\"").And.NotContain("aria-haspopup");
+		menu.Should().Contain("<ul class=\"version-dropdown\" id=\"versionMenu\" hidden>");
+		menu.Should().NotContain("role=").And.NotContain("aria-selected");
+		menu.Should().Contain("<span class=\"visually-hidden\">Version </span><span class=\"version-label\">v2.0</span>");
+	}
+
 	private string Render(string route, DocVersion current, string layout = "default",
 		IReadOnlyList<DocVersion>? versions = null, string? basePath = null)
 	{

@@ -32,8 +32,9 @@ public sealed class MinifiedOutputTests
 	{
 		(_, MockFileSystem fs) = await MockSite.BuildAsync(MockSite.Config(), Files());
 
+		// The layouts have no indentation of their own any more; a blank line is where a condition wrote nothing.
 		string html = fs.File.ReadAllText("/project/_site/index.html");
-		html.Should().Contain("\n    <meta").And.Contain("<!-- an editor's note -->");
+		html.Should().Contain("Some   text.").And.Contain("<!-- an editor's note -->").And.Contain("\n\n<link rel=\"canonical\"");
 	}
 
 	[Fact]
@@ -44,9 +45,12 @@ public sealed class MinifiedOutputTests
 		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, Files());
 
 		string html = fs.File.ReadAllText("/project/_site/index.html");
-		html.Should().NotContain("\n    <meta")
+		html.Should().NotContain("\n\n<link rel=\"canonical\"")
+			.And.Contain("<p>Some text.</p>")
 			.And.NotContain("an editor's note")
-			.And.Contain("<pre><code class=\"language-csharp\">if (ready)\n{\n    Run();   // aligned\n}\n</code></pre>");
-		fs.File.ReadAllText("/project/_site/404.html").Should().NotContain("\n    <");
+			.And.Contain("<span class=\"line\"><span class=\"token keyword\">if</span> (ready)</span>\n<span class=\"line\">{</span>\n"
+			             + "<span class=\"line\">    <span class=\"token type-name\">Run</span>();   <span class=\"token comment\">// aligned</span></span>\n"
+			             + "<span class=\"line\">}</span></code></pre>");
+		fs.File.ReadAllText("/project/_site/404.html").Should().NotContain("\n\n");
 	}
 }

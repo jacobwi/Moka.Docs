@@ -13,4 +13,10 @@
     <PackageReference Include="Microsoft.FeatureManagement" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.AspNetCore" />
+    <InternalsVisibleTo Include="Moka.Docs.Core.Tests" />
+    <InternalsVisibleTo Include="Moka.Docs.Serve" />
+  </ItemGroup>
+
 </Project>

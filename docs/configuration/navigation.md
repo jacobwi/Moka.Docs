@@ -452,7 +452,7 @@ An `index.md` with only front matter still produces a page, so the header links 
 | Folder has an `index.md` | Links to the index page. The label comes from its `title`. |
 | Folder has no `index.md` | Plain label from the folder name, with the first letter uppercased and hyphens turned into spaces (`getting-started` becomes "Getting started"). The section counts as `order: 0`. |
 
-When a folder has no index page, the build writes a redirect at the folder's URL to the alphabetically first page inside it.
+When a folder has no index page, the build writes a redirect at the folder's URL to the section's first page as the sidebar lists it. A folder the sidebar doesn't list redirects to its first public page by `order`, then by URL. The redirect page tells search engines not to index it and names the target as its canonical URL when `site.url` is set.
 
 ### Section Labels in Nav Config
 

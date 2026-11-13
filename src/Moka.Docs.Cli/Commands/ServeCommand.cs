@@ -2,7 +2,6 @@ using System.CommandLine;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Abstractions;
-using System.Net;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core;
 using Moka.Docs.Core.Configuration;
@@ -34,6 +33,8 @@ internal static class ServeCommand
 		var draftOption = new Option<bool>("--draft") { Description = "Include draft pages" };
 		var basePathOption = new Option<string?>("--base-path")
 			{ Description = "Base path the site is served under (e.g. /Sub)" };
+		var noLabOption = new Option<bool>("--no-lab")
+			{ Description = "Don't add the theme lab, which previews theme options and saves them to the config, to served pages" };
 
 		var command = new Command("serve", "Build and serve the site locally with hot reload")
 		{
@@ -44,7 +45,8 @@ internal static class ServeCommand
 			openOption,
 			noOpenOption,
 			draftOption,
-			basePathOption
+			basePathOption,
+			noLabOption
 		};
 
 		command.SetAction(async (parseResult, ct) =>
@@ -56,6 +58,7 @@ internal static class ServeCommand
 			bool open = parseResult.GetValue(openOption) && !parseResult.GetValue(noOpenOption);
 			bool draft = parseResult.GetValue(draftOption);
 			string? basePath = parseResult.GetValue(basePathOption);
+			bool themeLab = !parseResult.GetValue(noLabOption);
 
 			AnsiConsole.MarkupLine($"[bold blue]MokaDocs[/] [dim]v{CliVersion.Current}[/] - Dev server starting...");
 			AnsiConsole.WriteLine();
@@ -123,12 +126,17 @@ internal static class ServeCommand
 				_ = replService.WarmUpAsync(ct);
 			}
 
-			using var server = new DevServer(serverLogger, outputDir, port, replService, config.Build.BasePath);
+			await using var server = new DevServer(serverLogger, outputDir, port, replService, config.Build.BasePath);
+			if (CreateThemeLab(themeLab, resolvedConfigPath, loggerFactory) is { } lab)
+			{
+				server.Extensions.Add(lab);
+			}
+
 			try
 			{
 				await server.StartAsync();
 			}
-			catch (HttpListenerException ex)
+			catch (IOException ex)
 			{
 				AnsiConsole.MarkupLine(
 					$"[red]Error:[/] Can't listen on port {port} ({Markup.Escape(ex.Message.TrimEnd('.'))}). Use [bold]--port[/] to pick another.");
@@ -137,6 +145,11 @@ internal static class ServeCommand
 
 			AnsiConsole.WriteLine();
 			AnsiConsole.MarkupLine($"[bold green]Dev server running:[/] [link]http://localhost:{port}/[/]");
+			if (themeLab)
+			{
+				AnsiConsole.MarkupLine("[dim]Theme lab: the button at the bottom left of every page (--no-lab hides it)[/]");
+			}
+
 			AnsiConsole.MarkupLine("[dim]Press Ctrl+C to stop[/]");
 			AnsiConsole.WriteLine();
 
@@ -257,6 +270,16 @@ internal static class ServeCommand
 			return false;
 		}
 	}
+
+	/// <summary>
+	///     The theme lab for the configuration file serve reads, or <c>null</c> with <c>--no-lab</c>. Its
+	///     saves are printed like the rebuilds they cause.
+	/// </summary>
+	internal static ThemeLabExtension? CreateThemeLab(bool enabled, string configPath, ILoggerFactory loggerFactory) =>
+		enabled
+			? new ThemeLabExtension(configPath, loggerFactory.CreateLogger<ThemeLabExtension>(),
+				message => AnsiConsole.MarkupLine($"[blue]Theme lab:[/] {Markup.Escape(message)}"))
+			: null;
 
 	private static PluginDeclaration? FindReplDeclaration(SiteConfig config) =>
 		config.Plugins.FirstOrDefault(p => string.Equals(p.Name, "mokadocs-repl", StringComparison.OrdinalIgnoreCase));

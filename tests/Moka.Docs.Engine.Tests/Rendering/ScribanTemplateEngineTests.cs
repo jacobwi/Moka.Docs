@@ -8,6 +8,7 @@ using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Navigation;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Rendering.Scriban;
 using Moka.Docs.Themes.Default;
 
@@ -223,18 +224,30 @@ public sealed class ScribanTemplateEngineTests
 					ShowContributors = true,
 					ShowVersionSelector = true,
 					TocDepth = 4,
-					SocialLinks = [new SocialLink { Icon = "i" + _payload, Url = "https://social.example.com/" + _payload }]
+					SocialLinks = [new SocialLink { Icon = "i" + _payload, Url = "https://social.example.com/" + _payload }],
+					Banner = new ThemeBanner
+					{
+						Text = "Banner " + _payload,
+						Link = "/news/" + _payload,
+						LinkText = "Go " + _payload,
+						Id = "id" + _payload,
+						Variant = "v" + _payload
+					}
 				}
 			}
 		};
-		var context = new ThemeRenderContext
+		ThemeRenderContext context = ContextFor(config);
+		ThemeRenderContext ContextFor(SiteConfig siteConfig) => new()
 		{
-			Config = config,
+			Config = siteConfig,
 			Navigation = nav,
 			Templates = EmbeddedThemeProvider.CreateDefault().Templates,
 			Partials = new Dictionary<string, string>(),
 			CssFiles = ["/_theme/css/main.css?v=" + _payload],
 			JsFiles = ["/_theme/js/main.js?v=" + _payload],
+			StyleVersions = new Dictionary<string, string> { ["moka" + _payload] = "v" + _payload },
+			IconSprite = "/_theme/icons.svg?v=" + _payload,
+			SearchIndexUrl = "/search-index.json?v=" + _payload,
 			AllPages = [previous, current, next, crumbParent, crumbChild, Page("/", "Home", layout: "landing")],
 			Versions = [new DocVersion { Label = "v1" + _payload, Slug = "v1" + _payload, IsDefault = false }],
 			CurrentVersion = new DocVersion { Label = "v1" + _payload, Slug = "v1" + _payload },
@@ -271,6 +284,43 @@ public sealed class ScribanTemplateEngineTests
 			Around(html, "';alert(1);'").Should().BeEmpty("no value may close a script string ({0})", page.Route);
 			html.Should().Contain("data-broke=&quot;1&quot;");
 		}
+
+		// Every home page variant, with every landing front matter value carrying the payload.
+		DocPage fullLanding = landing with
+		{
+			FrontMatter = landing.FrontMatter with
+			{
+				FeaturesTitle = "Features " + _payload,
+				FeaturesSubtitle = "Sub " + _payload,
+				Features =
+				[
+					new LandingFeature { Title = "F " + _payload, Description = "D " + _payload, Icon = "i" + _payload, Link = "/f/" + _payload },
+					new LandingFeature { Title = "G " + _payload, Icon = "zap" }
+				],
+				HeroCode = "code " + _payload,
+				ShowcaseTitle = "S " + _payload,
+				ShowcaseText = "T " + _payload,
+				ShowcaseCode = "var s = \"" + _payload + "\";",
+				Stats = [new LandingStat { Value = "V " + _payload, Label = "L " + _payload }],
+				Cta = new LandingCallToAction { Title = "C " + _payload, Text = "X " + _payload, Link = "/c/" + _payload, LinkText = "Go " + _payload }
+			}
+		};
+		foreach (string home in ThemeLayouts.Home.Names)
+		{
+			SiteConfig homeConfig = config with
+			{
+				Theme = config.Theme with
+				{
+					Options = config.Theme.Options with { Layout = new ThemeLayoutOptions { Home = home, Hero = "split", Features = "bento" } }
+				}
+			};
+
+			string html = _engine.RenderPage(fullLanding, ContextFor(homeConfig), TestContext.Current.CancellationToken);
+
+			Around(html, "data-broke=\"1\"").Should().BeEmpty("no value may close its attribute (home: {0})", home);
+			Around(html, "<b data-injected").Should().BeEmpty("no value may open a tag (home: {0})", home);
+			html.Should().Contain("data-broke=&quot;1&quot;");
+		}
 	}
 
 	[Fact]
@@ -299,6 +349,26 @@ public sealed class ScribanTemplateEngineTests
 			.Should().BeGreaterThan(shown.IndexOf("class=\"last-updated\"", StringComparison.Ordinal));
 		shown.Should().NotContain("@example.com", "emails stay out of the page");
 		hidden.Should().NotContain("page-contributors").And.NotContain("Ann Marie Lee");
+	}
+
+	[Theory]
+	[InlineData("default")]
+	[InlineData("landing")]
+	public void CustomPrimaryColor_GetsTextShadesThatMeetAa(string layout)
+	{
+		// A custom primaryColor was used for links and inline code as it was: #facc15 is 1.5:1 on white.
+		DocPage page = Page("/", "Home", layout: layout);
+		SiteConfig yellow = Config() with { Theme = new ThemeConfig { Options = new ThemeOptions { PrimaryColor = "#facc15" } } };
+		SiteConfig unreadable = Config() with { Theme = new ThemeConfig { Options = new ThemeOptions { PrimaryColor = "oklch(0.8 0.15 90)" } } };
+
+		string html = _engine.RenderPage(page, Context([page], config: yellow), TestContext.Current.CancellationToken);
+		string other = _engine.RenderPage(page, Context([page], config: unreadable), TestContext.Current.CancellationToken);
+		string preset = _engine.RenderPage(page, Context([page]), TestContext.Current.CancellationToken);
+
+		html.Should().Contain("html:not([data-color-theme]){--color-primary-text:#876c00;--color-primary-text-hover:#6c5600;}"
+		                      + "html:not([data-color-theme])[data-theme=\"dark\"]{--color-primary-text:#facc15;--color-primary-text-hover:#fbd950;}</style>");
+		other.Should().Contain("<style>:root{--color-primary:oklch(0.8 0.15 90);").And.NotContain("html:not([data-color-theme])");
+		preset.Should().NotContain("html:not([data-color-theme])", "the default color always starts on the ocean preset");
 	}
 
 	private static List<string> Around(string html, string text)

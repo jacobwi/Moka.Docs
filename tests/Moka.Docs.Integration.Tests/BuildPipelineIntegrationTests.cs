@@ -1,5 +1,7 @@
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -227,9 +229,10 @@ public sealed class BuildPipelineIntegrationTests
 
 		await pipeline.ExecuteAsync(context);
 
+		// The h1 is the page's title, so the table of contents starts at its sections.
 		DocPage page = context.Pages.First();
-		page.TableOfContents.Entries.Should().NotBeEmpty();
-		page.TableOfContents.Entries[0].Text.Should().Be("Main Title");
+		page.TableOfContents.Entries.Select(e => e.Text).Should().Equal("Section One", "Section Two");
+		page.TableOfContents.Entries[1].Children.Should().ContainSingle().Which.Text.Should().Be("Subsection");
 	}
 
 	[Fact]
@@ -354,7 +357,7 @@ public sealed class BuildPipelineIntegrationTests
 		// plugin fills the TOC with paths and schema names taken from documents it doesn't control.
 		var fs = new MockFileSystem(new Dictionary<string, MockFileData>
 		{
-			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\n# Home\n\n## Using `List<T>` & more\n\nText.\n") }
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\n# Home\n\n## Using `List<T>` & more\n\nText.\n\n## Next\n") }
 		});
 
 		(BuildPipeline pipeline, _) = CreatePipeline(fs);
@@ -514,7 +517,7 @@ public sealed class BuildPipelineIntegrationTests
 		page.Should().NotContain("class=\"search-trigger\"")
 			.And.NotContain("id=\"searchModal\"")
 			.And.NotContain("class=\"theme-toggle\"")
-			.And.NotContain("<nav class=\"page-nav\">")
+			.And.NotContain("class=\"page-nav\"")
 			.And.NotContain("class=\"breadcrumbs\"")
 			.And.NotContain("id=\"backToTop\"");
 		page.Should().Contain("data-no-copy-button").And.Contain("data-no-line-numbers");
@@ -563,7 +566,7 @@ public sealed class BuildPipelineIntegrationTests
 		MockFileSystem fs = await BuildSiteAsync(config);
 
 		fs.File.ReadAllText("/project/_site/guide/intro/index.html")
-			.Should().Contain($"localStorage.getItem('mokadocs-color-theme')||{expectedInitial};");
+			.Should().Contain($"const c=g('mokadocs-color-theme')||{expectedInitial};");
 	}
 
 	[Fact]
@@ -586,10 +589,15 @@ public sealed class BuildPipelineIntegrationTests
 		foreach (string path in new[] { "/project/_site/index.html", "/project/_site/guide/intro/index.html" })
 		{
 			string page = fs.File.ReadAllText(path);
-			page.Should().Contain("data-style=\"default\"").And.Contain("<div class=\"style-selector\">");
-			foreach (string style in ThemeStyles.Names)
+			page.Should().Contain("data-style=\"default\"").And.Contain("data-appearance=\"style\"");
+			Regex.IsMatch(page, @"<link rel=""stylesheet"" href=""/_theme/css/style-\w+\.css").Should().BeFalse("the default style is main.css itself");
+
+			// The head loads the stylesheet of a style the reader picked on an earlier page, named by its hash.
+			string loader = Regex.Match(page, @"<script>try\{const v=\{ (.*?) \},s=document").Groups[1].Value;
+			foreach (string style in ThemeStyles.Names.Where(s => s != ThemeStyles.Default))
 			{
-				page.Should().Contain($"data-style-option=\"{style}\"");
+				byte[] css = fs.File.ReadAllBytes($"/project/_site/_theme/css/style-{style}.css");
+				loader.Should().Contain($"'{style}':'{Convert.ToHexStringLower(SHA256.HashData(css))[..10]}',");
 			}
 		}
 	}
@@ -608,20 +616,76 @@ public sealed class BuildPipelineIntegrationTests
 
 		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
 		page.Should().Contain("data-style=\"moka\"");
-		const string bootstrap = "const s=localStorage.getItem('mokadocs-style')||'moka';document.documentElement.setAttribute('data-style',s);";
+		const string bootstrap = "const s=g('mokadocs-style')||'moka';d.setAttribute('data-style',s);";
 		int script = page.IndexOf(bootstrap, StringComparison.Ordinal);
 		script.Should().BeGreaterThan(0);
 		script.Should().BeLessThan(page.IndexOf("<link rel=\"stylesheet\"", StringComparison.Ordinal));
 	}
 
 	[Fact]
-	public async Task FullPipeline_MokaStyle_StartsDarkOnlyWhenTheReaderNeverChose()
+	public async Task FullPipeline_DarkFirstStyles_StartDarkOnlyWhenTheReaderNeverChose()
 	{
 		MockFileSystem fs = await BuildSiteAsync(MinimalConfig());
 
-		// A stored mokadocs-theme wins; without one, Moka is dark and other styles follow the OS.
+		// A stored mokadocs-theme wins; without one, the dark-first styles are dark and the others follow the OS.
 		fs.File.ReadAllText("/project/_site/guide/intro/index.html").Should().Contain(
-			"const t=localStorage.getItem('mokadocs-theme')||(s==='moka'||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');");
+			"const m=g('mokadocs-theme'),t=m||(['moka','terminal',].includes(s)||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');");
+	}
+
+	[Fact]
+	public async Task FullPipeline_UnknownColorThemeCodeThemeAndCodeStyle_AreReportedAndRenderTheDefaults()
+	{
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { DefaultColorTheme = "neon", CodeTheme = "solarised", CodeStyle = "retro" } }
+		};
+
+		BuildContext context = await DryRunAsync(config, new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\nHome") }
+		});
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		List<Diagnostic> warnings = context.Diagnostics.All.Where(d => d.Source == "Render").ToList();
+		warnings.Should().HaveCount(3).And.OnlyContain(d => d.Severity == DiagnosticSeverity.Warning);
+		warnings.Select(d => d.Message).Should().Contain(m => m.Contains("'neon'") && m.Contains("using 'ocean'"))
+			.And.Contain(m => m.Contains("'solarised'") && m.Contains("solarized-dark") && m.Contains("using 'catppuccin-mocha'"))
+			.And.Contain(m => m.Contains("'retro'") && m.Contains("using 'plain'"));
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		page.Should().Contain("data-code-theme=\"catppuccin-mocha\"").And.Contain("const cs='plain';").And.Contain("||'ocean';");
+	}
+
+	[Fact]
+	public async Task FullPipeline_AppearanceNames_AreMatchedWithoutRegardToCase()
+	{
+		// The stylesheet matches attribute values exactly, so GitHub-Dark used to leave code blocks unstyled.
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { DefaultColorTheme = "Teal", CodeTheme = "GitHub-Dark", CodeStyle = "MacOS" } }
+		};
+
+		BuildContext context = await DryRunAsync(config, new Dictionary<string, MockFileData>
+		{
+			{ "/project/docs/index.md", new MockFileData("---\ntitle: Home\n---\nHome") }
+		});
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		context.Diagnostics.All.Should().NotContain(d => d.Source == "Render");
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		page.Should().Contain("data-code-theme=\"github-dark\"").And.Contain("const cs='macos';").And.Contain("||'teal';");
+	}
+
+	[Fact]
+	public async Task FullPipeline_EmptyDefaultColorTheme_StillMeansNoPreset()
+	{
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { DefaultColorTheme = "" } }
+		};
+
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		fs.File.ReadAllText("/project/_site/guide/intro/index.html").Should().Contain("const c=g('mokadocs-color-theme')||'';");
 	}
 
 	[Fact]
@@ -635,8 +699,48 @@ public sealed class BuildPipelineIntegrationTests
 		MockFileSystem fs = await BuildSiteAsync(config);
 
 		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
-		page.Should().NotContain("class=\"style-selector\"").And.NotContain("mokadocs-style");
+		page.Should().NotContain("data-appearance=\"style\"").And.NotContain("mokadocs-style");
 		page.Should().Contain("const s='classic';").And.Contain("data-style=\"classic\"");
+		page.Should().Contain("data-default-style=\"classic\"", "Reset goes back to the configured style");
+	}
+
+	[Fact]
+	public async Task FullPipeline_EveryAppearanceSectionOff_LeavesNoAppearanceButton()
+	{
+		SiteConfig config = MinimalConfig() with
+		{
+			Theme = new ThemeConfig
+			{
+				Options = new ThemeOptions
+				{
+					ShowDarkModeToggle = false,
+					StyleSelector = false,
+					ColorThemes = false,
+					CodeThemeSelector = false,
+					CodeStyleSelector = false,
+					TextSizeSelector = false,
+					WidthSelector = false
+				}
+			}
+		};
+
+		MockFileSystem fs = await BuildSiteAsync(config);
+
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		page.Should().NotContain("class=\"appearance").And.NotContain("appearancePanel").And.NotContain("class=\"theme-toggle\"");
+		page.Should().NotContain("mokadocs-text-size").And.NotContain("mokadocs-reader-width");
+	}
+
+	[Fact]
+	public async Task FullPipeline_DefaultOptions_OfferTextSizeAndReadingWidth()
+	{
+		MockFileSystem fs = await BuildSiteAsync(MinimalConfig());
+
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		page.Should().Contain("data-appearance=\"text-size\"").And.Contain("data-appearance=\"reader-width\"");
+		page.Should().Contain(";const z=g('mokadocs-text-size');if(['90','112.5','125'].includes(z))d.setAttribute('data-text-size',z)");
+		page.Should().Contain(";const w=g('mokadocs-reader-width');if(['narrow','wide','wider','full'].includes(w))d.setAttribute('data-reader-width',w)");
+		page.Should().NotContain("data-text-size=").And.NotContain("data-reader-width=", "only the head script sets them, from a stored pick");
 	}
 
 	[Fact]
@@ -911,6 +1015,7 @@ public sealed class BuildPipelineIntegrationTests
 
 		string html = context.Pages.Single().Content.Html;
 		string pre = html[html.IndexOf("<pre>", StringComparison.Ordinal)..(html.IndexOf("</pre>", StringComparison.Ordinal) + 6)];
-		pre.Should().Be("<pre><code>class A:\n    def f(self):\n        return 1</code></pre>");
+		pre.Should().Be("<pre><code data-highlighted=\"true\" tabindex=\"0\" role=\"group\" aria-label=\"Code\">"
+		                + "<span class=\"line\">class A:</span>\n<span class=\"line\">    def f(self):</span>\n<span class=\"line\">        return 1</span></code></pre>");
 	}
 }

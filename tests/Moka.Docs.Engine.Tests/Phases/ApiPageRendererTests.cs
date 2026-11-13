@@ -5,6 +5,7 @@ using Moka.Docs.Core.Api;
 using Moka.Docs.CSharp.Metadata;
 using Moka.Docs.CSharp.XmlDoc;
 using Moka.Docs.Engine.Phases;
+using Moka.Docs.Parsing.Highlighting;
 
 namespace Moka.Docs.Engine.Tests.Phases;
 
@@ -359,21 +360,89 @@ public sealed class ApiPageRendererTests
 	[Fact]
 	public void PythonDecorators_AppearAsDecorators()
 	{
-		// The Python plugin's decorators come through as attributes, and "module" marks its module pages.
+		// The Python plugin's decorators come through as attributes.
 		var type = new ApiType
 		{
 			Name = "Point",
 			FullName = "shapes.Point",
 			Kind = ApiTypeKind.Record,
 			SourcePath = "shapes.py",
-			Attributes = [new ApiAttribute { Name = "dataclass" }, new ApiAttribute { Name = "module" }]
+			Attributes = [new ApiAttribute { Name = "dataclass" }]
 		};
 
 		string html = ApiPageRenderer.RenderType(type, [type]);
 
-		html.Should().Contain("<code class=\"language-csharp\">@dataclass\npublic record Point</code>")
-			.And.NotContain("module")
+		html.Should().Contain("<code class=\"language-python\">@dataclass\nclass Point:</code>")
 			.And.NotContain("[dataclass]");
+	}
+
+	[Fact]
+	public void PythonTypes_AreDeclaredLabelledAndHighlightedAsPython()
+	{
+		// The declaration, signatures and View Source of Python pages were C#: "public class Calc : Base",
+		// a "C#" label and C# highlighting.
+		var calc = new ApiType
+		{
+			Name = "Calc",
+			FullName = "calc.Calc",
+			Namespace = "calc",
+			Kind = ApiTypeKind.Class,
+			SourcePath = "calc.py",
+			BaseType = "Base",
+			ImplementedInterfaces = ["Mixin"],
+			SourceCode = "class Calc(Base, Mixin):\n    def add(self, a: int) -> int:\n        return a  # sum\n",
+			Members =
+			[
+				new ApiMember
+				{
+					Name = "add",
+					Kind = ApiMemberKind.Method,
+					Signature = "def add(self, a: int) -> int",
+					Documentation = new XmlDocBlock { Summary = "Adds." }
+				}
+			]
+		};
+		var module = new ApiType
+		{
+			Name = "calc",
+			FullName = "pkg.calc",
+			Namespace = "pkg",
+			Kind = ApiTypeKind.Class,
+			IsStatic = true,
+			SourcePath = "pkg/calc.py",
+			Attributes = [new ApiAttribute { Name = "module" }]
+		};
+
+		string html = CodeBlockHtml.EnhanceBlocks(ApiPageRenderer.RenderType(calc, [calc, module]));
+		string modulePage = ApiPageRenderer.RenderType(module, [calc, module]);
+
+		html.Should().NotContain("csharp").And.NotContain("C# code");
+		html.Should().Contain("<div class=\"code-block\" data-lang=\"python\">")
+			.And.Contain("aria-label=\"Python code\"")
+			.And.Contain("<span class=\"token keyword\">class</span> Calc(Base, Mixin):</span>")
+			.And.Contain("<span class=\"token keyword\">def</span> add(<span class=\"token keyword\">self</span>, a: int) -&gt; int</span>")
+			.And.Contain("<span class=\"token comment\"># sum</span>");
+		modulePage.Should().Contain("<code class=\"language-python\">import pkg.calc</code>")
+			.And.NotContain("module</code>");
+	}
+
+	[Fact]
+	public void CSharpTypes_StayCSharp()
+	{
+		var type = new ApiType
+		{
+			Name = "Shape",
+			FullName = "Fixture.Shape",
+			Kind = ApiTypeKind.Class,
+			SourcePath = "Shape.cs",
+			SourceCode = "public class Shape { }"
+		};
+
+		string html = ApiPageRenderer.RenderType(type, [type]);
+
+		html.Should().Contain("<code class=\"language-csharp\">public class Shape</code>")
+			.And.Contain("<pre><code class=\"language-csharp\">public class Shape { }</code></pre>")
+			.And.NotContain("language-python");
 	}
 
 	[Theory]

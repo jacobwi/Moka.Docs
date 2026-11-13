@@ -27,227 +27,46 @@ namespace Moka.Docs.Plugins.BlazorPreview;
 
 /// <summary>
 ///     MokaDocs plugin that compiles <c>```blazor-preview</c> code blocks with Roslyn at build
-///     time and wires them up for interactive in-page hydration in the browser.
+///     time and shows each one in an iframe that runs a Blazor WebAssembly preview host.
 ///     <para>
-///         <b>Architecture</b> - one iframe per preview block. Each block is compiled to a
-///         standalone .dll at build time, written to <c>_site/_preview-assemblies/</c>, and
-///         rendered inside an <c>&lt;iframe loading="lazy"&gt;</c> pointing at the consumer's
-///         published Blazor WebAssembly preview-host app at <c>/_preview-wasm/</c>. Lazy loading
-///         means iframes beyond the viewport don't boot a runtime until scrolled into view.
-///         Components portal to the iframe's own <c>document.body</c>, so Dialog/Popover/Toast
-///         render inside the preview frame - an intentional, documented constraint.
+///         <b>Architecture</b> - one iframe per preview block. Each block is compiled to an
+///         assembly at build time, written to <c>_site/_preview-assemblies/</c>, and rendered
+///         inside an <c>&lt;iframe loading="lazy"&gt;</c> pointing at the published preview host
+///         at <c>/_preview-wasm/</c>. Lazy loading means iframes beyond the viewport don't boot a
+///         runtime until scrolled into view. Components portal to the iframe's own
+///         <c>document.body</c>, so Dialog/Popover/Toast render inside the preview frame.
 ///     </para>
 ///     <para>
-///         <b>Inputs</b> - one yaml option:
-///         <list type="bullet">
-///             <item>
-///                 <term>previewHost</term>
-///                 <description>
-///                     Path (absolute or relative to the docs root) to the consumer's Blazor
-///                     WebAssembly preview-host project directory. The plugin expects conventional
-///                     subdirectories:
-///                     <list type="bullet">
-///                         <item>
-///                             <description>
-///                                 <c>bin/Release/{tfm}/</c> - build-time .dll references for Roslyn.
-///                             </description>
-///                         </item>
-///                         <item>
-///                             <description>
-///                                 <c>publish-output/wwwroot/</c> - the published static WASM
-///                                 runtime that is copied to <c>_site/_preview-wasm/</c>.
-///                             </description>
-///                         </item>
-///                     </list>
-///                     The consumer is responsible for running <c>dotnet publish</c> on the
-///                     preview-host project before invoking <c>mokadocs build</c>.
-///                 </description>
-///             </item>
-///             <item>
-///                 <term>usings</term>
-///                 <description>Optional list of global using directives prepended to every snippet compilation.</description>
-///             </item>
-///         </list>
+///         <b>Options</b> - <c>previewHost</c>, <c>library</c>, <c>publishHost</c>,
+///         <c>references</c>, <c>usings</c>, <c>publishTimeout</c> and <c>renderTimeout</c>; see
+///         docs/plugins/blazor-preview.md. With <c>publishHost</c> on (the default) the plugin
+///         scaffolds a host when it finds none and publishes it with <c>dotnet publish</c>; off,
+///         it only uses the published output of <c>previewHost</c>.
 ///     </para>
 ///     <para>
 ///         <b>Outputs</b> - per build:
 ///         <list type="bullet">
 ///             <item>
-///                 <description><c>_site/_preview-wasm/</c> - copy of the preview-host's published wwwroot.</description>
-///             </item>
-///             <item>
-///                 <description><c>_site/_preview-assemblies/{sha}.dll</c> - one compiled assembly per preview block.</description>
-///             </item>
-///             <item>
 ///                 <description>
-///                     Inline placeholder + SSR fallback HTML inside each doc page, plus two boot scripts
-///                     appended to body.
+///                     <c>_site/_preview-wasm/</c> - the host's published wwwroot, its pages carrying a
+///                     Content-Security-Policy and a message guard (<see cref="PreviewPageHardening" />).
 ///                 </description>
 ///             </item>
+///             <item>
+///                 <description><c>_site/_preview-assemblies/{sha256}.bin</c> - one compiled assembly per preview block.</description>
+///             </item>
+///             <item>
+///                 <description><c>_site/_preview-assets/</c> - the page stylesheet and script (<see cref="PreviewPageAssets" />).</description>
+///             </item>
+///             <item>
+///                 <description><c>_site/.gitattributes</c> - <c>*.js binary</c>, for branch deploys.</description>
+///             </item>
 ///         </list>
+///         Without a published host, each block shows its static render instead of an iframe.
 ///     </para>
 /// </summary>
 public sealed class BlazorPreviewPlugin : IMokaPlugin
 {
-	#region Inline container CSS (tab wrapper + error + placeholder states)
-
-	// All colors inherit from mokadocs theme tokens (--color-*) so the preview chrome
-	// matches the surrounding docs theme in both light and dark mode, and across all
-	// color themes (ocean, emerald, violet, amber, rose, moka-red, ...). Fallbacks are
-	// only used when the page lacks a mokadocs theme (e.g. standalone render).
-	private const string _inlineCss = """
-	                                  <style>
-	                                  /* ── Preview container & tabs ────────────────────────────────── */
-	                                  .blazor-preview-container {
-	                                      position: relative;
-	                                      border: 1px solid var(--color-border, #e2e8f0);
-	                                      border-radius: 8px;
-	                                      margin: 1.5em 0;
-	                                      overflow: hidden;
-	                                      background: var(--color-bg, #ffffff);
-	                                  }
-	                                  .blazor-preview-tabs {
-	                                      display: flex;
-	                                      align-items: center;
-	                                      border-bottom: 1px solid var(--color-border, #e2e8f0);
-	                                      background: var(--color-bg-secondary, var(--color-bg, #f7f7f9));
-	                                      padding: 0;
-	                                      margin: 0;
-	                                  }
-	                                  .blazor-preview-tab {
-	                                      padding: 0.55em 1.1em;
-	                                      font-size: 0.78rem;
-	                                      font-weight: 600;
-	                                      color: var(--color-text-muted, var(--color-text-secondary, #64748b));
-	                                      background: transparent;
-	                                      border: none;
-	                                      border-bottom: 2px solid transparent;
-	                                      cursor: pointer;
-	                                      transition: color 0.15s ease-out, border-color 0.15s ease-out, background 0.15s ease-out;
-	                                      font-family: var(--font-body, inherit);
-	                                      letter-spacing: 0.01em;
-	                                  }
-	                                  .blazor-preview-tab:hover {
-	                                      color: var(--color-text, #1a1a1a);
-	                                      background: var(--color-bg, #ffffff);
-	                                  }
-	                                  .blazor-preview-tab.active {
-	                                      color: var(--color-primary, #0ea5e9);
-	                                      border-bottom-color: var(--color-primary, #0ea5e9);
-	                                      background: var(--color-bg, #ffffff);
-	                                  }
-	                                  .blazor-preview-source { display: none; }
-	                                  .blazor-preview-source.active { display: block; }
-	                                  .blazor-preview-source pre { margin: 0; border: none; border-radius: 0; }
-	                                  .blazor-preview-source code {
-	                                      font-family: var(--font-mono, 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace);
-	                                  }
-	                                  .blazor-preview-render {
-	                                      display: none;
-	                                      padding: 0;
-	                                      background: var(--color-bg, #ffffff);
-	                                      min-height: 160px;
-	                                      background-image: linear-gradient(var(--color-border-light, var(--color-border, #eef0f2)) 1px, transparent 1px),
-	                                                        linear-gradient(90deg, var(--color-border-light, var(--color-border, #eef0f2)) 1px, transparent 1px);
-	                                      background-size: 24px 24px;
-	                                      background-position: -1px -1px;
-	                                  }
-	                                  .blazor-preview-render.active { display: block; }
-	                                  .blazor-preview-error {
-	                                      color: var(--color-primary, #ef4444);
-	                                      font-size: 0.85rem;
-	                                      font-family: var(--font-mono, 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace);
-	                                      padding: 1em;
-	                                      background: var(--color-bg-secondary, #fef2f2);
-	                                      border: 1px solid var(--color-border, #fecaca);
-	                                      white-space: pre-wrap;
-	                                      border-radius: 4px;
-	                                  }
-	                                  .blazor-preview-loading {
-	                                      min-height: 24px;
-	                                      opacity: 0.5;
-	                                      background: repeating-linear-gradient(
-	                                          -45deg,
-	                                          var(--color-border, #e2e8f0),
-	                                          var(--color-border, #e2e8f0) 10px,
-	                                          transparent 10px,
-	                                          transparent 20px
-	                                      );
-	                                      border-radius: 4px;
-	                                  }
-	                                  .blazor-preview-badge {
-	                                      display: inline-flex;
-	                                      align-items: center;
-	                                      font-size: 0.62rem;
-	                                      font-weight: 700;
-	                                      text-transform: uppercase;
-	                                      letter-spacing: 0.06em;
-	                                      color: var(--color-primary, #0ea5e9);
-	                                      background: var(--color-bg, #ffffff);
-	                                      border: 1px solid var(--color-border, #e2e8f0);
-	                                      padding: 0.2em 0.55em;
-	                                      border-radius: 999px;
-	                                      margin-left: auto;
-	                                      margin-right: 0.75em;
-	                                  }
-	                                  </style>
-	                                  """;
-
-	#endregion
-
-	#region Tab switching JS (Preview / Source tabs per container)
-
-	private const string _tabsJs = """
-	                               <script>
-	                               (function() {
-	                                   document.querySelectorAll('.blazor-preview-container[data-blazor-preview="true"]').forEach(function(container) {
-	                                       var sourceDiv = container.querySelector('.blazor-preview-source');
-	                                       var renderDiv = container.querySelector('.blazor-preview-render');
-	                                       if (!sourceDiv || !renderDiv) return;
-
-	                                       var tabBar = document.createElement('div');
-	                                       tabBar.className = 'blazor-preview-tabs';
-
-	                                       var previewTab = document.createElement('button');
-	                                       previewTab.className = 'blazor-preview-tab active';
-	                                       previewTab.textContent = 'Preview';
-	                                       previewTab.type = 'button';
-
-	                                       var sourceTab = document.createElement('button');
-	                                       sourceTab.className = 'blazor-preview-tab';
-	                                       sourceTab.textContent = 'Source';
-	                                       sourceTab.type = 'button';
-
-	                                       var badge = document.createElement('span');
-	                                       badge.className = 'blazor-preview-badge';
-	                                       badge.textContent = 'Blazor';
-
-	                                       tabBar.appendChild(previewTab);
-	                                       tabBar.appendChild(sourceTab);
-	                                       tabBar.appendChild(badge);
-	                                       container.insertBefore(tabBar, container.firstChild);
-
-	                                       renderDiv.classList.add('active');
-
-	                                       previewTab.addEventListener('click', function() {
-	                                           previewTab.classList.add('active');
-	                                           sourceTab.classList.remove('active');
-	                                           renderDiv.classList.add('active');
-	                                           sourceDiv.classList.remove('active');
-	                                       });
-	                                       sourceTab.addEventListener('click', function() {
-	                                           sourceTab.classList.add('active');
-	                                           previewTab.classList.remove('active');
-	                                           sourceDiv.classList.add('active');
-	                                           renderDiv.classList.remove('active');
-	                                       });
-	                                   });
-	                               })();
-	                               </script>
-	                               """;
-
-	#endregion
-
 	// ── Preview-host auto-discovery / scaffolding / publishing ────────────────
 
 	/// <summary>
@@ -307,12 +126,20 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	private static readonly Lazy<Dictionary<string, string>> _trustedPlatformAssemblies =
 		new(ReadTrustedPlatformAssemblies);
 
+	// The compiler keeps the client it gets (it fetches NuGet packages with it), and a new one per
+	// plugin instance left its sockets behind. The pooled lifetime picks up DNS changes, as
+	// fundamentals/http-requests.md ("Alternatives to IHttpClientFactory") describes.
+	private static readonly HttpClient _httpClient =
+		new(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) });
+
 	// ── Instance state ─────────────────────────────────────────────────────────
 
 	private readonly List<string> _extraUsings = [];
 	private readonly List<string> _knownDllPaths = [];
 	private string _basePathForAssemblyQuery = "";
 	private RoslynCompilationService? _compilationService;
+
+	/// <summary>The published wwwroot to stage, or <c>null</c> when previews show only their static render.</summary>
 	private string? _previewHostWwwroot;
 	private TimeSpan _renderTimeout = _defaultRenderTimeout;
 	private bool _servicesInitialized;
@@ -356,14 +183,14 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			_servicesInitialized = true;
 		}
 
-		if (_compilationService is null || _previewHostWwwroot is null)
+		if (_compilationService is null)
 		{
 			return;
 		}
 
-		// Always register the preview-host copy so the static files are present at
-		// /_preview-wasm/ even if no pages on this build currently contain preview blocks.
-		buildContext.DeferredOutputDirectories.Add((_previewHostWwwroot, "_preview-wasm"));
+		// Staged on every build, even one without preview blocks, so /_preview-wasm/ is always
+		// there. A host republished while serve runs gets hardened again here.
+		bool interactive = _previewHostWwwroot is not null && StagePreviewHost(_previewHostWwwroot, buildContext, context);
 
 		// The .nojekyll marker this plugin's underscore-prefixed output depends on
 		// (_preview-wasm, _preview-assemblies, _framework, _content) is written by
@@ -403,16 +230,22 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 			(string rewrittenHtml, int pageCompiled, int pageFailed) = await CompileAndRewritePageAsync(
 				page.Route, html, _compilationService, _extraUsings, _knownDllPaths, snapshotRenderer,
-				buildContext, context, _basePathForAssemblyQuery, ct);
+				buildContext, context, _basePathForAssemblyQuery, interactive, ct);
 
 			page.Content = page.Content with
 			{
-				Html = InjectPreviewAssets(rewrittenHtml)
+				Html = PreviewPageAssets.Link(rewrittenHtml)
 			};
 
 			pagesWithPreview++;
 			blocksCompiled += pageCompiled;
 			blocksFailed += pageFailed;
+		}
+
+		if (pagesWithPreview > 0)
+		{
+			buildContext.DeferredOutputFiles[PreviewPageAssets.StylesheetPath] = PreviewPageAssets.Stylesheet;
+			buildContext.DeferredOutputFiles[PreviewPageAssets.ScriptPath] = PreviewPageAssets.Script;
 		}
 
 		if (pagesWithPreview > 0 || blocksFailed > 0)
@@ -459,68 +292,87 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		TimeSpan publishTimeout = ReadSeconds(context, "publishTimeout", _defaultPublishTimeout);
 		_renderTimeout = ReadSeconds(context, "renderTimeout", _defaultRenderTimeout);
+		bool publishHost = ReadBoolean(context, "publishHost", true);
 
-		// Resolve the preview-host directory: explicit option wins, otherwise scan
-		// conventional locations (./preview-host/, ./docs-preview-host/, or any subdir
-		// containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
-		string previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, library is not null, buildContext.RootDirectory);
-
-		// Auto-scaffold a fresh preview-host project from a generic template if the
-		// resolved directory doesn't yet contain a Blazor WASM csproj. The user owns the
-		// scaffolded files thereafter - mokadocs never overwrites them.
-		if (!HasBlazorWasmCsproj(previewHostDir))
+		string? previewHostDir;
+		string? wwwroot;
+		if (publishHost)
 		{
-			// Both the scaffold and dotnet publish need a real directory, and a build over a
-			// virtual file system can have a root that isn't on disk.
-			if (!Directory.Exists(buildContext.RootDirectory))
+			// Resolve the preview-host directory: explicit option wins, otherwise scan
+			// conventional locations (./preview-host/, ./docs-preview-host/, or any subdir
+			// containing a Microsoft.NET.Sdk.BlazorWebAssembly csproj).
+			previewHostDir = ResolvePreviewHostDirectory(hostPathRaw, library is not null, buildContext.RootDirectory);
+
+			// Auto-scaffold a fresh preview-host project from a generic template if the
+			// resolved directory doesn't yet contain a Blazor WASM csproj. The user owns the
+			// scaffolded files thereafter - mokadocs never overwrites them.
+			if (!HasBlazorWasmCsproj(previewHostDir))
 			{
-				context.LogError(
-					$"mokadocs-blazor-preview: no Blazor WebAssembly preview-host project found at '{previewHostDir}', " +
-					$"and the build root '{buildContext.RootDirectory}' is not a directory on disk, so the plugin " +
-					"can't scaffold one.");
+				// Both the scaffold and dotnet publish need a real directory, and a build over a
+				// virtual file system can have a root that isn't on disk.
+				if (!Directory.Exists(buildContext.RootDirectory))
+				{
+					context.LogError(
+						$"mokadocs-blazor-preview: no Blazor WebAssembly preview-host project found at '{previewHostDir}', " +
+						$"and the build root '{buildContext.RootDirectory}' is not a directory on disk, so the plugin " +
+						"can't scaffold one.");
+					return false;
+				}
+
+				// Without a library the scaffold references only Moka.Blazor.Repl.Host, which is all
+				// plain Razor previews need. This used to fail the build and ask for a library.
+				ScaffoldPreviewHost(previewHostDir, library, context);
+			}
+
+			// Run `dotnet publish` on the preview-host (incremental - skipped when nothing
+			// upstream of the published wwwroot has changed since the last build).
+			if (!await EnsurePreviewHostPublishedAsync(previewHostDir, buildContext.OutputDirectory, publishTimeout,
+				    context, ct))
+			{
 				return false;
 			}
 
-			// Without a library the scaffold references only Moka.Blazor.Repl.Host, which is all
-			// plain Razor previews need. This used to fail the build and ask for a library.
-			ScaffoldPreviewHost(previewHostDir, library, context);
+			// The folder dotnet publish just wrote. Searching publish-output for other layouts
+			// could pick an older publish of the same project.
+			wwwroot = Path.Combine(PublishOutputDirectory(previewHostDir), "wwwroot");
+		}
+		else if (hostPathRaw is not null)
+		{
+			previewHostDir = Path.GetFullPath(Path.Combine(buildContext.RootDirectory, hostPathRaw));
+			wwwroot = FindPublishedWwwroot(previewHostDir);
+			if (wwwroot is null)
+			{
+				context.LogWarning(
+					$"mokadocs-blazor-preview: publishHost is off and '{previewHostDir}' holds no published Blazor " +
+					"WebAssembly app (a wwwroot with _framework/blazor.webassembly.js under publish-output/, " +
+					"publish-output/{tfm}/, or the folder itself), so previews show only their static render. " +
+					"Publish the preview host there, or turn publishHost on.");
+			}
+		}
+		else
+		{
+			previewHostDir = null;
+			wwwroot = null;
+			context.LogWarning(
+				"mokadocs-blazor-preview: publishHost is off and no previewHost is set, so previews show only " +
+				"their static render. Set previewHost to a published preview host to make them interactive.");
 		}
 
-		// Run `dotnet publish` on the preview-host (incremental - skipped when nothing
-		// upstream of the published wwwroot has changed since the last build).
-		if (!await EnsurePreviewHostPublishedAsync(previewHostDir, buildContext.OutputDirectory, publishTimeout,
-			    context, ct))
+		if (wwwroot is not null && buildContext.DryRun && !IsFingerprinted(wwwroot))
 		{
-			return false;
-		}
-
-		// Conventional layout for the consumer's Blazor WebAssembly preview-host project
-		// (e.g. Moka.Blazor.Repl.Wasm):
-		//   {previewHostDir}/publish-output/{tfm}/wwwroot/  OR  {previewHostDir}/publish-output/wwwroot/
-		//     - runtime static files (the WASM app copied to _site/_preview-wasm/)
-		//   {previewHostDir}/bin/Release/{tfm}/
-		//     - build-time Roslyn .dll references
-		string? wwwroot = FindPublishedWwwroot(previewHostDir);
-		if (wwwroot is null)
-		{
-			context.LogError(
-				$"mokadocs-blazor-preview: published wwwroot not found under '{previewHostDir}/publish-output/'. " +
-				"Run `dotnet publish -c Release -o publish-output[/{tfm}]` in the preview-host project before building the docs.");
-			return false;
-		}
-
-		if (!File.Exists(Path.Combine(wwwroot, "_framework", "blazor.webassembly.js")))
-		{
-			context.LogError(
-				$"mokadocs-blazor-preview: '{wwwroot}' does not look like a published Blazor WASM app " +
-				"(missing _framework/blazor.webassembly.js).");
-			return false;
+			context.LogWarning(
+				$"mokadocs-blazor-preview: the preview host at '{previewHostDir}' doesn't fingerprint or preload its " +
+				"framework files, so browsers revalidate them on every preview. Set " +
+				"<OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders> in its .csproj and, in " +
+				"wwwroot/index.html, add <link rel=\"preload\" id=\"webassembly\" /> and <script type=\"importmap\"></script> " +
+				"to the head and load _framework/blazor.webassembly#[.{fingerprint}].js. Hosts mokadocs generates " +
+				"now do this; existing ones are never rewritten.");
 		}
 
 		_previewHostWwwroot = wwwroot;
 
-		string? refBinDir = FindReferenceBinDirectory(previewHostDir);
-		if (refBinDir is null)
+		string? refBinDir = previewHostDir is null ? null : FindReferenceBinDirectory(previewHostDir);
+		if (refBinDir is null && publishHost)
 		{
 			context.LogError(
 				$"mokadocs-blazor-preview: could not find a compiled bin/Release/net*.0 directory under '{previewHostDir}'. " +
@@ -533,7 +385,9 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// so that (a) duplicate-named assemblies from different bin dirs don't produce
 		// CS1704, and (b) entries added LATER override earlier ones. Preview-host bin goes
 		// in first; additive `references:` entries below overwrite same-named copies.
-		_compilationService = new RoslynCompilationService(new HttpClient());
+		// Without a host bin (publishHost off), blocks compile against the framework and the
+		// references option only.
+		_compilationService = new RoslynCompilationService(_httpClient);
 		var dllByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
 		// The preview-host's bin dir holds every transitive assembly it references, including
@@ -541,7 +395,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		// host runtime. Adding those causes CS0433 type-conflict errors when the TFMs differ
 		// (e.g. preview-host built against net9, mokadocs runs on net10). Only include the
 		// NON-framework assemblies - i.e. the consumer's own component library DLLs.
-		foreach (string dll in Directory.GetFiles(refBinDir, "*.dll"))
+		foreach (string dll in refBinDir is null ? [] : Directory.GetFiles(refBinDir, "*.dll"))
 		{
 			string name = Path.GetFileNameWithoutExtension(dll);
 			if (IsFrameworkAssemblyName(name))
@@ -839,9 +693,123 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	}
 
 	/// <summary>
+	///     Reads a yes/no option: a boolean from code, or <c>true</c>/<c>false</c> text from yaml.
+	///     Anything else falls back to <paramref name="fallback" /> with a warning.
+	/// </summary>
+	private static bool ReadBoolean(IPluginContext context, string option, bool fallback)
+	{
+		if (!context.Options.TryGetValue(option, out object? value) || value is null)
+		{
+			return fallback;
+		}
+
+		if (value is bool flag)
+		{
+			return flag;
+		}
+
+		string text = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+		if (bool.TryParse(text.Trim(), out bool parsed))
+		{
+			return parsed;
+		}
+
+		context.LogWarning(
+			$"mokadocs-blazor-preview: {option} '{text}' is not true or false; using {(fallback ? "true" : "false")}.");
+		return fallback;
+	}
+
+	/// <summary>Where the plugin publishes a preview host: <c>publish-output/net10.0/</c>.</summary>
+	private static string PublishOutputDirectory(string previewHostDir) =>
+		Path.Combine(previewHostDir, "publish-output", "net10.0");
+
+	/// <summary>
+	///     The Blazor script of a published wwwroot: <c>_framework/blazor.webassembly.js</c>, or the
+	///     fingerprinted <c>blazor.webassembly.{fingerprint}.js</c> a host with
+	///     <c>OverrideHtmlAssetPlaceholders</c> publishes instead. <c>null</c> when there is neither.
+	/// </summary>
+	internal static string? FindBlazorScript(string wwwroot)
+	{
+		string framework = Path.Combine(wwwroot, "_framework");
+		if (!Directory.Exists(framework))
+		{
+			return null;
+		}
+
+		string plain = Path.Combine(framework, "blazor.webassembly.js");
+		return File.Exists(plain)
+			? plain
+			: Directory.EnumerateFiles(framework, "blazor.webassembly.*.js").FirstOrDefault(IsFingerprintedBlazorScript);
+	}
+
+	/// <summary>
+	///     Whether the published wwwroot loads a fingerprinted Blazor script, which only a host with
+	///     <c>OverrideHtmlAssetPlaceholders</c> and the matching index.html placeholders publishes.
+	/// </summary>
+	private static bool IsFingerprinted(string wwwroot) =>
+		FindBlazorScript(wwwroot) is { } script && IsFingerprintedBlazorScript(script);
+
+	private static bool IsFingerprintedBlazorScript(string path)
+	{
+		string name = Path.GetFileName(path);
+		const string prefix = "blazor.webassembly.";
+		return name.StartsWith(prefix, StringComparison.Ordinal) && name.EndsWith(".js", StringComparison.Ordinal)
+		                                                         && name.Length > prefix.Length + ".js".Length
+		                                                         && name[prefix.Length..^".js".Length].All(char.IsAsciiLetterOrDigit);
+	}
+
+	/// <summary>
+	///     Stages the published preview host under <c>_preview-wasm/</c> with its pages hardened
+	///     (<see cref="PreviewHostStaging" />), and the site-root <c>.gitattributes</c> branch
+	///     deploys need for it. Returns <c>false</c>, with a warning, when the host can't be
+	///     staged; the build's previews then show their static render.
+	/// </summary>
+	private static bool StagePreviewHost(string wwwroot, BuildContext buildContext, IPluginContext context)
+	{
+		if (!File.Exists(Path.Combine(wwwroot, "index.html")))
+		{
+			context.LogWarning(
+				$"mokadocs-blazor-preview: the published preview host '{wwwroot}' has no index.html, so previews " +
+				"show only their static render.");
+			return false;
+		}
+
+		PreviewHostStage stage;
+		try
+		{
+			stage = PreviewHostStaging.Read(wwwroot);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			context.LogWarning(
+				$"mokadocs-blazor-preview: the published preview host '{wwwroot}' could not be read ({ex.Message}), " +
+				"so previews show only their static render.");
+			return false;
+		}
+
+		foreach (string page in stage.PagesWithOwnPolicy)
+		{
+			context.LogWarning(
+				$"mokadocs-blazor-preview: the preview host's {page} has a Content-Security-Policy of its own. The " +
+				"browser enforces it next to the one mokadocs adds, so it has to allow the inline scripts mokadocs " +
+				"adds (their hashes are in the added policy), or previews stop loading.");
+		}
+
+		foreach ((string path, byte[] bytes) in stage.Files)
+		{
+			buildContext.DeferredOutputFiles[path] = bytes;
+		}
+
+		buildContext.DeferredOutputDirectories.AddRange(stage.Directories);
+		buildContext.DeferredOutputFiles[PreviewHostStaging.GitAttributesPath] = Encoding.UTF8.GetBytes(PreviewHostStaging.GitAttributes);
+		return true;
+	}
+
+	/// <summary>
 	///     Runs <c>dotnet publish -c Release -f net10.0 -o publish-output/net10.0</c> on the
 	///     preview-host project if its publish output is missing or stale relative to its inputs.
-	///     Returns <c>false</c> on hard failure (logged via <paramref name="context" />).
+	///     The folder is emptied first, so files a previous publish wrote don't ship with the new
+	///     one. Returns <c>false</c> on hard failure (logged via <paramref name="context" />).
 	/// </summary>
 	/// <param name="previewHostDir">The preview-host project directory.</param>
 	/// <param name="outputDirectory">The site's output directory, which never counts as an input.</param>
@@ -859,13 +827,13 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 			return false;
 		}
 
-		string publishOut = Path.Combine(previewHostDir, "publish-output", "net10.0");
-		string publishMarker = Path.Combine(publishOut, "wwwroot", "_framework", "blazor.webassembly.js");
+		string publishOut = PublishOutputDirectory(previewHostDir);
+		string publishedWwwroot = Path.Combine(publishOut, "wwwroot");
 		string publishStamp = Path.Combine(publishOut, _publishStampFile);
 
-		if (File.Exists(publishMarker))
+		if (FindBlazorScript(publishedWwwroot) is { } publishedScript)
 		{
-			DateTime publishedAt = File.GetLastWriteTimeUtc(publishMarker);
+			DateTime publishedAt = File.GetLastWriteTimeUtc(publishedScript);
 			if (File.Exists(publishStamp) && File.GetLastWriteTimeUtc(publishStamp) > publishedAt)
 			{
 				publishedAt = File.GetLastWriteTimeUtc(publishStamp);
@@ -882,6 +850,22 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		context.LogInfo(
 			$"mokadocs-blazor-preview: publishing preview-host '{Path.GetFileName(csproj)}' " +
 			$"(this happens once per change to the project; subsequent builds are skipped)...");
+
+		// dotnet publish only adds and replaces files, so without this a renamed or removed
+		// assembly from an earlier publish shipped with every later one.
+		try
+		{
+			if (Directory.Exists(publishOut))
+			{
+				Directory.Delete(publishOut, true);
+			}
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			context.LogWarning(
+				$"mokadocs-blazor-preview: could not empty '{publishOut}' before publishing ({ex.Message}), so files " +
+				"from an earlier publish may ship with this one.");
+		}
 
 		var psi = new ProcessStartInfo("dotnet") { WorkingDirectory = previewHostDir };
 		foreach (string argument in (string[]) ["publish", csproj, "-c", "Release", "-f", "net10.0", "-o", publishOut])
@@ -910,11 +894,11 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 				return false;
 			}
 
-			if (!File.Exists(publishMarker))
+			if (FindBlazorScript(publishedWwwroot) is null)
 			{
 				context.LogError(
-					$"mokadocs-blazor-preview: publish completed but '{publishMarker}' is missing. " +
-					"Check your preview-host project for build errors.");
+					$"mokadocs-blazor-preview: publish completed but '{publishedWwwroot}' has no " +
+					"_framework/blazor.webassembly.js. Check your preview-host project for build errors.");
 				return false;
 			}
 
@@ -1153,46 +1137,32 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 		return byName;
 	}
+
 	/// <summary>
-	///     Looks for the published <c>wwwroot/</c> under <c>{previewHostDir}/publish-output/</c>.
-	///     Accepts either a TFM-subdirectory layout
-	///     (<c>publish-output/net10.0/wwwroot/</c>) or a flat layout (<c>publish-output/wwwroot/</c>).
-	///     The directory must contain <c>_framework/blazor.webassembly.js</c>.
+	///     Finds the published wwwroot of a preview host the plugin doesn't publish itself
+	///     (<c>publishHost</c> off): <c>publish-output/wwwroot/</c>,
+	///     <c>publish-output/{tfm}/wwwroot/</c>, or <paramref name="previewHostDir" /> itself or its
+	///     <c>wwwroot/</c> when it points at published output. A candidate needs the Blazor script
+	///     in <c>_framework/</c>; of several, the most recently published wins.
 	/// </summary>
-	private static string? FindPublishedWwwroot(string previewHostDir)
+	internal static string? FindPublishedWwwroot(string previewHostDir)
 	{
+		var candidates = new List<string> { previewHostDir, Path.Combine(previewHostDir, "wwwroot") };
 		string publishRoot = Path.Combine(previewHostDir, "publish-output");
-		if (!Directory.Exists(publishRoot))
+		if (Directory.Exists(publishRoot))
 		{
-			return null;
+			candidates.Add(Path.Combine(publishRoot, "wwwroot"));
+			candidates.AddRange(Directory.GetDirectories(publishRoot)
+				.Where(d => Path.GetFileName(d).StartsWith("net", StringComparison.OrdinalIgnoreCase))
+				.Select(d => Path.Combine(d, "wwwroot")));
 		}
 
-		static bool IsWasmApp(string dir)
-		{
-			return Directory.Exists(Path.Combine(dir, "_framework"))
-			       && File.Exists(Path.Combine(dir, "_framework", "blazor.webassembly.js"));
-		}
-
-		// Flat layout: publish-output/wwwroot/
-		string flat = Path.Combine(publishRoot, "wwwroot");
-		if (Directory.Exists(flat) && IsWasmApp(flat))
-		{
-			return flat;
-		}
-
-		// TFM-subdir layout: publish-output/net10.0/wwwroot/ (prefer newest TFM)
-		foreach (string tfmDir in Directory.GetDirectories(publishRoot)
-			         .Where(d => Path.GetFileName(d).StartsWith("net", StringComparison.OrdinalIgnoreCase))
-			         .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
-		{
-			string candidate = Path.Combine(tfmDir, "wwwroot");
-			if (Directory.Exists(candidate) && IsWasmApp(candidate))
-			{
-				return candidate;
-			}
-		}
-
-		return null;
+		return candidates
+			.Select(dir => (Dir: dir, Script: FindBlazorScript(dir)))
+			.Where(c => c.Script is not null)
+			.OrderByDescending(c => File.GetLastWriteTimeUtc(c.Script!))
+			.Select(c => c.Dir)
+			.FirstOrDefault();
 	}
 
 	/// <summary>
@@ -1264,6 +1234,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		BuildContext buildContext,
 		IPluginContext context,
 		string basePathForAssemblyQuery,
+		bool interactive,
 		CancellationToken ct)
 	{
 		const string sourceStart = "<div class=\"blazor-preview-source\">";
@@ -1346,15 +1317,11 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 					if (result.Success && result.AssemblyBytes is not null)
 					{
-						string hash = Convert.ToHexString(
-							SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..12].ToLowerInvariant();
-						string dllRelPath = $"_preview-assemblies/{hash}.dll";
 						string entryPoint = result.EntryPointTypeName ?? "MokaRepl.Preview";
 
-						buildContext.DeferredOutputFiles[dllRelPath] = result.AssemblyBytes;
-
 						// Render an SSR snapshot of the component as noscript fallback and for
-						// search / link-preview crawlers. Never shown when JS is enabled.
+						// search / link-preview crawlers. Shown in place of the iframe when there
+						// is no preview host to run it.
 						string ssrHtml;
 						try
 						{
@@ -1367,28 +1334,17 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 							ssrHtml = "";
 						}
 
-						// Emit one sandboxed, lazy-loaded iframe per preview. The preview-host WASM app
-						// reads ?assembly=… &entry=… from its URL and mounts the component into its
-						// own static root (#app) via a plain RenderFragment inside App.razor's
-						// [JSInvokable] LoadAssembly - no dynamic root components API required.
-						//
-						// iframe `src` is a root-relative absolute path; the mokadocs Scriban template
-						// engine's RewriteContentLinks auto-prefixes it with BasePath at render time.
-						// The `assembly` query parameter, however, lives INSIDE the src attribute
-						// value, so the regex-based rewriter doesn't touch it - we must prefix it
-						// ourselves here so GitHub Pages project-page deployments resolve the DLL.
-						string iframeSrc =
-							$"/_preview-wasm/index.html?assembly={basePathForAssemblyQuery}/{dllRelPath}&amp;entry={WebUtility.HtmlEncode(entryPoint)}";
-
-						sb.Append("<div class=\"blazor-preview-render\">")
-							.Append("<iframe class=\"blazor-preview-iframe\" src=\"")
-							.Append(iframeSrc)
-							.Append("\" loading=\"lazy\" sandbox=\"allow-scripts allow-same-origin\"")
-							.Append(" title=\"Blazor preview\"></iframe>")
-							.Append("<noscript><div class=\"blazor-preview-ssr-fallback\">")
-							.Append(ssrHtml)
-							.Append("</div></noscript>")
-							.Append("</div>");
+						if (interactive)
+						{
+							AppendPreviewFrame(sb, result.AssemblyBytes, entryPoint, ssrHtml, basePathForAssemblyQuery,
+								buildContext);
+						}
+						else
+						{
+							sb.Append("<div class=\"blazor-preview-render\"><div class=\"blazor-preview-ssr-fallback\">")
+								.Append(ssrHtml)
+								.Append("</div></div>");
+						}
 
 						compiled++;
 					}
@@ -1421,6 +1377,45 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		}
 
 		return (sb.ToString(), compiled, failed);
+	}
+
+	/// <summary>
+	///     Writes the iframe that runs a compiled preview, with its static render for readers
+	///     without JavaScript, and stages the assembly.
+	/// </summary>
+	private static void AppendPreviewFrame(StringBuilder sb, byte[] assemblyBytes, string entryPoint, string ssrHtml,
+		string basePathForAssemblyQuery, BuildContext buildContext)
+	{
+		// Named by the bytes, so one name always means one assembly and the host can cache it for good.
+		string assemblyPath = $"_preview-assemblies/{Convert.ToHexStringLower(SHA256.HashData(assemblyBytes))}.bin";
+		buildContext.DeferredOutputFiles[assemblyPath] = assemblyBytes;
+
+		// One lazy-loaded iframe per preview. The preview-host WASM app reads ?assembly=… &entry=…
+		// from its URL and mounts the component into its own static root (#app) via a plain
+		// RenderFragment inside App.razor's [JSInvokable] LoadAssembly - no dynamic root components
+		// API required.
+		//
+		// iframe `src` is a root-relative absolute path; the mokadocs Scriban template engine's
+		// RewriteContentLinks auto-prefixes it with BasePath at render time. The `assembly` query
+		// parameter, however, lives INSIDE the src attribute value, so the rewriter doesn't touch it -
+		// we must prefix it ourselves here so GitHub Pages project-page deployments resolve it.
+		//
+		// No sandbox attribute: on a same-origin frame, allow-scripts with allow-same-origin lets the
+		// frame lift its own sandbox, so it isolated nothing, and without allow-forms it blocked
+		// EditForm submits in previews. The page's CSP and message guard (PreviewPageHardening) are
+		// the boundary.
+		string iframeSrc =
+			$"/_preview-wasm/index.html?assembly={basePathForAssemblyQuery}/{assemblyPath}" +
+			$"&amp;entry={WebUtility.HtmlEncode(Uri.EscapeDataString(entryPoint))}";
+
+		sb.Append("<div class=\"blazor-preview-render\">")
+			.Append("<iframe class=\"blazor-preview-iframe\" src=\"")
+			.Append(iframeSrc)
+			.Append("\" loading=\"lazy\" title=\"Blazor preview\"></iframe>")
+			.Append("<noscript><div class=\"blazor-preview-ssr-fallback\">")
+			.Append(ssrHtml)
+			.Append("</div></noscript>")
+			.Append("</div>");
 	}
 
 	/// <summary>Extracts <c>@code { ... }</c> blocks so they can be prepended to later snippets on the same page.</summary>
@@ -1609,60 +1604,6 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 		}
 	}
 
-	// ── Asset injection ───────────────────────────────────────────────────────
-
-	/// <summary>
-	///     Injects the preview container CSS at the top of the page and the tab-switching JS
-	///     plus an iframe auto-resize listener at the bottom. Each preview iframe is self-hosted
-	///     (owns its own Blazor runtime), so there is no shared boot script injected per page.
-	/// </summary>
-	private static string InjectPreviewAssets(string html)
-	{
-		// iframe min-height is 160px (matches preview-host body min-height) so small
-		// previews aren't jammed into a cramped strip while the runtime boots and the
-		// ResizeObserver hasn't fired yet. The height transition smooths the jump when
-		// the postMessage resize event resizes the iframe to fit its actual content.
-		const string iframeCss = """
-		                         <style>
-		                         .blazor-preview-iframe {
-		                             width: 100%;
-		                             min-height: 160px;
-		                             border: none;
-		                             display: block;
-		                             background: transparent;
-		                             transition: height 200ms ease-out;
-		                         }
-		                         .blazor-preview-ssr-fallback { padding: 1.25rem 1.5rem; }
-		                         </style>
-		                         """;
-
-		const string resizeJs = """
-		                        <script>
-		                        (function() {
-		                            // The preview-host posts { type: 'resize', height } up to the parent frame
-		                            // when its content height changes, so each iframe grows to fit its component.
-		                            window.addEventListener('message', function(e) {
-		                                if (!e.data || e.data.type !== 'resize') return;
-		                                document.querySelectorAll('.blazor-preview-iframe').forEach(function(iframe) {
-		                                    if (iframe.contentWindow === e.source) {
-		                                        iframe.style.height = (e.data.height + 16) + 'px';
-		                                    }
-		                                });
-		                            });
-		                        })();
-		                        </script>
-		                        """;
-
-		var sb = new StringBuilder(html.Length + _inlineCss.Length + iframeCss.Length + _tabsJs.Length +
-		                           resizeJs.Length + 64);
-		sb.Append(_inlineCss);
-		sb.Append(iframeCss);
-		sb.Append(html);
-		sb.Append(_tabsJs);
-		sb.Append(resizeJs);
-		return sb.ToString();
-	}
-
 	// ── Service stub registration ─────────────────────────────────────────────
 
 	private static void TryRegisterStub(IServiceCollection services, string serviceTypeName,
@@ -1784,6 +1725,9 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                                   <ImplicitUsings>enable</ImplicitUsings>
 	                                                   <IsPackable>false</IsPackable>
 	                                                   <NoWarn>$(NoWarn);CA1515</NoWarn>
+	                                                   <!-- Fingerprints blazor.webassembly.js and fills the import map and the
+	                                                        preload link in wwwroot/index.html when the host is published. -->
+	                                                   <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
 	                                                   <!-- IL trimming is auto-disabled by Moka.Blazor.Repl.Host's build/.props
 	                                                        (the host loads arbitrary preview DLLs at runtime). -->
 	                                                 </PropertyGroup>
@@ -1851,6 +1795,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	                                                    <base href="./" />
 	                                                    <title>Docs preview host</title>
+	                                                    <link rel="preload" id="webassembly" />
 
 	                                                    <!-- ── Customize: link your library's CSS here ──────────────────
 	                                                         Static web assets from referenced libraries live under
@@ -1859,9 +1804,15 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 
 	                                                         Example:
 	                                                           <link rel="stylesheet" href="_content/{LIBRARY_ID}/your.css" />
+
+	                                                         mokadocs adds a Content-Security-Policy to this page when it
+	                                                         copies it into the site: scripts and stylesheets load from the
+	                                                         docs origin or from origins this page links to, inline scripts
+	                                                         run as written, inline event handlers (onclick="...") don't.
 	                                                         ────────────────────────────────────────────────────────────── -->
 
 	                                                    <link rel="stylesheet" href="DocsPreviewHost.styles.css" />
+	                                                    <script type="importmap"></script>
 	                                                  </head>
 	                                                  <body>
 	                                                    <div id="app"><div style="padding:1rem;color:#888;font-family:sans-serif;font-size:13px">Loading…</div></div>
@@ -1872,7 +1823,7 @@ public sealed class BlazorPreviewPlugin : IMokaPlugin
 	                                                    <!-- The wasmPreview bridge ships as a static web asset from
 	                                                         Moka.Blazor.Repl.Host. Must load BEFORE blazor.webassembly.js. -->
 	                                                    <script src="_content/Moka.Blazor.Repl.Host/wasmPreview.js"></script>
-	                                                    <script src="_framework/blazor.webassembly.js"></script>
+	                                                    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
 	                                                  </body>
 	                                                  </html>
 

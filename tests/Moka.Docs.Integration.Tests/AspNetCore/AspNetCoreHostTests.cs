@@ -46,6 +46,21 @@ public sealed class AspNetCoreHostTests : IDisposable
 	}
 
 	[Fact]
+	public async Task DocsPath_FolderHoldingASiteMokaDocsBuilt_IsSkippedWithAWarning()
+	{
+		// A CLI build left in the docs folder was published again inside the app's docs.
+		Write("guides/index.md", "---\ntitle: Home\n---\n\nHome.\n");
+		Write("guides/_site/.mokadocs-output", "");
+		Write("guides/_site/old/page.md", "---\ntitle: Old copy\n---\n\nOld.\n");
+		Write("guides/_site/search-index.json", "[]");
+
+		InMemorySite site = await BuildAsync(options => options.DocsPath = "guides");
+
+		site.Files.Keys.Should().NotContain(key => key.StartsWith("_site/", StringComparison.Ordinal));
+		site.Diagnostics.Should().ContainSingle(d => d.Message.Contains("'_site'") && d.Message.Contains(".mokadocs-output"));
+	}
+
+	[Fact]
 	public async Task DocsPath_Absolute_IsUsedAsIs()
 	{
 		string elsewhere = Path.Combine(_root, "elsewhere");
@@ -150,6 +165,61 @@ public sealed class AspNetCoreHostTests : IDisposable
 			.Which.Options.Should().Contain("previewHost", "preview-app");
 	}
 
+	[Theory]
+	[InlineData("Production", false)]
+	[InlineData("Staging", false)]
+	[InlineData("Development", null)]
+	[InlineData(null, null)]
+	public void BlazorPreview_OutsideDevelopment_NeverPublishesAHost(string? environment, bool? publishHost)
+	{
+		// The plugin scaffolded a preview host and ran dotnet publish inside the running app, which
+		// needs the SDK on the server and held the first build for minutes.
+		var flagged = new MokaDocsOptions { EnableBlazorPreview = true };
+		var declared = new MokaDocsOptions
+		{
+			Plugins = [new PluginEntry { Id = "mokadocs-blazor-preview", Options = { ["previewHost"] = "preview-app" } }]
+		};
+		IHostEnvironment? host = environment is null ? null : new ContentRootEnvironment(_root) { EnvironmentName = environment };
+
+		foreach (MokaDocsOptions options in (MokaDocsOptions[]) [flagged, declared])
+		{
+			PluginDeclaration preview = SiteConfigFactory.Create(options, host).Plugins
+				.Should().ContainSingle(p => p.Name == "mokadocs-blazor-preview").Which;
+			preview.Options.GetValueOrDefault("publishHost").Should().Be(publishHost);
+		}
+	}
+
+	[Fact]
+	public void BlazorPreview_PublishHostSetInTheEntry_IsKept()
+	{
+		var options = new MokaDocsOptions
+		{
+			Plugins = [new PluginEntry { Id = "mokadocs-blazor-preview", Options = { ["publishHost"] = true } }]
+		};
+
+		SiteConfigFactory.Create(options, new ContentRootEnvironment(_root)).Plugins
+			.Single(p => p.Name == "mokadocs-blazor-preview").Options["publishHost"].Should().Be(true);
+	}
+
+	[Fact]
+	public void BlazorPreview_ThePluginHostReadsTheEnvironmentsOptions()
+	{
+		// The plugin host takes plugin options from the registered SiteConfig, not from the build's.
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IHostEnvironment>(new ContentRootEnvironment(_root));
+		services.AddMokaDocs(options =>
+		{
+			options.Assemblies = [FixtureAssembly.Instance];
+			options.EnableBlazorPreview = true;
+		});
+
+		using ServiceProvider provider = services.BuildServiceProvider();
+
+		provider.GetRequiredService<SiteConfig>().Plugins.Single(p => p.Name == "mokadocs-blazor-preview")
+			.Options["publishHost"].Should().Be(false);
+	}
+
 	[Fact]
 	public async Task BlazorPreview_WithAPublishedPreviewHost_IsServedFromMemory()
 	{
@@ -178,7 +248,11 @@ public sealed class AspNetCoreHostTests : IDisposable
 		site.Diagnostics.Should().NotContain(d => d.Source == "mokadocs-blazor-preview");
 		Html(site, "index.html").Should().Contain("src=\"/docs/_preview-wasm/index.html?assembly=/docs/_preview-assemblies/");
 		site.Files.Keys.Should().Contain(key => key.StartsWith("_preview-assemblies/", StringComparison.Ordinal));
-		Html(site, "_preview-wasm/index.html").Should().Be("<p>preview host</p>");
+		// The host reads staged folders into the same file map the plugin's hardened page is in;
+		// the published page must not replace it.
+		Html(site, "_preview-wasm/index.html")
+			.Should().StartWith("\n<meta http-equiv=\"Content-Security-Policy\" data-mokadocs-preview")
+			.And.EndWith("<p>preview host</p>");
 		site.Files["_preview-wasm/_framework/dotnet.native.wasm"].ContentType.Should().Be("application/wasm");
 	}
 
@@ -218,6 +292,29 @@ public sealed class AspNetCoreHostTests : IDisposable
 
 		config.Theme.Options.Style.Should().Be("default");
 		config.Theme.Options.StyleSelector.Should().BeTrue();
+		config.Theme.Options.TextSizeSelector.Should().BeTrue();
+		config.Theme.Options.WidthSelector.Should().BeTrue();
+		SiteConfig off = SiteConfigFactory.Create(new MokaDocsOptions { TextSizeSelector = false, WidthSelector = false });
+		off.Theme.Options.TextSizeSelector.Should().BeFalse();
+		off.Theme.Options.WidthSelector.Should().BeFalse();
+		config.Theme.Options.LayoutSelector.Should().BeFalse();
+		SiteConfigFactory.Create(new MokaDocsOptions { LayoutSelector = true }).Theme.Options.LayoutSelector.Should().BeTrue();
+	}
+
+	[Fact]
+	public async Task LayoutSelector_GivesThePagesTheLayoutSection()
+	{
+		InMemorySite site = await BuildAsync(options =>
+		{
+			options.LayoutSelector = true;
+			options.Layout.Navbar = "compact";
+		});
+		InMemorySite plain = await BuildAsync(_ => { });
+
+		string page = Html(site, "api/index.html");
+		page.Should().Contain("class=\"appearance-layout\"").And.Contain("data-default-layout=\"navbar=compact \"")
+			.And.Contain("g('mokadocs-layout-'+k)").And.Contain("/_theme/css/layouts.css?v=");
+		Html(plain, "api/index.html").Should().NotContain("appearance-layout").And.NotContain("mokadocs-layout-");
 	}
 
 	[Fact]
@@ -227,13 +324,14 @@ public sealed class AspNetCoreHostTests : IDisposable
 		{
 			options.Style = "classic";
 			options.StyleSelector = false;
+			options.WidthSelector = false;
 		});
 		InMemorySite unknown = await BuildAsync(options => options.Style = "fancy");
 
 		string page = Html(styled, "api/index.html");
 		page.Should().Contain("data-style=\"classic\"").And.Contain("const s='classic';");
-		page.Should().NotContain("class=\"style-selector\"");
-		Html(unknown, "api/index.html").Should().Contain("data-style=\"default\"").And.Contain("class=\"style-selector\"");
+		page.Should().NotContain("data-appearance=\"style\"").And.NotContain("data-appearance=\"reader-width\"").And.Contain("data-appearance=\"text-size\"");
+		Html(unknown, "api/index.html").Should().Contain("data-style=\"default\"").And.Contain("data-appearance=\"style\"");
 		unknown.Diagnostics.Should().ContainSingle(d => d.Source == "Render" && d.Message.Contains("'fancy'"));
 	}
 
@@ -252,6 +350,44 @@ public sealed class AspNetCoreHostTests : IDisposable
 		sidebar.Should().Contain("href=\"/docs/api/fixture/shapes/money\"");
 		Sidebar(Html(defaults, "api/index.html")).Should().Contain("href=\"/docs/api/fixture/shapes/money\"");
 		Sidebar(Html(plain, "api/index.html")).Should().NotContain("/docs/api/fixture/shapes/money");
+	}
+
+	[Fact]
+	public async Task ApiPages_HaveAnH1AndAMarkdownCopy()
+	{
+		// Type pages and the API index had no h1 at all.
+		InMemorySite site = await BuildAsync(_ => { });
+
+		Html(site, "api/index.html").Should().Contain("<h1>API Reference</h1>");
+		Html(site, "api/fixture/shapes/money/index.html").Should().Contain("<h1 class=\"api-type-title\">Money</h1>")
+			.And.Contain("data-markdown-url=\"/docs/api/fixture/shapes/money.md\"");
+		Encoding.UTF8.GetString(site.Files["api/fixture/shapes/money.md"].Content).Should().StartWith("# Money\n");
+		site.Files["llms.txt"].ContentType.Should().StartWith("text/plain");
+		site.Files["api/fixture/shapes/money.md"].ContentType.Should().Be("text/markdown; charset=utf-8");
+	}
+
+	[Fact]
+	public async Task LayoutHome_Showcase_RendersTheLandingFrontMatterUnderThePathBase()
+	{
+		Write("docs/index.md",
+			"---\ntitle: Home\nlayout: landing\nshowcaseCodeLanguage: csharp\nshowcaseCode: |\n  var shop = new Shop();\n" +
+			"stats:\n  - value: 12\n    label: Endpoints\ncta:\n  title: Try it\n  link: /guide/start\n---\n\nHome.\n");
+		Write("docs/guide/start.md", "---\ntitle: Start\n---\n\n# Start\n");
+
+		InMemorySite site = await BuildAsync(options =>
+		{
+			options.DocsPath = "docs";
+			options.Layout.Home = "showcase";
+			options.Layout.Features = "bento";
+		});
+
+		string landing = Html(site, "index.html");
+		landing.Should().Contain("data-home=\"showcase\"").And.Contain("data-features=\"bento\"");
+		landing.Should().Contain("<div class=\"home-showcase-code landing-content\"><div class=\"code-block\"")
+			.And.Contain("data-highlighted=\"true\"");
+		landing.Should().Contain("<span class=\"home-stat-value\">12</span> <span class=\"home-stat-label\">Endpoints</span>");
+		landing.Should().Contain("<a class=\"landing-btn landing-btn-primary home-cta-button\" href=\"/docs/guide/start\">");
+		site.Diagnostics.Should().NotContain(d => d.Source == "Render");
 	}
 
 	[Fact]

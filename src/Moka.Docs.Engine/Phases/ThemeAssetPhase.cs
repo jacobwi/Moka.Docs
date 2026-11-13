@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Minification;
 using Moka.Docs.Themes;
 using Moka.Docs.Themes.Default;
@@ -19,10 +20,14 @@ public sealed class ThemeAssetPhase(
 {
 	private const string _themePrefix = "/_theme/";
 
-	private static readonly IReadOnlyDictionary<string, byte[]> _embeddedAssets = CreateEmbeddedAssets(false);
+	private static readonly StaticAssets _embeddedAssets = CreateStaticAssets(false);
 
-	private static readonly Lazy<IReadOnlyDictionary<string, byte[]>> _minifiedEmbeddedAssets =
-		new(() => CreateEmbeddedAssets(true));
+	private static readonly Lazy<StaticAssets> _minifiedEmbeddedAssets = new(() => CreateStaticAssets(true));
+
+	// main.js holds the site's text, so it is made per site. A build asks for it several times (each ?v= and the
+	// write); the last one made is kept per minify setting, which is all a build or a serve session needs.
+	private static readonly Lock _scriptLock = new();
+	private static readonly Dictionary<bool, (string Source, byte[] Bytes)> _lastScript = [];
 
 	/// <inheritdoc />
 	public string Name => "ThemeAssets";
@@ -54,7 +59,7 @@ public sealed class ThemeAssetPhase(
 			return Task.CompletedTask;
 		}
 
-		foreach ((string url, byte[] bytes) in EmbeddedAssets(context.Config.Build.Minify))
+		foreach ((string url, byte[] bytes) in EmbeddedAssets(context))
 		{
 			string path = fs.Path.Combine([context.OutputDirectory, .. url.TrimStart('/').Split('/')]);
 			fs.Directory.CreateDirectory(fs.Path.GetDirectoryName(path)!);
@@ -66,9 +71,28 @@ public sealed class ThemeAssetPhase(
 	}
 
 	// RenderPhase and the 404 page hash these same bytes into the ?v= of the URLs they write, so the
-	// minified build hashes the minified files.
-	internal static IReadOnlyDictionary<string, byte[]> EmbeddedAssets(bool minify) =>
-		minify ? _minifiedEmbeddedAssets.Value : _embeddedAssets;
+	// minified build hashes the minified files, and a change to the site's text changes main.js's ?v=.
+	internal static IReadOnlyDictionary<string, byte[]> EmbeddedAssets(BuildContext context) =>
+		EmbeddedAssets(context.Config.Build.Minify, ThemeText.For(context.Config));
+
+	internal static IReadOnlyDictionary<string, byte[]> EmbeddedAssets(bool minify, ThemeText text)
+	{
+		StaticAssets assets = minify ? _minifiedEmbeddedAssets.Value : _embeddedAssets;
+		string js = EmbeddedThemeProvider.GetJs(assets.StyleVersions, text);
+		byte[] script;
+		lock (_scriptLock)
+		{
+			if (!_lastScript.TryGetValue(minify, out (string Source, byte[] Bytes) last) || last.Source != js)
+			{
+				last = (js, new UTF8Encoding(false).GetBytes(minify ? JsMinifier.Minify(js) : js));
+				_lastScript[minify] = last;
+			}
+
+			script = last.Bytes;
+		}
+
+		return new Dictionary<string, byte[]>(assets.Files, StringComparer.Ordinal) { [EmbeddedThemeProvider.MainJsPath] = script };
+	}
 
 	internal static string ContentHash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes))[..10];
 
@@ -85,7 +109,7 @@ public sealed class ThemeAssetPhase(
 	{
 		if (theme.IsEmbedded)
 		{
-			return EmbeddedAssets(context.Config.Build.Minify).GetValueOrDefault(url);
+			return EmbeddedAssets(context).GetValueOrDefault(url);
 		}
 
 		if (!url.StartsWith(_themePrefix, StringComparison.Ordinal))
@@ -98,15 +122,30 @@ public sealed class ThemeAssetPhase(
 		return fs.File.Exists(path) ? fs.File.ReadAllBytes(path) : null;
 	}
 
-	private static Dictionary<string, byte[]> CreateEmbeddedAssets(bool minify)
+	// main.js names each style's stylesheet with the hash of the bytes written here, so the styles come first.
+	private static StaticAssets CreateStaticAssets(bool minify)
 	{
-		string css = EmbeddedThemeProvider.GetCss();
-		string js = EmbeddedThemeProvider.GetJs();
 		var utf8 = new UTF8Encoding(false);
-		return new Dictionary<string, byte[]>(StringComparer.Ordinal)
+		byte[] Css(string css) => utf8.GetBytes(minify ? CssMinifier.Minify(css) : css);
+
+		var assets = new Dictionary<string, byte[]>(StringComparer.Ordinal)
 		{
-			["/_theme/css/main.css"] = utf8.GetBytes(minify ? CssMinifier.Minify(css) : css),
-			["/_theme/js/main.js"] = utf8.GetBytes(minify ? JsMinifier.Minify(js) : js)
+			[EmbeddedThemeProvider.MainCssPath] = Css(EmbeddedThemeProvider.GetCss()),
+			[EmbeddedThemeProvider.LayoutsCssPath] = Css(EmbeddedThemeProvider.GetLayoutsCss()),
+			[EmbeddedThemeProvider.RtlCssPath] = Css(EmbeddedThemeProvider.GetRtlCss()),
+			[EmbeddedThemeProvider.IconSpritePath] = utf8.GetBytes(EmbeddedThemeProvider.GetIconSprite())
 		};
+
+		var styleVersions = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (string style in EmbeddedThemeProvider.StyleFileNames)
+		{
+			byte[] bytes = Css(EmbeddedThemeProvider.GetStyleCss(style));
+			assets[EmbeddedThemeProvider.StyleCssPath(style)!] = bytes;
+			styleVersions[style] = ContentHash(bytes);
+		}
+
+		return new StaticAssets(assets, styleVersions);
 	}
+
+	private sealed record StaticAssets(Dictionary<string, byte[]> Files, Dictionary<string, string> StyleVersions);
 }

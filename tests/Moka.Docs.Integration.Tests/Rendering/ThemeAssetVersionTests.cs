@@ -2,6 +2,7 @@ using System.IO.Abstractions.TestingHelpers;
 using System.Security.Cryptography;
 using FluentAssertions;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Integration.Tests.Rendering;
 
@@ -107,23 +108,36 @@ public sealed class ThemeAssetVersionTests
 			Hash(minified, file).Should().NotBe(Hash(plain, file));
 			minified.File.ReadAllText("/project/_site/index.html").Should().Contain("?v=" + Hash(minified, file));
 		}
+
+		// The style stylesheets too, and the page's style loader and main.js name them by the minified bytes.
+		foreach (string style in EmbeddedThemeProvider.StyleFileNames)
+		{
+			string file = $"/project/_site/_theme/css/style-{style}.css";
+			minified.FileInfo.New(file).Length.Should().BeLessThan(plain.FileInfo.New(file).Length * 9 / 10);
+			minified.File.ReadAllText("/project/_site/index.html").Should().Contain($"'{style}':'{Hash(minified, file)}',");
+			minified.File.ReadAllText("/project/_site/_theme/js/main.js").Should().Contain($"\"{style}\":\"{Hash(minified, file)}\"");
+		}
+
+		minified.FileInfo.New("/project/_site/_theme/css/layouts.css").Length.Should()
+			.BeLessThan(plain.FileInfo.New("/project/_site/_theme/css/layouts.css").Length * 9 / 10);
 	}
 
 	[Fact]
-	public async Task CustomTheme_NotFoundPageHashesTheThemesMainCss()
+	public async Task CustomTheme_NotFoundPageIsRenderedWithTheThemesLayoutAndHashedCss()
 	{
 		SiteConfig config = MockSite.Config() with { Theme = new ThemeConfig { Name = "./mytheme" } };
 
 		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, new Dictionary<string, MockFileData>
 		{
 			["/project/docs/index.md"] = new("---\ntitle: Home\n---\nBody.\n"),
-			["/project/mytheme/layouts/default.html"] = new("<html><body>{{ page.content }}</body></html>"),
+			["/project/mytheme/layouts/default.html"] = new(
+				"<html><head>{{ for css in css_files }}<link href=\"{{ css }}\">{{ end }}</head><body class=\"mine\">{{ page.content }}</body></html>"),
 			["/project/mytheme/css/main.css"] = new("body { color: red; }")
 		});
 
 		string notFound = fs.File.ReadAllText("/project/_site/404.html");
 		notFound.Should().Contain($"href=\"/_theme/css/main.css?v={Hash(fs, "/project/_site/_theme/css/main.css")}\"")
-			.And.Contain("<script src=\"/_theme/js/main.js\"></script>", "the theme has no main.js to hash");
+			.And.Contain("<body class=\"mine\">").And.Contain("<h1>Page not found</h1>");
 	}
 
 	private static string Hash(MockFileSystem fs, string path) =>

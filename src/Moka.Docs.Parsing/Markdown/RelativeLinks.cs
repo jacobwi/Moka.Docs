@@ -48,6 +48,20 @@ public static class RelativeLinks
 				RewriteBlock(block, sourcePath);
 			}
 		}
+
+		// :::video ./intro.mp4 and its poster resolve like an image next to the page.
+		foreach (VideoBlock video in document.Descendants<VideoBlock>())
+		{
+			if (ToRootRelative(video.Url, sourcePath) is { } url)
+			{
+				video.Url = url;
+			}
+
+			if (video.Poster is { } poster && ToRootRelative(poster, sourcePath) is { } rootedPoster)
+			{
+				video.Poster = rootedPoster;
+			}
+		}
 	}
 
 	/// <summary>

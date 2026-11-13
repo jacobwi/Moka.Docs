@@ -1,11 +1,14 @@
 using System.Globalization;
+using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
+using Moka.Docs.Core.Theming;
 
 namespace Moka.Docs.AspNetCore;
 
@@ -14,7 +17,25 @@ namespace Moka.Docs.AspNetCore;
 /// </summary>
 public static class MokaDocsEndpointExtensions
 {
+	private const string _previewHostPrefix = "_preview-wasm/";
+	private const string _previewFrameworkPrefix = "_preview-wasm/_framework/";
+	private const string _previewAssembliesPrefix = "_preview-assemblies/";
+
+	/// <summary>A year, the longest <c>max-age</c> caches honor, as Map Static Assets sends for fingerprinted files.</summary>
+	private const string _cacheForever = "max-age=31536000, immutable";
+
 	private static readonly string[] _readMethods = [HttpMethods.Get, HttpMethods.Head];
+
+	// In the site's language, since it shows before the first build: the build reports problems with the options.
+	private static string BuildingPage(MokaDocsOptions options)
+	{
+		ThemeText text = ThemeText.For(options.Language, options.Strings);
+		string direction = SiteLanguages.Direction(text.Language, options.Direction);
+		return $"<!DOCTYPE html>\n<html lang=\"{WebUtility.HtmlEncode(text.Language)}\" dir=\"{direction}\">\n<head>\n<meta charset=\"utf-8\">\n" +
+		       $"<meta http-equiv=\"refresh\" content=\"{MokaDocsService.BuildingRetryAfterSeconds}\">\n" +
+		       $"<title>{WebUtility.HtmlEncode(text["building.title"])}</title>\n</head>\n<body>\n" +
+		       $"<p>{WebUtility.HtmlEncode(text["building.text"])}</p>\n</body>\n</html>\n";
+	}
 
 	/// <summary>
 	///     Maps the MokaDocs documentation site at the configured base path.
@@ -26,7 +47,9 @@ public static class MokaDocsEndpointExtensions
 	///     <c>POST {BasePath}/api/feedback</c> when <see cref="MokaDocsOptions.ShowFeedback" /> is
 	///     set, and <c>POST {BasePath}/api/repl/execute</c> when <see cref="MokaDocsOptions.EnableRepl" />
 	///     is set and the environment is Development or
-	///     <see cref="MokaDocsOptions.AllowRemoteRepl" /> is set.
+	///     <see cref="MokaDocsOptions.AllowRemoteRepl" /> is set. Conventions for one of those two
+	///     alone go in <see cref="MokaDocsOptions.ConfigureFeedbackEndpoint" /> and
+	///     <see cref="MokaDocsOptions.ConfigureReplEndpoint" />.
 	/// </remarks>
 	/// <param name="endpoints">The endpoint route builder.</param>
 	/// <param name="basePath">
@@ -58,12 +81,17 @@ public static class MokaDocsEndpointExtensions
 		// A root base path used to produce the pattern "//{**path}", which matched nothing.
 		RouteGroupBuilder group = endpoints.MapGroup("/" + effectiveBase);
 
-		group.MapMethods("/", _readMethods, context => ServeDocsAsync(context, docsService));
-		group.MapMethods("/{**path}", _readMethods, context => ServeDocsAsync(context, docsService));
+		group.MapMethods("/", _readMethods, context => ServeDocsAsync(context, docsService, options));
+		group.MapMethods("/{**path}", _readMethods, context => ServeDocsAsync(context, docsService, options));
 
 		if (options.ShowFeedback)
 		{
-			group.MapPost("/api/feedback", context => MokaDocsApiEndpoints.HandleFeedbackAsync(context, options, logger));
+			IEndpointConventionBuilder feedback = group.MapPost("/api/feedback", context =>
+			{
+				context.Response.Headers.XContentTypeOptions = "nosniff";
+				return MokaDocsApiEndpoints.HandleFeedbackAsync(context, options, logger);
+			});
+			options.ConfigureFeedbackEndpoint?.Invoke(feedback);
 		}
 
 		if (options.EnableRepl)
@@ -91,71 +119,205 @@ public static class MokaDocsEndpointExtensions
 
 		MokaDocsRepl repl = services.GetRequiredService<MokaDocsRepl>();
 		repl.IsMapped = true;
-		group.MapPost("/api/repl/execute", context => MokaDocsApiEndpoints.HandleReplAsync(context, repl, logger));
+		IEndpointConventionBuilder endpoint = group.MapPost("/api/repl/execute", context =>
+		{
+			context.Response.Headers.XContentTypeOptions = "nosniff";
+			return MokaDocsApiEndpoints.HandleReplAsync(context, repl, logger);
+		});
+		options.ConfigureReplEndpoint?.Invoke(endpoint);
 	}
 
-	private static async Task ServeDocsAsync(HttpContext context, MokaDocsService docsService)
+	private static async Task ServeDocsAsync(HttpContext context, MokaDocsService docsService, MokaDocsOptions options)
 	{
 		HttpResponse response = context.Response;
 		bool writeBody = !HttpMethods.IsHead(context.Request.Method);
+		response.Headers.XContentTypeOptions = "nosniff";
+		docsService.CheckPathBase(context.Request.PathBase.Value);
 
-		MokaDocsService.SiteResult result = await docsService.GetSiteOrFailureAsync(context.RequestAborted);
+		// Without a cache every request builds the site, so it has to wait for its build.
+		MokaDocsService.SiteResult result = options.CacheOutput
+			? docsService.GetSiteWithoutWaiting()
+			: await docsService.GetSiteOrFailureAsync(context.RequestAborted);
 		if (result.Site is not { } site)
 		{
-			// The service logged the failure once; an exception here would log it again for every request.
-			response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-			response.Headers.RetryAfter = Math.Ceiling(docsService.FailureRetryDelay.TotalSeconds)
-				.ToString(CultureInfo.InvariantCulture);
-			response.Headers.CacheControl = "no-store";
-			response.ContentType = "text/plain; charset=utf-8";
-			if (writeBody)
-			{
-				await response.WriteAsync("The documentation failed to build. The application's log has the error.",
-					context.RequestAborted);
-			}
-
+			// The service logged a failure once; an exception here would log it again for every request.
+			await (result.Failure is null
+				? WriteBuildingAsync(context, options, writeBody)
+				: WriteFailedAsync(context, docsService, writeBody));
 			return;
 		}
 
 		string requestPath = (context.GetRouteValue("path") as string)?.Trim('/') ?? "";
-		SiteFile? file = ResolveFile(site, requestPath);
-
-		if (file is null)
+		if (ResolveFile(site, requestPath) is not (string key, SiteFile file))
 		{
 			response.StatusCode = StatusCodes.Status404NotFound;
-
-			// Try serving a 404 page from the built site
-			file = site.Files.GetValueOrDefault("404.html");
-			if (file is not null)
+			response.Headers.CacheControl = "no-cache";
+			if (site.Files.GetValueOrDefault("404.html") is { } notFound)
 			{
-				response.ContentType = file.ContentType;
-				response.ContentLength = file.Content.Length;
-				if (writeBody)
-				{
-					await response.Body.WriteAsync(file.Content, context.RequestAborted);
-				}
+				await WriteFileAsync(context, notFound, NegotiateEncoding(context, notFound), writeBody);
 			}
 
 			return;
 		}
 
-		// No URL carries a content hash, so a day of max-age kept the old theme CSS and scripts
-		// next to new pages after an upgrade. Revalidating costs a 304 per file.
-		response.Headers.ETag = file.ETag;
-		response.Headers.CacheControl = "no-cache";
+		SiteFileEncoding? encoding = NegotiateEncoding(context, file);
+		string etag = encoding?.ETag ?? file.ETag;
+		response.Headers.ETag = etag;
+		response.Headers.CacheControl = CacheControlFor(context, key, file);
+		if (key.StartsWith(_previewHostPrefix, StringComparison.OrdinalIgnoreCase))
+		{
+			AddPreviewHostHeaders(response.Headers);
+		}
 
-		if (IsNotModified(context.Request, file.ETag))
+		if (IsNotModified(context.Request, etag))
 		{
 			response.StatusCode = StatusCodes.Status304NotModified;
 			return;
 		}
 
+		await WriteFileAsync(context, file, encoding, writeBody);
+	}
+
+	/// <summary>
+	///     The compressed form to send, or <c>null</c> for the file as it is. A file with compressed
+	///     forms gets <c>Vary: Accept-Encoding</c> whichever is sent, so a shared cache doesn't hand a
+	///     Brotli response to a client that can't read it (the rule ASP.NET Core 11's response
+	///     compression applies to every response).
+	/// </summary>
+	private static SiteFileEncoding? NegotiateEncoding(HttpContext context, SiteFile file)
+	{
+		if (file.Encodings.Count == 0)
+		{
+			return null;
+		}
+
+		context.Response.Headers.Vary = HeaderNames.AcceptEncoding;
+		return SiteCompression.Select(context.Request.Headers.AcceptEncoding, file);
+	}
+
+	private static async Task WriteFileAsync(HttpContext context, SiteFile file, SiteFileEncoding? encoding,
+		bool writeBody)
+	{
+		HttpResponse response = context.Response;
+		byte[] body = encoding?.Content ?? file.Content;
 		response.ContentType = file.ContentType;
-		response.ContentLength = file.Content.Length;
+		if (encoding is not null)
+		{
+			response.Headers.ContentEncoding = encoding.Name;
+		}
+
+		response.ContentLength = body.Length;
 		if (writeBody)
 		{
-			await response.Body.WriteAsync(file.Content, context.RequestAborted);
+			await response.Body.WriteAsync(body, context.RequestAborted);
 		}
+	}
+
+	/// <summary>
+	///     <c>Cache-Control</c> for a file. Most URLs stay the same when the file changes, such as
+	///     every page, <c>search-index.json</c> and the preview host's <c>index.html</c> and
+	///     <c>dotnet.js</c>: they get <c>no-cache</c>, so a browser revalidates with the
+	///     <c>ETag</c> for the cost of a <c>304</c> and sees a rebuild at once. A URL that names the
+	///     content can't serve anything else, so it's cached for a year without revalidation.
+	/// </summary>
+	private static string CacheControlFor(HttpContext context, string key, SiteFile file)
+	{
+		if (!IsImmutable(context.Request.Query, key, file))
+		{
+			return "no-cache";
+		}
+
+		// A shared cache keeps what it stores for everyone. Docs that only signed-in readers see
+		// stay in each reader's own browser.
+		return (context.User.Identity?.IsAuthenticated == true ? "private, " : "public, ") + _cacheForever;
+	}
+
+	/// <summary>
+	///     Whether a URL names the content it serves: a <c>?v=</c> that is a prefix of the file's
+	///     content hash (theme CSS and JS, the shared sidebar script), a fingerprinted file in the
+	///     Blazor preview host's <c>_framework</c> folder, or a preview assembly named after the
+	///     SHA-256 hash of its bytes.
+	/// </summary>
+	internal static bool IsImmutable(IQueryCollection query, string key, SiteFile file)
+	{
+		if (query.TryGetValue("v", out StringValues version) && version.Count == 1
+		                                                   && file.MatchesContentHash(version[0]))
+		{
+			return true;
+		}
+
+		string name = key[(key.LastIndexOf('/') + 1)..];
+		if (key.StartsWith(_previewFrameworkPrefix, StringComparison.OrdinalIgnoreCase))
+		{
+			return HasFingerprint(name);
+		}
+
+		return key.StartsWith(_previewAssembliesPrefix, StringComparison.OrdinalIgnoreCase)
+		       && key.Length == _previewAssembliesPrefix.Length + name.Length
+		       && name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)
+		       && file.MatchesContentHash(name.AsSpan(0, name.Length - ".bin".Length));
+	}
+
+	/// <summary>
+	///     Whether a published Blazor file name carries the fingerprint the SDK puts in front of the
+	///     extension: ten lowercase letters and digits, as in <c>dotnet.native.3bptkeu1pi.wasm</c>.
+	///     <c>dotnet.js</c> and an unfingerprinted <c>blazor.webassembly.js</c> keep their names
+	///     from one publish to the next.
+	/// </summary>
+	internal static bool HasFingerprint(string fileName)
+	{
+		string[] parts = fileName.Split('.');
+		return parts.Length >= 3
+		       && parts[^2] is { Length: 10 } fingerprint
+		       && fingerprint.All(c => char.IsAsciiDigit(c) || char.IsAsciiLetterLower(c));
+	}
+
+	/// <summary>
+	///     Headers for the Blazor preview host, which pages load in an iframe. Only the docs' own
+	///     pages may frame it.
+	/// </summary>
+	/// <remarks>
+	///     The host's <c>index.html</c> carries its full content security policy in a meta tag, with
+	///     hashes of its inline scripts. A <c>script-src</c> here would apply on top of that one and
+	///     would have to allow the same hashes, so the header holds what a meta tag can't express.
+	/// </remarks>
+	private static void AddPreviewHostHeaders(IHeaderDictionary headers)
+	{
+		headers.ContentSecurityPolicy = "frame-ancestors 'self'";
+		headers["Cross-Origin-Opener-Policy"] = "same-origin";
+	}
+
+	/// <summary>
+	///     Answers a request that arrives before the first build is done. Browsers get a page that
+	///     reloads itself; other clients get the <c>Retry-After</c> header.
+	/// </summary>
+	private static Task WriteBuildingAsync(HttpContext context, MokaDocsOptions options, bool writeBody)
+	{
+		HttpResponse response = context.Response;
+		response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+		response.Headers.RetryAfter = MokaDocsService.BuildingRetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+		response.Headers.CacheControl = "no-store";
+
+		bool html = context.Request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase);
+		response.ContentType = html ? "text/html; charset=utf-8" : "text/plain; charset=utf-8";
+		return writeBody
+			? response.WriteAsync(html ? BuildingPage(options) : "The documentation is being built. Try again in a few seconds.",
+				context.RequestAborted)
+			: Task.CompletedTask;
+	}
+
+	private static Task WriteFailedAsync(HttpContext context, MokaDocsService docsService, bool writeBody)
+	{
+		HttpResponse response = context.Response;
+		response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+		response.Headers.RetryAfter = Math.Ceiling(docsService.FailureRetryDelay.TotalSeconds)
+			.ToString(CultureInfo.InvariantCulture);
+		response.Headers.CacheControl = "no-store";
+		response.ContentType = "text/plain; charset=utf-8";
+		return writeBody
+			? response.WriteAsync("The documentation failed to build. The application's log has the error.",
+				context.RequestAborted)
+			: Task.CompletedTask;
 	}
 
 	/// <summary>
@@ -174,35 +336,22 @@ public static class MokaDocsEndpointExtensions
 	}
 
 	/// <summary>
-	///     Resolves a request path to a file in the in-memory site.
+	///     Resolves a request path to a file in the in-memory site, and the file's key.
 	///     Tries: exact match → /index.html → .html suffix.
 	/// </summary>
-	private static SiteFile? ResolveFile(InMemorySite site, string path)
+	private static (string Key, SiteFile File)? ResolveFile(InMemorySite site, string path)
 	{
-		// Exact match (for assets like _theme/css/main.css)
-		if (site.Files.TryGetValue(path, out SiteFile? exact))
+		// Exact match (for assets like _theme/css/main.css), directory index ("api" → "api/index.html"),
+		// then an HTML file without its extension ("guide/getting-started" → "guide/getting-started.html").
+		foreach (string key in (string[]) [path, path + "/index.html", path + ".html"])
 		{
-			return exact;
-		}
-
-		// Directory index (e.g., "api" → "api/index.html")
-		if (site.Files.TryGetValue(path + "/index.html", out SiteFile? index))
-		{
-			return index;
-		}
-
-		// HTML file without extension (e.g., "guide/getting-started" → "guide/getting-started.html")
-		if (site.Files.TryGetValue(path + ".html", out SiteFile? html))
-		{
-			return html;
+			if (site.Files.TryGetValue(key, out SiteFile? file))
+			{
+				return (key, file);
+			}
 		}
 
 		// Root request
-		if (string.IsNullOrEmpty(path) && site.Files.TryGetValue("index.html", out SiteFile? root))
-		{
-			return root;
-		}
-
-		return null;
+		return path.Length == 0 && site.Files.TryGetValue("index.html", out SiteFile? root) ? ("index.html", root) : null;
 	}
 }

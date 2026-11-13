@@ -47,12 +47,17 @@ internal sealed class DocsTestHost : IAsyncDisposable
 		await App.DisposeAsync();
 	}
 
+	/// <summary>
+	///     Starts the app and, unless <paramref name="waitForStartupBuild" /> is false, waits for the
+	///     build it starts: until that is done, docs requests get 503.
+	/// </summary>
 	public static async Task<DocsTestHost> StartAsync(
 		string contentRoot,
 		Action<MokaDocsOptions>? configure = null,
 		Action<WebApplication>? map = null,
 		string environment = "Production",
-		Action<IServiceCollection>? register = null)
+		Action<IServiceCollection>? register = null,
+		bool waitForStartupBuild = true)
 	{
 		WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
 		{
@@ -83,10 +88,16 @@ internal sealed class DocsTestHost : IAsyncDisposable
 		}
 
 		await app.StartAsync(Ct);
-		return new DocsTestHost(app, logs);
+		var host = new DocsTestHost(app, logs);
+		if (waitForStartupBuild && host.Startup.StartupBuild is { } build)
+		{
+			await build.WaitAsync(TimeSpan.FromSeconds(60), Ct);
+		}
+
+		return host;
 	}
 
-	public Task<HttpResponseMessage> GetAsync(string path, string? ifNoneMatch = null)
+	public Task<HttpResponseMessage> GetAsync(string path, string? ifNoneMatch = null, string? acceptEncoding = null)
 	{
 		var request = new HttpRequestMessage(HttpMethod.Get, path);
 		if (ifNoneMatch is not null)
@@ -94,6 +105,19 @@ internal sealed class DocsTestHost : IAsyncDisposable
 			request.Headers.TryAddWithoutValidation("If-None-Match", ifNoneMatch);
 		}
 
+		if (acceptEncoding is not null)
+		{
+			request.Headers.TryAddWithoutValidation("Accept-Encoding", acceptEncoding);
+		}
+
+		return Client.SendAsync(request, Ct);
+	}
+
+	/// <summary>Sends a request built by the test.</summary>
+	public Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, Action<HttpRequestMessage>? configure = null)
+	{
+		var request = new HttpRequestMessage(method, path);
+		configure?.Invoke(request);
 		return Client.SendAsync(request, Ct);
 	}
 

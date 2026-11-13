@@ -21,6 +21,31 @@ public sealed class MokaDocsOptions
 	public string? FaviconUrl { get; set; }
 
 	/// <summary>
+	///     The public URL readers reach the app at, such as <c>https://contoso.com</c>, like
+	///     <c>site.url</c> in mokadocs.yaml. When set, pages get a canonical link and link preview
+	///     tags (Open Graph and Twitter), and <c>llms.txt</c> links are absolute. Default:
+	///     <c>null</c>, which leaves them out: the app can't tell its public URL from a request.
+	/// </summary>
+	/// <remarks>
+	///     <see cref="PathBase" /> and <see cref="BasePath" /> are added to it, unless it already
+	///     ends with them. The blog still gets no feeds.
+	/// </remarks>
+	public string? SiteUrl { get; set; }
+
+	/// <summary>
+	///     The picture link previews show for pages that don't set an <c>image</c> in their front
+	///     matter, like <c>site.image</c> in mokadocs.yaml: a path to a file under
+	///     <see cref="DocsPath" />, such as <c>"images/social-card.png"</c>, or an absolute http or
+	///     https URL. Default: <c>null</c>.
+	/// </summary>
+	/// <remarks>
+	///     Link previews need absolute URLs, so pages only carry the image when
+	///     <see cref="SiteUrl" /> is set. A file outside <see cref="DocsPath" /> isn't published, and
+	///     the build logs a warning.
+	/// </remarks>
+	public string? SocialImage { get; set; }
+
+	/// <summary>
 	///     Path to a folder containing Markdown documentation files.
 	///     Relative paths are resolved from the application's content root.
 	///     If null, only API reference pages are generated.
@@ -101,12 +126,46 @@ public sealed class MokaDocsOptions
 	public string AccentColor { get; set; } = "#f59e0b";
 
 	/// <summary>
-	///     Appearance style the pages start with: <c>"default"</c>, <c>"moka"</c>, <c>"minimal"</c>,
-	///     <c>"classic"</c> or <c>"soft"</c>. Default: <c>"default"</c>. An unknown name renders as
-	///     <c>"default"</c>, and the build logs a warning.
+	///     A theme preset, one of <see cref="ThemePresets.Names" />, like <c>theme.options.preset</c> in
+	///     mokadocs.yaml: a named bundle of a style, layout variants and appearance defaults. Default:
+	///     <c>null</c>, for none. An unknown name applies nothing, and the build logs a warning.
 	/// </summary>
 	/// <remarks>
-	///     <c>"moka"</c> starts in dark mode for a reader who has never used the dark mode toggle.
+	///     The preset fills in each option that is still at its default value. These options are plain
+	///     properties, so one you set to its default value, such as <c>Style = "default"</c>, can't be
+	///     told from one you never set and takes the preset's value too. Options the host has no
+	///     property for, such as the code theme, come from the preset as well.
+	/// </remarks>
+	public string? Preset { get; set; }
+
+	/// <summary>
+	///     The language of the pages as a BCP 47 tag, such as <c>"de"</c>, <c>"ja"</c> or <c>"pt-BR"</c>, like
+	///     <c>site.language</c> in mokadocs.yaml: <c>&lt;html lang&gt;</c>, the theme's built-in translation
+	///     (Spanish, French, German, Brazilian Portuguese, Japanese and simplified Chinese), plural forms and
+	///     how dates are written. Default: <c>"en"</c>. A malformed tag gives English, and the build logs a warning.
+	/// </summary>
+	public string Language { get; set; } = SiteLanguages.Default;
+
+	/// <summary>
+	///     The text direction of the pages, <c>"ltr"</c> or <c>"rtl"</c>, like <c>site.direction</c>. Default:
+	///     <c>null</c>, which follows <see cref="Language" />: right to left for Arabic, Hebrew, Persian, Urdu and a few more.
+	/// </summary>
+	public string? Direction { get; set; }
+
+	/// <summary>
+	///     The site's own wording for the theme's text, by key (<see cref="ThemeStrings.All" />), like
+	///     <c>theme.options.strings</c>: for example <c>["toc.title"] = "Contents"</c>. It wins over English and
+	///     the built-in translation. An unknown key is ignored, and the build logs a warning.
+	/// </summary>
+	public Dictionary<string, string> Strings { get; set; } = [];
+
+	/// <summary>
+	///     Appearance style the pages start with, one of <see cref="ThemeStyles.Names" />. Default:
+	///     <c>"default"</c>. An unknown name renders as <c>"default"</c>, and the build logs a warning.
+	/// </summary>
+	/// <remarks>
+	///     <c>"moka"</c> and <c>"terminal"</c> start in dark mode for a reader who has never used the
+	///     dark mode toggle.
 	/// </remarks>
 	public string Style { get; set; } = ThemeStyles.Default;
 
@@ -117,11 +176,45 @@ public sealed class MokaDocsOptions
 	public bool StyleSelector { get; set; } = true;
 
 	/// <summary>
+	///     Whether the Appearance panel lets readers pick a text size (90% to 125%). The pick is
+	///     saved in the browser. Default: true.
+	/// </summary>
+	public bool TextSizeSelector { get; set; } = true;
+
+	/// <summary>
+	///     Whether the Appearance panel lets readers pick a narrow, default, wide, wider or full reading
+	///     width. The pick is saved in the browser. Default: true.
+	/// </summary>
+	public bool WidthSelector { get; set; } = true;
+
+	/// <summary>
+	///     Whether the Appearance panel has a Layout section where readers switch the layout variants of a
+	///     docs page (the top bar, footer, "On this page", breadcrumbs, previous/next links, sidebar,
+	///     admonitions, tables, spacing, typeface, headings and links). The picks are saved in the browser;
+	///     <see cref="Layout" /> stays the default. Pages then carry the markup every variant needs.
+	///     Default: false.
+	/// </summary>
+	public bool LayoutSelector { get; set; }
+
+	/// <summary>
+	///     Whether clicking a content image, or pressing Enter on it, opens it full size in a viewer.
+	///     Images inside links and very small images are left alone. Default: true.
+	/// </summary>
+	public bool ImageZoom { get; set; } = true;
+
+	/// <summary>
 	///     The layout variant of each part of the pages: width, top bar, footer, "On this page" panel,
-	///     breadcrumbs and the previous/next links. Every part defaults to <c>"default"</c>. Unlike the
-	///     style, readers can't switch these.
+	///     breadcrumbs, the previous/next links, the sidebar, the landing hero, admonitions, tables,
+	///     spacing and the typeface. Every part defaults to <c>"default"</c>. Readers can switch the parts of
+	///     a docs page only when <see cref="LayoutSelector" /> is on.
 	/// </summary>
 	public MokaDocsLayoutOptions Layout { get; set; } = new();
+
+	/// <summary>
+	///     Whether pages have a button that hides and shows the sidebar on wide screens. The reader's
+	///     choice is kept in the browser for later pages. Default: false.
+	/// </summary>
+	public bool SidebarToggle { get; set; }
 
 	/// <summary>
 	///     How pages get the sidebar: <c>"auto"</c> (the default), <c>"inline"</c> or <c>"shared"</c>.
@@ -160,6 +253,11 @@ public sealed class MokaDocsOptions
 	///     <c>previewHost</c> or <c>library</c>, go in a <see cref="Plugins" /> entry with the id
 	///     <c>mokadocs-blazor-preview</c>. That entry turns the plugin on by itself, too.
 	/// </summary>
+	/// <remarks>
+	///     Outside the Development environment the plugin gets <c>publishHost: false</c>, unless the
+	///     entry sets <c>publishHost</c> itself: it never scaffolds a preview host or runs
+	///     <c>dotnet publish</c> in the running app, and uses a host published beforehand.
+	/// </remarks>
 	public bool EnableBlazorPreview { get; set; }
 
 	/// <summary>
@@ -206,9 +304,24 @@ public sealed class MokaDocsOptions
 	public string BasePath { get; set; } = "/docs";
 
 	/// <summary>
+	///     The application's path base: the part of the public URL in front of the app's own routes,
+	///     such as <c>"/shop"</c> for an app that runs as an IIS sub-application at <c>/shop</c>, behind
+	///     <c>app.UsePathBase("/shop")</c>, or behind a proxy whose <c>X-Forwarded-Prefix</c> the
+	///     forwarded headers middleware applies. Default: <c>null</c>, for an app at the root of its host.
+	/// </summary>
+	/// <remarks>
+	///     The site is built once and held in memory, so its links can't follow each request's
+	///     <c>HttpRequest.PathBase</c>. They start with <see cref="PathBase" /> followed by
+	///     <see cref="BasePath" />. A request that arrives with a different path base is still
+	///     served, and the first one for each path base logs a warning.
+	/// </remarks>
+	public string? PathBase { get; set; }
+
+	/// <summary>
 	///     Whether to cache the built documentation site in memory.
 	///     When true (default), the site is built once, at startup or on the first request, and
-	///     kept until it is rebuilt. When false, the site is rebuilt on every request.
+	///     kept until it is rebuilt. When false, the site is rebuilt on every request, and each
+	///     request waits for its build.
 	/// </summary>
 	public bool CacheOutput { get; set; } = true;
 
@@ -219,14 +332,23 @@ public sealed class MokaDocsOptions
 	public bool Minify { get; set; }
 
 	/// <summary>
+	///     Whether to publish a Markdown copy of each page next to its HTML (<c>/docs/guide/intro</c>
+	///     gets <c>/docs/guide/intro.md</c>), plus <c>llms.txt</c> and <c>llms-full.txt</c>, like
+	///     <c>build.llms</c> in mokadocs.yaml. Pages with a copy show a "Copy page" button. Default: true.
+	/// </summary>
+	public bool Llms { get; set; } = true;
+
+	/// <summary>
 	///     Whether to build the site in the background as soon as the application has started,
 	///     so the first reader doesn't wait for the build. Default: true. Ignored when
 	///     <see cref="CacheOutput" /> is false, and when <c>MapMokaDocs</c> is never called.
 	/// </summary>
 	/// <remarks>
 	///     The build starts from <c>IHostApplicationLifetime.ApplicationStarted</c>, after every
-	///     endpoint is mapped. A failed build is logged once, requests get <c>503</c>, and the
-	///     first request after 5 seconds tries again.
+	///     endpoint is mapped. Requests don't wait for it: until the first build is done they get
+	///     <c>503</c> with a <c>Retry-After</c> header. When this is false, the first request starts
+	///     the build and gets the same answer. A failed build is logged once, requests get
+	///     <c>503</c>, and the first request after 5 seconds tries again.
 	/// </remarks>
 	public bool BuildOnStartup { get; set; } = true;
 
@@ -257,6 +379,22 @@ public sealed class MokaDocsOptions
 	///     docs can vote as often as they like, so treat the counts as a hint.
 	/// </remarks>
 	public Func<DocsFeedback, Microsoft.AspNetCore.Http.HttpContext, Task>? OnFeedback { get; set; }
+
+	/// <summary>
+	///     Called with the feedback endpoint (<c>POST {BasePath}/api/feedback</c>) when
+	///     <c>MapMokaDocs</c> maps it, to add conventions to that endpoint alone, such as
+	///     <c>RequireRateLimiting("votes")</c>. Conventions on the group <c>MapMokaDocs</c> returns
+	///     cover every docs route.
+	/// </summary>
+	public Action<Microsoft.AspNetCore.Builder.IEndpointConventionBuilder>? ConfigureFeedbackEndpoint { get; set; }
+
+	/// <summary>
+	///     Called with the REPL endpoint (<c>POST {BasePath}/api/repl/execute</c>) when
+	///     <c>MapMokaDocs</c> maps it, to add conventions to that endpoint alone, such as
+	///     <c>RequireAuthorization("Admins")</c> or <c>RequireRateLimiting("repl")</c>. Not called when
+	///     the endpoint isn't mapped (see <see cref="EnableRepl" />).
+	/// </summary>
+	public Action<Microsoft.AspNetCore.Builder.IEndpointConventionBuilder>? ConfigureReplEndpoint { get; set; }
 
 	/// <summary>
 	///     Whether the code execution endpoint of <see cref="EnableRepl" /> is mapped outside the
@@ -295,11 +433,24 @@ public sealed class MokaDocsOptions
 	public string? Copyright { get; set; }
 
 	/// <summary>
+	///     An announcement above the header of every page, like <c>theme.options.banner</c> in
+	///     mokadocs.yaml. <c>null</c> (the default) shows none.
+	/// </summary>
+	public MokaDocsBannerOptions? Banner { get; set; }
+
+	/// <summary>
 	///     The blog: posts in a folder under <see cref="DocsPath" />, a paginated index, tag pages
 	///     and a sidebar entry. <c>null</c> (the default) builds no blog, and the folder's files are
 	///     ordinary pages.
 	/// </summary>
 	public MokaDocsBlogOptions? Blog { get; set; }
+
+	/// <summary>
+	///     Glossary terms and their definitions, like <c>glossary:</c> in mokadocs.yaml: <c>:term[API]</c> shows the
+	///     definition in a tooltip and <c>:::glossary</c> lists them all. A glossary.yml file at the root of
+	///     <see cref="DocsPath" /> adds more.
+	/// </summary>
+	public Dictionary<string, string> Glossary { get; set; } = [];
 
 	/// <summary>
 	///     Navigation items to show in the sidebar.

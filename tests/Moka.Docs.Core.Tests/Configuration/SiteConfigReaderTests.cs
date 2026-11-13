@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Core.Theming;
 
 namespace Moka.Docs.Core.Tests.Configuration;
 
@@ -350,6 +351,18 @@ public sealed class SiteConfigReaderTests
 		                          toc: floating
 		                          breadcrumbs: pills
 		                          pageNav: tbs
+		                          sidebar: lines
+		                          sidebarScope: section
+		                          home: Portal
+		                          hero: Split
+		                          heroBackground: gradient
+		                          features: bento
+		                          admonitions: github
+		                          tables: bordered
+		                          density: spacious
+		                          font: mono
+		                          headings: Underlined
+		                          links: subtle
 		                    """;
 
 		SiteConfig config = SiteConfigReader.Parse(yaml);
@@ -361,7 +374,19 @@ public sealed class SiteConfigReaderTests
 			Footer = "columns",
 			Toc = "floating",
 			Breadcrumbs = "pills",
-			PageNav = "tbs"
+			PageNav = "tbs",
+			Sidebar = "lines",
+			SidebarScope = "section",
+			Home = "Portal",
+			Hero = "Split",
+			HeroBackground = "gradient",
+			Features = "bento",
+			Admonitions = "github",
+			Tables = "bordered",
+			Density = "spacious",
+			Font = "mono",
+			Headings = "Underlined",
+			Links = "subtle"
 		}, "names are resolved, and unknown ones reported, when the pages are rendered");
 		config.Warnings.Should().BeEmpty();
 	}
@@ -377,8 +402,7 @@ public sealed class SiteConfigReaderTests
 		ThemeLayoutOptions layout = SiteConfigReader.Parse(yaml).Theme.Options.Layout;
 
 		layout.Should().Be(new ThemeLayoutOptions());
-		new[] { layout.Width, layout.Navbar, layout.Footer, layout.Toc, layout.Breadcrumbs, layout.PageNav }
-			.Should().AllBe("default");
+		ThemeLayouts.Parts.Select(layout.NameOf).Should().AllBe("default");
 	}
 
 	[Fact]
@@ -393,14 +417,33 @@ public sealed class SiteConfigReaderTests
 		                          width: default
 		                          navbar: tabs
 		                          pageNav: minimal
+		                          sidebarScope: section
+		                          home: showcase
+		                          heroBackground: none
+		                          features: default
+		                          font: serif
+		                          headings: accent
+		                          links: default
 		                    """;
 
 		string serialized = SiteConfigReader.ToYaml(SiteConfigReader.Parse(yaml));
 		SiteConfig reparsed = SiteConfigReader.Parse(serialized);
 
-		reparsed.Theme.Options.Layout.Should().Be(new ThemeLayoutOptions { Navbar = "tabs", PageNav = "minimal" });
-		serialized.Should().Contain("layout:").And.Contain("navbar: tabs").And.Contain("pageNav: minimal");
-		serialized.Should().NotContain("width:").And.NotContain("footer:").And.NotContain("breadcrumbs:");
+		reparsed.Theme.Options.Layout.Should().Be(new ThemeLayoutOptions
+		{
+			Navbar = "tabs",
+			PageNav = "minimal",
+			SidebarScope = "section",
+			Home = "showcase",
+			HeroBackground = "none",
+			Font = "serif",
+			Headings = "accent"
+		});
+		serialized.Should().Contain("layout:").And.Contain("navbar: tabs").And.Contain("pageNav: minimal")
+			.And.Contain("sidebarScope: section").And.Contain("home: showcase").And.Contain("heroBackground: none")
+			.And.Contain("font: serif").And.Contain("headings: accent");
+		serialized.Should().NotContain("width:").And.NotContain("footer:").And.NotContain("breadcrumbs:")
+			.And.NotContain("admonitions:").And.NotContain("density:").And.NotContain("links:").And.NotContain("features: default");
 		reparsed.Warnings.Should().BeEmpty();
 	}
 
@@ -413,6 +456,19 @@ public sealed class SiteConfigReaderTests
 	}
 
 	[Fact]
+	public void SidebarToggle_IsOffByDefaultAndRoundTripsOnlyWhenOn()
+	{
+		SiteConfig plain = SiteConfigReader.Parse("site:\n  title: Plain\n");
+		SiteConfig on = SiteConfigReader.Parse("site:\n  title: On\ntheme:\n  options:\n    sidebarToggle: true\n");
+
+		plain.Theme.Options.SidebarToggle.Should().BeFalse();
+		SiteConfigReader.ToYaml(plain).Should().NotContain("sidebarToggle");
+		on.Theme.Options.SidebarToggle.Should().BeTrue();
+		on.Warnings.Should().BeEmpty();
+		SiteConfigReader.Parse(SiteConfigReader.ToYaml(on)).Theme.Options.SidebarToggle.Should().BeTrue();
+	}
+
+	[Fact]
 	public void Minify_IsOffByDefaultAndRoundTripsWhenOn()
 	{
 		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
@@ -421,6 +477,48 @@ public sealed class SiteConfigReaderTests
 		defaults.Build.Minify.Should().BeFalse();
 		SiteConfigReader.ToYaml(defaults).Should().NotContain("minify");
 		SiteConfigReader.Parse(SiteConfigReader.ToYaml(on)).Build.Minify.Should().BeTrue();
+	}
+
+	[Fact]
+	public void ReaderSelectors_AreOnByDefaultAndRoundTripWhenOff()
+	{
+		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
+		SiteConfig off = SiteConfigReader.Parse("site:\n  title: Still\ntheme:\n  options:\n    textSizeSelector: false\n    widthSelector: false\n");
+
+		defaults.Theme.Options.TextSizeSelector.Should().BeTrue();
+		defaults.Theme.Options.WidthSelector.Should().BeTrue();
+		SiteConfigReader.ToYaml(defaults).Should().NotContain("textSizeSelector").And.NotContain("widthSelector");
+		off.Theme.Options.TextSizeSelector.Should().BeFalse();
+		off.Theme.Options.WidthSelector.Should().BeFalse();
+		SiteConfig reparsed = SiteConfigReader.Parse(SiteConfigReader.ToYaml(off));
+		reparsed.Theme.Options.TextSizeSelector.Should().BeFalse();
+		reparsed.Theme.Options.WidthSelector.Should().BeFalse();
+	}
+
+	[Fact]
+	public void LayoutSelector_IsOffByDefaultAndRoundTripsWhenOn()
+	{
+		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
+		SiteConfig on = SiteConfigReader.Parse("site:\n  title: Switch\ntheme:\n  options:\n    layoutSelector: true\n");
+
+		defaults.Theme.Options.LayoutSelector.Should().BeFalse();
+		SiteConfigReader.ToYaml(defaults).Should().NotContain("layoutSelector");
+		on.Theme.Options.LayoutSelector.Should().BeTrue();
+		SiteConfigReader.ToYaml(on).Should().Contain("layoutSelector: true");
+		SiteConfigReader.Parse(SiteConfigReader.ToYaml(on)).Theme.Options.LayoutSelector.Should().BeTrue();
+		on.Warnings.Should().BeEmpty();
+	}
+
+	[Fact]
+	public void ImageZoom_IsOnByDefaultAndRoundTripsWhenOff()
+	{
+		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
+		SiteConfig off = SiteConfigReader.Parse("site:\n  title: Still\ntheme:\n  options:\n    imageZoom: false\n");
+
+		defaults.Theme.Options.ImageZoom.Should().BeTrue();
+		SiteConfigReader.ToYaml(defaults).Should().NotContain("imageZoom");
+		off.Theme.Options.ImageZoom.Should().BeFalse();
+		SiteConfigReader.Parse(SiteConfigReader.ToYaml(off)).Theme.Options.ImageZoom.Should().BeFalse();
 	}
 
 	// ── SiteAssetReference parsing ────────────────────────────────────────────

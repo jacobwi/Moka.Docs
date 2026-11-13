@@ -210,6 +210,10 @@ public sealed class SharedSidebarScriptTests
 
 		expected.Should().Contain(s => s.Contains("parent-active"), "the tree has pages below the top level");
 		expected.Should().Contain(s => s.Contains("<span class=\"nav-icon\">"), "an entry has an icon");
+		expected.Where(s => s.Contains(" current\"")).Should().AllSatisfy(s =>
+			Regex.Matches(s, "aria-current=\"page\"").Should().HaveCount(Regex.Matches(s, "class=\"nav-link[^\"]* current\"").Count),
+			"every current link is marked for screen readers too");
+		expected.Should().Contain(s => s.Contains("aria-current=\"page\""));
 	}
 
 	private static string Compact(string html) => Regex.Replace(html.Trim(), @"\s*\n\s*", "\n");

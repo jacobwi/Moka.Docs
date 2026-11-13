@@ -1,0 +1,6 @@
+API: The public types and members of a library. MokaDocs builds the API reference from the projects under `content.projects`.
+Front matter: The YAML block at the top of a Markdown page, between two `---` lines, with the page's title and settings.
+Preset: A named set of theme options, picked with `theme.options.preset`.
+Route: The URL path of a page, such as `/guide/components`, made from the file's path in the docs folder.
+Style: The look of the whole site, such as default, moka or paper, picked with `theme.options.style`.
+xref: A link to an API type or member by its name, written `xref:Namespace.Type`.

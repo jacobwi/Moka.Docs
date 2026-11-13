@@ -23,7 +23,7 @@ Your page content starts here.
 
 Both `---` lines must start at the beginning of the line. Blank lines may come before the opening `---`, nothing else. An indented `---`, such as one inside a `description: |` block, is YAML text and doesn't end the block. A file whose opening `---` has no closing `---` gets a warning, and the whole file is read as Markdown.
 
-The block is parsed as YAML. Quote string values that contain special characters. Keys are case sensitive. A key MokaDocs doesn't know, such as `titel` or `Title`, is ignored and reported as a warning with its line number, and so is an unknown key inside a `features` item.
+The block is parsed as YAML. Quote string values that contain special characters. Keys are case sensitive. A key MokaDocs doesn't know, such as `titel` or `Title`, is ignored and reported as a warning with its line number, and so is an unknown key inside a `features` or `stats` item or in `cta`.
 
 If the block isn't valid YAML, or a value has the wrong type (such as `order: first`, or `tags: api` where a list is expected), MokaDocs ignores the whole block and reports a warning that names the file, the line and column, and what YAML found wrong. The page gets the defaults listed below, including the title "Untitled". The block itself is never shown as page content.
 
@@ -41,9 +41,10 @@ The page title. This value is used in several places:
 - The `<title>` tag in the browser tab. The default layout writes `Page Title - Site Title`.
 - The sidebar label, unless a `nav` item's `label` replaces it.
 - Search results, breadcrumbs and the previous/next links.
-- The `og:title` and `twitter:title` meta tags, which the default layout writes when `site.url` is set.
+- The `og:title` and `twitter:title` meta tags, which the default layout writes when `site.url` is set (the landing layout uses the site title there).
+- The `# Title` heading of the page's [Markdown copy](/configuration/site-config#llms) when the page doesn't start with a heading of its own.
 
-The default layout doesn't render the title as a heading. Start the content with a `#` heading if the page needs one.
+The default layout doesn't render the title as a heading. Start the content with a `#` heading if the page needs one. The table of contents leaves that heading out, since it is the page's title.
 
 ```yaml
 ---
@@ -58,7 +59,7 @@ A page without a `title` is called "Untitled" everywhere, and the build doesn't 
 - **Type:** `string`
 - **Default:** `""`
 
-A short summary of the page. It fills the `<meta name="description">` tag, and the default layout also writes it to `og:description` and `twitter:description` when `site.url` is set. A page without a description uses `site.description` in those tags instead. The `landing` layout also shows the description under the site title and appends it to the `<title>` tag.
+A short summary of the page. It fills the `<meta name="description">` tag, and both layouts also write it to `og:description` and `twitter:description` when `site.url` is set. `llms.txt` shows it after the page's link. A page without a description uses `site.description` in those tags instead. The `landing` layout also shows the description under the site title and appends it to the `<title>` tag.
 
 Search results don't use it. The snippet under a result comes from the page text.
 
@@ -146,7 +147,7 @@ The layout template to use when rendering this page. The default theme has two:
 | Layout | Description |
 |---|---|
 | `default` | Documentation page with the sidebar, content area and table of contents. |
-| `landing` | Home page layout with no sidebar or table of contents. It shows the site title and the page `description` at the top, then the cards from [`features`](#features) when the page has any, then the page content. |
+| `landing` | Home page layout with no sidebar or table of contents. It shows the site title and the page `description` at the top, then the cards from [`features`](#features) when the page has any, then the page content. [`theme.options.layout.home`](/configuration/site-config#layout.home) switches it to a search portal, a product showcase, a minimal page or a docs page with the sidebar. |
 
 `api-type` is also accepted and renders the same template as `default`. Any other name, such as `wide`, falls back to `default`, and the build warns once for each unknown name.
 
@@ -241,13 +242,14 @@ mokadocs serve --draft
 | Written to the output | Yes | Yes | Only with `--draft` |
 | Included in search index | Yes | Yes | Only with `--draft` |
 | Included in sitemap | Yes | No | No |
+| Markdown copy, `llms.txt` and `llms-full.txt` | Yes | No | No |
 
 ### `toc`
 
 - **Type:** `bool`
 - **Default:** `true`
 
-Controls whether the "On this page" table of contents is displayed. It lists the page's headings, H1 included, down to the level set by `theme.options.tocDepth` (default `3`). The default theme nests entries three levels deep at most, so on a page that starts with an H1, headings below H3 don't appear even with a higher `tocDepth`. The table is also hidden when the page has no headings or `theme.options.showTableOfContents` is `false`.
+Controls whether the "On this page" table of contents is displayed. It lists the page's headings down to the level set by `theme.options.tocDepth` (default `3`), with the `h2` headings at the top. The page's own title isn't listed: an H1 at the top of the page, or a first heading that repeats the `title`. The table is also hidden when it would have fewer than two entries or `theme.options.showTableOfContents` is `false`.
 
 ```yaml
 ---
@@ -429,9 +431,137 @@ The heading above the landing layout's feature cards. The cards have no heading 
 
 A line of text under `featuresTitle`. Like the title, it only shows on a page with `features`.
 
+### `heroCode`
+
+- **Type:** `string`
+- **Default:** none
+
+A code sample the `landing` layout shows beside the hero text when [`theme.options.layout.hero`](/configuration/site-config#layout.hero) is `split`. Write it as a YAML block (`|`) so line breaks and indentation stay. It is highlighted at build time like a fenced code block, gets a Copy button and no line numbers. Other hero layouts and the `default` layout ignore it.
+
+```yaml
+---
+title: Home
+layout: landing
+heroCodeLanguage: csharp
+heroCode: |
+  var client = new AcmeClient(apiKey);
+  var order = await client.Orders.GetAsync(42);
+---
+```
+
+### `heroCodeLanguage`
+
+- **Type:** `string`
+- **Default:** none (plain text)
+
+The language `heroCode` is highlighted as, with the same names as a fenced code block, such as `csharp`, `json` or `bash`.
+
+### `heroImage`
+
+- **Type:** `string`
+- **Default:** none
+
+An image the `landing` layout shows beside the hero text when `hero` is `split` and the page has no `heroCode`: a path relative to the page's file (`./screenshot.png`), a path from the site root (`/img/screenshot.png`) or an absolute URL. Local images in the docs folder are copied like any other image, and paths from the root get the [base path](/configuration/site-config#basepath).
+
+### `showcaseCode`
+
+- **Type:** `string`
+- **Default:** none
+
+A code sample the `landing` layout shows in a band of its own, after the feature cards, when [`theme.options.layout.home`](/configuration/site-config#layout.home) is `showcase`. Like [`heroCode`](#herocode), write it as a YAML block (`|`); it is highlighted at build time and gets a Copy button and no line numbers. Other home page variants and the `default` layout ignore it, and so do the next three keys.
+
+```yaml
+---
+title: Home
+layout: landing
+showcaseTitle: Bind a grid in two lines
+showcaseText: Point a DataGrid at any list and it pages, sorts and filters on its own.
+showcaseCodeLanguage: csharp
+showcaseCode: |
+  var grid = new DataGrid<Order> { PageSize = 50 };
+  grid.Bind(await db.Orders.ToListAsync());
+---
+```
+
+### `showcaseCodeLanguage`
+
+- **Type:** `string`
+- **Default:** none (plain text)
+
+The language `showcaseCode` is highlighted as, with the same names as a fenced code block.
+
+### `showcaseTitle`
+
+- **Type:** `string`
+- **Default:** `""`
+
+A heading beside the showcase code sample. Without a sample, the heading and `showcaseText` make a centered band of their own.
+
+### `showcaseText`
+
+- **Type:** `string`
+- **Default:** `""`
+
+A paragraph under `showcaseTitle`.
+
+### `stats`
+
+- **Type:** `list` of objects
+- **Default:** `[]`
+
+Figures the `landing` layout shows in a row after the showcase band when `home` is `showcase`, such as download counts. Each item takes a `value`, shown large in the accent color, and a `label` under it. Both are optional; an item with neither is skipped.
+
+```yaml
+stats:
+  - value: 2M+
+    label: NuGet downloads
+  - value: 40
+    label: Widgets
+```
+
+`stats` must be a YAML list of mappings, like `features`.
+
+### `cta`
+
+- **Type:** object
+- **Default:** none
+
+A call to action the `landing` layout shows as a band in the accent color, after the figures and before the page content, when `home` is `showcase`.
+
+| Key | Contents |
+|---|---|
+| `title` | The band's heading |
+| `text` | A line under the heading |
+| `link` | Where the button goes. A value starting with `/` gets the base path. Without it there is no button |
+| `linkText` | The button's text. Defaults to "Get Started" |
+
+```yaml
+cta:
+  title: Ready to build?
+  text: Install the package and have a grid on screen in five minutes.
+  link: /guide/install
+  linkText: Install Widgets
+```
+
+A `cta` with only a `linkText` has nothing to show and is left out. Titles, text, figures and labels are HTML-escaped like the feature cards.
+
+### `image`
+
+- **Type:** `string`
+- **Default:** none (the site's [`site.image`](/configuration/site-config#image))
+
+The picture link previews show for this page: `og:image` and `twitter:image`, with `twitter:card` set to `summary_large_image`. A path relative to the page's file (`./card.png`), a path from the site root (`/img/card.png`) or an absolute http or https URL. Local images in the docs folder are copied like any other image, and the tags get an absolute URL under `site.url`. The tags are only written when `site.url` is set. On a blog post the image is also the cover.
+
+```yaml
+---
+title: "Release 2.0"
+image: ./release-card.png
+---
+```
+
 ### Blog post keys
 
-These keys are read on the posts of a [blog](/guide/blog), the files under `features.blog.path`. Other pages accept them without a warning and ignore them.
+These keys are read on the posts of a [blog](/guide/blog), the files under `features.blog.path`. Other pages accept them without a warning and ignore them, except `image`, which every page uses for link previews.
 
 ```yaml
 ---
@@ -467,12 +597,12 @@ The post's authors. A name that is a key of `features.blog.authors` shows that a
 
 The text under the post's title on the index and tag pages, and the summary in the feeds. Without it, the build uses the post's first paragraph as plain text, cut at a word near 300 characters. A paragraph inside a list, a quote or a callout is used only when the post has none of its own.
 
-#### `image`
+#### Cover `image`
 
 - **Type:** `string`
 - **Default:** none
 
-A cover image, shown under the post's header and on its index card. A path relative to the post's file (`./cover.png`), a path from the site root (`/img/cover.png`) or an absolute URL. Local images in the docs folder are copied like any other image.
+A cover image, shown under the post's header and on its index card, and the post's link preview image (see [`image`](#image)). A path relative to the post's file (`./cover.png`), a path from the site root (`/img/cover.png`) or an absolute URL. Local images in the docs folder are copied like any other image.
 
 #### `draft`
 
@@ -530,10 +660,13 @@ When front matter properties are omitted, the following defaults apply:
 | `features` | `[]` (no feature cards) |
 | `featuresTitle` | `""` |
 | `featuresSubtitle` | `""` |
+| `showcaseTitle` / `showcaseText` | `""` |
+| `stats` | `[]` (no figures) |
+| `cta` | none (no call to action) |
 | `date` | none (a blog post warns and uses its file's date) |
 | `author` / `authors` | `[]` |
 | `summary` | The first paragraph |
-| `image` | none |
+| `image` | none (`site.image`) |
 | `draft` | `false` |
 
 ## Tips

@@ -159,11 +159,13 @@ Builds the site and serves it locally, rebuilding and reloading the browser when
 | `--no-open` | | Do not open the browser | Off |
 | `--draft` | | Include pages that have `visibility: draft` in their front matter | Off |
 | `--base-path <path>` | | Path prefix the site is served under, matching `build.basePath` | Value from config |
+| `--no-lab` | | Leave the [theme lab](/advanced/dev-server#theme-lab) out of served pages | Off |
 | `--verbose` | `-v` | Enable pipeline logging | Off |
 
 ### Features
 
-- **Hot reload**: the server injects a small WebSocket client into served pages and tells the browser to reload after each rebuild.
+- **Hot reload**: the server injects a small WebSocket client into served pages (not Blazor preview frames) and tells the browser to reload after each rebuild. The socket accepts only the server's own pages.
+- **Theme lab**: a button at the bottom left of every served page opens a panel to try presets, styles, colors, code themes and layout variants on the page and save them to the configuration file. See [Theme Lab](/advanced/dev-server#theme-lab).
 - **File watching**: watches the docs folder and the configuration file, ignoring the output folder and `.mokadocs`. One rebuild runs at a time; changes made during it start one more when it ends.
 - **Configuration reload**: a change to the configuration file is read again before the rebuild, with new plugins, theme and templates. A file that doesn't parse prints the error, and the server keeps serving the last good site until you fix it. The port is a command-line option, so it can't change; `build.basePath`, `build.output` and `content.docs` keep the values `serve` started with, the terminal says when they differ, and a restart applies them. So do changes to the `mokadocs-repl` entry, since the REPL endpoint is set up at startup.
 - **Diagnostics**: after every build the terminal shows the warning and error counts and lists the errors, like `build`. `--verbose` lists the warnings too.
@@ -172,7 +174,7 @@ Builds the site and serves it locally, rebuilding and reloading the browser when
 - **Base path aware**: with `build.basePath` or `--base-path`, the server strips that prefix from requests, so `http://localhost:5080/my-repo/` serves the same pages the deployed site will.
 - **REPL endpoint**: `POST /api/repl/execute` exists only when the `mokadocs-repl` plugin is declared. It runs the posted C# code in a separate worker process with your permissions, and kills that process when a run passes 5 seconds.
 
-The server answers on `http://localhost:<port>` and `http://127.0.0.1:<port>`, and on Windows `http://[::1]:<port>` too. The API endpoints accept only JSON requests, and a browser request must come from the origin of the address it was sent to, so a page on `localhost` can't post to `127.0.0.1`. Requests from other sites get `403`, so a web page open in the same browser cannot run code through the REPL endpoint.
+The server runs on Kestrel and answers on `http://localhost:<port>`, `http://127.0.0.1:<port>` and, where the machine has IPv6, `http://[::1]:<port>`. Other `Host` names get `400`. The API endpoints accept only JSON requests, and a browser request must come from the origin of the address it was sent to, so a page on `localhost` can't post to `127.0.0.1`. Requests from other sites get `403`, so a web page open in the same browser cannot run code through the REPL endpoint.
 
 ### Usage Examples
 
@@ -196,6 +198,7 @@ Config: mokadocs.yaml - "My Library"
 Build complete in 1.21s
 
 Dev server running: http://localhost:5080/
+Theme lab: the button at the bottom left of every page (--no-lab hides it)
 Press Ctrl+C to stop
 ```
 

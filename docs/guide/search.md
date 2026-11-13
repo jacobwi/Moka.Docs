@@ -9,13 +9,13 @@ MokaDocs builds a search index along with the site and runs queries against it i
 
 ## How It Works
 
-The build writes `search-index.json` to the root of the output folder. The first time a reader opens search on a page, the theme downloads that file and matches queries against it in the browser. The file is not kept between page loads: the next page fetches it again, normally from the browser cache.
+The build writes `search-index.json` to the root of the output folder. The first time a reader opens search on a page, the theme downloads that file and matches queries against it in the browser. A query typed while the file is still downloading shows "Loading the search index..." and runs as soon as it arrives. Pages request it with a hash of its content in the URL (`search-index.json?v=0123456789`), so later pages and visits use the copy in the browser cache until a rebuild changes the index.
 
 ### What Gets Indexed
 
 | Source              | Index entries |
 |---------------------|---------------|
-| Markdown pages      | One entry for the page, plus one for each heading, the page's `#` heading included |
+| Markdown pages      | One entry for the page, plus one for each heading at any level. The page's own title heading (a `#` heading at the top) has no entry of its own: the page entry stands for it |
 | Generated API pages | One entry for each page (the API index and each type page), plus one for each member on a type page, such as a method or property, linked to its description |
 
 Namespaces have no entries of their own. Pages that plugins add, such as REST API pages, are indexed like Markdown pages.
@@ -24,7 +24,7 @@ A **page entry** holds:
 
 - **Title**: the front matter `title`. The first heading is not used as a fallback, so a page without a title is indexed as "Untitled".
 - **Content**: the first 300 characters of the page's text. The text comes from paragraphs and headings, inline code and link text included; code blocks are left out. For an API type page, the content is the type's XML `<summary>`.
-- **Code**: the words of the code blocks above the page's first heading, if any (see below).
+- **Code**: the words of the code blocks above the page's first section heading, if any (see below).
 - **Tags**: the front matter `tags`.
 
 A **heading entry** holds the page title, the heading text, a link to the heading and:
@@ -44,33 +44,37 @@ Draft pages are indexed only when you build with `--draft`. Pages with `visibili
 
 ### Search Categories
 
-Every entry has one of two categories:
+Every entry has one of three categories:
 
 | Category      | Entries |
 |---------------|---------|
 | Documentation | Markdown pages and their headings |
 | API Reference | Generated API pages and their headings |
+| Blog          | Blog posts and the blog's index |
 
-Each result shows its category as a label. Results are a single list sorted by score; they are not grouped by category.
+Each result shows its category as a label, in the site's language (`search.categoryDocs`, `api.title` and `search.categoryBlog` in [Languages](/guide/languages#text-keys)). Results are a single list sorted by score; they are not grouped by category.
 
 ## Using Search
 
 ### Opening Search
 
-Click **Search** in the header or press **Ctrl+K** (**Cmd+K** on macOS). The same shortcut closes the dialog.
+Click **Search** in the header or press **Ctrl+K** (**Cmd+K** on macOS and iOS; the header button shows the one for the reader's device). The same shortcut closes the dialog. The dialog keeps the last query on the page and selects it when it opens again, so typing replaces it.
 
 ### Results
 
 - Results update as you type.
 - **Up** and **Down** move through the results, and **Enter** opens the selected one.
-- **Escape**, or a click outside the dialog, closes it.
+- Opening a result closes the dialog, a result on the current page included.
+- **Escape**, the close button (an X on touch screens), or a click outside the dialog closes it, and focus goes back to where it was.
 - The list shows the 20 best matches.
 
 A result shows the page title, the heading (for heading entries) and the category, and an excerpt of its content with the query words highlighted. Titles and headings are not highlighted, and tags and code words are not shown.
 
 ### How Matching Works
 
-Every word in the query has to appear in the entry's title, heading, content, code words or tags. Matching is a case-insensitive substring test, so `config` matches "Configuration". There is no stemming or typo tolerance, and accents count: `cafe` does not match "Café".
+Every word in the query has to appear in the entry's title, heading, content, code words or tags. Matching is a case-insensitive substring test, so `config` matches "Configuration". There is no stemming, and accents count: `cafe` does not match "Café". The query is split into words at spaces; Chinese, Japanese and Korean queries, written without spaces, also match by pairs of characters (see [Search in Other Languages](/guide/languages#search-in-other-languages)).
+
+A query word of five letters or more that appears nowhere in an entry may still match a word one typo away: one letter added, dropped, changed, or swapped with its neighbor. The typo can be anywhere in the start of the word, so a word still being typed counts too: `confgi` finds "Configuration", and `insatll` finds "install". Shorter words must match exactly. An entry that needed a typo to match always ranks below every entry that matched exactly, and the excerpt highlights the word it matched.
 
 Each word adds points for every field it appears in, and results are sorted by the total:
 

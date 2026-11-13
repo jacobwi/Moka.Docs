@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Serve;
@@ -11,20 +10,6 @@ namespace Moka.Docs.AspNetCore;
 /// </summary>
 internal static class MokaDocsApiEndpoints
 {
-	/// <summary>Largest feedback body read. A vote is about a hundred bytes.</summary>
-	internal const int MaxFeedbackBodyBytes = 4 * 1024;
-
-	/// <summary>Longest page path accepted in a vote.</summary>
-	internal const int MaxFeedbackPageLength = 1024;
-
-	/// <summary>
-	///     Largest REPL body read. Snippets are capped at 10,000 characters, and JSON can escape a
-	///     character as six bytes.
-	/// </summary>
-	internal const int MaxReplBodyBytes = 64 * 1024;
-
-	private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
-
 	/// <summary>
 	///     Headers a proxy adds. The <c>X-Original-*</c> ones are what <c>UseForwardedHeaders()</c>
 	///     leaves after it applies the others.
@@ -41,38 +26,28 @@ internal static class MokaDocsApiEndpoints
 			return;
 		}
 
-		byte[]? body = await ReadBodyAsync(context.Request, MaxFeedbackBodyBytes, context.RequestAborted);
-		if (body is null)
+		if (await DocsApiRequests.ReadFeedbackAsync(context) is not { } vote)
 		{
-			await WriteJsonAsync(context, StatusCodes.Status413PayloadTooLarge, new { ok = false });
 			return;
 		}
 
-		FeedbackRequest? request = Deserialize<FeedbackRequest>(body);
-		if (request is not { Page: { Length: > 0 and <= MaxFeedbackPageLength } page, Helpful: { } helpful }
-		    || page.Any(char.IsControl))
-		{
-			await WriteJsonAsync(context, StatusCodes.Status400BadRequest, new { ok = false });
-			return;
-		}
-
-		logger.LogInformation("Docs feedback for {Page}: {Vote}", page, helpful ? "helpful" : "not helpful");
+		logger.LogInformation("Docs feedback for {Page}: {Vote}", vote.Page, vote.Helpful ? "helpful" : "not helpful");
 
 		if (options.OnFeedback is { } onFeedback)
 		{
 			try
 			{
-				await onFeedback(new DocsFeedback(page, helpful), context);
+				await onFeedback(new DocsFeedback(vote.Page, vote.Helpful), context);
 			}
 			catch (Exception ex) when (ex is not OperationCanceledException)
 			{
-				logger.LogError(ex, "MokaDocsOptions.OnFeedback failed for {Page}", page);
-				await WriteJsonAsync(context, StatusCodes.Status500InternalServerError, new { ok = false });
+				logger.LogError(ex, "MokaDocsOptions.OnFeedback failed for {Page}", vote.Page);
+				await DocsApiRequests.WriteJsonAsync(context, StatusCodes.Status500InternalServerError, new { ok = false });
 				return;
 			}
 		}
 
-		await WriteJsonAsync(context, StatusCodes.Status200OK, new { ok = true });
+		await DocsApiRequests.WriteJsonAsync(context, StatusCodes.Status200OK, new { ok = true });
 	}
 
 	/// <summary>Handles <c>POST {BasePath}/api/repl/execute</c>.</summary>
@@ -90,7 +65,7 @@ internal static class MokaDocsApiEndpoints
 		{
 			logger.LogWarning("Refused a REPL run: {Reason}. Set AllowRemoteRepl to accept it, behind authorization",
 				refusal);
-			await WriteJsonAsync(context, StatusCodes.Status403Forbidden,
+			await DocsApiRequests.WriteJsonAsync(context, StatusCodes.Status403Forbidden,
 				new { error = "The REPL only runs code for requests from the machine the app runs on." });
 			return;
 		}
@@ -100,41 +75,19 @@ internal static class MokaDocsApiEndpoints
 		if (!repl.CanStartWorker)
 		{
 			repl.WarnNotWiredOnce();
-			await WriteJsonAsync(context, StatusCodes.Status503ServiceUnavailable,
+			await DocsApiRequests.WriteJsonAsync(context, StatusCodes.Status503ServiceUnavailable,
 				new { error = MokaDocsRepl.NotWiredMessage });
 			return;
 		}
 
-		byte[]? body = await ReadBodyAsync(context.Request, MaxReplBodyBytes, context.RequestAborted);
-		if (body is null)
+		if (await DocsApiRequests.ReadReplCodeAsync(context) is not { } code)
 		{
-			await WriteJsonAsync(context, StatusCodes.Status413PayloadTooLarge,
-				new { error = "The code is too long to run." });
-			return;
-		}
-
-		if (Deserialize<ReplRequest>(body) is not { } request)
-		{
-			await WriteJsonAsync(context, StatusCodes.Status400BadRequest,
-				new { error = "The request body is not valid JSON." });
 			return;
 		}
 
 		// A reader who leaves mid-run cancels the run, and the service replaces the worker, so the
 		// snippet stops instead of running on until the timeout.
-		ReplResult result;
-		try
-		{
-			result = await repl.Service.ExecuteAsync(request.Code ?? "", context.RequestAborted);
-		}
-		catch (ReplQueueFullException ex)
-		{
-			await WriteJsonAsync(context, StatusCodes.Status429TooManyRequests, new { error = ex.Message });
-			return;
-		}
-
-		await WriteJsonAsync(context, StatusCodes.Status200OK,
-			new { output = result.Output ?? "", error = result.Error ?? "" });
+		await DocsApiRequests.RunReplAsync(context, repl.Service, code, context.RequestAborted);
 	}
 
 	/// <summary>
@@ -146,8 +99,9 @@ internal static class MokaDocsApiEndpoints
 	///     text/plain or a form. Requiring a JSON content type forces a preflight, which nothing
 	///     here answers, and a browser request that does arrive must come from this app's own
 	///     origin. Requests without Origin or Sec-Fetch-Site headers don't come from a browser
-	///     page, so tools like curl still work. Same rules as the dev server's
-	///     <c>IsSameOriginApiRequest</c>.
+	///     page, so tools like curl still work. The dev server's <c>IsSameOriginApiRequest</c> differs
+	///     on purpose: it only knows its loopback http origins, and lets <c>Sec-Fetch-Site: none</c>
+	///     through.
 	/// </remarks>
 	internal static bool IsSameOriginRequest(HttpRequest request)
 	{
@@ -251,61 +205,5 @@ internal static class MokaDocsApiEndpoints
 		logger.LogWarning("Rejected cross-origin POST to {Path} from {Origin}", context.Request.Path,
 			context.Request.Headers.Origin.ToString() is { Length: > 0 } origin ? origin : "(no origin)");
 		context.Response.StatusCode = StatusCodes.Status403Forbidden;
-	}
-
-	/// <summary>Reads the body, or returns <c>null</c> when it is longer than <paramref name="maxBytes" />.</summary>
-	private static async Task<byte[]?> ReadBodyAsync(HttpRequest request, int maxBytes, CancellationToken ct)
-	{
-		if (request.ContentLength > maxBytes)
-		{
-			return null;
-		}
-
-		using var buffer = new MemoryStream();
-		byte[] chunk = new byte[4096];
-		int read;
-		while ((read = await request.Body.ReadAsync(chunk, ct)) > 0)
-		{
-			if (buffer.Length + read > maxBytes)
-			{
-				return null;
-			}
-
-			buffer.Write(chunk, 0, read);
-		}
-
-		return buffer.ToArray();
-	}
-
-	private static T? Deserialize<T>(byte[] body) where T : class
-	{
-		try
-		{
-			return JsonSerializer.Deserialize<T>(body, _json);
-		}
-		catch (JsonException)
-		{
-			return null;
-		}
-	}
-
-	private static Task WriteJsonAsync<T>(HttpContext context, int statusCode, T payload)
-	{
-		context.Response.StatusCode = statusCode;
-		return context.Response.WriteAsJsonAsync(payload, _json, "application/json; charset=utf-8",
-			context.RequestAborted);
-	}
-
-	/// <summary>The REPL request body.</summary>
-	private sealed class ReplRequest
-	{
-		public string? Code { get; set; }
-	}
-
-	/// <summary>The feedback widget's request body.</summary>
-	private sealed class FeedbackRequest
-	{
-		public string? Page { get; set; }
-		public bool? Helpful { get; set; }
 	}
 }

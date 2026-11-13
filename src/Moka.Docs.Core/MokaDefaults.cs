@@ -22,6 +22,15 @@ public static class MokaDefaults
 	/// <summary>Show the appearance style selector in the header.</summary>
 	public static bool ShowStyleSelector { get; set; } = true;
 
+	/// <summary>Show the text size choice in the Appearance panel.</summary>
+	public static bool ShowTextSizeSelector { get; set; } = true;
+
+	/// <summary>Show the reading width choice in the Appearance panel.</summary>
+	public static bool ShowWidthSelector { get; set; } = true;
+
+	/// <summary>Show the Layout section, which lets readers switch layout variants, in the Appearance panel.</summary>
+	public static bool ShowLayoutSelector { get; set; }
+
 	/// <summary>Show the "Was this page helpful?" feedback widget.</summary>
 	public static bool ShowFeedbackWidget { get; set; } = true;
 
@@ -67,6 +76,9 @@ public static class MokaDefaults
 	/// <summary>Show line numbers on code blocks.</summary>
 	public static bool ShowLineNumbers { get; set; } = true;
 
+	/// <summary>Open content images full size in a viewer when clicked.</summary>
+	public static bool ImageZoom { get; set; } = true;
+
 	/// <summary>Maximum heading level shown in the table of contents (2-6).</summary>
 	public static int TocDepth { get; set; } = 3;
 
@@ -95,6 +107,9 @@ public static class MokaDefaults
 	/// </summary>
 	public static int SidebarInlineLimit { get; set; } = 300;
 
+	/// <summary>Show the button that hides and shows the sidebar on wide screens.</summary>
+	public static bool SidebarToggle { get; set; }
+
 	/// <summary>Default theme name.</summary>
 	public static string ThemeName { get; set; } = "default";
 
@@ -107,6 +122,9 @@ public static class MokaDefaults
 
 	/// <summary>Generate robots.txt by default.</summary>
 	public static bool GenerateRobots { get; set; } = true;
+
+	/// <summary>Write Markdown copies of the pages, <c>llms.txt</c> and <c>llms-full.txt</c> by default.</summary>
+	public static bool GenerateLlmsFiles { get; set; } = true;
 
 	/// <summary>Clean output directory before build.</summary>
 	public static bool CleanOutput { get; set; } = true;

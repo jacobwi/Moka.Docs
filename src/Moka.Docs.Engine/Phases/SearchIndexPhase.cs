@@ -3,6 +3,7 @@ using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Core.Search;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Search;
 
 namespace Moka.Docs.Engine.Phases;
@@ -29,6 +30,7 @@ public sealed class SearchIndexPhase(ILogger<SearchIndexPhase> logger) : IBuildP
 
 		var entries = new List<SearchEntry>();
 		Dictionary<string, ApiType> apiTypesByRoute = ApiTypesByRoute(context);
+		ThemeText text = ThemeText.For(context.Config);
 
 		foreach (DocPage page in context.Pages)
 		{
@@ -43,14 +45,15 @@ public sealed class SearchIndexPhase(ILogger<SearchIndexPhase> logger) : IBuildP
 				continue;
 			}
 
-			string category = Category(context, page);
+			string category = Category(context, page, text);
 
 			// A type page's headings are its member sections, which made search entries such as "Methods"
 			// with no text and left the members themselves unsearchable.
 			if (page.Origin == PageOrigin.ApiGenerated && apiTypesByRoute.TryGetValue(page.Route, out ApiType? type))
 			{
 				entries.Add(PageEntry(page, category, null));
-				entries.AddRange(ApiPageRenderer.BuildMemberSearchEntries(type, page.Route, page.FrontMatter.Title));
+				entries.AddRange(ApiPageRenderer.BuildMemberSearchEntries(type, page.Route, page.FrontMatter.Title)
+					.Select(entry => entry with { Category = category }));
 				continue;
 			}
 
@@ -89,16 +92,17 @@ public sealed class SearchIndexPhase(ILogger<SearchIndexPhase> logger) : IBuildP
 		return types;
 	}
 
-	private static string Category(BuildContext context, DocPage page)
+	// Shown beside each result, in the site's language.
+	private static string Category(BuildContext context, DocPage page, ThemeText text)
 	{
 		if (page.Origin == PageOrigin.ApiGenerated)
 		{
-			return "API Reference";
+			return text["api.title"];
 		}
 
 		return context.Blog is { } blog && (blog.FindPost(page.Route) is not null || page.Route == blog.Route)
-			? "Blog"
-			: "Documentation";
+			? text["search.categoryBlog"]
+			: text["search.categoryDocs"];
 	}
 
 	private static SearchEntry PageEntry(DocPage page, string category, string? code) => new()

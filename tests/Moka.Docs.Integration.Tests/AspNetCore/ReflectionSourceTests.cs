@@ -10,6 +10,7 @@ using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Api;
 using Moka.Docs.Core.Diagnostics;
 using Moka.Docs.CSharp.XmlDoc;
+using Moka.Docs.Parsing.Highlighting;
 
 namespace Moka.Docs.Integration.Tests.AspNetCore;
 
@@ -193,7 +194,7 @@ public sealed class ReflectionSourceTests
 		string linkOnly = await SiteHost.PageAsync(SourceFixtureAssembly.Sidecar, "api/contoso/widgets/widget/index.html");
 
 		withSource.Should().Contain("<details class=\"source-viewer\">");
-		withSource.Should().Contain("return Helper() + 1;");
+		withSource.Should().Contain(SyntaxHighlighter.Highlight("return Helper() + 1;", "csharp"));
 		string link = $"<a href=\"{_githubBlob}{SourceFixtureAssembly.WidgetPath}#L{_widgetLine}\" target=\"_blank\" rel=\"noopener\">";
 		withSource.Should().Contain(link).And.Contain("View source on github.com");
 		linkOnly.Should().Contain(link);

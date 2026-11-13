@@ -37,8 +37,9 @@ public sealed class SidebarModeTests
 	private static string Sidebar(string html) =>
 		Regex.Match(html, "<aside class=\"sidebar\".*?</aside>", RegexOptions.Singleline).Value;
 
+	// Links only: the icons' <use href> point into the sprite.
 	private static List<string> Links(string html) =>
-		Regex.Matches(html, "href=\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToList();
+		Regex.Matches(html, "<a [^>]*?href=\"([^\"]*)\"").Select(m => m.Groups[1].Value).ToList();
 
 	[Fact]
 	public async Task DefaultMode_SmallSite_PutsTheWholeSidebarInEveryPage()
@@ -46,7 +47,7 @@ public sealed class SidebarModeTests
 		(BuildContext context, MockFileSystem fs) = await MockSite.BuildAsync(Config(), Files());
 
 		fs.FileExists(_sidebarFile).Should().BeFalse();
-		context.DeferredOutputFiles.Should().BeEmpty();
+		context.DeferredOutputFiles.Keys.Should().NotContain(k => k.EndsWith("sidebar.js", StringComparison.Ordinal));
 		string sidebar = Sidebar(fs.File.ReadAllText("/project/_site/guide/intro/index.html"));
 		Links(sidebar).Should().Equal("/guide", "/guide/advanced", "/guide/intro", "/", "/reference/cli", "/reference/config");
 		sidebar.Should().Contain("<span class=\"nav-link nav-group-label\">", "reference/ has no index page");

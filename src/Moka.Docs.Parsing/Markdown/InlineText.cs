@@ -30,11 +30,22 @@ internal static class InlineText
 		return text.ToString();
 	}
 
-	/// <summary>Appends the text of <paramref name="inline" /> and its children.</summary>
-	internal static void Append(StringBuilder text, Inline inline)
+	/// <summary>
+	///     Appends the text of <paramref name="inline" /> and its children. Badges are left out unless
+	///     <paramref name="withBadges" /> is set: a heading's "New" badge isn't part of its title in the table
+	///     of contents, but it is text worth searching.
+	/// </summary>
+	internal static void Append(StringBuilder text, Inline inline, bool withBadges = false)
 	{
 		switch (inline)
 		{
+			case BadgeInline badge:
+				if (withBadges)
+				{
+					text.Append(' ').Append(badge.Text);
+				}
+
+				break;
 			case HtmlEntityInline entity:
 				text.Append(entity.Transcoded.AsSpan());
 				break;
@@ -53,7 +64,7 @@ internal static class InlineText
 			case ContainerInline container:
 				foreach (Inline child in container)
 				{
-					Append(text, child);
+					Append(text, child, withBadges);
 				}
 
 				break;

@@ -6,6 +6,7 @@ using Moka.Docs.Core.Blog;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Pipeline;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Blog;
 using Moka.Docs.Parsing.Markdown;
 
@@ -217,7 +218,7 @@ public sealed class BlogPhase(ILogger<BlogPhase> logger) : IBuildPhase
 		{
 			// A tag only a hidden post uses has no page to link to.
 			BlogPost shown = post with { Tags = post.Tags.Where(t => tagsWithPages.Contains(t.Slug)).ToList() };
-			string header = BlogHtml.PostHeader(shown, settings.Config.ShowAuthors);
+			string header = BlogHtml.PostHeader(shown, settings.Config.ShowAuthors, ThemeText.For(context.Config));
 			context.Pages[pageIndex[page]] = page with
 			{
 				Content = page.Content with
@@ -240,6 +241,7 @@ public sealed class BlogPhase(ILogger<BlogPhase> logger) : IBuildPhase
 		var routes = new List<string>();
 		bool showAuthors = settings.Config.ShowAuthors;
 		DateTimeOffset? newest = listed.Count > 0 ? listed[0].Date : null;
+		ThemeText text = ThemeText.For(context.Config);
 
 		void Add(DocPage page)
 		{
@@ -268,7 +270,7 @@ public sealed class BlogPhase(ILogger<BlogPhase> logger) : IBuildPhase
 			{
 				FrontMatter = new FrontMatter
 				{
-					Title = n == 1 ? settings.Title : $"{settings.Title} (page {n})",
+					Title = n == 1 ? settings.Title : PageTitle(text, settings.Title, n),
 					Description = description,
 					Icon = intro?.FrontMatter.Icon ?? "newspaper",
 					Order = intro?.FrontMatter.Order ?? 0,
@@ -279,7 +281,7 @@ public sealed class BlogPhase(ILogger<BlogPhase> logger) : IBuildPhase
 				Content = new PageContent
 				{
 					Html = BlogHtml.ListPage(settings.Title, n == 1 ? lead : "", pages[n - 1], showAuthors,
-						Pager(settings.Route, n, pages.Count), "No posts yet."),
+						Pager(settings.Route, n, pages.Count), text),
 					PlainText = n == 1 ? $"{description}\n{intro?.Content.PlainText}".Trim() : ""
 				},
 				// The edit link of the first page opens the introduction it shows.
@@ -290,21 +292,21 @@ public sealed class BlogPhase(ILogger<BlogPhase> logger) : IBuildPhase
 		}
 
 		string tagsRoute = settings.Route + "/tags";
-		Add(ListingPage(tagsRoute, "Tags", $"Every tag used in {settings.Title}", BlogHtml.TagsPage("Tags", tags),
-			newest));
+		Add(ListingPage(tagsRoute, text["blog.tags"], text.Format("blog.tagsDescription", ("blog", settings.Title)),
+			BlogHtml.TagsPage(text["blog.tags"], tags, text), newest));
 
 		foreach (BlogTag tag in tags)
 		{
 			List<BlogPost> tagged = listed.Where(p => p.Tags.Any(t => t.Slug == tag.Slug)).ToList();
 			List<List<BlogPost>> tagPages = Paginate(tagged, settings.PostsPerPage);
 			StagePageFolderRedirect(context, tag.Route, tagPages.Count);
-			string title = $"Posts tagged \"{tag.Name}\"";
+			string title = text.Format("blog.taggedTitle", ("tag", tag.Name));
 			for (int n = 1; n <= tagPages.Count; n++)
 			{
-				string html = BlogHtml.ListPage(title, BlogHtml.TagLead(tag.Count, tagsRoute), tagPages[n - 1],
-					showAuthors, Pager(tag.Route, n, tagPages.Count), "No posts yet.");
-				Add(ListingPage(PageRoute(tag.Route, n), n == 1 ? title : $"{title} (page {n})",
-					$"Posts tagged {tag.Name} in {settings.Title}", html, tagged[0].Date));
+				string html = BlogHtml.ListPage(title, BlogHtml.TagLead(tag.Count, tagsRoute, text), tagPages[n - 1],
+					showAuthors, Pager(tag.Route, n, tagPages.Count), text);
+				Add(ListingPage(PageRoute(tag.Route, n), n == 1 ? title : PageTitle(text, title, n),
+					text.Format("blog.taggedDescription", ("tag", tag.Name), ("blog", settings.Title)), html, tagged[0].Date));
 			}
 		}
 
@@ -338,15 +340,20 @@ public sealed class BlogPhase(ILogger<BlogPhase> logger) : IBuildPhase
 
 		string basePath = context.Config.Build.BasePath == "/" ? "" : context.Config.Build.BasePath;
 		string target = WebUtility.HtmlEncode(basePath + firstPage + "/");
+		ThemeText text = ThemeText.For(context.Config);
+		string link = $"<a href=\"{target}\">{target}</a>";
 		string html = $"""
 		               <!DOCTYPE html>
-		               <html>
+		               {OutputPhase.HtmlStart(context.Config, text)}
 		               <head><meta http-equiv="refresh" content="0; url={target}"><link rel="canonical" href="{target}"></head>
-		               <body><p>Redirecting to <a href="{target}">{target}</a>...</p></body>
+		               <body><p>{WebUtility.HtmlEncode(text["redirect.page"]).Replace("{link}", link, StringComparison.Ordinal)}</p></body>
 		               </html>
 		               """;
 		context.DeferredOutputFiles[$"{firstPage.TrimStart('/')}/page/index.html"] = Encoding.UTF8.GetBytes(html);
 	}
+
+	private static string PageTitle(ThemeText text, string title, int page) =>
+		text.Format("blog.pageTitle", ("title", title), ("page", page.ToString(CultureInfo.InvariantCulture)));
 
 	private static BlogHtml.Pager? Pager(string firstPage, int page, int pageCount) =>
 		pageCount > 1

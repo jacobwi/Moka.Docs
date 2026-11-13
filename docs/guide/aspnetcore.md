@@ -73,6 +73,8 @@ builder.Services.AddMokaDocs(options =>
 | `Description` | `string` | `""` | Site description. Used as the meta description of pages that don't set their own. |
 | `LogoUrl` | `string?` | `null` | Logo image URL, written into the page as given. When `null`, the header shows a default book icon. |
 | `FaviconUrl` | `string?` | `null` | Favicon URL, written into the page as given. |
+| `SiteUrl` | `string?` | `null` | The URL readers reach the app at, such as `"https://contoso.com"`, like [`site.url`](/configuration/site-config#url). When set, pages get a canonical link and link preview tags, and `llms.txt` links are absolute (see [Link Previews](#link-previews)). |
+| `SocialImage` | `string?` | `null` | The picture link previews show for pages without a front matter [`image`](/configuration/front-matter#image), like [`site.image`](/configuration/site-config#image): a file under `DocsPath` or an absolute URL. Needs `SiteUrl` (see [Link Previews](#link-previews)). |
 | `DocsPath` | `string?` | `null` | Folder of Markdown pages. A relative path resolves from the application's content root. When `null`, only API reference pages are built. |
 | `Assemblies` | `List<Assembly>` | `[]` | Assemblies to document. When it's empty, `AddMokaDocs()` adds the assembly that called it. |
 | `IncludeXmlDocs` | `bool` | `true` | Whether to read XML documentation: the `.xml` file next to each assembly's DLL, and the files in `XmlDocFiles`. |
@@ -81,31 +83,46 @@ builder.Services.AddMokaDocs(options =>
 | `ExcludeNamespaces` | `List<string>` | `[]` | Namespaces to leave out, each with the namespaces below it. Wins over `IncludeNamespaces`. |
 | `SourceLinks` | `bool` | `true` | Whether type pages link to the type's source in its repository, from the SourceLink data in the assembly's PDB (see View Source). |
 | `IncludeSourceCode` | `bool` | `false` | Whether type pages show the type's declaration, method bodies included, in a View Source section (see View Source). |
+| `Language` | `string` | `"en"` | The language of the pages, a tag such as `"de"` or `"pt-BR"`, like [`site.language`](/guide/languages#site.language): `<html lang>`, the theme's built-in translation, plural forms and dates (see [Languages](#languages)). |
+| `Direction` | `string?` | `null` | `"ltr"` or `"rtl"`, like [`site.direction`](/guide/languages#site.direction). `null` follows `Language`: right to left for Arabic, Hebrew, Persian, Urdu and a few more. |
+| `Strings` | `Dictionary<string, string>` | `{}` | Your own wording for the theme's text, by key, like [`theme.options.strings`](/guide/languages#theme.options.strings). An unknown key logs a warning. |
 | `PrimaryColor` | `string` | `"#0ea5e9"` | Primary theme color as a CSS hex value. |
 | `AccentColor` | `string` | `"#f59e0b"` | Sets the `--color-accent` CSS variable. |
+| `Preset` | `string?` | `null` | A theme preset: `"reference"`, `"terminal"`, `"book"`, `"product"`, `"minimal"`, `"accessible"` or `"moka"`. It fills in the theme options still at their default value (see [Theme Presets](#theme-presets)). An unknown name applies nothing and logs a warning. |
 | `Style` | `string` | `"default"` | The look pages start with: `"default"`, `"moka"`, `"minimal"`, `"classic"` or `"soft"` (see Theme Styles). An unknown name renders as `"default"` and logs a warning. |
-| `StyleSelector` | `bool` | `true` | Shows the header button that lets readers pick another style. When `false`, every page uses `Style`. |
-| `Layout` | `MokaDocsLayoutOptions` | every part `"default"` | Layout variants for the page width, top bar, footer, "On this page" panel, breadcrumbs and previous/next links (see Page Layout). An unknown name renders as `"default"` and logs a warning. |
+| `StyleSelector` | `bool` | `true` | Shows the Style section of the Appearance panel, where readers pick another style. When `false`, every page uses `Style`. |
+| `TextSizeSelector` | `bool` | `true` | Shows the Text size section of the Appearance panel (90% to 125%), like [`theme.options.textSizeSelector`](/configuration/site-config#options.textsizeselector). |
+| `WidthSelector` | `bool` | `true` | Shows the Reading width section of the Appearance panel (narrow, default, wide, wider or full), like [`theme.options.widthSelector`](/configuration/site-config#options.widthselector). |
+| `LayoutSelector` | `bool` | `false` | Adds a Layout section to the Appearance panel, where readers switch the layout variants of a docs page; `Layout` stays the default. Like [`theme.options.layoutSelector`](/configuration/site-config#options.layoutselector). |
+| `ImageZoom` | `bool` | `true` | Opens a content image full size when the reader clicks it, like [`theme.options.imageZoom`](/configuration/site-config#options.imagezoom). |
+| `Layout` | `MokaDocsLayoutOptions` | every part `"default"` | Layout variants for the page width, top bar, footer, "On this page" panel, breadcrumbs, previous/next links, sidebar, home page, landing hero, feature cards, admonitions, tables, spacing, typeface, headings and links (see Page Layout). An unknown name renders as `"default"` and logs a warning. |
 | `Sidebar` | `string` | `"auto"` | How pages get the sidebar: `"inline"` (all of it in every page), `"shared"` (written once to `{BasePath}/_theme/js/sidebar.js` and loaded by every page) or `"auto"` (inline up to 300 entries, shared above). See Sidebar Size. |
+| `SidebarToggle` | `bool` | `false` | Adds a button that hides and shows the sidebar on wide screens, like [`theme.options.sidebarToggle`](/configuration/site-config#options.sidebartoggle). |
 | `Version` | `string?` | `null` | Label of the version selector in the header, such as `"v2.0"`. When `null`, the header has no version selector. It isn't read from the app's assembly version, which is rarely the version of the library the docs describe. Pages with a front matter `version` range that leaves out this version aren't served. |
 | `EnableRepl` | `bool` | `false` | Adds a Run button to `csharp-repl` code blocks and, in Development, the endpoint that runs them (see Interactive REPL). |
-| `EnableBlazorPreview` | `bool` | `false` | Loads the Blazor preview plugin. Its options go in a `Plugins` entry (see Plugins). |
+| `EnableBlazorPreview` | `bool` | `false` | Loads the Blazor preview plugin. Its options go in a `Plugins` entry (see Plugins). Outside Development the plugin never publishes a preview host itself. |
 | `Plugins` | `List<PluginEntry>` | `[]` | Plugins to run, each with its options (see Plugins). |
 | `OpenApiDocument` | `string?` | `null` | Name of one of the app's OpenAPI documents, such as `"v1"`, to build REST API pages from (see REST API (OpenAPI)). When `null`, there are none. |
 | `OpenApiRoutePrefix` | `string` | `"/rest-api"` | Route of the REST API pages, below `BasePath`. Also the default `routePrefix` of `openapi` entries in `Plugins`. |
 | `OpenApiLabel` | `string` | `"REST API"` | Title of the REST API overview page and label of its sidebar entry. Also the default `label` of `openapi` entries in `Plugins`. |
 | `BasePath` | `string` | `"/docs"` | URL prefix the site is served under. The site is built with it, so every link and asset URL includes it. |
-| `CacheOutput` | `bool` | `true` | When `true`, the site is built once (see `BuildOnStartup`) and kept in memory. When `false`, every request rebuilds it. |
+| `PathBase` | `string?` | `null` | The app's path base, such as `"/shop"` for an IIS sub-application, `UsePathBase("/shop")` or a proxy that sends `X-Forwarded-Prefix`. Links start with `PathBase` followed by `BasePath` (see [Path Base](#path-base)). |
+| `CacheOutput` | `bool` | `true` | When `true`, the site is built once (see `BuildOnStartup`) and kept in memory. When `false`, every request rebuilds it and waits for its build. |
 | `Minify` | `bool` | `false` | Minifies the pages and the theme's CSS and JS, like [`build.minify`](/configuration/site-config#minify). |
-| `BuildOnStartup` | `bool` | `true` | Builds the site in the background as soon as the app has started, so the first reader doesn't wait for it. Ignored when `CacheOutput` is `false`. |
+| `Llms` | `bool` | `true` | Publishes a Markdown copy of each page next to its HTML, plus `llms.txt` and `llms-full.txt`, like [`build.llms`](/configuration/site-config#llms). Pages with a copy get a "Copy page" button. |
+| `BuildOnStartup` | `bool` | `true` | Builds the site in the background as soon as the app has started. Requests that arrive before it's done get `503` with `Retry-After`. When `false`, the first request starts the build. Ignored when `CacheOutput` is `false`. |
 | `WatchDocs` | `bool?` | `null` | Rebuilds the site when a file under `DocsPath` changes. `null` watches in Development only. Ignored when `CacheOutput` is `false`. |
 | `ShowFeedback` | `bool` | `true` | Shows the "Was this page helpful?" widget and maps the endpoint it posts to (see Feedback). |
 | `OnFeedback` | `Func<DocsFeedback, HttpContext, Task>?` | `null` | Called with each vote, so you can store it (see Feedback). |
+| `ConfigureFeedbackEndpoint` | `Action<IEndpointConventionBuilder>?` | `null` | Adds conventions, such as a rate limit, to the feedback endpoint alone (see [Endpoint Conventions](#endpoint-conventions)). |
+| `ConfigureReplEndpoint` | `Action<IEndpointConventionBuilder>?` | `null` | Adds conventions, such as authorization, to the REPL endpoint alone (see [Endpoint Conventions](#endpoint-conventions)). |
 | `AllowRemoteRepl` | `bool` | `false` | Maps the REPL endpoint outside Development and lets it run code for requests from other machines. Anyone who can reach it can run code on the server (see Interactive REPL). |
 | `ReplWorkerStartInfo` | `Func<ProcessStartInfo>?` | `null` | The command that starts the REPL worker process, for hosts where the default doesn't work (see Interactive REPL). |
 | `Copyright` | `string?` | `null` | Footer text. `{year}` is replaced with the current year. When `null`, the footer shows `© <current year> <Title>`. |
+| `Banner` | `MokaDocsBannerOptions?` | `null` | An announcement above the header of every page, like [`theme.options.banner`](/configuration/site-config#options.banner) (see [Announcement Banner](#announcement-banner)). When `null`, there is none. |
 | `Nav` | `List<NavEntry>` | `[]` | Sidebar entries. When empty, the sidebar gets the default entries described below. |
 | `Blog` | `MokaDocsBlogOptions?` | `null` | Builds the posts in a folder under `DocsPath` (`blog` by default) into a blog with an index, tag pages and a sidebar entry, without feeds (see [Blog](/guide/blog#in-the-asp.net-core-host)). When `null`, the folder's files are ordinary pages. |
+| `Glossary` | `Dictionary<string, string>` | `{}` | Glossary terms and their definitions, like [`glossary`](/configuration/site-config#glossary-section): `:term[API]` shows a definition and `:::glossary` lists them (see [Glossary](/guide/components#glossary)). A `glossary.yml` file at the root of `DocsPath` adds more. |
 
 ### Custom Navigation
 
@@ -419,7 +436,7 @@ builder.Services.AddMokaDocs(options =>
 
 ### Theme Styles
 
-`Style` picks the whole look of the pages, the same five styles as `theme.options.style` in `mokadocs.yaml` (see [Styles](/themes/customization#styles)): `default`, `moka` (dense and dark first), `minimal`, `classic` and `soft`. Readers can switch styles from the header, and their pick is saved in the browser. `StyleSelector = false` removes that button, so every reader gets `Style`.
+`Style` picks the whole look of the pages, the same ten styles as `theme.options.style` in `mokadocs.yaml` (see [Styles](/themes/customization#styles)): `default`, `moka` (dense and dark first), `minimal`, `classic`, `soft`, `terminal` (monospace and dark first), `paper`, `contrast`, `glass` and `brutal`. Readers can switch styles in the header's Appearance panel, and their pick is saved in the browser. `StyleSelector = false` removes the panel's Style section, so every reader gets `Style`.
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
@@ -431,7 +448,7 @@ builder.Services.AddMokaDocs(options =>
 
 ### Page Layout
 
-`Layout` has a property for each part of the page that `theme.options.layout` in `mokadocs.yaml` sets, with the same variants (see [`options.layout`](/configuration/site-config#options.layout)): `Width`, `Navbar`, `Footer`, `Toc`, `Breadcrumbs` and `PageNav`. Each starts as `"default"`. Readers can't switch layouts the way they switch styles.
+`Layout` has a property for each part of the page that `theme.options.layout` in `mokadocs.yaml` sets, with the same variants (see [`options.layout`](/configuration/site-config#options.layout)): `Width`, `Navbar`, `Footer`, `Toc`, `Breadcrumbs`, `PageNav`, `Sidebar`, `SidebarScope`, `Home`, `Hero`, `HeroBackground`, `Features`, `Admonitions`, `Tables`, `Density`, `Font`, `Headings` and `Links`. Each starts as `"default"`. Readers get these unless `LayoutSelector` is on, which lets them switch every part of a docs page but `Width`, `Home`, `Hero`, `HeroBackground` and `Features` in the Appearance panel.
 
 ```csharp
 builder.Services.AddMokaDocs(options =>
@@ -439,8 +456,58 @@ builder.Services.AddMokaDocs(options =>
     options.Layout.Width = "wide";
     options.Layout.Navbar = "tabs";
     options.Layout.Toc = "floating";
+    options.Layout.SidebarScope = "section";
+    options.Layout.Admonitions = "github";
+    options.Layout.Headings = "numbered";
 });
 ```
+
+### Theme Presets
+
+`Preset` applies one of the presets of `theme.options.preset` in `mokadocs.yaml` (see [Theme Presets](/themes/customization#theme-presets)): a style, layout variants and, for some, a color preset and a code theme.
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.Preset = "reference";
+    options.Layout.Footer = "minimal"; // wins over the preset's columns footer
+});
+```
+
+The options are plain properties, so the host can't tell one you never set from one you set to its default value. The preset fills in every option that is still at its default: `Layout.Footer = "default"` takes the preset's footer, as if it weren't set. To keep a default part, leave `Preset` unset and set the parts you want instead. Options the host has no property for, such as the code theme and the starting color preset, come from the preset as well.
+
+### Announcement Banner
+
+`Banner` shows a one-line announcement above the header of every page, like `theme.options.banner` (see [Announcement Banner](/themes/customization#announcement-banner)):
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.Banner = new MokaDocsBannerOptions
+    {
+        Text = "Version 2.0 is out",
+        Link = "/blog/2-0",
+        LinkText = "Read the release notes",
+        Variant = "accent" // "info" (default), "warning" or "accent"
+    };
+});
+```
+
+`Text` is plain text, and an empty one shows no banner. A `Link` that starts with `/` is a path from the site root and gets `PathBase` and `BasePath`, so the example above links to `/docs/blog/2-0`. `Id` decides when a reader who closed the banner sees it again: without it, changing `Text` or `Link` shows it again. `Dismissible = false` removes the close button.
+
+### Languages
+
+`Language` puts the theme's text in another language and sets `<html lang>`; `Strings` changes any text; `Direction` writes the pages right to left. They work like `site.language`, `theme.options.strings` and `site.direction` in mokadocs.yaml (see [Languages](/guide/languages)):
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.Language = "de";
+    options.Strings["toc.title"] = "Inhalt";
+});
+```
+
+The page the app shows while the first build runs is in that language too. The API section of the default sidebar is named like the API index page (`api.title`), and the other default sidebar labels ("Guide", the blog's title) stay as they are; set `Nav` to name them yourself.
 
 ### Branding
 
@@ -457,6 +524,23 @@ builder.Services.AddMokaDocs(options =>
 ```
 
 `LogoUrl` and `FaviconUrl` are written into the page exactly as given, and `BasePath` isn't added to them. A root-relative URL such as `/images/logo.svg` points at your application's own static files, so place the images in `wwwroot` and call `app.UseStaticFiles()`. Absolute URLs work too.
+
+### Link Previews
+
+Chat apps and social networks show a card for a shared link when the page has Open Graph and Twitter tags. Those tags need absolute URLs, and the app can't tell from a request which URL readers use, so the host writes them only when `SiteUrl` names it:
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.DocsPath = "Docs";
+    options.SiteUrl = "https://contoso.com";
+    options.SocialImage = "images/social-card.png";
+});
+```
+
+With `SiteUrl` set, every page gets a canonical link and `og:` and `twitter:` tags, and the links in `llms.txt` are absolute. `PathBase` and `BasePath` are added to it unless it already ends with them, so the page at `/docs/guide/intro` gets `https://contoso.com/docs/guide/intro/` as its canonical URL.
+
+`SocialImage` is the picture for pages that don't set a front matter `image`. A path is a file under `DocsPath`, published at the same place in the site: `Docs/images/social-card.png` above becomes `https://contoso.com/docs/images/social-card.png`. A file outside `DocsPath` isn't published, and the build logs a warning. For an image the app serves itself, give its absolute URL.
 
 ### Plugins
 
@@ -514,7 +598,7 @@ Notes on the built-in plugins in this host:
   ];
   ```
 
-  When the preview host's publish output is missing or older than its sources, the plugin runs `dotnet publish` during the build, which needs the .NET SDK on the machine serving the docs. The published host is served from memory under `{BasePath}/_preview-wasm/`.
+  In Development, when the preview host's publish output is missing or older than its sources, the plugin runs `dotnet publish` during the build, which needs the .NET SDK on the machine serving the docs. In every other environment the host passes the plugin `publishHost: false`: it never scaffolds a preview host or runs `dotnet publish` inside the running app. It uses a preview host published beforehand, for example as a step of the app's own build, and without one it logs a warning and the pages show the components' static snapshots. To publish anyway, set `["publishHost"] = true` in the entry. The published host is read once per change to its files and served from memory under `{BasePath}/_preview-wasm/`.
 - **REPL.** `EnableRepl` loads the plugin, which adds a Run button to `csharp-repl` code blocks. Running the code takes one more line in `Program.cs`; see [Interactive REPL](#interactive-repl) below.
 
 ## Endpoint Mapping
@@ -542,15 +626,92 @@ app.MapMokaDocs("/");
 
 At the root, the catch-all route answers every GET and HEAD request that no other endpoint matches, with the docs' 404 page when the site has no such file. `UseStaticFiles()` skips a request once routing has picked an endpoint for it, so call `app.UseStaticFiles()` before `app.UseRouting()` if the app also serves files from `wwwroot`.
 
-`MapMokaDocs()` returns the group, so endpoint conventions such as `RequireAuthorization` chain onto it and cover every docs route (see [Security](#security)).
+`MapMokaDocs()` returns the group, so endpoint conventions such as `RequireAuthorization` chain onto it and cover every docs route (see [Security](#security)). For the feedback or REPL endpoint alone, see [Endpoint Conventions](#endpoint-conventions).
 
-Search works under the base path: the page script loads `{BasePath}/search-index.json`, and result links include the base path.
+Search works under the base path: the page script loads `{BasePath}/search-index.json` (with a `?v=` hash of the file), and result links include the base path.
 
 For each request, the handler looks for an exact file match first, then tries appending `/index.html`, and then `.html`. A path with no match gets status 404 and the site's `404.html` page.
 
-Every file is served with a strong `ETag` computed from its content and `Cache-Control: no-cache`. A request whose `If-None-Match` header names the tag gets `304 Not Modified` with no body, and an unchanged file keeps its `ETag` across rebuilds, so a browser checks each file on each visit for the cost of a `304` and sees a rebuilt page, or the theme of a new MokaDocs version, right away. No URL carries a hash of its content, so nothing is cached for a fixed time.
-
 Each file's content type comes from its extension: UTF-8 text types for HTML, CSS, JavaScript, JSON, text and YAML, `application/wasm` for WebAssembly, and ASP.NET Core's static file map for the rest, such as PDF, MP4, WebM, AVIF and `.webmanifest`.
+
+### Compression
+
+Each build compresses the files worth compressing once, with Brotli and gzip at the optimal level: HTML, CSS, JavaScript, JSON, XML, SVG, text, Markdown and WebAssembly files of 1 KB or more. A rebuild reuses the compressed forms of files that didn't change. A request gets the form its `Accept-Encoding` header ranks highest, Brotli first when two rank the same, with a `Content-Encoding` header; a coding the header gives `q=0` is never sent, and without the header the file goes out as it is. Every file that has compressed forms is sent with `Vary: Accept-Encoding`, whichever form the request gets, so a shared cache keeps them apart. Images, fonts, video and archives are compressed already and go out as they are.
+
+The Blazor preview host's `.br` and `.gz` files serve as the Brotli and gzip forms of the file they sit next to, once the build has checked that they decompress to it. They aren't served at URLs of their own.
+
+The files hold no per-request data, so compressing them over HTTPS doesn't open the door to BREACH, which needs a secret and attacker-controlled text in the same response. An app that calls `UseResponseCompression()` for its own endpoints doesn't compress the docs twice: the middleware skips a response that already has a `Content-Encoding`.
+
+### Cache Headers
+
+Every response has a strong `ETag`. A compressed form has a tag of its own, computed from its bytes, so a tag names exactly what the client holds. A request whose `If-None-Match` names the tag of the form it would get receives `304 Not Modified` with no body. An unchanged file keeps its tags across rebuilds.
+
+`Cache-Control` depends on whether the URL names the content:
+
+| URL | `Cache-Control` |
+|---|---|
+| A `?v=` that matches the file's content hash: the theme's CSS, JavaScript and icon sprite, the shared sidebar script, `search-index.json` as pages request it | `public, max-age=31536000, immutable` |
+| `{BasePath}/_preview-wasm/_framework/` files with a fingerprint in the name, such as `dotnet.native.3bptkeu1pi.wasm` | `public, max-age=31536000, immutable` |
+| `{BasePath}/_preview-assemblies/{hash}.bin`, named after the SHA-256 hash of its bytes | `public, max-age=31536000, immutable` |
+| Everything else: pages, `search-index.json` without its `?v=`, the preview host's `index.html`, `dotnet.js` and an unfingerprinted `blazor.webassembly.js`, images, and a `?v=` that doesn't match | `no-cache` |
+
+A browser keeps the first kind for a year without asking again: a rebuild that changes the file changes its URL too. It revalidates the rest on each use for the cost of a `304`, so a rebuilt page, or the theme of a new MokaDocs version, shows up right away. When the request is authenticated, `public` becomes `private`, so a shared cache doesn't keep docs that only signed-in readers may see.
+
+### Response Headers
+
+Every docs response has `X-Content-Type-Options: nosniff`. Files under `{BasePath}/_preview-wasm/`, the Blazor preview host the pages load in an iframe, also get `Content-Security-Policy: frame-ancestors 'self'`, so only pages of the same origin can frame it, and `Cross-Origin-Opener-Policy: same-origin`. The rest of the preview host's policy, with the hashes of its inline scripts, is in a meta tag in its `index.html`; a `script-src` in the header would have to allow the same hashes, so the header leaves it out.
+
+Range requests aren't supported: a request with a `Range` header gets the whole file.
+
+### Path Base
+
+The site is built once and kept in memory, so its links can't follow the path base of each request. When the app isn't at the root of its host, set `PathBase` to the part of the URL in front of the app's routes, the same value that ends up in `HttpRequest.PathBase`:
+
+- an IIS sub-application at `/shop`
+- `app.UsePathBase("/shop")` in front of `UseRouting()`
+- a reverse proxy that forwards `/shop/...` with `X-Forwarded-Prefix: /shop`, applied by `UseForwardedHeaders()` with `ForwardedHeaders.XForwardedPrefix`
+
+```csharp
+builder.Services.AddMokaDocs(options =>
+{
+    options.PathBase = "/shop";
+});
+
+var app = builder.Build();
+app.UsePathBase("/shop");
+app.UseRouting();
+app.MapMokaDocs();
+```
+
+Links, styles, scripts and search results then start with `/shop/docs`. A request that arrives with a different path base, or with none when `PathBase` is set, is still served, but the pages it gets load without styles or working links. The first such request for each path base logs a warning that names it.
+
+### Endpoint Conventions
+
+Conventions on the group `MapMokaDocs()` returns apply to every docs route. To limit the feedback or REPL endpoint alone, set `ConfigureFeedbackEndpoint` or `ConfigureReplEndpoint`. `MapMokaDocs()` calls them with each endpoint it maps:
+
+```csharp
+builder.Services.AddRateLimiter(limiter =>
+{
+    limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    limiter.AddFixedWindowLimiter("votes", window =>
+    {
+        window.PermitLimit = 10;
+        window.Window = TimeSpan.FromMinutes(1);
+    });
+});
+
+builder.Services.AddMokaDocs(options =>
+{
+    options.ConfigureFeedbackEndpoint = endpoint => endpoint.RequireRateLimiting("votes");
+    options.ConfigureReplEndpoint = endpoint => endpoint.RequireAuthorization("Admins");
+});
+
+var app = builder.Build();
+app.UseRateLimiter();
+app.MapMokaDocs();
+```
+
+`ConfigureReplEndpoint` isn't called when the REPL endpoint isn't mapped, and `ConfigureFeedbackEndpoint` isn't called when `ShowFeedback` is `false`. With `UseRouting()` in the app, call `UseRateLimiter()` after it.
 
 ## Feedback
 
@@ -643,19 +804,21 @@ var app = builder.Build();
 app.MapMokaDocs().RequireAuthorization("Admins");
 ```
 
+To keep the pages open to everyone and put only the REPL behind authorization, set `options.ConfigureReplEndpoint = endpoint => endpoint.RequireAuthorization("Admins")` instead (see [Endpoint Conventions](#endpoint-conventions)).
+
 The worker process isolates hangs and crashes. It is not a sandbox: a snippet can read and write the same files, secrets and network as the app.
 
 ## Production Considerations
 
 ### Caching
 
-By default, `CacheOutput` is `true` and the site is built in the background as soon as the app has started (`BuildOnStartup`). The build starts from `IHostApplicationLifetime.ApplicationStarted`, after every endpoint is mapped. Requests that arrive before it finishes wait for it instead of starting builds of their own. Every file is kept in memory as a byte array, and later requests are served from memory without touching the disk.
+By default, `CacheOutput` is `true` and the site is built in the background as soon as the app has started (`BuildOnStartup`). The build starts from `IHostApplicationLifetime.ApplicationStarted`, after every endpoint is mapped. Every file is kept in memory as a byte array, with its compressed forms, and later requests are served from memory without touching the disk.
 
-A build that fails, at startup or later, is logged once. Requests then get the last site that built, or `503` with a `Retry-After` header when no build has succeeded yet, and none of them builds again for the next 5 seconds; after that, the next request tries again. With `BuildOnStartup = false`, the first request builds the site. An app that calls `AddMokaDocs()` but never `MapMokaDocs()`, for example one that maps the docs in Development only, builds nothing at startup.
+Docs requests never wait for a build. One that arrives before the first build is done gets `503 Service Unavailable` with `Retry-After: 2` and `Cache-Control: no-store`. A browser gets a short page that reloads itself after two seconds; other clients get a line of text. With `BuildOnStartup = false`, the first request starts the build in the background and gets the same answer. Requests that arrive during the build don't start builds of their own. An app that calls `AddMokaDocs()` but never `MapMokaDocs()`, for example one that maps the docs in Development only, builds nothing at startup.
 
-Requests that arrive during a build share it. A reader who leaves stops waiting, and the build carries on for the others.
+A build that fails, at startup or later, is logged once. Requests then get the last site that built, or `503` with a `Retry-After` header when no build has succeeded yet, and none of them builds again for the next 5 seconds; after that, the next request tries again.
 
-To rebuild while the app runs, resolve `MokaDocsService` from DI. `RebuildAsync()` builds a new site while requests keep getting the current one, then swaps it in. `InvalidateCache()` drops the site, and the next request waits for a build; when that build fails, requests get the site from before. `GetSiteAsync()` throws `InvalidOperationException` when the build fails and no earlier build succeeded:
+To rebuild while the app runs, resolve `MokaDocsService` from DI. `RebuildAsync()` builds a new site while requests keep getting the current one, then swaps it in. `InvalidateCache()` drops the site; the next request starts a build and, like the requests after it, gets the site from before until the build is done, or when it fails. `GetSiteAsync()` waits for a build when there is no site. Callers that arrive during a build share it, and one that stops waiting doesn't stop the build for the others. It throws `InvalidOperationException` when the build fails and no earlier build succeeded:
 
 ```csharp
 app.MapPost("/admin/refresh-docs", async (MokaDocsService docsService) =>
@@ -683,11 +846,13 @@ builder.Services.AddMokaDocs(options =>
 
 API pages come from reflection over the assemblies loaded in the running app, so code changes show up only after a restart.
 
-`CacheOutput = false` still rebuilds the site on every request. Nothing is built at startup or watched then.
+`CacheOutput = false` still rebuilds the site on every request, and each request waits for its build. Nothing is built at startup or watched then.
 
 ### Performance
 
-Once the site is built, serving a page is a dictionary lookup followed by writing the stored bytes to the response. With `CacheOutput = false`, every request runs a full build, so keep caching on in production.
+Once the site is built, serving a page is a dictionary lookup followed by writing the stored bytes, or their compressed form, to the response. Nothing is compressed while a request waits. With `CacheOutput = false`, every request runs a full build, so keep caching on in production.
+
+A Blazor preview host is hundreds of files and tens of megabytes. The build reads it once, and a rebuild reuses those files until a file in the published folder is added, removed or rewritten.
 
 ### Security
 
@@ -697,7 +862,7 @@ Once the site is built, serving a page is a dictionary lookup followed by writin
 app.MapMokaDocs().RequireAuthorization("InternalOnly");
 ```
 
-The `InternalOnly` policy has to be registered with `AddAuthorization`. Other endpoint conventions go on the group the same way. A group that the docs are mapped into works too: `app.MapGroup("").RequireAuthorization("InternalOnly").MapMokaDocs()`.
+The `InternalOnly` policy has to be registered with `AddAuthorization`. Other endpoint conventions go on the group the same way. A group that the docs are mapped into works too: `app.MapGroup("").RequireAuthorization("InternalOnly").MapMokaDocs()`. For conventions on the feedback or REPL endpoint alone, such as a rate limit on votes, see [Endpoint Conventions](#endpoint-conventions).
 
 The feedback and REPL endpoints accept a POST only from the docs' own pages, or from a client that isn't a browser:
 

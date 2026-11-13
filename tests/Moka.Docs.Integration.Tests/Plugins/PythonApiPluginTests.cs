@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Moka.Docs.Cli.Commands;
 using Moka.Docs.Core.Configuration;
@@ -88,6 +89,12 @@ public sealed class PythonApiPluginTests : IDisposable
 		return outcome.Context.Pages;
 	}
 
+	private static string Article(string html)
+	{
+		string body = html[html.IndexOf("<article", StringComparison.Ordinal)..];
+		return body[..body.IndexOf("</article>", StringComparison.Ordinal)];
+	}
+
 	private static PluginDeclaration Declaration(params (string Key, object Value)[] options) => new()
 	{
 		Name = "mokadocs-python-api",
@@ -106,6 +113,24 @@ public sealed class PythonApiPluginTests : IDisposable
 		pages.Should().Contain(p => p.Route == "/python-api/calc" && p.FrontMatter.Title == "calc");
 		pages.Should().Contain(p => p.Route == "/python-api/calc/calc" && p.FrontMatter.Title == "Calc");
 		pages.GroupBy(p => p.Route, StringComparer.OrdinalIgnoreCase).Should().OnlyContain(g => g.Count() == 1);
+	}
+
+	[Fact]
+	public async Task Pages_AreLabelledAndHighlightedAsPython()
+	{
+		// Declarations, signatures and View Source were labelled and highlighted as C#.
+		Assert.SkipUnless(_pythonAvailable.Value, "python3 is not on PATH");
+
+		List<DocPage> pages = await BuildAsync(Declaration(("source", "./src")));
+
+		string calc = Article(pages.Single(p => p.Route == "/python-api/calc/calc").Content.Html);
+		calc.Should().NotContain("language-csharp").And.NotContain("data-lang=\"csharp\"");
+		calc.Should().Contain("<div class=\"code-block\" data-lang=\"python\">")
+			.And.Contain("<span class=\"line\"><span class=\"token keyword\">class</span> Calc:</span>")
+			.And.Contain("<span class=\"token keyword\">def</span> add(<span class=\"token keyword\">self</span>, a: int, b: int) -&gt; int</span>");
+		Article(pages.Single(p => p.Route == "/python-api/calc").Content.Html)
+			.Should().Contain("<span class=\"line\"><span class=\"token keyword\">import</span> calc</span>")
+			.And.NotContain("language-csharp");
 	}
 
 	[Fact]
@@ -249,10 +274,11 @@ public sealed class PythonApiPluginTests : IDisposable
 		string body = html[html.IndexOf("<article", StringComparison.Ordinal)..];
 		body = body[..body.IndexOf("</article>", StringComparison.Ordinal)];
 		body.Should().Contain("a &lt; b &lt;b&gt;really&lt;/b&gt;").And.NotContain("<b>really</b>");
-		body.Should().Contain("<pre><code class=\"language-python\">&gt;&gt;&gt; Shape().area()\n0</code></pre>");
+		body.Should().Contain("<span class=\"line\">&gt;&gt;&gt; Shape().area()</span>\n<span class=\"line\"><span class=\"token number\">0</span></span></code></pre>");
 
 		// View Source keeps the method indented under the class.
-		body.Should().Contain("class Shape:\n");
-		body.Should().Contain("\n    def area(self) -&gt; int:");
+		string source = Regex.Replace(body, "<span class=\"(?:line|token [a-z-]+)\">|</span>", "");
+		source.Should().Contain("class Shape:\n");
+		source.Should().Contain("\n    def area(self) -&gt; int:");
 	}
 }

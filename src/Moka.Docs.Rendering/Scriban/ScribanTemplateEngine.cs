@@ -20,8 +20,21 @@ namespace Moka.Docs.Rendering.Scriban;
 /// </summary>
 public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 {
+	/// <summary>
+	///     The English title of the page <see cref="RenderNotFoundPage" /> renders. The page itself uses the
+	///     site's <c>notFound.title</c> text.
+	/// </summary>
+	public const string NotFoundTitle = "Page not found";
+
+	/// <summary>
+	///     The route the not-found page renders with. It is the page's own file, so the version
+	///     menu's link to "this page" still leads somewhere.
+	/// </summary>
+	public const string NotFoundRoute = "/404.html";
+
 	private const int _footerColumnLimit = 4;
 	private const int _footerLinkLimit = 6;
+	private const int _homeSectionLinkLimit = 5;
 	private const int _outputLimit = 64 * 1024 * 1024;
 
 	private static readonly string _mokaVersion = ReadMokaVersion();
@@ -59,6 +72,63 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		ArgumentNullException.ThrowIfNull(page);
 		ArgumentNullException.ThrowIfNull(themeContext);
 
+		return Render(page, themeContext, false, cancellationToken);
+	}
+
+	/// <summary>
+	///     Renders the page a host shows for an address that has no page (<c>404.html</c>) with the
+	///     theme's default layout, so it looks like the rest of the site: the same style, dark mode,
+	///     colors, favicon and layout variants.
+	/// </summary>
+	/// <remarks>
+	///     The page is served at whatever address was missing, so every link in it is root-relative
+	///     with the base path. It tells search engines not to index it (<c>page.noindex</c>), names no
+	///     canonical URL, and leaves out breadcrumbs, prev/next links and the feedback widget.
+	/// </remarks>
+	/// <param name="themeContext">The theme rendering context with templates, config, nav, etc.</param>
+	/// <param name="cancellationToken">Cancels the render.</param>
+	/// <returns>The fully rendered HTML string.</returns>
+	/// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+	/// <exception cref="InvalidOperationException">The layout is missing, has errors, failed or timed out.</exception>
+	public string RenderNotFoundPage(ThemeRenderContext themeContext, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(themeContext);
+
+		bool search = themeContext.Config.Features.Search.Enabled && themeContext.Config.Theme.Options.ShowSearch;
+		ThemeText text = themeContext.Text;
+		string home = $"""<a href="/">{WebUtility.HtmlEncode(text["notFound.home"])}</a>""";
+		string links = search
+			? WebUtility.HtmlEncode(text["notFound.links"]).Replace("{home}", home, StringComparison.Ordinal).Replace("{search}",
+				$"""<a href="#search" data-open-search>{WebUtility.HtmlEncode(text["notFound.search"])}</a>""", StringComparison.Ordinal)
+			: WebUtility.HtmlEncode(text["notFound.linksNoSearch"]).Replace("{home}", home, StringComparison.Ordinal);
+		string title = text["notFound.title"];
+		var page = new DocPage
+		{
+			FrontMatter = new FrontMatter
+			{
+				Title = title,
+				Layout = "default",
+				Toc = false,
+				Visibility = PageVisibility.Hidden
+			},
+			Content = new PageContent
+			{
+				Html = $"""
+				        <h1>{WebUtility.HtmlEncode(title)}</h1>
+				        <p>{WebUtility.HtmlEncode(text["notFound.text"])}</p>
+				        <p>{links}</p>
+
+				        """
+			},
+			Route = NotFoundRoute
+		};
+
+		return Render(page, themeContext, true, cancellationToken);
+	}
+
+	private string Render(DocPage page, ThemeRenderContext themeContext, bool notFound,
+		CancellationToken cancellationToken)
+	{
 		string layoutName = page.FrontMatter.Layout;
 		string templateContent = themeContext.GetTemplate(layoutName)
 		                         ?? themeContext.GetTemplate("default")
@@ -76,7 +146,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 				$"Layout '{layoutName}' has errors: {string.Join("; ", template.Messages.Select(m => m.ToString()))}");
 		}
 
-		ScriptObject scriptObject = BuildScriptObject(page, themeContext);
+		ScriptObject scriptObject = BuildScriptObject(page, themeContext, notFound);
 
 		// AutoIndent prefixed every line of {{ content }} with the template's indentation, which
 		// shifted code inside <pre>. A pass that stripped the common indent of <pre> blocks
@@ -144,7 +214,9 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		string bp = themeContext.Config.Build.BasePath;
 		var scriptObject = new ScriptObject();
 		scriptObject.SetValue("base_path", bp == "/" ? "" : bp, false);
-		scriptObject.SetValue("nav", BuildNavObject(themeContext.Navigation, null, themeContext.Index, bp, false), false);
+		scriptObject.SetValue("t", themeContext.TextObject, false);
+		scriptObject.SetValue("nav",
+			BuildNavObject(themeContext.Navigation, null, themeContext.Index, bp, false, IconSpriteUrl(themeContext, bp)), false);
 
 		using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		budget.CancelAfter(RenderTimeout);
@@ -186,6 +258,32 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		logger.LogDebug("Parsed layout template '{Name}' ({Count} parser messages)", name, template.Messages.Count);
 		_templateCache[name] = template;
 		return template;
+	}
+
+	/// <summary>
+	///     The name a template reads a text by in <c>t</c>: the key in snake case, with dots and hyphens as
+	///     underscores. <c>toc.title</c> is <c>t.toc_title</c>, <c>a11y.skipToContent</c> is
+	///     <c>t.a11y_skip_to_content</c>.
+	/// </summary>
+	/// <param name="key">A key of <see cref="ThemeStrings.All" />.</param>
+	/// <returns>The variable name.</returns>
+	public static string TextVariableName(string key)
+	{
+		ArgumentNullException.ThrowIfNull(key);
+		return string.Concat(key.Select(c => c is '.' or '-' ? "_" : char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : c.ToString()));
+	}
+
+	// One read-only object per render context, shared by every page.
+	internal static ScriptObject BuildTextObject(ThemeText text)
+	{
+		var obj = new ScriptObject();
+		foreach ((string key, string value) in text.Strings)
+		{
+			obj.SetValue(TextVariableName(key), value, true);
+		}
+
+		obj.IsReadOnly = true;
+		return obj;
 	}
 
 	private static string PrefixRoute(string route, string basePath)
@@ -251,13 +349,63 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return basePath + asset.PublishUrl;
 	}
 
-	private static ScriptObject BuildScriptObject(DocPage page, ThemeRenderContext ctx)
+	/// <summary>
+	///     The absolute URL of <c>site.image</c> for link previews, or an empty string when there is
+	///     none, its file wasn't found, or it can't be made absolute (no <c>site.url</c>).
+	/// </summary>
+	private static string SiteImageUrl(ThemeRenderContext ctx, string basePath)
+	{
+		if (ctx.Config.Site.Image is not { } image
+		    || (image.ShouldCopy && ctx.BrandAssetFiles is not null && !ctx.BrandAssetFiles.ContainsKey(image.PublishUrl)))
+		{
+			return "";
+		}
+
+		return AbsoluteImageUrl(image.PublishUrl, ctx.Config.Site.Url, basePath) ?? "";
+	}
+
+	/// <summary>
+	///     An image URL that link previews can load: http and https URLs as written, a protocol-relative
+	///     one with https, and a path from the site root under <c>site.url</c> and the base path.
+	///     <c>null</c> for none, another scheme (a <c>data:</c> URI), or a path without <c>site.url</c>.
+	/// </summary>
+	/// <remarks>
+	///     Front matter images are already resolved from the page's folder by the time a page renders.
+	/// </remarks>
+	private static string? AbsoluteImageUrl(string? image, string siteUrl, string basePath)
+	{
+		if (string.IsNullOrWhiteSpace(image))
+		{
+			return null;
+		}
+
+		string value = image.Trim();
+		if (value.StartsWith("//", StringComparison.Ordinal))
+		{
+			return "https:" + value;
+		}
+
+		// Checked for a leading slash first: on Linux and macOS "/img.png" parses as an absolute file URI.
+		if (!value.StartsWith('/') && Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) && uri.Scheme.Length > 1)
+		{
+			return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps ? value : null;
+		}
+
+		string url = SiteUrls.AbsoluteFile(siteUrl, basePath, "/" + Uri.UnescapeDataString(value.TrimStart('/')));
+		return url.Length > 0 ? url : null;
+	}
+
+	private static ScriptObject BuildScriptObject(DocPage page, ThemeRenderContext ctx, bool notFound)
 	{
 		var so = new ScriptObject();
 		string bp = ctx.Config.Build.BasePath;
+		int tocDepth = ctx.Config.Theme.Options.TocDepth;
+		string siteImageUrl = SiteImageUrl(ctx, bp);
+		string sprite = IconSpriteUrl(ctx, bp);
 
 		// Base path for templates and JS
 		so.SetValue("base_path", bp == "/" ? "" : bp, false);
+		so.SetValue("t", ctx.TextObject, false);
 
 		#region Page Data
 
@@ -273,16 +421,24 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 					? ctx.Config.Site.Description
 					: page.FrontMatter.Description
 			},
-			{ "canonical_url", SiteUrls.Absolute(ctx.Config.Site.Url, bp, page.Route) },
+			// The not-found page is served at whatever address was missing, so it names no canonical URL.
+			{ "canonical_url", notFound ? "" : SiteUrls.Absolute(ctx.Config.Site.Url, bp, page.Route) },
+			{ "noindex", notFound },
+			{ "image_url", AbsoluteImageUrl(page.FrontMatter.Image, ctx.Config.Site.Url, bp) ?? siteImageUrl },
+			{
+				"markdown_url",
+				ctx.MarkdownUrls.TryGetValue(page.Route, out string? markdownUrl) ? PrefixRoute(markdownUrl, bp) : ""
+			},
 			// Compared before the base path is added: page.route is prefixed, so the NuGet
 			// widget's route check never matched on a site built with --base-path.
 			{ "is_api_index", page.Route == "/api" },
 			{ "content", ContentLinkRewriter.Rewrite(page.Content.Html, bp) },
 			{ "route", PrefixRoute(page.Route, bp) },
-			{ "toc", BuildTocObject(page.TableOfContents) },
+			{ "toc", BuildTocObject(page.TableOfContents.Entries, tocDepth) },
+			// One entry is no table of contents: 43 API pages showed a sidebar with a single link.
 			{
 				"show_toc",
-				page.FrontMatter.Toc && page.TableOfContents.Entries.Count > 0 &&
+				page.FrontMatter.Toc && CountTocEntries(page.TableOfContents.Entries, tocDepth) >= 2 &&
 				ctx.Config.Theme.Options.ShowTableOfContents
 			},
 			{ "tags", page.FrontMatter.Tags },
@@ -291,11 +447,22 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			// used in URLs (edit links), where Windows backslashes do not belong.
 			{ "source_path", page.SourcePath?.Replace('\\', '/') ?? "" },
 			{ "last_modified", page.LastModified?.ToString("yyyy-MM-dd") ?? "" },
+			{
+				"last_modified_display",
+				page.LastModified is { } modified ? ctx.Text.FormatDate(DateOnly.FromDateTime(modified.DateTime)) : ""
+			},
 			{ "contributors", BuildContributors(page.Contributors) },
 			{ "is_api", page.Origin == PageOrigin.ApiGenerated },
-			{ "features", BuildFeatures(page.FrontMatter.Features, bp) },
+			{ "features", BuildFeatures(page.FrontMatter.Features, bp, sprite) },
 			{ "features_title", page.FrontMatter.FeaturesTitle },
 			{ "features_subtitle", page.FrontMatter.FeaturesSubtitle },
+			{ "hero_code", CodeSampleHtml(page.FrontMatter.HeroCode, page.FrontMatter.HeroCodeLanguage, ctx) },
+			{ "hero_image", HeroImageUrl(page.FrontMatter.HeroImage, bp) },
+			{ "showcase_code", CodeSampleHtml(page.FrontMatter.ShowcaseCode, page.FrontMatter.ShowcaseCodeLanguage, ctx) },
+			{ "showcase_title", page.FrontMatter.ShowcaseTitle },
+			{ "showcase_text", page.FrontMatter.ShowcaseText },
+			{ "stats", BuildStats(page.FrontMatter.Stats) },
+			{ "cta", BuildCallToAction(page.FrontMatter.Cta, bp, ctx.Text) },
 			{ "is_blog_post", ctx.Blog?.FindPost(page.Route) is not null }
 		}, false);
 
@@ -325,10 +492,14 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "favicon", ctx.Config.Site.Favicon?.RawValue ?? "" },
 			{ "logo_url", ResolveBrandUrl(ctx.Config.Site.Logo, bp, ctx.BrandAssetFiles) },
 			{ "favicon_url", ResolveBrandUrl(ctx.Config.Site.Favicon, bp, ctx.BrandAssetFiles) },
+			{ "image_url", siteImageUrl },
 			// repo_url is used by the landing page "View on GitHub" button.
 			// Derived from editLink.repo when available; falls back to empty string
 			// which the template uses to hide the button entirely.
-			{ "repo_url", ctx.Config.Site.EditLink?.Repo ?? "" }
+			{ "repo_url", ctx.Config.Site.EditLink?.Repo ?? "" },
+			{ "language", ctx.Text.Language },
+			{ "direction", SiteLanguages.Direction(ctx.Text.Language, ctx.Config.Site.Direction) },
+			{ "og_locale", SiteLanguages.OpenGraphLocale(ctx.Text.Language) }
 		}, false);
 
 		#endregion
@@ -338,6 +509,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		so.SetValue("theme", new ScriptObject
 		{
 			{ "primary_color", ctx.Config.Theme.Options.PrimaryColor },
+			{ "primary_text", BuildPrimaryTextObject(ctx.Config.Theme.Options) },
 			{ "accent_color", ctx.Config.Theme.Options.AccentColor },
 			{ "code_theme", ctx.Config.Theme.Options.CodeTheme },
 			{ "show_edit_link", ctx.Config.Theme.Options.ShowEditLink },
@@ -349,32 +521,48 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "code_style_selector", ctx.Config.Theme.Options.CodeStyleSelector },
 			{ "style", ThemeStyles.Resolve(ctx.Config.Theme.Options.Style) },
 			{ "style_selector", ctx.Config.Theme.Options.StyleSelector },
+			{ "style_files", BuildStyleFiles(ctx.StyleVersions) },
+			{ "text_size_selector", ctx.Config.Theme.Options.TextSizeSelector },
+			{ "width_selector", ctx.Config.Theme.Options.WidthSelector },
+			{ "layout_selector", ctx.Config.Theme.Options.LayoutSelector },
+			{ "layout_parts", _layoutParts },
+			{ "style_options", _styleOptions },
+			{ "color_presets", _colorPresets },
+			{ "code_themes", _codeThemes },
+			{ "code_styles", _codeStyles },
 			{ "layout", BuildLayoutObject(ctx.Config.Theme.Options.Layout) },
-			{ "show_feedback", ctx.Config.Theme.Options.ShowFeedback },
+			{ "sidebar_toggle", ctx.Config.Theme.Options.SidebarToggle },
+			// The not-found page has no feedback, breadcrumbs or prev/next: there is no page to rate or place.
+			{ "show_feedback", ctx.Config.Theme.Options.ShowFeedback && !notFound },
 			{ "show_dark_mode_toggle", ctx.Config.Theme.Options.ShowDarkModeToggle },
 			{ "show_animations", ctx.Config.Theme.Options.ShowAnimations },
 			{ "show_search", ctx.Config.Theme.Options.ShowSearch },
 			{ "show_table_of_contents", ctx.Config.Theme.Options.ShowTableOfContents },
-			{ "show_prev_next", ctx.Config.Theme.Options.ShowPrevNext },
-			{ "show_breadcrumbs", ctx.Config.Theme.Options.ShowBreadcrumbs },
+			{ "show_prev_next", ctx.Config.Theme.Options.ShowPrevNext && !notFound },
+			{ "show_breadcrumbs", ctx.Config.Theme.Options.ShowBreadcrumbs && !notFound },
 			{ "show_back_to_top", ctx.Config.Theme.Options.ShowBackToTop },
 			{ "show_copy_button", ctx.Config.Theme.Options.ShowCopyButton },
 			{ "show_line_numbers", ctx.Config.Theme.Options.ShowLineNumbers },
+			{ "image_zoom", ctx.Config.Theme.Options.ImageZoom },
 			{ "toc_depth", ctx.Config.Theme.Options.TocDepth },
 			{ "show_version_selector", ctx.Config.Theme.Options.ShowVersionSelector },
 			{ "show_built_with", ctx.Config.Theme.Options.ShowBuiltWith },
-			{ "social_links", BuildSocialLinks(ctx.Config.Theme.Options.SocialLinks) },
+			{ "social_links", BuildSocialLinks(ctx.Config.Theme.Options.SocialLinks, sprite) },
 			{ "default_color_theme", ctx.Config.Theme.Options.DefaultColorTheme },
-			{ "initial_color_theme", InitialColorTheme(ctx.Config.Theme.Options) }
+			{ "initial_color_theme", InitialColorTheme(ctx.Config.Theme.Options) },
+			{ "banner", BuildBannerObject(ctx.Config.Theme.Options.Banner, bp, ctx.Text) }
 		}, false);
 
 		// The search button, dialog and shortcut need both an index and the option on.
 		so.SetValue("search_enabled",
 			ctx.Config.Features.Search.Enabled && ctx.Config.Theme.Options.ShowSearch, false);
+		so.SetValue("search_index_url",
+			string.IsNullOrEmpty(ctx.SearchIndexUrl) ? "" : PrefixRoute(ctx.SearchIndexUrl, bp), false);
 
 		#endregion
 
 		so.SetValue("mokadocs_version", _mokaVersion, false);
+		so.SetValue("icon_sprite", sprite, false);
 
 		// Edit link
 		// Generated pages (API, OpenAPI, Python) have no source file. They used to get an edit
@@ -391,17 +579,22 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		RenderIndex index = ctx.Index;
 		bool sharedSidebar = !string.IsNullOrEmpty(ctx.SidebarScriptUrl);
-		so.SetValue("nav", BuildNavObject(ctx.Navigation, page.Route, index, bp, sharedSidebar), false);
+		so.SetValue("nav", BuildNavObject(ctx.Navigation, page.Route, index, bp, sharedSidebar, sprite), false);
 		so.SetValue("sidebar_script", sharedSidebar ? PrefixRoute(ctx.SidebarScriptUrl!, bp) : "", false);
 
 		so.SetValue("breadcrumbs",
-			BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, index.PageRoutes, bp), false);
+			BuildBreadcrumbs(page.Route, page.FrontMatter.Title, ctx.Navigation, index, bp, ctx.Text["breadcrumbs.home"]), false);
 
+		// With the Layout section on, readers can switch to the tabs row and the link columns, so pages carry both.
 		ThemeLayoutOptions layout = ctx.Config.Theme.Options.Layout;
+		bool layoutSelector = ctx.Config.Theme.Options.LayoutSelector;
 		so.SetValue("layout_tabs",
-			ThemeLayouts.Navbar.Resolve(layout.Navbar) == "tabs" ? BuildLayoutTabs(index, page.Route, bp) : [], false);
+			layoutSelector || ThemeLayouts.Navbar.Resolve(layout.Navbar) == "tabs" ? BuildLayoutTabs(index, page.Route, bp) : [], false);
 		so.SetValue("footer_columns",
-			ThemeLayouts.Footer.Resolve(layout.Footer) == "columns" ? BuildFooterColumns(index, bp) : [], false);
+			layoutSelector || ThemeLayouts.Footer.Resolve(layout.Footer) == "columns" ? BuildFooterColumns(index, bp, ctx.Text) : [], false);
+		bool portal = ThemeLayouts.Home.Resolve(layout.Home) == "portal"
+		              && string.Equals(page.FrontMatter.Layout, "landing", StringComparison.OrdinalIgnoreCase);
+		so.SetValue("home_sections", portal ? BuildHomeSections(index, page.Route, bp, sprite) : [], false);
 
 		string firstNavRoute = index.FirstSidebarRouteOtherThan(page.Route);
 		so.SetValue("first_nav_route", firstNavRoute.Length > 0 ? PrefixRoute(firstNavRoute, bp) : "", false);
@@ -517,36 +710,47 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return customPrimary && defaultPreset ? "" : options.DefaultColorTheme;
 	}
 
-	private static ScriptArray BuildTocObject(TableOfContents toc)
+	// A custom primaryColor shows only while no preset is applied, and it had no checked text shade, so
+	// links and inline code in a light color failed AA. Null (nothing written) when a preset always
+	// applies, or for a color the check can't read.
+	private static ScriptObject? BuildPrimaryTextObject(ThemeOptions options) =>
+		InitialColorTheme(options) == "" && PrimaryColorContrast.For(options.PrimaryColor) is { } colors
+			? new ScriptObject
+			{
+				{ "light", colors.Light },
+				{ "light_hover", colors.LightHover },
+				{ "dark", colors.Dark },
+				{ "dark_hover", colors.DarkHover }
+			}
+			: null;
+
+	// Entries deeper than tocDepth are left out here rather than only skipped by the layout: a heading
+	// whose children were all too deep used to get an empty nested list. A child is always deeper
+	// than its parent, so dropping an entry never drops one that should show.
+	private static ScriptArray BuildTocObject(IReadOnlyList<TocEntry> entries, int maxLevel)
 	{
 		var arr = new ScriptArray();
-		foreach (TocEntry entry in toc.Entries)
+		foreach (TocEntry entry in entries)
 		{
-			arr.Add(BuildTocEntryObject(entry));
+			if (entry.Level > maxLevel)
+			{
+				continue;
+			}
+
+			arr.Add(new ScriptObject
+			{
+				{ "level", entry.Level },
+				{ "text", entry.Text },
+				{ "id", entry.Id },
+				{ "children", BuildTocObject(entry.Children, maxLevel) }
+			});
 		}
 
 		return arr;
 	}
 
-	private static ScriptObject BuildTocEntryObject(TocEntry entry)
-	{
-		var obj = new ScriptObject
-		{
-			{ "level", entry.Level },
-			{ "text", entry.Text },
-			{ "id", entry.Id }
-		};
-
-		var children = new ScriptArray();
-		foreach (TocEntry child in entry.Children)
-		{
-			children.Add(BuildTocEntryObject(child));
-		}
-
-		obj.SetValue("children", children, false);
-
-		return obj;
-	}
+	private static int CountTocEntries(IReadOnlyList<TocEntry> entries, int maxLevel) =>
+		entries.Where(e => e.Level <= maxLevel).Sum(e => 1 + CountTocEntries(e.Children, maxLevel));
 
 	/// <summary>
 	///     The sidebar entries for a page. With <paramref name="pathOnly" />, the shared sidebar's short
@@ -554,7 +758,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 	///     section shown as a link to its route.
 	/// </summary>
 	private static ScriptArray BuildNavObject(NavigationTree? nav, string? activeRoute, RenderIndex index,
-		string basePath, bool pathOnly)
+		string basePath, bool pathOnly, string sprite)
 	{
 		if (nav is null)
 		{
@@ -565,7 +769,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		var arr = new ScriptArray();
 		foreach (NavigationNode node in nav.Items)
 		{
-			if (BuildNavNodeObject(node, activeRoute, ancestors, index.PageRoutes, basePath, pathOnly) is { } obj)
+			if (BuildNavNodeObject(node, activeRoute, ancestors, index.PageRoutes, basePath, pathOnly, sprite) is { } obj)
 			{
 				arr.Add(obj);
 			}
@@ -575,7 +779,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 	}
 
 	private static ScriptObject? BuildNavNodeObject(NavigationNode node, string? activeRoute,
-		IReadOnlySet<NavigationNode> ancestors, HashSet<string> pageRoutes, string basePath, bool pathOnly)
+		IReadOnlySet<NavigationNode> ancestors, HashSet<string> pageRoutes, string basePath, bool pathOnly, string sprite)
 	{
 		bool hasActiveChild = ancestors.Contains(node);
 		bool isOnRoute = activeRoute is not null && node.Route == activeRoute;
@@ -601,7 +805,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		{
 			{ "label", node.Label },
 			{ "route", !string.IsNullOrEmpty(route) ? PrefixRoute(route, basePath) : "" },
-			{ "icon", ResolveIcon(node.Icon) },
+			{ "icon", string.IsNullOrEmpty(node.Icon) ? "" : IconMarkup(node.Icon, sprite) ?? "" },
 			{ "expanded", node.Expanded || hasActiveChild },
 			{ "is_active", isActive },
 			{ "has_active_child", hasActiveChild },
@@ -614,7 +818,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		{
 			foreach (NavigationNode child in node.Children)
 			{
-				if (BuildNavNodeObject(child, activeRoute, ancestors, pageRoutes, basePath, pathOnly) is { } childObj)
+				if (BuildNavNodeObject(child, activeRoute, ancestors, pageRoutes, basePath, pathOnly, sprite) is { } childObj)
 				{
 					children.Add(childObj);
 				}
@@ -626,15 +830,155 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return obj;
 	}
 
-	private static ScriptObject BuildLayoutObject(ThemeLayoutOptions layout) => new()
+	// A link from the site root gets the base path, like the sidebar's routes; "//host/x" is a URL.
+	private static ScriptObject? BuildBannerObject(ThemeBanner? banner, string basePath, ThemeText text)
 	{
-		{ "width", ThemeLayouts.Width.Resolve(layout.Width) },
-		{ "navbar", ThemeLayouts.Navbar.Resolve(layout.Navbar) },
-		{ "footer", ThemeLayouts.Footer.Resolve(layout.Footer) },
-		{ "toc", ThemeLayouts.Toc.Resolve(layout.Toc) },
-		{ "breadcrumbs", ThemeLayouts.Breadcrumbs.Resolve(layout.Breadcrumbs) },
-		{ "page_nav", ThemeLayouts.PageNav.Resolve(layout.PageNav) }
-	};
+		if (banner is null || string.IsNullOrWhiteSpace(banner.Text))
+		{
+			return null;
+		}
+
+		string link = banner.Link?.Trim() ?? "";
+		if (link.StartsWith('/') && !link.StartsWith("//", StringComparison.Ordinal))
+		{
+			link = PrefixRoute(link, basePath);
+		}
+
+		return new ScriptObject
+		{
+			{ "text", banner.Text },
+			{ "link", link },
+			{ "link_text", string.IsNullOrWhiteSpace(banner.LinkText) ? text["banner.learnMore"] : banner.LinkText },
+			{ "id", banner.EffectiveId },
+			{ "dismissible", banner.Dismissible },
+			{ "variant", BannerVariants.Resolve(banner.Variant) }
+		};
+	}
+
+	// Keys are the parts' snake_case names: pageNav is theme.layout.page_nav.
+	private static ScriptObject BuildLayoutObject(ThemeLayoutOptions layout)
+	{
+		var obj = new ScriptObject();
+		foreach (ThemeLayoutPart part in ThemeLayouts.Parts)
+		{
+			obj.Add(SnakeCase(part.Key), part.Resolve(layout.NameOf(part)));
+		}
+
+		return obj;
+	}
+
+	private static string SnakeCase(string name) =>
+		string.Concat(name.Select(c => char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : c.ToString()));
+
+	// A landing page's code sample (heroCode, showcaseCode), highlighted like a fenced block when the
+	// build supplies a highlighter. Only pages that set one pay for it.
+	private static string CodeSampleHtml(string? code, string? language, ThemeRenderContext ctx)
+	{
+		if (string.IsNullOrWhiteSpace(code))
+		{
+			return "";
+		}
+
+		return ctx.CodeHighlighter is { } highlight
+			? highlight(code, language)
+			: "<pre><code>" + WebUtility.HtmlEncode(code) + "</code></pre>";
+	}
+
+	private static ScriptArray BuildStats(List<LandingStat> stats)
+	{
+		var arr = new ScriptArray();
+		foreach (LandingStat stat in stats)
+		{
+			arr.Add(new ScriptObject { { "value", stat.Value }, { "label", stat.Label } });
+		}
+
+		return arr;
+	}
+
+	// Text stays raw for the layout to escape; the link gets the base path like the feature cards'.
+	private static ScriptObject? BuildCallToAction(LandingCallToAction? cta, string basePath, ThemeText text) =>
+		cta is null
+			? null
+			: new ScriptObject
+			{
+				{ "title", cta.Title },
+				{ "text", cta.Text },
+				{ "link", cta.Link is null ? "" : SiteLink(cta.Link, basePath) },
+				{ "link_text", cta.LinkText ?? text["landing.getStarted"] }
+			};
+
+	// A path from the site root gets the base path; URLs and anything else stay as written.
+	private static string HeroImageUrl(string? image, string basePath)
+	{
+		if (string.IsNullOrWhiteSpace(image))
+		{
+			return "";
+		}
+
+		string value = image.Trim();
+		return value.StartsWith('/') && !value.StartsWith("//", StringComparison.Ordinal)
+			? PrefixRoute(value, basePath)
+			: value;
+	}
+
+	// The pickers' option lists, which the head script also reads its dark-first styles and code
+	// theme pairs from. They never change, so every page shares one read-only copy.
+	private static readonly ScriptArray _styleOptions = ReadOnlyList(ThemeStyles.All, s => new ScriptObject
+	{
+		{ "name", s.Name },
+		{ "label", s.Label },
+		{ "description", s.Description },
+		{ "dark_first", s.DarkFirst }
+	});
+
+	private static readonly ScriptArray _colorPresets = ReadOnlyList(ColorPresets.All, p => new ScriptObject
+	{
+		{ "name", p.Name },
+		{ "label", p.Label },
+		{ "swatch", p.Swatch }
+	});
+
+	private static readonly ScriptArray _codeThemes = ReadOnlyList(CodeThemes.All, t => new ScriptObject
+	{
+		{ "name", t.Name },
+		{ "label", t.Label },
+		{ "background", t.Background },
+		{ "is_dark", t.IsDark },
+		{ "counterpart", t.Counterpart ?? "" }
+	});
+
+	private static readonly ScriptArray _codeStyles = ReadOnlyList(CodeStyles.All, s => new ScriptObject
+	{
+		{ "name", s.Name },
+		{ "label", s.Label }
+	});
+
+	// The parts of the Appearance panel's Layout section, for the head script that applies a reader's picks:
+	// key is the part's name in theme.layout, name its attribute without data- (page_nav, page-nav), names
+	// every variant, space separated.
+	private static readonly ScriptArray _layoutParts = ReadOnlyList(ThemeLayouts.ReaderParts, p => new ScriptObject
+	{
+		{ "key", SnakeCase(p.Key) },
+		{ "name", SnakeCase(p.Key).Replace('_', '-') },
+		{ "names", string.Join(' ', p.Names) }
+	});
+
+	private static ScriptArray BuildStyleFiles(IReadOnlyDictionary<string, string> versions) =>
+		ReadOnlyList(versions, v => new ScriptObject { { "name", v.Key }, { "version", v.Value } });
+
+	private static ScriptArray ReadOnlyList<T>(IEnumerable<T> items, Func<T, ScriptObject> convert)
+	{
+		var list = new ScriptArray();
+		foreach (T item in items)
+		{
+			ScriptObject entry = convert(item);
+			entry.IsReadOnly = true;
+			list.Add(entry);
+		}
+
+		list.IsReadOnly = true;
+		return list;
+	}
 
 	private static ScriptArray BuildLayoutTabs(RenderIndex index, string route, string basePath)
 	{
@@ -656,34 +1000,57 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return tabs;
 	}
 
-	// Sections become columns of their first entries. Top-level pages without entries under them
-	// share one column, first, so a flat sidebar still gets a footer column.
-	private static ScriptArray BuildFooterColumns(RenderIndex index, string basePath)
+	// Sections become columns of their first entries, up to four. Top-level pages without entries
+	// under them share one more column after the sections. That column used to come first and take
+	// one of the four places, so the last section of a sidebar with four went missing.
+	private static ScriptArray BuildFooterColumns(RenderIndex index, string basePath, ThemeText text)
 	{
 		var columns = new ScriptArray();
+		foreach (NavSection section in index.TopSections.Where(s => s.Links.Count > 0).Take(_footerColumnLimit))
+		{
+			columns.Add(FooterColumn(section.Label, section.Links, basePath));
+		}
+
 		List<PageLink> loose = index.TopSections
 			.Where(s => s.Links.Count == 0)
 			.Select(s => new PageLink(s.Label, s.Route))
 			.ToList();
 		if (loose.Count > 0)
 		{
-			columns.Add(FooterColumn("Docs", loose, basePath));
-		}
-
-		foreach (NavSection section in index.TopSections)
-		{
-			if (columns.Count == _footerColumnLimit)
-			{
-				break;
-			}
-
-			if (section.Links.Count > 0)
-			{
-				columns.Add(FooterColumn(section.Label, section.Links, basePath));
-			}
+			columns.Add(FooterColumn(columns.Count == 0 ? text["footer.docs"] : text["footer.more"], loose, basePath));
 		}
 
 		return columns;
+	}
+
+	// The portal home page's cards, one per top-level section with its first pages. A top-level entry
+	// for the home page itself is left out: a card leading to the page it sits on goes nowhere.
+	private static ScriptArray BuildHomeSections(RenderIndex index, string route, string basePath, string sprite)
+	{
+		var sections = new ScriptArray();
+		foreach (NavSection section in index.TopSections)
+		{
+			if (section.Links.Count == 0 && string.Equals(section.Route, route, StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+
+			var links = new ScriptArray();
+			foreach (PageLink link in section.Links.Take(_homeSectionLinkLimit))
+			{
+				links.Add(new ScriptObject { { "label", link.Title }, { "url", PrefixRoute(link.Route, basePath) } });
+			}
+
+			sections.Add(new ScriptObject
+			{
+				{ "title", section.Label },
+				{ "url", PrefixRoute(section.Route, basePath) },
+				{ "icon", string.IsNullOrEmpty(section.Node.Icon) ? "" : IconMarkup(section.Node.Icon, sprite) ?? "" },
+				{ "links", links }
+			});
+		}
+
+		return sections;
 	}
 
 	private static ScriptObject FooterColumn(string title, IEnumerable<PageLink> links, string basePath)
@@ -719,33 +1086,31 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 	///     The landing page feature cards. Text stays raw so the layout escapes it where it is
 	///     written. Icons resolve to SVG markup here because templates can't reach the icon set.
 	/// </summary>
-	private static ScriptArray BuildFeatures(List<LandingFeature> features, string basePath)
+	private static ScriptArray BuildFeatures(List<LandingFeature> features, string basePath, string sprite)
 	{
 		var arr = new ScriptArray();
 		foreach (LandingFeature feature in features)
 		{
 			string icon = feature.Icon ?? "";
-			string link = feature.Link ?? "";
-
-			// A root-relative link needs the base path like every other site URL, and nothing
-			// rewrites front matter values later. "//host/x" is protocol-relative, not a route.
-			if (link.StartsWith('/') && !link.StartsWith("//", StringComparison.Ordinal))
-			{
-				link = PrefixRoute(link, basePath);
-			}
+			string link = SiteLink(feature.Link ?? "", basePath);
 
 			arr.Add(new ScriptObject
 			{
 				{ "title", feature.Title },
 				{ "description", feature.Description },
 				{ "icon", icon },
-				{ "icon_svg", icon.Length > 0 ? LucideIcons.Get(icon) ?? "" : "" },
+				{ "icon_svg", icon.Length > 0 ? IconMarkup(icon, sprite) ?? "" : "" },
 				{ "link", link }
 			});
 		}
 
 		return arr;
 	}
+
+	// A root-relative link in front matter needs the base path like every other site URL, and nothing
+	// rewrites front matter values later. "//host/x" is protocol-relative, not a route.
+	private static string SiteLink(string link, string basePath) =>
+		link.StartsWith('/') && !link.StartsWith("//", StringComparison.Ordinal) ? PrefixRoute(link, basePath) : link;
 
 	/// <summary>
 	///     The blog for every page: whether there is one, its title and index route, and the feeds
@@ -792,26 +1157,35 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return arr;
 	}
 
-	private static ScriptArray BuildSocialLinks(List<SocialLink> links)
+	private static ScriptArray BuildSocialLinks(List<SocialLink> links, string sprite)
 	{
 		var arr = new ScriptArray();
 		foreach (SocialLink link in links)
 		{
-			string iconSvg = LucideIcons.Get(link.Icon) ?? WebUtility.HtmlEncode(link.Icon);
+			string iconSvg = IconMarkup(link.Icon, sprite) ?? WebUtility.HtmlEncode(link.Icon);
 			arr.Add(new ScriptObject { { "icon", link.Icon }, { "url", link.Url }, { "icon_svg", iconSvg } });
 		}
 
 		return arr;
 	}
 
+	/// <summary>
+	///     Home, then the sidebar sections above the page with their sidebar labels, then the page.
+	///     A page the sidebar doesn't list gets one crumb per folder of its route instead.
+	/// </summary>
+	/// <remarks>
+	///     A section without a page of its own links to its first page. It used to be plain text,
+	///     which left <c>layout.breadcrumbs: back</c> with no link at all, and a section whose route
+	///     the sidebar had resolved to its first page lost its label to the folder name.
+	/// </remarks>
 	private static ScriptArray BuildBreadcrumbs(string route, string pageTitle, NavigationTree? nav,
-		HashSet<string> pageRoutes, string basePath)
+		RenderIndex index, string basePath, string homeLabel)
 	{
 		var crumbs = new ScriptArray();
 
 		// Always start with Home
 		crumbs.Add(new ScriptObject
-			{ { "label", "Home" }, { "url", PrefixRoute("/", basePath) }, { "is_current", false } });
+			{ { "label", homeLabel }, { "url", PrefixRoute("/", basePath) }, { "is_current", false } });
 
 		string[] segments = route.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
 		if (segments.Length == 0)
@@ -819,24 +1193,36 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			return crumbs;
 		}
 
-		// Build intermediate crumbs from route segments
-		string pathSoFar = "";
-		for (int i = 0; i < segments.Length - 1; i++)
+		IReadOnlyList<NavigationNode> sidebarPath = index.SidebarPath(route);
+		if (sidebarPath.Count > 0)
 		{
-			pathSoFar += "/" + segments[i];
-
-			// Try to find a label from the nav tree
-			string label = FindNavLabel(nav, pathSoFar) ?? FormatSegment(segments[i]);
-
-			// Only make it a link if a real page exists at this route (avoid linking to redirects)
-			bool hasPage = pageRoutes.Contains(pathSoFar);
-			crumbs.Add(new ScriptObject
+			foreach (NavigationNode section in sidebarPath.Take(sidebarPath.Count - 1))
 			{
-				{ "label", label },
-				{ "url", hasPage ? PrefixRoute(pathSoFar + "/", basePath) : "" },
-				{ "is_current", false },
-				{ "has_page", hasPage }
-			});
+				if (section.Route is "/")
+				{
+					continue;
+				}
+
+				bool ownPage = index.HasOwnPage(section);
+				string? target = index.FirstPageRoute(section);
+				crumbs.Add(Crumb(section.Label, target, ownPage, basePath));
+			}
+		}
+		else
+		{
+			string pathSoFar = "";
+			for (int i = 0; i < segments.Length - 1; i++)
+			{
+				pathSoFar += "/" + segments[i];
+				bool hasPage = index.PageRoutes.Contains(pathSoFar);
+				string? navLabel = FindNavLabel(nav, pathSoFar);
+				NavigationNode? section = navLabel is null ? index.SectionFor(pathSoFar) : null;
+				string label = navLabel ?? section?.Label ?? FormatSegment(segments[i]);
+				string? target = hasPage
+					? pathSoFar
+					: (section is null ? null : index.FirstPageRoute(section)) ?? index.FirstPageUnder(pathSoFar);
+				crumbs.Add(Crumb(label, target, hasPage, basePath));
+			}
 		}
 
 		// Current page
@@ -848,6 +1234,14 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 
 		return crumbs;
 	}
+
+	private static ScriptObject Crumb(string label, string? route, bool hasPage, string basePath) => new()
+	{
+		{ "label", label },
+		{ "url", string.IsNullOrEmpty(route) ? "" : PrefixRoute(route.TrimEnd('/') + "/", basePath) },
+		{ "is_current", false },
+		{ "has_page", hasPage }
+	};
 
 	private static string? FindNavLabel(NavigationTree? nav, string route)
 	{
@@ -878,14 +1272,24 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		return null;
 	}
 
-	private static string ResolveIcon(string? iconName)
+	private static string IconSpriteUrl(ThemeRenderContext ctx, string basePath) =>
+		string.IsNullOrEmpty(ctx.IconSprite) ? "" : PrefixRoute(ctx.IconSprite, basePath);
+
+	/// <summary>
+	///     The markup of an icon in the icon set, or <c>null</c> for a name it doesn't have. With a sprite, it is
+	///     the icon's <c>&lt;svg&gt;</c> around a <c>&lt;use&gt;</c> of the sprite's symbol, so a page doesn't
+	///     carry the shapes of every icon in its sidebar; without one, the whole icon.
+	/// </summary>
+	private static string? IconMarkup(string name, string sprite)
 	{
-		if (string.IsNullOrEmpty(iconName))
+		string? svg = LucideIcons.Get(name);
+		if (svg is null || sprite.Length == 0)
 		{
-			return "";
+			return svg;
 		}
 
-		return LucideIcons.Get(iconName) ?? "";
+		int open = svg.IndexOf('>', StringComparison.Ordinal) + 1;
+		return svg[..open] + "<use href=\"" + WebUtility.HtmlEncode(sprite) + "#" + name.ToLowerInvariant() + "\"/></svg>";
 	}
 
 	private static string FormatSegment(string segment)
@@ -918,6 +1322,7 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 public sealed class ThemeRenderContext
 {
 	private RenderIndex? _index;
+	private ScriptObject? _textObject;
 
 	/// <summary>Site configuration.</summary>
 	public required SiteConfig Config { get; init; }
@@ -936,6 +1341,29 @@ public sealed class ThemeRenderContext
 
 	/// <summary>JS file paths relative to output root.</summary>
 	public List<string> JsFiles { get; init; } = [];
+
+	/// <summary>
+	///     The <c>?v=</c> of each style's stylesheet that the default theme publishes, keyed by style name, such
+	///     as <c>moka</c> → <c>0123456789</c>. Pages get them as <c>theme.style_files</c> (<c>name</c>,
+	///     <c>version</c>), so the head can load a style the reader picked. Empty for a custom theme.
+	/// </summary>
+	public IReadOnlyDictionary<string, string> StyleVersions { get; init; } = new Dictionary<string, string>();
+
+	/// <summary>
+	///     The site-relative URL of the search index with its content hash, such as
+	///     <c>/search-index.json?v=0123456789</c>, or <c>null</c> when the build writes no index. Pages get it,
+	///     with the base path, as <c>search_index_url</c>, so a browser fetches a new index after a rebuild and
+	///     can keep the old one cached until then.
+	/// </summary>
+	public string? SearchIndexUrl { get; init; }
+
+	/// <summary>
+	///     The site-relative URL of the theme's SVG sprite, such as <c>/_theme/icons.svg?v=0123456789</c>, or
+	///     <c>null</c> when the theme has none. Pages get it, with the base path, as <c>icon_sprite</c>, and
+	///     the icons of nav entries, social links and landing features become a <c>&lt;use&gt;</c> of the
+	///     sprite's symbol instead of the whole icon. A custom theme publishes no sprite, so its icons stay inline.
+	/// </summary>
+	public string? IconSprite { get; init; }
 
 	/// <summary>
 	///     All pages in the site, used for prev/next navigation. The page routes, sidebar order and
@@ -977,7 +1405,30 @@ public sealed class ThemeRenderContext
 	/// </summary>
 	public string? SidebarScriptUrl { get; init; }
 
+	/// <summary>
+	///     The site-relative URLs of the pages' Markdown copies, such as <c>/guide/intro.md</c>, keyed by
+	///     page route and without the base path. A page listed here gets the URL, with the base path, as
+	///     <c>page.markdown_url</c>; any other page gets an empty string.
+	/// </summary>
+	public IReadOnlyDictionary<string, string> MarkdownUrls { get; init; } = new Dictionary<string, string>();
+
+	/// <summary>
+	///     Writes a page's <c>heroCode</c> front matter as a highlighted code block, given the code and
+	///     its <c>heroCodeLanguage</c> (or <c>null</c>). The result is <c>page.hero_code</c>. <c>null</c>
+	///     writes the code escaped in a plain <c>&lt;pre&gt;&lt;code&gt;</c>.
+	/// </summary>
+	public Func<string, string?, string>? CodeHighlighter { get; init; }
+
+	/// <summary>
+	///     The theme's text in the site's language with its overrides (<see cref="ThemeText.For(SiteConfig)" />).
+	///     Templates read it as <c>t</c>, one variable per key in snake case: <c>toc.title</c> is
+	///     <c>t.toc_title</c> (<see cref="ScribanTemplateEngine.TextVariableName" />). Defaults to English.
+	/// </summary>
+	public ThemeText Text { get; init; } = ThemeText.English;
+
 	internal RenderIndex Index => _index ??= new RenderIndex(AllPages, Navigation, Blog);
+
+	internal ScriptObject TextObject => _textObject ??= ScribanTemplateEngine.BuildTextObject(Text);
 
 	/// <summary>Gets a template by layout name.</summary>
 	public string? GetTemplate(string layoutName) => Templates.GetValueOrDefault(layoutName);

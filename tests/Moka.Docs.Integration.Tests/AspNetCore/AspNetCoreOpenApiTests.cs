@@ -416,6 +416,13 @@ public sealed class AspNetCoreOpenApiTests : IAsyncDisposable
 
 		await app.StartAsync(TestContext.Current.CancellationToken);
 		_apps.Add(app);
+
+		// Until the build the app starts is done, docs requests get 503.
+		if (app.Services.GetService<MokaDocsService>() is { IsMapped: true } docs)
+		{
+			await docs.GetSiteAsync(TestContext.Current.CancellationToken);
+		}
+
 		return app;
 	}
 

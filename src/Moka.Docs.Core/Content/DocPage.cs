@@ -103,6 +103,51 @@ public sealed record FrontMatter
 	public string FeaturesSubtitle { get; init; } = "";
 
 	/// <summary>
+	///     A code sample the <c>landing</c> layout shows beside its hero text when
+	///     <c>theme.options.layout.hero</c> is <c>split</c>. <c>null</c> for none.
+	/// </summary>
+	public string? HeroCode { get; init; }
+
+	/// <summary>The language <see cref="HeroCode" /> is highlighted as, such as <c>csharp</c>; <c>null</c> for plain text.</summary>
+	public string? HeroCodeLanguage { get; init; }
+
+	/// <summary>
+	///     An image the <c>landing</c> layout shows beside its hero text when
+	///     <c>theme.options.layout.hero</c> is <c>split</c> and there is no <see cref="HeroCode" />: an
+	///     absolute URL, a path from the site root, or a path relative to the page's file. <c>null</c>
+	///     for none.
+	/// </summary>
+	public string? HeroImage { get; init; }
+
+	/// <summary>
+	///     A code sample the <c>landing</c> layout shows in a band of its own, beside
+	///     <see cref="ShowcaseTitle" /> and <see cref="ShowcaseText" />, when
+	///     <c>theme.options.layout.home</c> is <c>showcase</c>. <c>null</c> for none.
+	/// </summary>
+	public string? ShowcaseCode { get; init; }
+
+	/// <summary>The language <see cref="ShowcaseCode" /> is highlighted as, such as <c>csharp</c>; <c>null</c> for plain text.</summary>
+	public string? ShowcaseCodeLanguage { get; init; }
+
+	/// <summary>The heading of the showcase code band, or empty for none.</summary>
+	public string ShowcaseTitle { get; init; } = "";
+
+	/// <summary>The text under <see cref="ShowcaseTitle" /> in the showcase code band, or empty for none.</summary>
+	public string ShowcaseText { get; init; } = "";
+
+	/// <summary>
+	///     Figures the <c>landing</c> layout shows in a row when <c>theme.options.layout.home</c> is
+	///     <c>showcase</c>, in order. The row is left out when this is empty.
+	/// </summary>
+	public List<LandingStat> Stats { get; init; } = [];
+
+	/// <summary>
+	///     The call to action the <c>landing</c> layout shows in a band near the end of the page when
+	///     <c>theme.options.layout.home</c> is <c>showcase</c>, or <c>null</c> for none.
+	/// </summary>
+	public LandingCallToAction? Cta { get; init; }
+
+	/// <summary>
 	///     The publication date of a blog post, from an ISO 8601 date or date and time. A date
 	///     without a time is midnight UTC. <c>null</c> when the page has none or it could not be read.
 	/// </summary>
@@ -144,6 +189,38 @@ public sealed record LandingFeature
 
 	/// <summary>The URL the card links to, or <c>null</c> when the card is not a link.</summary>
 	public string? Link { get; init; }
+}
+
+/// <summary>
+///     One figure from the <c>stats</c> front matter list of a <c>landing</c> layout page, such as
+///     <c>2M</c> downloads. Either field may be empty, not both.
+/// </summary>
+public sealed record LandingStat
+{
+	/// <summary>The figure, shown large, such as <c>2M</c> or <c>99.9%</c>.</summary>
+	public string Value { get; init; } = "";
+
+	/// <summary>What the figure counts, shown under it.</summary>
+	public string Label { get; init; } = "";
+}
+
+/// <summary>
+///     The <c>cta</c> front matter of a <c>landing</c> layout page: a closing band with a heading, a
+///     line of text and a button. Every field is optional; the layout leaves out the parts that are empty.
+/// </summary>
+public sealed record LandingCallToAction
+{
+	/// <summary>The band's heading.</summary>
+	public string Title { get; init; } = "";
+
+	/// <summary>The text under the heading.</summary>
+	public string Text { get; init; } = "";
+
+	/// <summary>The URL the button links to, or <c>null</c> for no button.</summary>
+	public string? Link { get; init; }
+
+	/// <summary>The button's text, or <c>null</c> for the layout's default.</summary>
+	public string? LinkText { get; init; }
 }
 
 /// <summary>

@@ -46,11 +46,63 @@ public sealed class SiteConfigEnvironmentTests
 	}
 
 	[Fact]
+	public void EnvironmentOverride_SiteImage_WinsOverTheYaml()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_SITE_IMAGE", "https://cdn.example/env.png",
+			"site:\n  title: Docs\n  image: assets/yaml.png\n");
+
+		config.Site.Image!.PublishUrl.Should().Be("https://cdn.example/env.png");
+	}
+
+	[Fact]
+	public void EnvironmentOverride_Llms_CanTurnItOff()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_LLMS", "false", "site:\n  title: Docs\n");
+
+		config.Build.Llms.Should().BeFalse();
+	}
+
+	[Fact]
 	public void EnvironmentOverride_StyleSelector_CanHideIt()
 	{
 		SiteConfig config = ParseWith("MOKADOCS_SHOW_STYLE_SELECTOR", "false", "site:\n  title: Docs\n");
 
 		config.Theme.Options.StyleSelector.Should().BeFalse();
+	}
+
+	[Theory]
+	[InlineData("MOKADOCS_SHOW_TEXT_SIZE_SELECTOR")]
+	[InlineData("MOKADOCS_SHOW_WIDTH_SELECTOR")]
+	public void EnvironmentOverride_ReaderSelectors_WinOverTheYaml(string variable)
+	{
+		SiteConfig config = ParseWith(variable, "false",
+			"site:\n  title: Docs\ntheme:\n  options:\n    textSizeSelector: true\n    widthSelector: true\n");
+
+		bool selector = variable.Contains("TEXT_SIZE", StringComparison.Ordinal)
+			? config.Theme.Options.TextSizeSelector
+			: config.Theme.Options.WidthSelector;
+		selector.Should().BeFalse();
+	}
+
+	[Theory]
+	[InlineData("true", "layoutSelector: false", true)]
+	[InlineData("false", "layoutSelector: true", false)]
+	[InlineData("yes", "showSearch: true", true)]
+	public void EnvironmentOverride_LayoutSelector_WinsOverTheYaml(string value, string option, bool expected)
+	{
+		SiteConfig config = ParseWith("MOKADOCS_SHOW_LAYOUT_SELECTOR", value,
+			$"site:\n  title: Docs\ntheme:\n  options:\n    {option}\n");
+
+		config.Theme.Options.LayoutSelector.Should().Be(expected);
+	}
+
+	[Fact]
+	public void EnvironmentOverride_ImageZoom_WinsOverTheYaml()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_IMAGE_ZOOM", "false",
+			"site:\n  title: Docs\ntheme:\n  options:\n    imageZoom: true\n");
+
+		config.Theme.Options.ImageZoom.Should().BeFalse();
 	}
 
 	private static Dictionary<string, string> LayoutParts(ThemeLayoutOptions layout) => new()
@@ -60,7 +112,19 @@ public sealed class SiteConfigEnvironmentTests
 		["FOOTER"] = layout.Footer,
 		["TOC"] = layout.Toc,
 		["BREADCRUMBS"] = layout.Breadcrumbs,
-		["PAGE_NAV"] = layout.PageNav
+		["PAGE_NAV"] = layout.PageNav,
+		["SIDEBAR"] = layout.Sidebar,
+		["SIDEBAR_SCOPE"] = layout.SidebarScope,
+		["HOME"] = layout.Home,
+		["HERO"] = layout.Hero,
+		["HERO_BACKGROUND"] = layout.HeroBackground,
+		["FEATURES"] = layout.Features,
+		["ADMONITIONS"] = layout.Admonitions,
+		["TABLES"] = layout.Tables,
+		["DENSITY"] = layout.Density,
+		["FONT"] = layout.Font,
+		["HEADINGS"] = layout.Headings,
+		["LINKS"] = layout.Links
 	};
 
 	[Theory]
@@ -70,6 +134,18 @@ public sealed class SiteConfigEnvironmentTests
 	[InlineData("TOC", "floating")]
 	[InlineData("BREADCRUMBS", "pills")]
 	[InlineData("PAGE_NAV", "stacked")]
+	[InlineData("SIDEBAR", "pills")]
+	[InlineData("SIDEBAR_SCOPE", "section")]
+	[InlineData("HOME", "portal")]
+	[InlineData("HERO", "split")]
+	[InlineData("HERO_BACKGROUND", "dots")]
+	[InlineData("FEATURES", "bento")]
+	[InlineData("ADMONITIONS", "github")]
+	[InlineData("TABLES", "striped")]
+	[InlineData("DENSITY", "compact")]
+	[InlineData("FONT", "serif")]
+	[InlineData("HEADINGS", "numbered")]
+	[InlineData("LINKS", "subtle")]
 	public void EnvironmentOverride_LayoutPart_AppliesWhenTheYamlHasNoThemeSection(string part, string value)
 	{
 		SiteConfig config = ParseWith("MOKADOCS_LAYOUT_" + part, value, "site:\n  title: Docs\n");
@@ -97,6 +173,15 @@ public sealed class SiteConfigEnvironmentTests
 
 		config.Theme.Options.Layout.Navbar.Should().Be("compact");
 		config.Theme.Options.Layout.Footer.Should().Be("minimal");
+	}
+
+	[Fact]
+	public void EnvironmentOverride_SidebarToggle_WinsOverTheYaml()
+	{
+		SiteConfig config = ParseWith("MOKADOCS_SIDEBAR_TOGGLE", "true",
+			"site:\n  title: Docs\ntheme:\n  options:\n    sidebarToggle: false\n");
+
+		config.Theme.Options.SidebarToggle.Should().BeTrue();
 	}
 
 	[Fact]

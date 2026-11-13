@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Moka.Docs.Core;
@@ -6,6 +7,8 @@ using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Navigation;
 using Moka.Docs.Core.Pipeline;
 using Moka.Docs.Core.Theming;
+using Moka.Docs.Engine.Minification;
+using Moka.Docs.Parsing.Highlighting;
 using Moka.Docs.Rendering.Scriban;
 using Moka.Docs.Themes;
 using Moka.Docs.Themes.Default;
@@ -22,6 +25,9 @@ public sealed class RenderPhase(
 {
 	/// <summary>Where a shared sidebar is written, relative to the output directory.</summary>
 	public const string SidebarScriptPath = "_theme/js/sidebar.js";
+
+	/// <summary>Where the page for missing addresses is written, relative to the output directory.</summary>
+	public const string NotFoundPagePath = "404.html";
 
 	/// <inheritdoc />
 	public string Name => "Render";
@@ -48,28 +54,46 @@ public sealed class RenderPhase(
 
 		ReportUnknownLayouts(context, themeContext);
 		ReportUnknownSocialIcons(context);
+		ThemeText text = ThemeText.For(context.Config);
+		ReportLanguageProblems(context, text);
+		ReportUnknownPreset(context);
 		if (theme.IsEmbedded)
 		{
 			ReportUnknownStyle(context);
+			ReportUnknownAppearanceNames(context);
 			ReportUnknownLayoutVariants(context);
+			ReportUnknownBannerVariant(context);
 		}
 
 		// Update the theme context with the current config, navigation, and version data
 		var renderContext = new ThemeRenderContext
 		{
-			Config = context.Config,
+			Config = theme.IsEmbedded ? WithKnownAppearanceNames(context.Config) : context.Config,
 			Navigation = context.Navigation,
 			Templates = themeContext.Templates,
 			Partials = themeContext.Partials,
-			CssFiles = VersionedAssetUrls(themeContext.CssFiles, theme, context),
+			CssFiles = VersionedAssetUrls(
+				theme.IsEmbedded
+					? EmbeddedThemeProvider.CssFilesFor(context.Config.Theme.Options,
+						SiteLanguages.Direction(context.Config.Site.Language, context.Config.Site.Direction))
+					: themeContext.CssFiles,
+				theme, context),
 			JsFiles = VersionedAssetUrls(themeContext.JsFiles, theme, context),
+			StyleVersions = theme.IsEmbedded ? EmbeddedStyleVersions(context) : new Dictionary<string, string>(),
+			IconSprite = theme.IsEmbedded ? ThemeAssetPhase.VersionedUrl(EmbeddedThemeProvider.IconSpritePath, theme, context) : null,
+			SearchIndexUrl = SearchIndexFile.Bytes(context) is { } searchIndex
+				? "/" + SearchIndexFile.FileName + "?v=" + ThemeAssetPhase.ContentHash(searchIndex)
+				: null,
 			AllPages = context.Pages,
 			Versions = context.Versions,
 			CurrentVersion = context.CurrentVersion,
 			PackageInfo = context.PackageInfo,
 			BrandAssetFiles = context.BrandAssetFiles,
 			Blog = context.Blog,
-			SidebarScriptUrl = ShareSidebar(context, theme, ct)
+			SidebarScriptUrl = ShareSidebar(context, theme, ct),
+			MarkdownUrls = LlmsPhase.StagedMarkdownUrls(context),
+			CodeHighlighter = (code, language) => HighlightCode(code, language, text),
+			Text = text
 		};
 
 		int rendered = 0;
@@ -123,8 +147,46 @@ public sealed class RenderPhase(
 				$"Failed to render {count} page(s) (for example '{example}'): {message}", Name);
 		}
 
+		StageNotFoundPage(context, renderContext, ct);
+
 		logger.LogInformation("Rendered {Count} pages with theme templates", rendered);
 		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	///     Renders <see cref="NotFoundPagePath" /> with the theme and stages it for <c>OutputPhase</c>,
+	///     which writes it after the clean and not at all in a dry run. A plugin's own page wins.
+	/// </summary>
+	/// <remarks>
+	///     It used to be hand-written HTML with the default style's markup, so it ignored the site's
+	///     style, dark mode, primary color, favicon and layout variants.
+	/// </remarks>
+	private void StageNotFoundPage(BuildContext context, ThemeRenderContext renderContext, CancellationToken ct)
+	{
+		if (context.DeferredOutputFiles.ContainsKey(NotFoundPagePath))
+		{
+			return;
+		}
+
+		try
+		{
+			string html = templateEngine.RenderNotFoundPage(renderContext, ct);
+			if (context.Config.Build.Minify)
+			{
+				html = HtmlMinifier.Minify(html);
+			}
+
+			context.DeferredOutputFiles[NotFoundPagePath] = new UTF8Encoding(false).GetBytes(html);
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (Exception ex)
+		{
+			context.Diagnostics.Warning(
+				$"The 404 page could not be rendered with the theme, so it is a plain page instead: {ex.Message}", Name);
+		}
 	}
 
 	/// <summary>
@@ -172,7 +234,9 @@ public sealed class RenderPhase(
 			Navigation = context.Navigation,
 			Templates = [],
 			Partials = [],
-			AllPages = context.Pages
+			AllPages = context.Pages,
+			IconSprite = ThemeAssetPhase.VersionedUrl(EmbeddedThemeProvider.IconSpritePath, theme, context),
+			Text = ThemeText.For(context.Config)
 		};
 
 		string html;
@@ -204,6 +268,50 @@ public sealed class RenderPhase(
 	private static List<string> VersionedAssetUrls(List<string> urls, ResolvedTheme theme, BuildContext context) =>
 		urls.Select(url => ThemeAssetPhase.VersionedUrl(url, theme, context)).ToList();
 
+	private static Dictionary<string, string> EmbeddedStyleVersions(BuildContext context)
+	{
+		IReadOnlyDictionary<string, byte[]> assets = ThemeAssetPhase.EmbeddedAssets(context);
+		return EmbeddedThemeProvider.StyleFileNames.ToDictionary(
+			style => style,
+			style => ThemeAssetPhase.ContentHash(assets[EmbeddedThemeProvider.StyleCssPath(style)!]),
+			StringComparer.Ordinal);
+	}
+
+	/// <summary>
+	///     Warns about a <c>site.language</c> that isn't a language tag (pages are English then), a
+	///     <c>site.direction</c> other than <c>ltr</c> or <c>rtl</c> (the language's own is used), and each
+	///     <c>theme.options.strings</c> key the theme doesn't have. Custom themes read the same text, so this
+	///     applies to them too.
+	/// </summary>
+	private void ReportLanguageProblems(BuildContext context, ThemeText text)
+	{
+		string language = context.Config.Site.Language;
+		if (!string.IsNullOrWhiteSpace(language) && !SiteLanguages.IsWellFormed(language))
+		{
+			context.Diagnostics.Warning(
+				$"Site language '{language}' is not a language tag such as 'en', 'de' or 'pt-BR'; using '{SiteLanguages.Default}'",
+				Name);
+		}
+
+		string direction = context.Config.Site.Direction;
+		if (!SiteLanguages.IsKnownDirection(direction))
+		{
+			context.Diagnostics.Warning(
+				$"Site direction '{direction}' is not one of {string.Join(", ", SiteLanguages.Directions)}; using " +
+				$"'{SiteLanguages.Direction(text.Language, null)}' for '{text.Language}'",
+				Name);
+		}
+
+		foreach (string key in text.UnknownKeys)
+		{
+			ThemeStringInfo? near = ThemeStrings.All.FirstOrDefault(s => s.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
+			context.Diagnostics.Warning(
+				$"theme.options.strings: the theme has no text '{key}', so it is ignored" +
+				(near is null ? "" : $"; keys are case sensitive, did you mean '{near.Key}'?"),
+				Name);
+		}
+	}
+
 	/// <summary>
 	///     Warns when <c>theme.options.style</c> names no style of the default theme. Pages
 	///     render with the default style then. A custom theme may define its own style names, so
@@ -221,6 +329,112 @@ public sealed class RenderPhase(
 	}
 
 	/// <summary>
+	///     Warns when <c>theme.options.preset</c> names no preset. The configuration reader applies
+	///     nothing then, so every option keeps the value the site gave it or its default. Presets are
+	///     options, not theme files, so this applies to a custom theme too.
+	/// </summary>
+	private void ReportUnknownPreset(BuildContext context)
+	{
+		string preset = context.Config.Theme.Options.Preset;
+		if (!ThemePresets.IsKnown(preset))
+		{
+			context.Diagnostics.Warning(
+				$"Theme preset '{preset}' is not one of {string.Join(", ", ThemePresets.Names)}; no preset applied",
+				Name);
+		}
+	}
+
+	/// <summary>
+	///     Warns when <c>theme.options.banner.variant</c> names no look of the default theme's banner,
+	///     which then renders as <c>info</c>. Like the style, a custom theme may have its own names.
+	/// </summary>
+	private void ReportUnknownBannerVariant(BuildContext context)
+	{
+		if (context.Config.Theme.Options.Banner is { } banner && !BannerVariants.IsKnown(banner.Variant))
+		{
+			context.Diagnostics.Warning(
+				$"Banner variant '{banner.Variant}' is not one of {string.Join(", ", BannerVariants.Names)}; using '{BannerVariants.Info}'",
+				Name);
+		}
+	}
+
+	/// <summary>
+	///     Warns when <c>defaultColorTheme</c>, <c>codeTheme</c> or <c>codeStyle</c> names nothing the
+	///     default theme has. Like the style, a custom theme may have its own names, so they are only
+	///     checked for the embedded theme.
+	/// </summary>
+	private void ReportUnknownAppearanceNames(BuildContext context)
+	{
+		ThemeOptions options = context.Config.Theme.Options;
+		if (!ColorPresets.IsKnown(options.DefaultColorTheme))
+		{
+			context.Diagnostics.Warning(
+				$"Default color theme '{options.DefaultColorTheme}' is not one of {string.Join(", ", ColorPresets.Names)}; using '{ColorPresets.Default}'",
+				Name);
+		}
+
+		if (!CodeThemes.IsKnown(options.CodeTheme))
+		{
+			context.Diagnostics.Warning(
+				$"Code theme '{options.CodeTheme}' is not one of {string.Join(", ", CodeThemes.Names)}; using '{CodeThemes.Default}'",
+				Name);
+		}
+
+		if (!CodeStyles.IsKnown(options.CodeStyle))
+		{
+			context.Diagnostics.Warning(
+				$"Code style '{options.CodeStyle}' is not one of {string.Join(", ", CodeStyles.Names)}; using '{CodeStyles.Default}'",
+				Name);
+		}
+	}
+
+	/// <summary>
+	///     The configuration the embedded theme renders with: the color preset, code theme and code
+	///     style by their canonical names, and the defaults in place of unknown ones.
+	/// </summary>
+	/// <remarks>
+	///     An unknown code theme gave code blocks the page's light code background with Catppuccin
+	///     Mocha's pastel token colors, unreadable in light mode, and a name in another case
+	///     (<c>GitHub-Dark</c>) matched no stylesheet rule. An empty color preset stays empty: it means
+	///     no preset.
+	/// </remarks>
+	private static SiteConfig WithKnownAppearanceNames(SiteConfig config)
+	{
+		ThemeOptions options = config.Theme.Options;
+		string colorTheme = string.IsNullOrWhiteSpace(options.DefaultColorTheme)
+			? options.DefaultColorTheme
+			: ColorPresets.Resolve(options.DefaultColorTheme);
+		string codeTheme = CodeThemes.Resolve(options.CodeTheme);
+		string codeStyle = CodeStyles.Resolve(options.CodeStyle);
+		if (colorTheme == options.DefaultColorTheme && codeTheme == options.CodeTheme && codeStyle == options.CodeStyle)
+		{
+			return config;
+		}
+
+		return config with
+		{
+			Theme = config.Theme with
+			{
+				Options = options with { DefaultColorTheme = colorTheme, CodeTheme = codeTheme, CodeStyle = codeStyle }
+			}
+		};
+	}
+
+	// The same markup as a fenced block: EnhanceBlocks wraps and highlights a plain <pre><code>. A
+	// showcase sample gets no line numbers.
+	private static string HighlightCode(string code, string? language, ThemeText text)
+	{
+		const string wrapper = "<div class=\"code-block\"";
+		string languageClass = string.IsNullOrWhiteSpace(language)
+			? ""
+			: $" class=\"language-{WebUtility.HtmlEncode(language.Trim())}\"";
+		string block = CodeBlockHtml.EnhanceBlocks($"<pre><code{languageClass}>{WebUtility.HtmlEncode(code)}</code></pre>", text);
+		return block.StartsWith(wrapper, StringComparison.Ordinal)
+			? wrapper + " data-line-numbers=\"false\"" + block[wrapper.Length..]
+			: block;
+	}
+
+	/// <summary>
 	///     Warns about each <c>theme.options.layout</c> part that names no variant of the default
 	///     theme. That part renders with its default variant. A custom theme may define its own
 	///     variant names, so, like the style, it is only checked for the embedded theme.
@@ -228,18 +442,9 @@ public sealed class RenderPhase(
 	private void ReportUnknownLayoutVariants(BuildContext context)
 	{
 		ThemeLayoutOptions layout = context.Config.Theme.Options.Layout;
-		(ThemeLayoutPart Part, string Configured)[] parts =
-		[
-			(ThemeLayouts.Width, layout.Width),
-			(ThemeLayouts.Navbar, layout.Navbar),
-			(ThemeLayouts.Footer, layout.Footer),
-			(ThemeLayouts.Toc, layout.Toc),
-			(ThemeLayouts.Breadcrumbs, layout.Breadcrumbs),
-			(ThemeLayouts.PageNav, layout.PageNav)
-		];
-
-		foreach ((ThemeLayoutPart part, string configured) in parts)
+		foreach (ThemeLayoutPart part in ThemeLayouts.Parts)
 		{
+			string configured = layout.NameOf(part);
 			if (!part.IsKnown(configured))
 			{
 				context.Diagnostics.Warning(

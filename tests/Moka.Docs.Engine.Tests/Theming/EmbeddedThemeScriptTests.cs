@@ -31,7 +31,7 @@ public sealed class EmbeddedThemeScriptTests
 		}
 	});
 
-	private static readonly string _css = EmbeddedThemeProvider.GetCss().Replace("\r\n", "\n");
+	private static readonly string _css = ThemeCss.All;
 	private static readonly string _js = EmbeddedThemeProvider.GetJs().Replace("\r\n", "\n");
 
 	public static TheoryData<string, string, string> SnippetCases()
@@ -78,97 +78,8 @@ public sealed class EmbeddedThemeScriptTests
 		_js.Should().Contain("href=\"' + esc(e.r) + '\"");
 	}
 
-	[Fact]
-	public void Search_MatchesWordsThatOnlyAppearInCode()
-	{
-		Assert.SkipUnless(_nodeAvailable.Value, "node is not on PATH");
-		int start = _js.IndexOf("function doSearch(", StringComparison.Ordinal);
-		start.Should().BeGreaterThanOrEqualTo(0);
-		string doSearch = _js[start.._js.IndexOf("function searchSnippet(", start, StringComparison.Ordinal)];
-
-		string result = RunNode($$"""
-		                          let searchData = [
-		                              { t: 'Guide', s: 'Install', r: '/guide#install', c: 'Run the tool.', x: 'dotnet tool install', g: 'Documentation' },
-		                              { t: 'Other', s: '', r: '/other', c: 'Nothing here.', g: 'Documentation' }
-		                          ];
-		                          let activeIdx = -1;
-		                          const searchResults = { innerHTML: '', classList: { add() {}, remove() {}, toggle() {} } };
-		                          {{doSearch}}
-		                          {{SearchFunctions()}}
-		                          doSearch('DOTNET');
-		                          process.stdout.write(JSON.stringify(searchResults.innerHTML));
-		                          """);
-
-		JsonSerializer.Deserialize<string>(result).Should().Contain("href=\"/guide#install\"").And.NotContain("/other");
-	}
-
-	[Fact]
-	public void VersionMenu_ClosesOnClicksOutsideItInTheCapturePhase()
-	{
-		// The other pickers stop their clicks from bubbling, so a bubble-phase listener left the
-		// version menu open next to the picker that had just opened.
-		Match listener = Regex.Match(_js,
-			@"document\.addEventListener\('click', \(e\) => \{\s*if \(!e\.target\.closest \|\| !e\.target\.closest\('\.version-selector'\)\) \{[^}]*\}\s*\}, true\);");
-
-		listener.Success.Should().BeTrue();
-		Regex.IsMatch(_js, @"if \(!isOpen\) \{\s*document\.querySelectorAll\('\.color-theme-dropdown, \.code-theme-dropdown, \.code-style-dropdown'\)")
-			.Should().BeTrue("opening the version menu closes the other pickers");
-	}
-
-	[Fact]
-	public void HeaderPickers_OpeningOneClosesTheOthers()
-	{
-		// Each picker stops its clicks from bubbling, so opening the color picker left the code
-		// theme and code style menus open under it.
-		Assert.SkipUnless(_nodeAvailable.Value, "node is not on PATH");
-		int start = _js.IndexOf("function closeOtherPickers(", StringComparison.Ordinal);
-		int end = _js.IndexOf("// Style selector", start, StringComparison.Ordinal);
-		start.Should().BeGreaterThanOrEqualTo(0);
-		end.Should().BeGreaterThan(start);
-
-		string result = RunNode($$"""
-		                          function element() {
-		                              const attributes = {}, listeners = [];
-		                              return {
-		                                  setAttribute(k, v) { attributes[k] = String(v); },
-		                                  getAttribute(k) { return k in attributes ? attributes[k] : null; },
-		                                  removeAttribute(k) { delete attributes[k]; },
-		                                  hasAttribute(k) { return k in attributes; },
-		                                  addEventListener(type, f) { if (type === 'click') listeners.push(f); },
-		                                  querySelectorAll() { return []; },
-		                                  click() { listeners.forEach(f => f({ stopPropagation() {} })); }
-		                              };
-		                          }
-		                          const nodes = {};
-		                          for (const kind of ['color-theme', 'code-theme', 'code-style']) {
-		                              nodes['.' + kind + '-trigger'] = element();
-		                              nodes['.' + kind + '-dropdown'] = element();
-		                              nodes['.' + kind + '-dropdown'].setAttribute('hidden', '');
-		                          }
-		                          const document = { querySelector: s => nodes[s] || null, querySelectorAll: () => [], addEventListener() {} };
-		                          const html = element();
-		                          const localStorage = { getItem: () => null, setItem() {} };
-		                          {{_js[start..end]}}
-		                          const state = () => ['color-theme', 'code-theme', 'code-style']
-		                              .map(k => (nodes['.' + k + '-dropdown'].hasAttribute('hidden') ? '-' : 'open') + ':' + nodes['.' + k + '-trigger'].getAttribute('aria-expanded'))
-		                              .join(' ');
-		                          const seen = [];
-		                          for (const kind of ['code-theme', 'color-theme', 'code-style', 'color-theme', 'code-theme']) {
-		                              nodes['.' + kind + '-trigger'].click();
-		                              seen.push(state());
-		                          }
-		                          process.stdout.write(JSON.stringify(seen));
-		                          """);
-
-		JsonSerializer.Deserialize<string[]>(result).Should().Equal(
-			"-:false open:true -:false",
-			"open:true -:false -:false",
-			"-:false -:false open:true",
-			"open:true -:false -:false",
-			"-:false open:true -:false");
-	}
-
-	public static TheoryData<string> ColorPresets() => ["ocean", "emerald", "violet", "amber", "rose", "moka-red"];
+	public static TheoryData<string> ColorPresets() =>
+		new(global::Moka.Docs.Core.Theming.ColorPresets.Names);
 
 	[Theory]
 	[MemberData(nameof(ColorPresets))]
@@ -240,7 +151,7 @@ public sealed class EmbeddedThemeScriptTests
 	}
 
 	public static TheoryData<string> CodeThemes() =>
-		["catppuccin-mocha", "catppuccin-latte", "github-dark", "github-light", "dracula", "one-dark", "nord"];
+	new(global::Moka.Docs.Core.Theming.CodeThemes.Names);
 
 	[Theory]
 	[MemberData(nameof(CodeThemes))]
@@ -249,30 +160,14 @@ public sealed class EmbeddedThemeScriptTests
 		// They were the page's muted text color at 35% opacity: about 2:1 on every code theme.
 		string variables = Regex.Match(_css, $@"\[data-code-theme=""{codeTheme}""\] \{{(?<body>[^}}]*)\}}").Groups["body"].Value;
 		string lineNumber = Regex.Match(variables, @"--sh-line-number: (#[0-9a-f]{6});").Groups[1].Value;
-		string background = Regex.Match(_css, $@"\[data-code-theme=""{codeTheme}""\] \.page-content pre \{{ background: (#[0-9a-f]{{6}});").Groups[1].Value;
+		string background = Regex.Match(_css, $@"\[data-code-theme=""{codeTheme}""\] :is\(\.page-content, \.landing-content\) pre \{{ background: (#[0-9a-f]{{6}});").Groups[1].Value;
+		bool light = Regex.IsMatch(_css, $@"\[data-code-theme=""{codeTheme}""\](?:,\n[^{{]*| )\{{\n    --sh-line-shade: transparent;");
 
 		lineNumber.Should().NotBeEmpty();
 		background.Should().NotBeEmpty();
 		Contrast(lineNumber, background).Should().BeGreaterThanOrEqualTo(4.5);
-		Contrast(lineNumber, "#0a0a0d").Should().BeGreaterThanOrEqualTo(codeTheme.Contains("light") || codeTheme.Contains("latte") ? 0 : 4.5,
+		Contrast(lineNumber, "#0a0a0d").Should().BeGreaterThanOrEqualTo(light ? 0 : 4.5,
 			"the moka style darkens dark code themes to #0a0a0d");
-	}
-
-	[Theory]
-	[InlineData(":root {")]
-	[InlineData("[data-theme=\"dark\"] {")]
-	public void LandingLineNumbers_MeetAaContrastInTheDefaultStyle(string scope)
-	{
-		// Landing code blocks use the page colors, not a code theme. The muted text color they had
-		// is 2.45:1 on the light code background.
-		string rule = Regex.Match(_css, @"\.landing-content pre \.line-numbers \{[^}]*\}").Value;
-		string variable = Regex.Match(rule, @"color: var\((--[\w-]+)\)").Groups[1].Value;
-		string variables = Block("\n" + scope);
-
-		string Value(string name) => Regex.Match(variables, Regex.Escape(name) + @": (#[0-9a-f]{6});").Groups[1].Value;
-
-		variable.Should().NotBeEmpty();
-		Contrast(Value(variable), Value("--color-bg-secondary")).Should().BeGreaterThanOrEqualTo(4.5);
 	}
 
 	[Fact]
@@ -312,7 +207,7 @@ public sealed class EmbeddedThemeScriptTests
 	{
 		int start = _js.IndexOf("function searchSnippet(", StringComparison.Ordinal);
 		start.Should().BeGreaterThanOrEqualTo(0, "the search code builds snippets in searchSnippet");
-		int end = _js.IndexOf("function updateActive()", start, StringComparison.Ordinal);
+		int end = _js.IndexOf("function initSearch(", start, StringComparison.Ordinal);
 		return _js[start..end];
 	}
 

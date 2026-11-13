@@ -57,7 +57,7 @@ public sealed class AspNetCoreBlogTests : IDisposable
 			.And.Contain("<a href=\"/docs/blog/second\">Second Post</a>")
 			.And.Contain("href=\"/docs/blog/page/2\" rel=\"next\"")
 			.And.NotContain("rel=\"alternate\"", "the host has no public URL for a feed");
-		index.Should().Contain("<a class=\"nav-link current\" href=\"/docs/blog\">", "the default sidebar gets a blog entry");
+		index.Should().Contain("<a class=\"nav-link current\" href=\"/docs/blog\" aria-current=\"page\">", "the default sidebar gets a blog entry");
 
 		(await host.GetTextAsync("/docs/blog/page/2/")).Should().Contain("First Post");
 		(await host.GetTextAsync("/docs/blog/tags/news/")).Should().Contain("First Post");

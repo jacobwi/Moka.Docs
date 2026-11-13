@@ -54,6 +54,7 @@ public static partial class EmbeddedThemeProvider
 	                                              var list = own && childWithClass(own, 'nav-children');
 	                                              if (list && hits.some(function (other) { return list.contains(other); })) return;
 	                                              link.classList.add('current');
+	                                              link.setAttribute('aria-current', 'page');
 	                                              if (own) own.classList.add('active');
 	                                              openAncestors(link, nav);
 	                                          });
@@ -93,7 +94,7 @@ public static partial class EmbeddedThemeProvider
 	///     default layout writes into every page. A build with a shared sidebar renders it once more,
 	///     with no current page, for <see cref="CreateSidebarScript" />.
 	/// </summary>
-	public static string GetSidebarTemplate() => _sidebarNav;
+	public static string GetSidebarTemplate() => _sidebarTemplate;
 
 	/// <summary>
 	///     The script that pages with a shared sidebar load. It replaces the page's short sidebar with

@@ -9,7 +9,7 @@ namespace Moka.Docs.Engine.Tests.Theming;
 /// </summary>
 public sealed class SidebarThemeRulesTests
 {
-	private static readonly string _css = EmbeddedThemeProvider.GetCss().Replace("\r\n", "\n");
+	private static readonly string _css = ThemeCss.All;
 	private static readonly string _js = EmbeddedThemeProvider.GetJs().Replace("\r\n", "\n");
 
 	[Fact]
@@ -27,10 +27,12 @@ public sealed class SidebarThemeRulesTests
 	[Fact]
 	public void Toggle_AnimatesWithAPixelHeightAndThenDropsIt()
 	{
-		string toggle = Regex.Match(_js, @"toggle\.addEventListener\('click', \(e\) => \{.*?\}\);", RegexOptions.Singleline).Value;
+		string toggle = Regex.Match(_js, @"sidebar\.addEventListener\('click', function\(e\) \{\s*const toggle = closest\(e\.target, '\.nav-toggle'\);.*?\n        \}\);",
+			RegexOptions.Singleline).Value;
 
 		toggle.Should().Contain("children.style.maxHeight = children.scrollHeight + 'px';");
 		toggle.Should().MatchRegex(@"setTimeout\(\(\) => \{ children\.style\.maxHeight = ''; \}, \d+\)");
+		toggle.Should().Contain("toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');");
 	}
 
 	[Fact]
@@ -38,6 +40,17 @@ public sealed class SidebarThemeRulesTests
 	{
 		// The sidebar is hidden while a phone loads the page, so nothing scrolled it then.
 		_js.Should().MatchRegex(
-			@"if \(sidebar\.classList\.toggle\('open'\)\) sidebar\.querySelector\('\.nav-link\.current'\)\?\.scrollIntoView\(");
+			@"if \(open\) \{\s*// [^\n]*\n\s*const current = sidebar\.querySelector\('\.nav-link\.current'\);\s*if \(current\) current\.scrollIntoView\(");
+	}
+
+	[Fact]
+	public void InlineSidebar_ScrollsToTheCurrentPageOnLoadLikeTheSharedOne()
+	{
+		// Only the shared sidebar script did; a page deep in a long inline sidebar opened with its
+		// entry out of sight.
+		string init = Regex.Match(_js, @"function initSidebar\(\) \{.*?const settle", RegexOptions.Singleline).Value;
+
+		init.Should().Contain("if (!sidebar.hasAttribute('data-nav-route')) {");
+		init.Should().Contain("sidebar.scrollTop += offset - sidebar.clientHeight / 3;");
 	}
 }

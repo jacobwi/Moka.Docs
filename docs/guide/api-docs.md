@@ -88,6 +88,8 @@ Types, members and enum values marked `[EditorBrowsable(EditorBrowsableState.Nev
 
 ### Member Documentation
 
+A type page opens with the type's name as its heading (`Result<T>`, `Outer.Options`), then its badges, declaration and summary, and the `/api` page with "API Reference". With [`build.llms`](/configuration/site-config#llms) on, each type page also gets a Markdown version next to it (`/api/mylib/parser.md`) with the declaration, the documentation as plain text and every member's signature, summary, parameters and return value.
+
 A type's members are grouped into sections:
 
 | Section      | Contains                  | Signature example                                         |
@@ -511,6 +513,17 @@ MokaDocs caches each project's analysis result in `.mokadocs/cache/` next to `mo
 - the running MokaDocs build is the one that wrote the entry
 
 To skip the cache for one build, run `mokadocs build --no-cache`. To turn it off, set `build.cache: false` in `mokadocs.yaml`. `mokadocs clean` deletes the `.mokadocs` folder along with the output directory. See the [CLI reference](/advanced/cli-reference).
+
+## Linking to API Pages
+
+Markdown pages link to a type or member by its name with `xref:`, so the links follow the API pages' addresses:
+
+```markdown
+See [the configuration record](xref:Moka.Docs.Core.Configuration.SiteConfig) and
+<xref:Moka.Docs.Core.Configuration.SiteConfig.Build>.
+```
+
+A reference that matches nothing is a build warning with its page and line. See [API Cross-References](/guide/components#api-cross-references) for the forms a reference can take.
 
 ## Package Metadata and NuGet Widget
 

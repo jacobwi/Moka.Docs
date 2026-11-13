@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Web;
 using Moka.Docs.Core.Api;
 using Moka.Docs.CSharp.XmlDoc;
+using Moka.Docs.Parsing.Markdown;
 
 namespace Moka.Docs.Engine.Phases;
 
@@ -101,6 +102,55 @@ internal sealed partial class ApiCrefResolver
 		allTypes is null ? new ApiCrefResolver([type]) : _cache.GetValue(allTypes, list => new ApiCrefResolver(list));
 
 	/// <summary>
+	///     Resolves the <c>xref:</c> links of Markdown pages against <paramref name="model" />, the C# analysis or the
+	///     ASP.NET Core host's reflection model. Without a model, only <c>System.*</c> and <c>Microsoft.*</c>
+	///     references resolve (to learn.microsoft.com).
+	/// </summary>
+	internal static Func<string, XrefTarget?> XrefResolver(ApiReference? model)
+	{
+		List<ApiType> types = model?.Namespaces.SelectMany(ns => ns.Types).ToList() ?? [];
+		return new ApiCrefResolver(types).ResolveXref;
+	}
+
+	/// <summary>
+	///     Resolves the target of an <c>xref:</c> link: a documentation ID with its prefix (<c>T:Ns.Type</c>,
+	///     <c>M:Ns.Type.Method(System.Int32)</c>), or a name without one: a type (<c>Ns.Type</c>, <c>Ns.List`1</c>,
+	///     <c>Ns.List{T}</c>), a member (<c>Ns.Type.Member</c>, with an optional parameter list), or a name that
+	///     ends one documented type or member (<c>Type</c>, <c>Type.Member</c>). <c>System.*</c> and
+	///     <c>Microsoft.*</c> names link to learn.microsoft.com.
+	/// </summary>
+	internal XrefTarget? ResolveXref(string reference)
+	{
+		string id = reference.Trim();
+		if (id.Length == 0)
+		{
+			return null;
+		}
+
+		if (id.Length > 2 && id[1] == ':' && id[0] is 'T' or 'M' or 'P' or 'F' or 'E' or 'N' or '!')
+		{
+			return Resolve(id, null) is { } prefixed ? new XrefTarget(prefixed.Href, prefixed.Text) : null;
+		}
+
+		int open = id.IndexOf('(');
+		string head = GenericArgumentsToArity((open >= 0 ? id[..open] : id).Trim().Replace('{', '<').Replace('}', '>'));
+		string parameters = open >= 0 ? id[open..] : "";
+		if (head.Length == 0 || head.Any(char.IsWhiteSpace))
+		{
+			return null;
+		}
+
+		CrefTarget? target = parameters.Length == 0 && _typesById.TryGetValue(head, out ApiType? type) ? TypeTarget(type) : null;
+		foreach (char kind in "MPFE")
+		{
+			target ??= ResolveMember(kind, head + parameters, null);
+		}
+
+		target ??= ResolveUnbound(head + parameters, null) ?? LearnTarget("T:" + head + parameters);
+		return target is null ? null : new XrefTarget(target.Href, target.Text);
+	}
+
+	/// <summary>
 	///     The anchor id of each member of <paramref name="type" /> that has a detail block.
 	/// </summary>
 	internal IReadOnlyDictionary<ApiMember, string> GetAnchors(ApiType type) =>
@@ -178,7 +228,7 @@ internal sealed partial class ApiCrefResolver
 		return target is null ? $"<code>{Esc(text)}</code>" : Link(target.Href, text);
 	}
 
-	private CrefTarget? Resolve(string id, ApiType current)
+	private CrefTarget? Resolve(string id, ApiType? current)
 	{
 		if (id.Length < 3 || id[1] != ':')
 		{
@@ -196,7 +246,7 @@ internal sealed partial class ApiCrefResolver
 		};
 	}
 
-	private CrefTarget? ResolveMember(char kind, string body, ApiType current)
+	private CrefTarget? ResolveMember(char kind, string body, ApiType? current)
 	{
 		// An extension block member is documented on the compiler's grouping type, as in
 		// M:Ns.ShapeExtensions.<G>$4B0A9C.Grow(System.Double), with the member's own parameters. A reference
@@ -299,7 +349,7 @@ internal sealed partial class ApiCrefResolver
 	///     The build compiles each configured project on its own, so a cref to a type in another project
 	///     never binds. A name that matches exactly one documented type still gets a link.
 	/// </remarks>
-	private CrefTarget? ResolveUnbound(string text, ApiType current)
+	private CrefTarget? ResolveUnbound(string text, ApiType? current)
 	{
 		int open = text.IndexOf('(');
 		string path = GenericArgumentsToArity((open >= 0 ? text[..open] : text).Trim().Replace('{', '<').Replace('}', '>'));
@@ -341,7 +391,7 @@ internal sealed partial class ApiCrefResolver
 		return matches.Length == 1 ? matches[0].Type : null;
 	}
 
-	private CrefTarget MemberTarget(ApiType parent, ApiMember member, ApiType current)
+	private CrefTarget MemberTarget(ApiType parent, ApiMember member, ApiType? current)
 	{
 		// A member without a detail block has no anchor of its own, but its section always exists.
 		string anchor = GetAnchors(parent).TryGetValue(member, out string? id) ? id : ApiPageRenderer.MemberSectionId(parent, member);

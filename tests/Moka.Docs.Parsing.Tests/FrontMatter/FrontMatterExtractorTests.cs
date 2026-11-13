@@ -163,4 +163,104 @@ public sealed class FrontMatterExtractorTests
 		result.FrontMatter.Title.Should().Be("Untitled");
 		result.FrontMatter.Description.Should().Be("Has description but no title");
 	}
+
+	[Fact]
+	public void Extract_HeroKeys_KeepTheCodeIndentedAndTrimTheRest()
+	{
+		const string input = """
+		                     ---
+		                     title: Home
+		                     layout: landing
+		                     heroCodeLanguage: " csharp "
+		                     heroImage: " images/hero.png "
+		                     heroCode: |
+		                       if (ready)
+		                       {
+		                           Run();
+		                       }
+
+		                     ---
+		                     Body
+		                     """;
+
+		FrontMatterResult result = _extractor.Extract(input);
+
+		result.Warnings.Should().BeEmpty();
+		result.FrontMatter.HeroCode.Should().Be("if (ready)\n{\n    Run();\n}");
+		result.FrontMatter.HeroCodeLanguage.Should().Be("csharp");
+		result.FrontMatter.HeroImage.Should().Be("images/hero.png");
+	}
+
+	[Fact]
+	public void Extract_ShowcaseKeys_ReadTheCodeBandStatsAndCallToAction()
+	{
+		const string input = """
+		                     ---
+		                     title: Home
+		                     layout: landing
+		                     showcaseTitle: " Two lines "
+		                     showcaseText: Bind and go.
+		                     showcaseCodeLanguage: " csharp "
+		                     showcaseCode: |
+		                       var grid = new Grid
+		                       {
+		                           Size = 2
+		                       };
+
+		                     stats:
+		                       - value: 2M
+		                         label: " Downloads "
+		                       - value: 40
+		                       - label: Only a label
+		                       -
+		                       - value: " "
+		                         label: ""
+		                     cta:
+		                       title: Ready?
+		                       text: " Install it. "
+		                       link: " /guide/install "
+		                       linkText: Install
+		                     ---
+		                     Body
+		                     """;
+
+		FrontMatterResult result = _extractor.Extract(input);
+
+		result.Warnings.Should().BeEmpty();
+		result.FrontMatter.ShowcaseTitle.Should().Be("Two lines");
+		result.FrontMatter.ShowcaseText.Should().Be("Bind and go.");
+		result.FrontMatter.ShowcaseCode.Should().Be("var grid = new Grid\n{\n    Size = 2\n};");
+		result.FrontMatter.ShowcaseCodeLanguage.Should().Be("csharp");
+		result.FrontMatter.Stats.Should().Equal(
+			new LandingStat { Value = "2M", Label = "Downloads" },
+			new LandingStat { Value = "40" },
+			new LandingStat { Label = "Only a label" });
+		result.FrontMatter.Cta.Should().Be(new LandingCallToAction
+		{
+			Title = "Ready?", Text = "Install it.", Link = "/guide/install", LinkText = "Install"
+		});
+	}
+
+	[Fact]
+	public void Extract_NoShowcaseKeys_LeavesThemEmpty()
+	{
+		FrontMatterResult result = _extractor.Extract("---\ntitle: Home\nshowcaseCode: '  '\ncta:\n  linkText: Go\n---\nBody");
+
+		result.FrontMatter.ShowcaseCode.Should().BeNull();
+		result.FrontMatter.ShowcaseCodeLanguage.Should().BeNull();
+		result.FrontMatter.ShowcaseTitle.Should().BeEmpty();
+		result.FrontMatter.ShowcaseText.Should().BeEmpty();
+		result.FrontMatter.Stats.Should().BeEmpty();
+		result.FrontMatter.Cta.Should().BeNull("a call to action with only a button text has nothing to show");
+	}
+
+	[Fact]
+	public void Extract_NoHeroKeys_LeavesThemNull()
+	{
+		FrontMatterResult result = _extractor.Extract("---\ntitle: Home\nheroCode: '  '\n---\nBody");
+
+		result.FrontMatter.HeroCode.Should().BeNull();
+		result.FrontMatter.HeroCodeLanguage.Should().BeNull();
+		result.FrontMatter.HeroImage.Should().BeNull();
+	}
 }

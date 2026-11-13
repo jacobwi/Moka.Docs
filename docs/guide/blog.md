@@ -122,4 +122,4 @@ builder.Services.AddMokaDocs(options =>
 });
 ```
 
-The default sidebar gets a blog entry. The host writes no feeds: it doesn't know the URL readers reach it at.
+The default sidebar gets a blog entry. The host writes no feeds.

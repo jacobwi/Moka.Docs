@@ -100,11 +100,48 @@ public sealed class SearchContentTests
 		Dictionary<string, JsonElement> byRoute = index.RootElement.EnumerateArray()
 			.ToDictionary(e => e.GetProperty("r").GetString()!);
 
-		byRoute["/guide#guide"].GetProperty("c").GetString().Should().Be("Intro paragraph.");
+		// The page's own h1 is the page entry, not a section of it.
+		byRoute.Should().NotContainKey("/guide#guide");
+		byRoute["/guide"].GetProperty("c").GetString().Should().Contain("Intro paragraph.");
 		byRoute["/guide#install"].GetProperty("c").GetString().Should().Be("Run the tool.");
 		byRoute["/guide#install"].GetProperty("x").GetString().Should().Be("dotnet tool install --global mokadocs");
 		byRoute["/guide#configure"].GetProperty("c").GetString().Should().Be("Edit the file.");
 		byRoute["/guide#configure"].TryGetProperty("x", out _).Should().BeFalse("a section without code has no code words");
 		byRoute["/guide"].TryGetProperty("x", out _).Should().BeFalse();
+	}
+
+	[Fact]
+	public async Task SearchIndex_CodeWordsLeaveOutTheHighlightingMarkup()
+	{
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(MockSite.Config(), new Dictionary<string, MockFileData>
+		{
+			["/project/docs/guide.md"] = new("""
+			                                 ---
+			                                 title: Guide
+			                                 ---
+			                                 # Guide
+
+			                                 ## Setup
+
+			                                 ```csharp title="Program.cs" {1} showLineNumbers
+			                                 var app = WebApplication.Create(args); // [!code focus]
+			                                 app.MapDocs(); // [!code ++]
+			                                 ```
+
+			                                 ```diff-json
+			                                 -{ "oldKey": 1 }
+			                                 +{ "newKey": 2 }
+			                                 ```
+
+			                                 <pre><code class="language-yaml">siteTitle: Docs</code></pre>
+			                                 """)
+		});
+
+		using JsonDocument index = JsonDocument.Parse(fs.File.ReadAllText("/project/_site/search-index.json"));
+		JsonElement setup = index.RootElement.EnumerateArray().Single(e => e.GetProperty("r").GetString() == "/guide#setup");
+
+		// "app" and "Docs" are left out because longer words contain them (CodeWords ignores case).
+		setup.GetProperty("x").GetString().Should().Be("var WebApplication.Create args app.MapDocs oldKey newKey siteTitle");
+		setup.GetProperty("c").GetString().Should().Be("Program.cs");
 	}
 }

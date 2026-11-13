@@ -33,17 +33,60 @@ public sealed class TocGeneratorTests
 	[Fact]
 	public void Generate_NestedHeadings_BuildsHierarchy()
 	{
+		MarkdownDocument doc = ParseDoc("## Child 1\n### Grandchild\n#### Great-grandchild\n## Child 2");
+
+		TableOfContents toc = _generator.Generate(doc);
+
+		toc.Entries.Should().HaveCount(2);
+		toc.Entries[0].Text.Should().Be("Child 1");
+		toc.Entries[0].Level.Should().Be(2);
+		toc.Entries[0].Children.Should().ContainSingle().Which.Text.Should().Be("Grandchild");
+		toc.Entries[0].Children[0].Children.Should().ContainSingle().Which.Text.Should().Be("Great-grandchild");
+		toc.Entries[1].Text.Should().Be("Child 2");
+	}
+
+	[Fact]
+	public void Generate_LeadingH1_IsLeftOutAndItsHeadingsBecomeRoots()
+	{
+		// The h1 was the one root, so the theme's collapse toggle on it hid the whole list, and h4
+		// headings never showed because the h1 used up one of the three levels the theme drew.
 		MarkdownDocument doc = ParseDoc("# Top\n## Child 1\n### Grandchild\n## Child 2");
 
 		TableOfContents toc = _generator.Generate(doc);
 
-		toc.Entries.Should().HaveCount(1);
-		toc.Entries[0].Text.Should().Be("Top");
-		toc.Entries[0].Level.Should().Be(1);
-		toc.Entries[0].Children.Should().HaveCount(2);
-		toc.Entries[0].Children[0].Text.Should().Be("Child 1");
-		toc.Entries[0].Children[0].Children.Should().HaveCount(1);
-		toc.Entries[0].Children[0].Children[0].Text.Should().Be("Grandchild");
+		toc.Entries.Select(e => e.Text).Should().Equal("Child 1", "Child 2");
+		toc.Entries[0].Children.Should().ContainSingle().Which.Text.Should().Be("Grandchild");
+	}
+
+	[Fact]
+	public void Generate_LeadingHeadingThatRepeatsTheTitle_IsLeftOut()
+	{
+		MarkdownDocument doc = ParseDoc("## Getting started\n\nIntro.\n\n## Install\n## Run");
+
+		TableOfContents toc = _generator.Generate(doc, "Getting Started");
+
+		toc.Entries.Select(e => e.Text).Should().Equal("Install", "Run");
+	}
+
+	[Fact]
+	public void Generate_TitleLaterOnThePage_IsKept()
+	{
+		MarkdownDocument doc = ParseDoc("## Install\n## Setup\n## Install again");
+
+		TableOfContents toc = _generator.Generate(doc, "Setup");
+
+		toc.Entries.Select(e => e.Text).Should().Equal("Install", "Setup", "Install again");
+	}
+
+	[Fact]
+	public void Generate_LaterH1_StaysAsRootWithItsOwnChildren()
+	{
+		MarkdownDocument doc = ParseDoc("# Title\n## A\n# Part two\n## B");
+
+		TableOfContents toc = _generator.Generate(doc);
+
+		toc.Entries.Select(e => e.Text).Should().Equal("A", "Part two");
+		toc.Entries[1].Children.Should().ContainSingle().Which.Text.Should().Be("B");
 	}
 
 	[Fact]
@@ -95,8 +138,8 @@ public sealed class TocGeneratorTests
 	[Fact]
 	public void Generate_MixedLevels_HandlesSkippedLevels()
 	{
-		// Jumping from H1 to H3 (skipping H2)
-		MarkdownDocument doc = ParseDoc("# Top\n### Deep");
+		// Jumping from H2 to H4 (skipping H3)
+		MarkdownDocument doc = ParseDoc("# Title\n## Top\n#### Deep");
 
 		TableOfContents toc = _generator.Generate(doc);
 

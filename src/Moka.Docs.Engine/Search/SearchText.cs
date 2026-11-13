@@ -102,7 +102,8 @@ internal static class SearchText
 				continue;
 			}
 
-			if (_skippedTags.Contains(name))
+			// Glossary tooltips repeat a definition wherever its term is used; the glossary list has it once.
+			if (_skippedTags.Contains(name) || HasAttribute(tag, "data-no-search"))
 			{
 				i = AfterClosingTag(html, i, name);
 				current.Text.Append(' ');
@@ -276,6 +277,13 @@ internal static class SearchText
 		}
 
 		return sb.ToString();
+	}
+
+	private static bool HasAttribute(string tag, string attribute)
+	{
+		int at = tag.IndexOf(attribute, StringComparison.OrdinalIgnoreCase);
+		return at > 0 && char.IsWhiteSpace(tag[at - 1])
+		              && (at + attribute.Length >= tag.Length || tag[at + attribute.Length] is '=' or '>' or '/' || char.IsWhiteSpace(tag[at + attribute.Length]));
 	}
 
 	private static bool HasClass(string tag, string className) =>

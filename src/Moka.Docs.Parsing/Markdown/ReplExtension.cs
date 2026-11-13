@@ -1,5 +1,4 @@
 using Markdig;
-using Markdig.Helpers;
 using Markdig.Renderers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
@@ -111,23 +110,10 @@ internal sealed class ReplCodeBlockRenderer(HtmlObjectRenderer<CodeBlock>? inner
 	{
 		renderer.EnsureLine();
 		renderer.Write("<div class=\"repl-container\" data-repl=\"true\">");
-		renderer.Write("<pre><code class=\"language-csharp\">");
 
-		// Write the content of the code block with HTML encoding
-		StringLineGroup lines = block.Lines;
-		for (int i = 0; i < lines.Count; i++)
-		{
-			StringLine line = lines.Lines[i];
-			StringSlice slice = line.Slice;
-			if (i > 0)
-			{
-				renderer.WriteLine();
-			}
-
-			renderer.WriteEscape(slice.AsSpan());
-		}
-
-		renderer.Write("</code></pre>");
+		// The plugin's script inserts its toolbar after the <pre>, or before the output when the
+		// <pre> has no next sibling. The <pre> ends the code block wrapper, so it lands here.
+		renderer.Write(FencedCodeHtml.Render(block, "csharp"));
 		renderer.Write("<div class=\"repl-output\" style=\"display:none;\"></div>");
 		renderer.Write("</div>");
 		renderer.WriteLine();

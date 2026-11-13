@@ -181,7 +181,7 @@ The same applies to raw HTML in a Markdown file: relative URLs in `src`, `href`,
 
 ## Syntax Highlighting
 
-The default theme highlights fenced code blocks in the browser, using the language named after the opening fence.
+Code blocks are highlighted when the site is built, using the language named after the opening fence. The colors are in the HTML, so they show without JavaScript and the page does no highlighting work when it loads.
 
 ````markdown
 ```csharp
@@ -205,13 +205,98 @@ public class HelloWorld
 }
 ```
 
-The highlighter knows these languages, with aliases in parentheses: `csharp` (`cs`), `fsharp` (`fs`), `javascript` (`js`, `jsx`), `typescript` (`ts`, `tsx`), `python` (`py`), `java`, `kotlin` (`kt`), `swift`, `go`, `rust`, `ruby` (`rb`), `php`, `razor` (`blazor`, `cshtml`), `html`, `xml`, `css`, `json`, `yaml` (`yml`), `toml`, `ini` (`cfg`, `conf`), `bash` (`sh`, `shell`), `powershell` (`ps1`, `pwsh`), `sql`, `graphql` (`gql`), `proto` (`protobuf`), `docker` (`dockerfile`), `markdown` (`md`) and `diff`. A block in any other language, or with no language, is shown as plain text.
+The highlighter knows these languages, with aliases in parentheses: `csharp` (`cs`, `c#`), `fsharp` (`fs`), `javascript` (`js`, `jsx`), `typescript` (`ts`, `tsx`), `python` (`py`), `java`, `kotlin` (`kt`), `swift`, `go`, `rust`, `ruby` (`rb`), `php`, `razor` (`blazor`, `cshtml`), `html`, `xml`, `css`, `json`, `yaml` (`yml`), `toml`, `ini` (`cfg`, `conf`), `bash` (`sh`, `shell`), `powershell` (`ps1`, `pwsh`), `sql`, `graphql` (`gql`), `proto` (`protobuf`), `docker` (`dockerfile`), `markdown` (`md`) and `diff`. Names are not case sensitive. A block in any other language, or with no language, is shown as plain text.
 
-Every code block also gets a language label (when it names a language) and a copy button.
+Every code block also gets a language label (when it names a language) and a copy button. A long line scrolls inside the block while the label, the line numbers and the copy button stay where they are. Keyboard users can tab to a block and scroll it with the arrow keys.
+
+Code that doesn't come from a fence gets the same treatment: API signatures and source, OpenAPI and Python examples, plugin output, and `<pre><code class="language-...">` written as raw HTML.
+
+### Code Block Options
+
+Options go after the language, separated by spaces:
+
+| Option | Effect |
+|---|---|
+| `title="Program.cs"` | Shows a file name in a bar above the code |
+| `{1,3-5}` | Highlights lines 1, 3, 4 and 5 |
+| `showLineNumbers` | Line numbers for this block, even when it has fewer than three lines or the site turns them off |
+| `noLineNumbers` | No line numbers for this block |
+| `wrap` | Wraps long lines instead of scrolling them |
+
+````markdown
+```csharp title="Program.cs" {3} showLineNumbers
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+app.MapGet("/", () => "Hello, MokaDocs!");
+app.Run();
+```
+````
+
+```csharp title="Program.cs" {3} showLineNumbers
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+app.MapGet("/", () => "Hello, MokaDocs!");
+app.Run();
+```
+
+Line ranges can also follow the language with no space, as in ` ```csharp{3} `. Inside a [code group](/guide/components#code-groups), `title` names the tab instead of adding a bar.
+
+### Line Markers
+
+A comment at the end of a line can mark that line. The comment is taken out of the code that's shown and of what the Copy button copies.
+
+| Marker | Effect |
+|---|---|
+| `// [!code highlight]` | Highlights the line |
+| `// [!code focus]` | Focuses the line: the other lines are dimmed until the reader points at the block or tabs into it |
+| `// [!code ++]` | Marks the line as added |
+| `// [!code --]` | Marks the line as removed. Copy leaves it out |
+
+Write the comment the way the language does: `//`, `#`, `--`, `/* */`, `<!-- -->` or `@* *@`. To show a marker as text, as this page does, write `[!!code` instead of `[!code`.
+
+````markdown
+```csharp
+var options = new CacheOptions();
+options.Expiration = TimeSpan.FromMinutes(5); // [!!code --]
+options.Expiration = TimeSpan.FromMinutes(10); // [!!code ++]
+services.AddCache(options); // [!!code focus]
+```
+````
+
+```csharp
+var options = new CacheOptions();
+options.Expiration = TimeSpan.FromMinutes(5); // [!code --]
+options.Expiration = TimeSpan.FromMinutes(10); // [!code ++]
+services.AddCache(options); // [!code focus]
+```
+
+### Diffs
+
+A `diff` block shows lines that start with `+` as added and lines that start with `-` as removed. To highlight the code as well, add its language after a dash: `diff-csharp`, `diff-json`, `diff-yaml`.
+
+````markdown
+```diff-csharp
+ public void ConfigureServices(IServiceCollection services)
+ {
+-    services.AddSingleton<ICache, MemoryCache>();
++    services.AddSingleton<ICache, RedisCache>();
+ }
+```
+````
+
+```diff-csharp
+ public void ConfigureServices(IServiceCollection services)
+ {
+-    services.AddSingleton<ICache, MemoryCache>();
++    services.AddSingleton<ICache, RedisCache>();
+ }
+```
+
+The `+` and `-` signs sit in a column of their own. The Copy button copies the code after the change: it leaves out removed lines, `@@` hunk headers, the file header lines of a pasted `git diff` and the signs. Context lines may start with a space, as in a unified diff. That space is dropped when every context line has one, so a hand-written diff without it works too.
 
 ### Line Numbers
 
-Code blocks with three or more lines get line numbers, like the example above. There is no per-block setting. To turn them off for the whole site:
+Code blocks with three or more lines get line numbers, like the examples above. `showLineNumbers` and `noLineNumbers` change that for one block. To turn them off for the whole site:
 
 ```yaml
 theme:
@@ -221,7 +306,7 @@ theme:
 
 ### Copy Button
 
-A **Copy** button appears in the top-right corner of a code block when you hover over it. It uses the Clipboard API on HTTPS pages and on `localhost`, and falls back to `document.execCommand('copy')` elsewhere. Set `showCopyButton: false` under `theme.options` to remove it.
+A **Copy** button appears in the top-right corner of a code block when you hover over it or tab to it. It uses the Clipboard API on HTTPS pages and on `localhost`, and falls back to `document.execCommand('copy')` elsewhere, such as a site opened over plain http. Screen readers hear "Copied" once it worked. Set `showCopyButton: false` under `theme.options` to remove it.
 
 ## Admonitions / Callouts
 
@@ -347,6 +432,8 @@ To put an admonition inside another `:::` block, see [Nesting Blocks](#nesting-b
 
 Tabs show alternative versions of the same content, such as one command for several package managers.
 
+Choosing a tab chooses the tab with the same title in every other tab group on the page, code groups included, and the default theme remembers the last few titles the reader chose for later pages. A reader who picks "yarn" once sees the yarn tab wherever a group has one. With the keyboard, Left and Right move between tabs, and Home and End jump to the first and last. Without JavaScript every tab shows, each under its title.
+
 ### Basic Syntax
 
 A tab group starts with `=== "Title"`. Each further `=== "Title"` line starts a new tab, and a bare `===` line ends the group. Titles go in double or single quotes.
@@ -459,6 +546,18 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 ```
 ====
 
+## Components
+
+Collapsible details, FAQs, columns, file trees, timelines, videos, figures, package install widgets, cards, steps, link cards and code groups are `:::` blocks; badges, keyboard keys and glossary terms go inside a line; and `xref:` links point at the API reference by name. See [UI Components](/guide/components) for each one's syntax.
+
+```markdown
+:::details{open} Install with the .NET CLI
+Press :kbd[Ctrl+`] to open a terminal, then run `dotnet tool install -g mokadocs`.
+:::
+
+The :term[API] reference has a page for [`SiteConfig`](xref:Moka.Docs.Core.Configuration.SiteConfig) :badge[New]{success}.
+```
+
 ## Additional Extensions
 
 MokaDocs also renders these blocks. Three of them get their interactive parts from a plugin, which you enable under `plugins:` in `mokadocs.yaml`.
@@ -477,7 +576,7 @@ graph LR
 
 ### Interactive REPL Code Blocks
 
-A `csharp-repl` (or `cs-repl`) block gets a **Run** button when the `mokadocs-repl` plugin is enabled. The code runs on the `mokadocs serve` dev server; on a static host the button shows a "server unavailable" message instead of output. Without the plugin the block is an ordinary C# code block. See the [REPL plugin](/plugins/repl).
+A `csharp-repl` (or `cs-repl`) block gets a **Run** button when the `mokadocs-repl` plugin is enabled. The code runs on the `mokadocs serve` dev server; on a static host the button shows a "server unavailable" message instead of output. Without the plugin the block is an ordinary C# code block. [Code block options](#code-block-options) and [line markers](#line-markers) work here too; the code that runs is the code shown, without the marker comments. See the [REPL plugin](/plugins/repl).
 
 ````markdown
 ```csharp-repl

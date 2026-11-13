@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Abstractions.TestingHelpers;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -62,12 +63,24 @@ public sealed class InMemoryBuildOrchestrator(
 		AttributesToSkip = 0
 	};
 
+	private readonly StagedDirectoryCache _stagedDirectories = new();
+
+	/// <summary>
+	///     The compressed forms the last build made, keyed by <see cref="SiteFile.ContentHash" />, so a
+	///     rebuild compresses only the files that changed.
+	/// </summary>
+	private IReadOnlyDictionary<string, IReadOnlyList<SiteFileEncoding>> _compressed =
+		new Dictionary<string, IReadOnlyList<SiteFileEncoding>>();
+
 	/// <summary>
 	///     Folders under <see cref="MokaDocsOptions.DocsPath" /> that never reach the site: build
 	///     output and packages. With <c>DocsPath = "."</c>, <c>bin</c> published the app's
 	///     <c>.deps.json</c> and <c>obj</c> its <c>project.assets.json</c>.
 	/// </summary>
 	internal static IReadOnlyList<string> ExcludedFolders { get; } = ["bin", "obj", "node_modules"];
+
+	/// <summary>How many times a staged directory was read from disk instead of the cache.</summary>
+	internal int StagedDirectoryReads => _stagedDirectories.Reads;
 
 	/// <summary>
 	///     Creates an orchestrator that resolves relative paths from the current working directory.
@@ -92,12 +105,7 @@ public sealed class InMemoryBuildOrchestrator(
 	{
 		logger.LogInformation("Starting in-memory MokaDocs build for '{Title}'", options.Title);
 
-		// Relative paths resolved from the working directory, so starting the app from another
-		// folder, or with --contentRoot, found no docs. The content root is where the app keeps
-		// its files, whatever directory the process started in.
-		string contentRoot = environment?.ContentRootPath is { Length: > 0 } root
-			? root
-			: Directory.GetCurrentDirectory();
+		string contentRoot = SiteConfigFactory.ContentRoot(environment);
 
 		// Build API model from runtime assemblies via reflection. It is in the build context before
 		// the pipeline runs, so sidebar entries with AutoGenerate can list its namespaces.
@@ -111,8 +119,8 @@ public sealed class InMemoryBuildOrchestrator(
 		// option paths against that root on the real disk, the way the CLI resolves them against
 		// the mokadocs.yaml folder. The old "/mokadocs-virtual" root sent the OpenAPI spec and the
 		// Blazor preview host to a folder that does not exist.
-		string docsPath = Path.GetFullPath(Path.Combine(contentRoot, options.DocsPath ?? "docs"));
-		SiteConfig config = SiteConfigFactory.Create(options);
+		string docsPath = SiteConfigFactory.DocsDirectory(contentRoot, options.DocsPath);
+		SiteConfig config = SiteConfigFactory.Create(options, environment);
 		config = config with { Content = config.Content with { Docs = docsPath } };
 
 		var fs = new MockFileSystem();
@@ -146,6 +154,21 @@ public sealed class InMemoryBuildOrchestrator(
 			ReportCopyProblems(context, copy, options.DocsPath, docsPath, contentRoot);
 		}
 
+		if (!string.IsNullOrWhiteSpace(options.SocialImage) && config.Site.Image is null)
+		{
+			context.Diagnostics.Warning(
+				$"SocialImage \"{options.SocialImage}\" is outside DocsPath ({docsPath}), which is all the build reads, " +
+				"so link previews get no image. Move the file under DocsPath or use an absolute URL.",
+				"SocialImage");
+		}
+		else if (config.Site.Image is not null && string.IsNullOrWhiteSpace(config.Site.Url))
+		{
+			context.Diagnostics.Warning(
+				"SocialImage is set but SiteUrl isn't. Link previews need absolute URLs, so pages get no preview tags " +
+				"until SiteUrl names the URL readers reach the app at.",
+				"SocialImage");
+		}
+
 		// Pre-populate the API model so ReflectionApiPagePhase generates pages
 		context.ApiModel = apiModel;
 
@@ -171,6 +194,7 @@ public sealed class InMemoryBuildOrchestrator(
 		await AppOpenApiDocument.SupplyAsync(pluginHost, context.Diagnostics, logger, ct);
 
 		// Wire up plugin hook
+		var staged = new Dictionary<string, SiteFile>(StringComparer.OrdinalIgnoreCase);
 		pipeline.PluginHook = async (ctx, c) =>
 		{
 			if (pluginHost.LoadedPlugins.Count > 0)
@@ -178,7 +202,7 @@ public sealed class InMemoryBuildOrchestrator(
 				await pluginHost.ExecuteAllAsync(ctx, c);
 			}
 
-			StageDeferredDirectories(ctx);
+			StageDeferredDirectories(ctx, staged, c);
 		};
 
 		// Run the full build pipeline
@@ -187,9 +211,18 @@ public sealed class InMemoryBuildOrchestrator(
 		LogDiagnostics(context);
 
 		// Harvest all generated files from the virtual filesystem
+		Dictionary<string, SiteFile> files = HarvestFiles(fs, _virtualOutput);
+		CompressFiles(files, ct);
+
+		// Last, as OutputPhase copies staged directories after everything but the theme files.
+		foreach ((string path, SiteFile file) in staged)
+		{
+			files[path] = file;
+		}
+
 		var site = new InMemorySite
 		{
-			Files = HarvestFiles(fs, _virtualOutput),
+			Files = files,
 			Diagnostics = context.Diagnostics.All
 		};
 
@@ -243,6 +276,17 @@ public sealed class InMemoryBuildOrchestrator(
 		}
 
 		bool atRoot = string.Equals(directory, docsPath, StringComparison.Ordinal);
+
+		// A site MokaDocs built is not docs. Only its marker is copied, so discovery skips the folder
+		// and warns about it the way a CLI build does.
+		if (!atRoot && files.Any(f => Path.GetFileName(f) == OutputDirectoryGuard.MarkerFileName))
+		{
+			string virtualDirectory = fs.Path.Combine(docsPath, Path.GetRelativePath(docsPath, directory));
+			fs.Directory.CreateDirectory(virtualDirectory);
+			fs.File.WriteAllText(fs.Path.Combine(virtualDirectory, OutputDirectoryGuard.MarkerFileName), "");
+			return;
+		}
+
 		foreach (string file in files)
 		{
 			string name = Path.GetFileName(file);
@@ -253,8 +297,10 @@ public sealed class InMemoryBuildOrchestrator(
 				continue;
 			}
 
+			// The glossary file isn't published, but the build reads it from the docs root.
 			if (name.StartsWith('.')
-			    || !(_copiedExtensions.Contains(Path.GetExtension(name)) || (atRoot && _rootHostFiles.Contains(name))))
+			    || !(_copiedExtensions.Contains(Path.GetExtension(name))
+			         || (atRoot && (_rootHostFiles.Contains(name) || GlossaryFile.FileNames.Contains(name)))))
 			{
 				continue;
 			}
@@ -346,15 +392,18 @@ public sealed class InMemoryBuildOrchestrator(
 	}
 
 	/// <summary>
-	///     Reads the directories plugins staged for the output (the Blazor preview host's published
-	///     app) into <see cref="BuildContext.DeferredOutputFiles" />.
+	///     Takes the directories plugins staged for the output (the Blazor preview host's published
+	///     app) from <see cref="BuildContext.DeferredOutputDirectories" /> and adds their files to
+	///     <paramref name="staged" />, through <see cref="StagedDirectoryCache" />.
 	/// </summary>
 	/// <remarks>
 	///     <c>OutputPhase</c> copies a staged directory with the build's file system, which here
 	///     is the in-memory one. The directory lives on the real disk, so the copy threw and the
-	///     whole build failed as soon as a preview host was found.
+	///     whole build failed as soon as a preview host was found. The files skip the in-memory file
+	///     system altogether: going through it read and hashed tens of megabytes on every rebuild.
 	/// </remarks>
-	private static void StageDeferredDirectories(BuildContext context)
+	private void StageDeferredDirectories(BuildContext context, Dictionary<string, SiteFile> staged,
+		CancellationToken ct)
 	{
 		foreach ((string sourceDir, string destRelPath) in context.DeferredOutputDirectories.ToList())
 		{
@@ -363,14 +412,71 @@ public sealed class InMemoryBuildOrchestrator(
 				continue; // OutputPhase warns about it and moves on.
 			}
 
-			foreach (string sourceFile in Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories))
+			context.DeferredOutputDirectories.Remove((sourceDir, destRelPath));
+			if (OutputPrefix(destRelPath) is not { } prefix)
 			{
-				string relative = Path.GetRelativePath(sourceDir, sourceFile).Replace('\\', '/');
-				context.DeferredOutputFiles[$"{destRelPath.TrimEnd('/', '\\')}/{relative}"] = File.ReadAllBytes(sourceFile);
+				context.Diagnostics.Error(
+					$"'{destRelPath}' was not written: it resolves outside the output directory", "Output");
+				continue;
 			}
 
-			context.DeferredOutputDirectories.Remove((sourceDir, destRelPath));
+			var unreadable = new List<(string Path, string Reason)>();
+			foreach ((string relative, SiteFile file) in _stagedDirectories.Get(sourceDir, unreadable, ct))
+			{
+				staged[prefix + relative] = file;
+			}
+
+			foreach ((string path, string reason) in unreadable)
+			{
+				context.Diagnostics.Warning($"Skipped {prefix}{path} because it can't be read: {reason}", "Output");
+			}
 		}
+	}
+
+	/// <summary>
+	///     A staged directory's output path with a trailing <c>/</c> (empty for the site root), or
+	///     <c>null</c> when it would leave the output directory.
+	/// </summary>
+	internal static string? OutputPrefix(string destRelPath)
+	{
+		string[] segments = destRelPath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+		if (Path.IsPathRooted(destRelPath) || segments.Any(segment => segment == ".." || segment.Contains(':')))
+		{
+			return null;
+		}
+
+		string joined = string.Join('/', segments.Where(segment => segment != "."));
+		return joined.Length == 0 ? "" : joined + "/";
+	}
+
+	/// <summary>
+	///     Adds Brotli and gzip forms to the files worth compressing, reusing those of the last build
+	///     for files whose content didn't change. It runs once per build, so no request pays for it.
+	/// </summary>
+	private void CompressFiles(Dictionary<string, SiteFile> files, CancellationToken ct)
+	{
+		IReadOnlyDictionary<string, IReadOnlyList<SiteFileEncoding>> previous = Volatile.Read(ref _compressed);
+		var current = new ConcurrentDictionary<string, IReadOnlyList<SiteFileEncoding>>(StringComparer.Ordinal);
+		KeyValuePair<string, SiteFile>[] candidates =
+			files.Where(entry => SiteCompression.ShouldCompress(entry.Value)).ToArray();
+
+		var compressed = new SiteFile[candidates.Length];
+		Parallel.For(0, candidates.Length, new ParallelOptions { CancellationToken = ct }, i =>
+		{
+			SiteFile file = candidates[i].Value;
+			IReadOnlyList<SiteFileEncoding> encodings = current.GetOrAdd(file.ContentHash,
+				hash => previous.TryGetValue(hash, out IReadOnlyList<SiteFileEncoding>? reused)
+					? reused
+					: SiteCompression.Compress(file.Content));
+			compressed[i] = encodings.Count == 0 ? file : file.WithEncodings(encodings);
+		});
+
+		for (int i = 0; i < candidates.Length; i++)
+		{
+			files[candidates[i].Key] = compressed[i];
+		}
+
+		Volatile.Write(ref _compressed, current);
 	}
 
 	/// <summary>

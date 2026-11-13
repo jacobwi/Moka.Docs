@@ -54,7 +54,9 @@ public static class EngineServiceExtensions
 		services.AddSingleton<IBuildPhase, BlogPhase>();
 		services.AddSingleton<IBuildPhase, NavigationBuildPhase>();
 		services.AddSingleton<IBuildPhase, BlogNavigationPhase>();
+		services.AddSingleton<IBuildPhase, CodeHighlightPhase>();
 		services.AddSingleton<IBuildPhase, SearchIndexPhase>();
+		services.AddSingleton<IBuildPhase, LlmsPhase>();
 		services.AddSingleton<IBuildPhase, RenderPhase>();
 		services.AddSingleton<IBuildPhase, ThemeAssetPhase>();
 		services.AddSingleton<IBuildPhase, OutputPhase>();

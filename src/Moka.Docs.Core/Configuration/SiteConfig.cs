@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Moka.Docs.Core.Theming;
 
 namespace Moka.Docs.Core.Configuration;
@@ -32,6 +34,13 @@ public sealed record SiteConfig
 	public BuildConfig Build { get; init; } = new();
 
 	/// <summary>
+	///     Glossary terms and their definitions (<c>glossary:</c> in mokadocs.yaml), shown by <c>:term[...]</c>
+	///     tooltips and listed by <c>:::glossary</c>. A glossary.yml file in the docs folder adds more
+	///     (<see cref="GlossaryFile" />). Terms match case-insensitively.
+	/// </summary>
+	public IReadOnlyDictionary<string, string> Glossary { get; init; } = new Dictionary<string, string>();
+
+	/// <summary>
 	///     Problems found while reading mokadocs.yaml that did not stop it from loading, such as
 	///     unknown keys, each naming its line. The build reports them as warnings.
 	/// </summary>
@@ -64,11 +73,32 @@ public sealed record SiteMetadata
 	/// </summary>
 	public SiteAssetReference? Favicon { get; init; }
 
+	/// <summary>
+	///     Resolved reference to the image link previews show for a page that sets none of its own
+	///     (<c>og:image</c> and <c>twitter:image</c>). Same resolution rules as <see cref="Logo" />.
+	///     The <c>MOKADOCS_SITE_IMAGE</c> environment variable overrides it.
+	/// </summary>
+	public SiteAssetReference? Image { get; init; }
+
 	/// <summary>Copyright notice for the footer.</summary>
 	public string? Copyright { get; init; }
 
 	/// <summary>Edit link configuration for "Edit this page" links.</summary>
 	public EditLinkConfig? EditLink { get; init; }
+
+	/// <summary>
+	///     The language of the site's pages as a BCP 47 tag, such as <c>en</c>, <c>de</c> or <c>pt-BR</c>:
+	///     <c>&lt;html lang&gt;</c>, the theme's built-in translation, plural forms and how dates are written.
+	///     Defaults to <see cref="SiteLanguages.Default" />; the <c>MOKADOCS_SITE_LANGUAGE</c> environment
+	///     variable overrides it.
+	/// </summary>
+	public string Language { get; init; } = SiteLanguages.Default;
+
+	/// <summary>
+	///     The text direction of the site's pages, <c>ltr</c> or <c>rtl</c>, or empty for the language's own
+	///     (<see cref="SiteLanguages.Direction" />): right to left for Arabic, Hebrew, Persian, Urdu and a few more.
+	/// </summary>
+	public string Direction { get; init; } = "";
 }
 
 /// <summary>
@@ -136,7 +166,10 @@ public sealed record ThemeOptions
 	/// <summary>Accent color for highlights.</summary>
 	public string AccentColor { get; init; } = "#f59e0b";
 
-	/// <summary>Code syntax highlighting theme.</summary>
+	/// <summary>
+	///     Code syntax highlighting theme, one of <see cref="CodeThemes.Names" />. The default theme
+	///     renders an unknown name as <see cref="CodeThemes.Default" /> and the build warns about it.
+	/// </summary>
 	public string CodeTheme { get; init; } = MokaDefaults.CodeTheme;
 
 	/// <summary>Show "Edit this page" link on each page.</summary>
@@ -159,15 +192,23 @@ public sealed record ThemeOptions
 	/// <summary>Show code syntax theme selector in the header.</summary>
 	public bool CodeThemeSelector { get; init; } = MokaDefaults.ShowCodeThemeSelector;
 
-	/// <summary>Code block window style: "plain", "macos", "terminal", or "vscode".</summary>
+	/// <summary>Code block window style, one of <see cref="CodeStyles.Names" />: "plain", "macos", "terminal", or "vscode".</summary>
 	public string CodeStyle { get; init; } = MokaDefaults.CodeStyle;
 
 	/// <summary>Show code block style selector in the header.</summary>
 	public bool CodeStyleSelector { get; init; } = MokaDefaults.ShowCodeStyleSelector;
 
 	/// <summary>
-	///     Appearance style of the default theme: <c>default</c>, <c>moka</c>, <c>minimal</c>,
-	///     <c>classic</c> or <c>soft</c>. Readers can pick another one when
+	///     The theme preset the options were filled in from, one of <see cref="ThemePresets.Names" />, as
+	///     written. Empty for none. The preset is already applied to the other properties: it filled in
+	///     each option that mokadocs.yaml leaves out (in the ASP.NET Core host, each option still at its
+	///     default value). An unknown name applies nothing, and the build warns about it.
+	/// </summary>
+	public string Preset { get; init; } = "";
+
+	/// <summary>
+	///     Appearance style of the default theme, one of <see cref="ThemeStyles.Names" />. Readers can
+	///     pick another one when
 	///     <see cref="StyleSelector" /> is on. An unknown name renders as <c>default</c> and the
 	///     build warns about it.
 	/// </summary>
@@ -177,8 +218,29 @@ public sealed record ThemeOptions
 	public bool StyleSelector { get; init; } = MokaDefaults.ShowStyleSelector;
 
 	/// <summary>
+	///     Let readers pick a text size (90%, 100%, 112.5% or 125%) in the Appearance panel. The
+	///     pick is saved in the browser and applies to every page. Default is true.
+	/// </summary>
+	public bool TextSizeSelector { get; init; } = MokaDefaults.ShowTextSizeSelector;
+
+	/// <summary>
+	///     Let readers pick a narrow, default, wide, wider or full reading width in the Appearance
+	///     panel. The pick is saved in the browser and applies to every page. Default is true.
+	/// </summary>
+	public bool WidthSelector { get; init; } = MokaDefaults.ShowWidthSelector;
+
+	/// <summary>
+	///     Let readers switch the layout variants of a docs page (every part of <see cref="Layout" /> in
+	///     <see cref="ThemeLayouts.ReaderParts" />) in a Layout section of the Appearance panel. Picks are
+	///     saved in the browser and apply to every page; the configured variants stay the defaults. Pages
+	///     then carry the markup of every variant and always link the layout stylesheet. Default is false.
+	/// </summary>
+	public bool LayoutSelector { get; init; } = MokaDefaults.ShowLayoutSelector;
+
+	/// <summary>
 	///     Layout variants of the default theme's page parts: width, navbar, footer, "On this page",
-	///     breadcrumbs and the previous/next links. Every part defaults to <c>default</c>.
+	///     breadcrumbs, the previous/next links, the sidebar, the landing hero, admonitions, tables,
+	///     spacing and the typeface. Every part defaults to <c>default</c>.
 	/// </summary>
 	public ThemeLayoutOptions Layout { get; init; } = new();
 
@@ -200,6 +262,12 @@ public sealed record ThemeOptions
 	///     every page. Default is 300.
 	/// </summary>
 	public int SidebarInlineLimit { get; init; } = MokaDefaults.SidebarInlineLimit;
+
+	/// <summary>
+	///     Show a button that hides and shows the sidebar on wide screens. The reader's choice is kept
+	///     in the browser for later pages. Default is false.
+	/// </summary>
+	public bool SidebarToggle { get; init; } = MokaDefaults.SidebarToggle;
 
 	/// <summary>Show the "Was this page helpful?" feedback widget.</summary>
 	public bool ShowFeedback { get; init; } = MokaDefaults.ShowFeedbackWidget;
@@ -231,6 +299,13 @@ public sealed record ThemeOptions
 	/// <summary>Show line numbers on code blocks.</summary>
 	public bool ShowLineNumbers { get; init; } = MokaDefaults.ShowLineNumbers;
 
+	/// <summary>
+	///     Open a content image full size in a viewer when the reader clicks it, or presses Enter on
+	///     it. Images inside links and images smaller than 96 by 64 pixels are left alone. Default
+	///     is true.
+	/// </summary>
+	public bool ImageZoom { get; init; } = MokaDefaults.ImageZoom;
+
 	/// <summary>Maximum heading level shown in the table of contents (2-6). Default is 3 (h2 + h3).</summary>
 	public int TocDepth { get; init; } = MokaDefaults.TocDepth;
 
@@ -245,10 +320,70 @@ public sealed record ThemeOptions
 
 	/// <summary>
 	///     Default color theme applied on first visit (before localStorage is set).
-	///     Supported values: <c>ocean</c>, <c>emerald</c>, <c>violet</c>, <c>amber</c>,
-	///     <c>rose</c>, <c>moka-red</c>. Defaults to <c>ocean</c>.
+	///     One of <see cref="ColorPresets.Names" />, or empty for no preset. Defaults to <c>ocean</c>.
 	/// </summary>
 	public string DefaultColorTheme { get; init; } = "ocean";
+
+	/// <summary>
+	///     An announcement shown above the header of every page, or <c>null</c> for none. Only the
+	///     default theme renders it.
+	/// </summary>
+	public ThemeBanner? Banner { get; init; }
+
+	/// <summary>
+	///     The site's own wording for the theme's text, by key (<see cref="ThemeStrings.All" />), such as
+	///     <c>toc.title</c>: it replaces both the English and the built-in translation. A key the theme doesn't
+	///     have is reported and ignored.
+	/// </summary>
+	public IReadOnlyDictionary<string, string> Strings { get; init; } = new Dictionary<string, string>();
+}
+
+/// <summary>
+///     The announcement banner of <c>theme.options.banner</c>: one line of plain text above the header,
+///     with an optional link, which readers can dismiss.
+/// </summary>
+public sealed record ThemeBanner
+{
+	/// <summary>The announcement, as plain text. HTML in it shows as written.</summary>
+	public required string Text { get; init; }
+
+	/// <summary>
+	///     Where the banner's link goes: an absolute URL, or a path from the site root such as
+	///     <c>/blog/1.9</c>, which gets the base path. <c>null</c> for no link.
+	/// </summary>
+	public string? Link { get; init; }
+
+	/// <summary>The link's text. <c>null</c> shows <c>Learn more</c>.</summary>
+	public string? LinkText { get; init; }
+
+	/// <summary>
+	///     What a reader's dismissal is remembered by. A reader who dismissed the banner sees it again
+	///     once this changes. <c>null</c> or empty uses <see cref="EffectiveId" />'s hash of the text and
+	///     the link, so changing either shows the banner again.
+	/// </summary>
+	public string? Id { get; init; }
+
+	/// <summary>Whether the banner has a button that hides it for the reader. Default is true.</summary>
+	public bool Dismissible { get; init; } = true;
+
+	/// <summary>
+	///     The look, one of <see cref="BannerVariants.Names" />: <c>info</c> (the default),
+	///     <c>warning</c> or <c>accent</c>. An unknown name renders as <c>info</c>, and the build warns
+	///     about it.
+	/// </summary>
+	public string Variant { get; init; } = BannerVariants.Info;
+
+	/// <summary>
+	///     <see cref="Id" /> when it is set, else the first 12 hexadecimal digits of the SHA-256 hash of
+	///     <see cref="Text" /> and <see cref="Link" />.
+	/// </summary>
+	public string EffectiveId => string.IsNullOrWhiteSpace(Id) ? DerivedId(Text, Link) : Id.Trim();
+
+	private static string DerivedId(string text, string? link)
+	{
+		byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(text + "\n" + link));
+		return Convert.ToHexStringLower(hash)[..12];
+	}
 }
 
 /// <summary>
@@ -275,6 +410,69 @@ public sealed record ThemeLayoutOptions
 
 	/// <summary>The previous and next links. See <see cref="ThemeLayouts.PageNav" />.</summary>
 	public string PageNav { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The sidebar's look. See <see cref="ThemeLayouts.Sidebar" />.</summary>
+	public string Sidebar { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>What the sidebar lists. See <see cref="ThemeLayouts.SidebarScope" />.</summary>
+	public string SidebarScope { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The landing page as a whole. See <see cref="ThemeLayouts.Home" />.</summary>
+	public string Home { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The landing page's hero. See <see cref="ThemeLayouts.Hero" />.</summary>
+	public string Hero { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The backdrop behind the landing page's hero. See <see cref="ThemeLayouts.HeroBackground" />.</summary>
+	public string HeroBackground { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The landing page's feature cards. See <see cref="ThemeLayouts.Features" />.</summary>
+	public string Features { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>Admonitions. See <see cref="ThemeLayouts.Admonitions" />.</summary>
+	public string Admonitions { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>Tables in the content. See <see cref="ThemeLayouts.Tables" />.</summary>
+	public string Tables { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>Spacing. See <see cref="ThemeLayouts.Density" />.</summary>
+	public string Density { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The typeface. See <see cref="ThemeLayouts.Font" />.</summary>
+	public string Font { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>Section headings in the content. See <see cref="ThemeLayouts.Headings" />.</summary>
+	public string Headings { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>Links in the content. See <see cref="ThemeLayouts.Links" />.</summary>
+	public string Links { get; init; } = ThemeLayouts.Default;
+
+	/// <summary>The variant name configured for <paramref name="part" />, as written.</summary>
+	/// <param name="part">One of <see cref="ThemeLayouts.Parts" />.</param>
+	/// <returns>The configured name, which may be empty or unknown.</returns>
+	/// <exception cref="ArgumentOutOfRangeException"><paramref name="part" /> is not one of <see cref="ThemeLayouts.Parts" />.</exception>
+	public string NameOf(ThemeLayoutPart part) => part.Key switch
+	{
+		"width" => Width,
+		"navbar" => Navbar,
+		"footer" => Footer,
+		"toc" => Toc,
+		"breadcrumbs" => Breadcrumbs,
+		"pageNav" => PageNav,
+		"sidebar" => Sidebar,
+		"sidebarScope" => SidebarScope,
+		"home" => Home,
+		"hero" => Hero,
+		"heroBackground" => HeroBackground,
+		"features" => Features,
+		"admonitions" => Admonitions,
+		"tables" => Tables,
+		"density" => Density,
+		"font" => Font,
+		"headings" => Headings,
+		"links" => Links,
+		_ => throw new ArgumentOutOfRangeException(nameof(part), part.Key, "Not a layout part")
+	};
 }
 
 /// <summary>
@@ -527,6 +725,13 @@ public sealed record BuildConfig
 
 	/// <summary>Generate robots.txt.</summary>
 	public bool Robots { get; init; } = MokaDefaults.GenerateRobots;
+
+	/// <summary>
+	///     Write a Markdown copy of each public page next to its HTML (<c>/guide/intro</c> gets
+	///     <c>/guide/intro.md</c>), plus <c>llms.txt</c> and <c>llms-full.txt</c> at the site root.
+	///     On by default; the <c>MOKADOCS_LLMS</c> environment variable overrides it.
+	/// </summary>
+	public bool Llms { get; init; } = MokaDefaults.GenerateLlmsFiles;
 
 	/// <summary>Cache intermediate results for faster rebuilds.</summary>
 	public bool Cache { get; init; } = true;

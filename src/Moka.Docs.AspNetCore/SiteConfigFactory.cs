@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Hosting;
 using Moka.Docs.AspNetCore.OpenApi;
 using Moka.Docs.Core.Configuration;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Plugins.OpenApi;
 
 namespace Moka.Docs.AspNetCore;
@@ -13,12 +15,24 @@ internal static class SiteConfigFactory
 	internal const string BlazorPreviewPluginId = "mokadocs-blazor-preview";
 
 	/// <summary>
+	///     The Blazor preview option that lets the plugin scaffold a preview host and run
+	///     <c>dotnet publish</c> during the build.
+	/// </summary>
+	internal const string PublishHostOption = "publishHost";
+
+	/// <summary>
 	///     Creates a site configuration from the user-provided options. The navigation phase fills in
 	///     the entries marked <see cref="NavEntry.AutoGenerate" />, the same way as for the CLI.
 	/// </summary>
-	public static SiteConfig Create(MokaDocsOptions options)
+	/// <param name="options">The options.</param>
+	/// <param name="environment">
+	///     The app's environment. Outside Development the Blazor preview plugin gets
+	///     <c>publishHost: false</c>, unless its entry sets the option. <c>null</c> leaves it alone.
+	/// </param>
+	public static SiteConfig Create(MokaDocsOptions options, IHostEnvironment? environment = null)
 	{
-		List<PluginDeclaration> plugins = CreatePluginDeclarations(options);
+		List<PluginDeclaration> plugins = CreatePluginDeclarations(options, environment);
+		string docsDirectory = DocsDirectory(ContentRoot(environment), options.DocsPath);
 		var nav = new List<NavItem>();
 
 		// Auto-generate nav if user didn't specify custom entries
@@ -26,7 +40,7 @@ internal static class SiteConfigFactory
 		{
 			nav.Add(new NavItem
 			{
-				Label = "API Reference",
+				Label = ThemeText.For(options.Language, options.Strings)["api.title"],
 				Path = "/api",
 				Icon = "code",
 				AutoGenerate = true
@@ -98,10 +112,14 @@ internal static class SiteConfigFactory
 						PublishUrl = options.FaviconUrl,
 						IsAbsoluteUrl = true
 					},
-				// No public URL is known in embedded mode, so no canonical links or Open Graph URLs.
-				// This held the base path, which is not a URL and doubled in every canonical link.
-				Url = "",
-				Copyright = options.Copyright ?? $"© {DateTime.Now.Year} {options.Title}"
+				Image = CreateSocialImage(options.SocialImage, docsDirectory),
+				// The app can't tell its public URL from a request, so without SiteUrl there are no
+				// canonical links or link preview tags. This once held the base path, which is not a
+				// URL and doubled in every canonical link.
+				Url = options.SiteUrl?.Trim() ?? "",
+				Copyright = options.Copyright ?? $"© {DateTime.Now.Year} {options.Title}",
+				Language = string.IsNullOrWhiteSpace(options.Language) ? SiteLanguages.Default : options.Language.Trim(),
+				Direction = options.Direction?.Trim() ?? ""
 			},
 			Content = new ContentConfig
 			{
@@ -111,19 +129,26 @@ internal static class SiteConfigFactory
 			Theme = new ThemeConfig
 			{
 				Name = "default",
-				Options = new ThemeOptions
+				Options = WithPreset(new ThemeOptions
 				{
 					PrimaryColor = options.PrimaryColor,
 					AccentColor = options.AccentColor,
 					Style = options.Style,
 					StyleSelector = options.StyleSelector,
+					TextSizeSelector = options.TextSizeSelector,
+					WidthSelector = options.WidthSelector,
+					LayoutSelector = options.LayoutSelector,
+					ImageZoom = options.ImageZoom,
 					Layout = CreateLayoutOptions(options.Layout),
 					Sidebar = options.Sidebar,
+					SidebarToggle = options.SidebarToggle,
 					ShowEditLink = false, // no source repo in embedded mode
 					ShowLastUpdated = false,
 					// MapMokaDocs maps the endpoint the widget posts to only when this is on.
-					ShowFeedback = options.ShowFeedback
-				}
+					ShowFeedback = options.ShowFeedback,
+					Banner = CreateBanner(options.Banner),
+					Strings = new Dictionary<string, string>(options.Strings, StringComparer.Ordinal)
+				}, options.Preset)
 			},
 			Features = new FeaturesConfig
 			{
@@ -148,18 +173,24 @@ internal static class SiteConfigFactory
 				Sitemap = false,
 				Robots = false,
 				Minify = options.Minify,
+				Llms = options.Llms,
 				// The pipeline prefixes every route, asset and search result with this and tells the
 				// theme script where the site lives. It used to stay "/" while the finished HTML was
 				// patched afterwards, which missed the search index and the script's fetch paths.
-				BasePath = SiteConfigReader.NormalizeBasePath(options.BasePath)
-			}
+				// Browsers resolve the links against the public URL, which starts with the app's
+				// path base when the app isn't at the root of its host.
+				BasePath = PublicBasePath(options)
+			},
+			Glossary = options.Glossary
+				.Where(entry => !string.IsNullOrWhiteSpace(entry.Key) && !string.IsNullOrWhiteSpace(entry.Value))
+				.ToDictionary(entry => entry.Key.Trim(), entry => entry.Value.Trim(), StringComparer.Ordinal)
 		};
 	}
 
 	/// <summary>
 	///     The blog settings for <see cref="MokaDocsOptions.Blog" />, or a disabled blog. Feeds stay
-	///     off: they need <c>site.url</c>, which is empty here, and asking for one would only warn on
-	///     every build.
+	///     off: they need <c>site.url</c>, which is empty unless <see cref="MokaDocsOptions.SiteUrl" />
+	///     is set, and asking for one without it would only warn on every build.
 	/// </summary>
 	private static BlogFeatureConfig CreateBlogConfig(MokaDocsBlogOptions? blog) =>
 		blog is null
@@ -197,8 +228,124 @@ internal static class SiteConfigFactory
 			Footer = layout.Footer,
 			Toc = layout.Toc,
 			Breadcrumbs = layout.Breadcrumbs,
-			PageNav = layout.PageNav
+			PageNav = layout.PageNav,
+			Sidebar = layout.Sidebar,
+			SidebarScope = layout.SidebarScope,
+			Home = layout.Home,
+			Hero = layout.Hero,
+			HeroBackground = layout.HeroBackground,
+			Features = layout.Features,
+			Admonitions = layout.Admonitions,
+			Tables = layout.Tables,
+			Density = layout.Density,
+			Font = layout.Font,
+			Headings = layout.Headings,
+			Links = layout.Links
 		};
+
+	/// <summary>
+	///     <paramref name="theme" /> with <see cref="MokaDocsOptions.Preset" /> applied: the preset fills in
+	///     each option still at its default value, since a property that was never set looks the same as
+	///     one set to its default. An unknown name applies nothing; the render phase warns about it.
+	/// </summary>
+	private static ThemeOptions WithPreset(ThemeOptions theme, string? preset)
+	{
+		theme = theme with { Preset = preset?.Trim() ?? "" };
+		return ThemePresets.Find(preset) is { } found ? ThemePresetMerge.FillDefaults(theme, found) : theme;
+	}
+
+	/// <summary>
+	///     The banner of <see cref="MokaDocsOptions.Banner" />, or <c>null</c> when there is none or its
+	///     text is empty.
+	/// </summary>
+	private static ThemeBanner? CreateBanner(MokaDocsBannerOptions? banner) =>
+		banner is null || string.IsNullOrWhiteSpace(banner.Text)
+			? null
+			: new ThemeBanner
+			{
+				Text = banner.Text.Trim(),
+				Link = string.IsNullOrWhiteSpace(banner.Link) ? null : banner.Link.Trim(),
+				LinkText = string.IsNullOrWhiteSpace(banner.LinkText) ? null : banner.LinkText.Trim(),
+				Id = string.IsNullOrWhiteSpace(banner.Id) ? null : banner.Id.Trim(),
+				Dismissible = banner.Dismissible,
+				Variant = banner.Variant
+			};
+
+	/// <summary>
+	///     Where the build reads the docs from: <see cref="MokaDocsOptions.DocsPath" />, or <c>docs</c>
+	///     when it isn't set, from the content root.
+	/// </summary>
+	internal static string DocsDirectory(string contentRoot, string? docsPath) =>
+		Path.GetFullPath(Path.Combine(contentRoot, docsPath ?? "docs"));
+
+	/// <summary>
+	///     The app's content root, where relative paths in the options resolve from, or the working
+	///     directory without a host environment.
+	/// </summary>
+	/// <remarks>
+	///     Relative paths used to resolve from the working directory, so starting the app from another
+	///     folder, or with --contentRoot, found no docs.
+	/// </remarks>
+	internal static string ContentRoot(IHostEnvironment? environment) =>
+		environment?.ContentRootPath is { Length: > 0 } root ? root : Directory.GetCurrentDirectory();
+
+	/// <summary>
+	///     <see cref="MokaDocsOptions.SocialImage" /> as a site asset: a URL as written, or a file under
+	///     <paramref name="docsDirectory" /> at the URL the site publishes it under. <c>null</c> when it
+	///     isn't set or names a file outside <paramref name="docsDirectory" />, which the build never reads.
+	/// </summary>
+	internal static SiteAssetReference? CreateSocialImage(string? image, string docsDirectory)
+	{
+		if (string.IsNullOrWhiteSpace(image))
+		{
+			return null;
+		}
+
+		string value = image.Trim();
+		if (IsUrl(value))
+		{
+			return new SiteAssetReference { RawValue = image, SourcePath = null, PublishUrl = value, IsAbsoluteUrl = true };
+		}
+
+		string sourcePath = Path.GetFullPath(Path.Combine(docsDirectory, value.Replace('\\', '/').TrimStart('/')));
+		string relative = Path.GetRelativePath(docsDirectory, sourcePath);
+		if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+		{
+			return null;
+		}
+
+		return new SiteAssetReference
+		{
+			RawValue = image,
+			SourcePath = sourcePath,
+			PublishUrl = "/" + relative.Replace(Path.DirectorySeparatorChar, '/'),
+			IsAbsoluteUrl = false
+		};
+	}
+
+	/// <summary>
+	///     Whether <paramref name="value" /> has a scheme (<c>https:</c>, <c>data:</c>) or is
+	///     protocol-relative. A one-letter scheme is a Windows drive.
+	/// </summary>
+	private static bool IsUrl(string value) =>
+		value.StartsWith("//", StringComparison.Ordinal)
+		|| (value.IndexOf(':', StringComparison.Ordinal) is > 1 and var colon
+		    && char.IsAsciiLetter(value[0])
+		    && value[..colon].All(c => char.IsAsciiLetterOrDigit(c) || c is '+' or '-' or '.'));
+
+	/// <summary>
+	///     The prefix of every link in the site: <see cref="MokaDocsOptions.PathBase" /> followed by
+	///     <see cref="MokaDocsOptions.BasePath" />, as <see cref="SiteConfigReader.NormalizeBasePath" /> shapes it.
+	/// </summary>
+	internal static string PublicBasePath(MokaDocsOptions options) =>
+		SiteConfigReader.NormalizeBasePath(NormalizePathBase(options.PathBase) + "/" + options.BasePath?.Trim('/'));
+
+	/// <summary>
+	///     A path base as <c>HttpRequest.PathBase</c> holds it: empty, or a leading <c>/</c> and no
+	///     trailing one.
+	/// </summary>
+	internal static string NormalizePathBase(string? pathBase) =>
+		pathBase?.Trim().Trim('/') is { Length: > 0 } trimmed ? "/" + trimmed : "";
 
 	/// <summary>
 	///     Whether <see cref="MokaDocsOptions.Plugins" /> declares the plugin with this id.
@@ -206,7 +353,7 @@ internal static class SiteConfigFactory
 	internal static bool IsDeclared(MokaDocsOptions options, string pluginId) =>
 		options.Plugins.Any(p => string.Equals(p.Id, pluginId, StringComparison.OrdinalIgnoreCase));
 
-	private static List<PluginDeclaration> CreatePluginDeclarations(MokaDocsOptions options)
+	private static List<PluginDeclaration> CreatePluginDeclarations(MokaDocsOptions options, IHostEnvironment? environment)
 	{
 		var plugins = new List<PluginDeclaration>();
 		if (options.EnableRepl)
@@ -236,6 +383,18 @@ internal static class SiteConfigFactory
 					new Dictionary<string, object> { [AppOpenApiDocument.DocumentNameOption] = options.OpenApiDocument },
 					options)
 			});
+		}
+
+		// Outside Development the plugin uses a published host or static snapshots: a scaffold and a
+		// `dotnet publish` inside a running production app need the SDK on the server, write to the
+		// app's folder and hold the first build for minutes.
+		if (environment is not null && !environment.IsDevelopment())
+		{
+			foreach (PluginDeclaration preview in plugins.Where(p =>
+				         string.Equals(p.Name, BlazorPreviewPluginId, StringComparison.OrdinalIgnoreCase)))
+			{
+				preview.Options.TryAdd(PublishHostOption, false);
+			}
 		}
 
 		return plugins;

@@ -5,7 +5,7 @@ order: 3
 
 # Mermaid Diagrams
 
-MokaDocs renders [Mermaid](https://mermaid.js.org/) diagrams written in fenced code blocks. The build puts the diagram source in the page, and the default theme draws it in the browser with Mermaid 11. The theme loads the Mermaid script from cdn.jsdelivr.net, and only on pages that contain a diagram. A reader who can't reach the CDN sees the diagram source as text.
+MokaDocs renders [Mermaid](https://mermaid.js.org/) diagrams written in fenced code blocks. The build puts the diagram source in the page, and the default theme draws it in the browser with Mermaid 11. The theme loads the Mermaid script from cdn.jsdelivr.net, and only on pages that contain a diagram. It asks for one exact version (11.17.2) with a [Subresource Integrity](https://developer.mozilla.org/docs/Web/Security/Subresource_Integrity) hash, so the browser runs the file only if the CDN serves exactly the bytes MokaDocs was tested with. A reader who can't reach the CDN sees the diagram source as text.
 
 ## Basic Usage
 

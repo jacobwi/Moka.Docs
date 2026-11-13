@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
@@ -6,7 +7,8 @@ namespace Moka.Docs.AspNetCore;
 /// <summary>
 ///     Manages the MokaDocs documentation site lifecycle within an ASP.NET Core application.
 ///     Builds the site at startup or on first access and caches the result in memory.
-///     Thread-safe: concurrent requests wait for the build to complete.
+///     Thread-safe: one build runs at a time, and callers of <see cref="GetSiteAsync" /> that
+///     arrive during it share it. Docs requests never wait for a build.
 /// </summary>
 public sealed class MokaDocsService(
 	MokaDocsOptions options,
@@ -14,10 +16,19 @@ public sealed class MokaDocsService(
 	ILogger<MokaDocsService> logger)
 	: IDisposable
 {
+	/// <summary>The <c>Retry-After</c>, in seconds, of a request that arrives before the first build is done.</summary>
+	internal const int BuildingRetryAfterSeconds = 2;
+
+	/// <summary>Path bases logged at most. Past this, a mismatch isn't logged again, whatever the path base.</summary>
+	private const int _maxReportedPathBases = 16;
+
 	private readonly SemaphoreSlim _buildLock = new(1, 1);
 	private readonly CancellationTokenSource _disposing = new();
+	private readonly Lock _pendingLock = new();
+	private readonly ConcurrentDictionary<string, byte> _reportedPathBases = new(StringComparer.OrdinalIgnoreCase);
 	private BuildFailure? _failure;
 	private InMemorySite? _lastGoodSite;
+	private Task<SiteResult>? _pendingBuild;
 	private int _rebuildQueued;
 	private InMemorySite? _site;
 
@@ -42,8 +53,7 @@ public sealed class MokaDocsService(
 
 	/// <summary>
 	///     Gets the built documentation site, building it on first access.
-	///     Thread-safe: if multiple requests arrive before the first build completes,
-	///     they all wait for the single build to finish.
+	///     Thread-safe: callers that arrive before the build completes all wait for that one build.
 	/// </summary>
 	/// <remarks>
 	///     <para>
@@ -73,8 +83,8 @@ public sealed class MokaDocsService(
 	}
 
 	/// <summary>
-	///     The site, or the failure that left no site to serve. The endpoint answers a failure with
-	///     <c>503</c> instead of an exception per request.
+	///     The site, or the failure that left no site to serve, after waiting for a build when there
+	///     is no site yet. With <see cref="MokaDocsOptions.CacheOutput" /> off, every call builds.
 	/// </summary>
 	internal async Task<SiteResult> GetSiteOrFailureAsync(CancellationToken ct)
 	{
@@ -85,13 +95,67 @@ public sealed class MokaDocsService(
 
 		// The build runs on the service's token. With the request's, the first reader to leave
 		// cancelled the build everyone else was waiting for.
-		return await BuildForRequestsAsync().WaitAsync(ct);
+		Task<SiteResult> build = options.CacheOutput ? StartBuild() : BuildForRequestsAsync();
+		return await build.WaitAsync(ct);
+	}
+
+	/// <summary>
+	///     The site for a docs request, without waiting: the current site; the last site that built
+	///     while a build runs or after a failure; the failure when nothing has built; or neither while
+	///     the first build runs. Starts a build when there is no site and no recent failure.
+	/// </summary>
+	/// <remarks>
+	///     A request that waited for a build held its connection for as long as the build took,
+	///     minutes with a Blazor preview host to publish, and every other request queued behind it.
+	/// </remarks>
+	internal SiteResult GetSiteWithoutWaiting()
+	{
+		if (CurrentSite is { } site)
+		{
+			return new SiteResult(site, null);
+		}
+
+		InMemorySite? lastGood = Volatile.Read(ref _lastGoodSite);
+		if (Volatile.Read(ref _failure) is { } failure && IsRecent(failure))
+		{
+			return new SiteResult(lastGood, lastGood is null ? failure : null);
+		}
+
+		StartBuild();
+		return new SiteResult(lastGood, null);
+	}
+
+	/// <summary>
+	///     Logs a warning the first time a docs request arrives with a path base that the site's
+	///     links don't start with (<see cref="MokaDocsOptions.PathBase" />).
+	/// </summary>
+	internal void CheckPathBase(string? requestPathBase)
+	{
+		if (string.IsNullOrEmpty(requestPathBase) && string.IsNullOrEmpty(options.PathBase))
+		{
+			return;
+		}
+
+		string actual = SiteConfigFactory.NormalizePathBase(requestPathBase);
+		string expected = SiteConfigFactory.NormalizePathBase(options.PathBase);
+		if (string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)
+		    || _reportedPathBases.Count >= _maxReportedPathBases
+		    || !_reportedPathBases.TryAdd(actual, 0))
+		{
+			return;
+		}
+
+		logger.LogWarning(
+			"A docs request arrived with the path base \"{RequestPathBase}\", but the site was built for the path base " +
+			"\"{PathBase}\" and its links start with \"{Prefix}\", so pages reached this way load without styles, " +
+			"scripts or working links. Set MokaDocsOptions.PathBase to the path base readers reach the app through",
+			actual, expected, SiteConfigFactory.PublicBasePath(options));
 	}
 
 	/// <summary>
 	///     Builds the site again and replaces the cached one when the build is done. Requests keep
 	///     getting the previous site until then, unlike <see cref="InvalidateCache" />, which makes
-	///     the next request wait for a build.
+	///     the next <see cref="GetSiteAsync" /> call wait for a build.
 	/// </summary>
 	/// <remarks>
 	///     A call made while another rebuild waits for its turn returns at once: that rebuild hasn't
@@ -149,7 +213,8 @@ public sealed class MokaDocsService(
 	///     Invalidates the cached site, forcing a rebuild on the next request.
 	/// </summary>
 	/// <remarks>
-	///     When that rebuild fails, requests get the site that was cached before.
+	///     The next docs request starts the rebuild, and requests get the site that was cached before
+	///     until it is done, or when it fails. <see cref="GetSiteAsync" /> waits for the rebuild.
 	/// </remarks>
 	public void InvalidateCache()
 	{
@@ -157,6 +222,27 @@ public sealed class MokaDocsService(
 		Volatile.Write(ref _failure, null);
 		logger.LogInformation("MokaDocs cache invalidated - site will be rebuilt on next request");
 	}
+
+	/// <summary>The build requests share, started now unless one is already running.</summary>
+	private Task<SiteResult> StartBuild()
+	{
+		lock (_pendingLock)
+		{
+			if (_pendingBuild is { IsCompleted: false } running)
+			{
+				return running;
+			}
+
+			// On the thread pool: the build's synchronous start, reflection over every assembly, would
+			// otherwise run on the thread of the request that started it.
+			Task<SiteResult> build = Task.Run(BuildForRequestsAsync);
+			_pendingBuild = build;
+			return build;
+		}
+	}
+
+	private bool IsRecent(BuildFailure failure) =>
+		TimeSpan.FromMilliseconds(Environment.TickCount64 - failure.At) < FailureRetryDelay;
 
 	private async Task<SiteResult> BuildForRequestsAsync()
 	{
@@ -170,8 +256,7 @@ public sealed class MokaDocsService(
 				return new SiteResult(built, null);
 			}
 
-			if (Volatile.Read(ref _failure) is { } failure
-			    && TimeSpan.FromMilliseconds(Environment.TickCount64 - failure.At) < FailureRetryDelay)
+			if (Volatile.Read(ref _failure) is { } failure && IsRecent(failure))
 			{
 				return new SiteResult(_lastGoodSite, _lastGoodSite is null ? failure : null);
 			}
@@ -204,7 +289,7 @@ public sealed class MokaDocsService(
 	/// <summary>Stores a site that built. The caller holds the build lock.</summary>
 	private void Succeeded(InMemorySite site)
 	{
-		_lastGoodSite = site;
+		Volatile.Write(ref _lastGoodSite, site);
 		Volatile.Write(ref _site, site);
 		Volatile.Write(ref _failure, null);
 	}
@@ -212,6 +297,9 @@ public sealed class MokaDocsService(
 	/// <summary>A build that threw, and when, in <see cref="Environment.TickCount64" /> milliseconds.</summary>
 	internal sealed record BuildFailure(Exception Error, long At);
 
-	/// <summary>A site to serve, or the failure that left none.</summary>
+	/// <summary>
+	///     A site to serve, or the failure that left none. Neither means the first build is still
+	///     running.
+	/// </summary>
 	internal readonly record struct SiteResult(InMemorySite? Site, BuildFailure? Failure);
 }

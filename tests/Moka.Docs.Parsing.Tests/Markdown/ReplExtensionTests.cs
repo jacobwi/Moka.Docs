@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Markdig;
 using Moka.Docs.Parsing.Markdown;
@@ -12,6 +14,13 @@ public sealed class ReplExtensionTests
 
 	private static string Render(string md) => Markdig.Markdown.ToHtml(md, _pipeline);
 
+	private static string CodeText(string html)
+	{
+		int start = html.IndexOf('>', html.IndexOf("<code", StringComparison.Ordinal)) + 1;
+		string code = html[start..html.IndexOf("</code>", start, StringComparison.Ordinal)];
+		return WebUtility.HtmlDecode(Regex.Replace(code, "<[^>]+>", ""));
+	}
+
 	[Theory]
 	[InlineData("csharp-repl")]
 	[InlineData("cs-repl")]
@@ -24,8 +33,21 @@ public sealed class ReplExtensionTests
 		html.Should().Contain("class=\"repl-container\"");
 		html.Should().Contain("data-repl=\"true\"");
 		html.Should().Contain("class=\"language-csharp\"");
-		html.Should().Contain("Console.WriteLine");
+		CodeText(html).Should().Be("Console.WriteLine(\"Hello\");");
 		html.Should().Contain("repl-output");
+	}
+
+	[Fact]
+	public void ReplBlock_IsHighlightedAndItsPreEndsTheCodeBlock()
+	{
+		// The plugin's script puts its toolbar after the <pre>, or before the output when the <pre>
+		// has no next sibling; the code is what codeEl.textContent gives.
+		string html = Render("```csharp-repl\nvar x = 1;\nConsole.WriteLine(x);\n```");
+
+		html.Should().Contain("<div class=\"repl-container\" data-repl=\"true\"><div class=\"code-block\" data-lang=\"csharp\"><pre>")
+			.And.Contain("<span class=\"line\"><span class=\"token keyword\">var</span> x = <span class=\"token number\">1</span>;</span>")
+			.And.Contain("</code></pre></div><div class=\"repl-output\"");
+		CodeText(html).Should().Be("var x = 1;\nConsole.WriteLine(x);");
 	}
 
 	[Fact]
@@ -83,8 +105,9 @@ public sealed class ReplExtensionTests
 
 		string html = Render(md);
 
-		// Angle brackets in code should be HTML-encoded
-		html.Should().Contain("List&lt;string&gt;");
+		html.Should().Contain("<span class=\"token type-name\">List</span>&lt;<span class=\"token keyword\">string</span>&gt;")
+			.And.NotContain("<string>");
+		CodeText(html).Should().Be("var x = new List<string>();");
 	}
 
 	[Fact]

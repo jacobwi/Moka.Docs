@@ -51,7 +51,7 @@ public static class OutputDirectoryGuard
 	///     Explains why <paramref name="outputDirectory" /> must not be used for this
 	///     configuration, or returns <c>null</c>. On top of the project and docs folders, the
 	///     output must not be or contain a <c>content.projects</c> folder, a custom theme folder
-	///     or the source file of <c>site.logo</c> or <c>site.favicon</c>.
+	///     or the source file of <c>site.logo</c>, <c>site.favicon</c> or <c>site.image</c>.
 	/// </summary>
 	/// <param name="config">The site configuration.</param>
 	/// <param name="rootDirectory">The full path of the directory containing mokadocs.yaml.</param>
@@ -127,7 +127,10 @@ public static class OutputDirectoryGuard
 			yield return ($"the theme folder ('{folder}')", folder);
 		}
 
-		foreach ((string key, SiteAssetReference? asset) in new[] { ("site.logo", config.Site.Logo), ("site.favicon", config.Site.Favicon) })
+		foreach ((string key, SiteAssetReference? asset) in new[]
+		         {
+			         ("site.logo", config.Site.Logo), ("site.favicon", config.Site.Favicon), ("site.image", config.Site.Image)
+		         })
 		{
 			if (asset?.SourcePath is { } source)
 			{

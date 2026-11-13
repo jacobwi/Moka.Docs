@@ -9,6 +9,7 @@ using Moka.Docs.AspNetCore.Reflection;
 using Moka.Docs.Core.Api;
 using Moka.Docs.CSharp.Metadata;
 using Moka.Docs.CSharp.XmlDoc;
+using Moka.Docs.Parsing.Highlighting;
 
 namespace Moka.Docs.Integration.Tests.AspNetCore;
 
@@ -212,7 +213,7 @@ public sealed class ReflectionExtensionBlockTests
 			.And.Contain("<p>Members for any shape.</p>")
 			.And.Contain("<tr><td><code>shape</code></td><td><code>Shape</code></td><td>The shape to extend.</td></tr>")
 			.And.Contain("<h3 id=\"grow\">Grow(double factor)</h3>")
-			.And.Contain("<code class=\"language-csharp\">public Shape Grow(double factor)</code>")
+			.And.Contain("<span class=\"line\">" + SyntaxHighlighter.Highlight("public Shape Grow(double factor)", "csharp") + "</span></code>")
 			.And.Contain("<h2 id=\"extension-list-t\">extension&lt;T&gt;(List&lt;T&gt; list)</h2>")
 			.And.Contain("<h2 id=\"extension-point\">extension(ref Point point)</h2>")
 			.And.NotContain("get_Perimeter");

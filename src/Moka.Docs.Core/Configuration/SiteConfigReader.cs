@@ -68,7 +68,7 @@ public sealed class SiteConfigReader
 
 			return MapFromDto(dto, yamlDir) with
 			{
-				Warnings = YamlConfigChecks.FindUnknownKeys(yaml, typeof(SiteConfigDto))
+				Warnings = [.. YamlConfigChecks.FindUnknownKeys(yaml, typeof(SiteConfigDto)), .. GlossaryWarnings(dto.Glossary)]
 			};
 		}
 		catch (SiteConfigException)
@@ -113,19 +113,27 @@ public sealed class SiteConfigReader
 
 		SiteAssetReference? logo = ParseAssetReference(siteDto.Logo, yamlDir);
 		SiteAssetReference? favicon = ParseAssetReference(siteDto.Favicon, yamlDir);
+		SiteAssetReference? image = ParseAssetReference(
+			MokaDefaults.ResolveString("SITE_IMAGE", siteDto.Image, ""), yamlDir);
 
-		// Collision check: if both assets flatten to the SAME publish URL (same filename
+		// Collision check: if two assets flatten to the SAME publish URL (same filename
 		// flattened from different escape paths), the second would silently overwrite the
 		// first. Fail loud so the user can rename the source file or move it.
-		if (logo is { ShouldCopy: true } && favicon is { ShouldCopy: true }
-		                                 && logo.PublishUrl == favicon.PublishUrl
-		                                 && !string.Equals(logo.SourcePath, favicon.SourcePath,
-			                                 StringComparison.OrdinalIgnoreCase))
+		(string Key, SiteAssetReference? Asset)[] brandAssets =
+			[("site.logo", logo), ("site.favicon", favicon), ("site.image", image)];
+		for (int i = 0; i < brandAssets.Length; i++)
+		for (int j = i + 1; j < brandAssets.Length; j++)
 		{
-			throw new SiteConfigException(
-				$"'site.logo' ('{siteDto.Logo}') and 'site.favicon' ('{siteDto.Favicon}') resolve to " +
-				$"the same publish URL '{logo.PublishUrl}' from different source files. " +
-				"Rename one of them or move them to distinct filenames so they don't collide in the output directory.");
+			if (brandAssets[i].Asset is { ShouldCopy: true } first && brandAssets[j].Asset is { ShouldCopy: true } second
+			                                                        && first.PublishUrl == second.PublishUrl
+			                                                        && !string.Equals(first.SourcePath, second.SourcePath,
+				                                                        StringComparison.OrdinalIgnoreCase))
+			{
+				throw new SiteConfigException(
+					$"'{brandAssets[i].Key}' ('{first.RawValue}') and '{brandAssets[j].Key}' ('{second.RawValue}') resolve to " +
+					$"the same publish URL '{first.PublishUrl}' from different source files. " +
+					"Rename one of them or move them to distinct filenames so they don't collide in the output directory.");
+			}
 		}
 
 		return new SiteConfig
@@ -137,6 +145,7 @@ public sealed class SiteConfigReader
 				Url = siteDto.Url ?? "",
 				Logo = logo,
 				Favicon = favicon,
+				Image = image,
 				Copyright = siteDto.Copyright,
 				EditLink = siteDto.EditLink is { } el
 					? new EditLinkConfig
@@ -145,7 +154,9 @@ public sealed class SiteConfigReader
 						Branch = el.Branch ?? "main",
 						Path = el.Path ?? "docs/"
 					}
-					: null
+					: null,
+				Language = MokaDefaults.ResolveString("SITE_LANGUAGE", NullIfBlank(siteDto.Language), SiteLanguages.Default).Trim(),
+				Direction = MokaDefaults.ResolveString("SITE_DIRECTION", siteDto.Direction, "").Trim()
 			},
 			Content = MapContentConfig(dto.Content),
 			Theme = MapThemeConfig(dto.Theme),
@@ -153,9 +164,46 @@ public sealed class SiteConfigReader
 			Features = MapFeaturesConfig(dto.Features),
 			Plugins = MapPlugins(dto.Plugins),
 			Cloud = MapCloudConfig(dto.Cloud),
-			Build = MapBuildConfig(dto.Build)
+			Build = MapBuildConfig(dto.Build),
+			Glossary = MapGlossary(dto.Glossary)
 		};
 	}
+
+	// A key with no text (strings: { toc.title: }) gives an empty text, which hides a label the site doesn't want.
+	private static Dictionary<string, string> MapStrings(Dictionary<string, string?>? dto)
+	{
+		var strings = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach ((string key, string? text) in dto ?? [])
+		{
+			if (!string.IsNullOrWhiteSpace(key))
+			{
+				strings[key.Trim()] = text ?? "";
+			}
+		}
+
+		return strings;
+	}
+
+	private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+	private static Dictionary<string, string> MapGlossary(Dictionary<string, string?>? dto)
+	{
+		var glossary = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach ((string term, string? definition) in dto ?? [])
+		{
+			if (!string.IsNullOrWhiteSpace(term) && !string.IsNullOrWhiteSpace(definition))
+			{
+				glossary[term.Trim()] = definition.Trim();
+			}
+		}
+
+		return glossary;
+	}
+
+	private static IEnumerable<string> GlossaryWarnings(Dictionary<string, string?>? dto) =>
+		(dto ?? [])
+		.Where(entry => !string.IsNullOrWhiteSpace(entry.Key) && string.IsNullOrWhiteSpace(entry.Value))
+		.Select(entry => $"glossary term '{entry.Key.Trim()}' has no definition and is ignored");
 
 	private static ContentConfig MapContentConfig(ContentConfigDto? dto)
 	{
@@ -183,6 +231,7 @@ public sealed class SiteConfigReader
 	{
 		dto ??= new ThemeConfigDto();
 		ThemeOptionsDto o = dto.Options ?? new ThemeOptionsDto();
+		string preset = ApplyPreset(o);
 
 		return new ThemeConfig
 		{
@@ -208,15 +257,24 @@ public sealed class SiteConfigReader
 						"CODE_STYLE", o.CodeStyle, MokaDefaults.CodeStyle),
 					CodeStyleSelector = MokaDefaults.ResolveBool(
 						"SHOW_CODE_STYLE_SELECTOR", o.CodeStyleSelector, MokaDefaults.ShowCodeStyleSelector),
+					Preset = preset,
 					Style = MokaDefaults.ResolveString(
 						"STYLE", o.Style, MokaDefaults.Style),
 					StyleSelector = MokaDefaults.ResolveBool(
 						"SHOW_STYLE_SELECTOR", o.StyleSelector, MokaDefaults.ShowStyleSelector),
+					TextSizeSelector = MokaDefaults.ResolveBool(
+						"SHOW_TEXT_SIZE_SELECTOR", o.TextSizeSelector, MokaDefaults.ShowTextSizeSelector),
+					WidthSelector = MokaDefaults.ResolveBool(
+						"SHOW_WIDTH_SELECTOR", o.WidthSelector, MokaDefaults.ShowWidthSelector),
+					LayoutSelector = MokaDefaults.ResolveBool(
+						"SHOW_LAYOUT_SELECTOR", o.LayoutSelector, MokaDefaults.ShowLayoutSelector),
 					Layout = MapLayoutOptions(o.Layout),
 					Sidebar = MokaDefaults.ResolveString(
 						"SIDEBAR", o.Sidebar, MokaDefaults.Sidebar),
 					SidebarInlineLimit = Math.Max(0, MokaDefaults.ResolveInt(
 						"SIDEBAR_INLINE_LIMIT", o.SidebarInlineLimit, MokaDefaults.SidebarInlineLimit)),
+					SidebarToggle = MokaDefaults.ResolveBool(
+						"SIDEBAR_TOGGLE", o.SidebarToggle, MokaDefaults.SidebarToggle),
 					ShowFeedback = MokaDefaults.ResolveBool(
 						"SHOW_FEEDBACK", o.ShowFeedback, MokaDefaults.ShowFeedbackWidget),
 					ShowDarkModeToggle = MokaDefaults.ResolveBool(
@@ -237,6 +295,8 @@ public sealed class SiteConfigReader
 						"SHOW_COPY_BUTTON", o.ShowCopyButton, MokaDefaults.ShowCopyButton),
 					ShowLineNumbers = MokaDefaults.ResolveBool(
 						"SHOW_LINE_NUMBERS", o.ShowLineNumbers, MokaDefaults.ShowLineNumbers),
+					ImageZoom = MokaDefaults.ResolveBool(
+						"IMAGE_ZOOM", o.ImageZoom, MokaDefaults.ImageZoom),
 					TocDepth = Math.Clamp(o.TocDepth ?? MokaDefaults.TocDepth, 2, 6),
 					ShowVersionSelector = MokaDefaults.ResolveBool(
 						"SHOW_VERSION_SELECTOR", o.ShowVersionSelector, MokaDefaults.ShowVersionSelector),
@@ -247,8 +307,47 @@ public sealed class SiteConfigReader
 						Icon = s.Icon ?? "",
 						Url = s.Url ?? ""
 					}).ToList() ?? [],
-					DefaultColorTheme = o.DefaultColorTheme ?? "ocean"
+					DefaultColorTheme = o.DefaultColorTheme ?? "ocean",
+					Banner = MapBanner(o.Banner),
+					Strings = MapStrings(o.Strings)
 				}
+		};
+	}
+
+	// The preset goes in under the yaml: it fills the options the yaml leaves out, and the
+	// environment variables still win over both. The name is kept as written so the render phase can
+	// quote an unknown one in its warning.
+	private static string ApplyPreset(ThemeOptionsDto options)
+	{
+		string preset = MokaDefaults.ResolveString("THEME_PRESET", options.Preset, "");
+		if (ThemePresets.Find(preset) is { } found)
+		{
+			ThemePresetMerge.FillMissing(options, found);
+		}
+
+		return preset;
+	}
+
+	// MOKADOCS_BANNER_TEXT and MOKADOCS_BANNER_LINK work without a banner block, so a CI job can
+	// announce a release without editing mokadocs.yaml.
+	private static ThemeBanner? MapBanner(ThemeBannerDto? dto)
+	{
+		dto ??= new ThemeBannerDto();
+		string text = MokaDefaults.ResolveString("BANNER_TEXT", dto.Text, "").Trim();
+		if (text.Length == 0)
+		{
+			return null;
+		}
+
+		string link = MokaDefaults.ResolveString("BANNER_LINK", dto.Link, "").Trim();
+		return new ThemeBanner
+		{
+			Text = text,
+			Link = link.Length == 0 ? null : link,
+			LinkText = string.IsNullOrWhiteSpace(dto.LinkText) ? null : dto.LinkText.Trim(),
+			Id = string.IsNullOrWhiteSpace(dto.Id) ? null : dto.Id.Trim(),
+			Dismissible = dto.Dismissible ?? true,
+			Variant = dto.Variant ?? BannerVariants.Info
 		};
 	}
 
@@ -265,7 +364,19 @@ public sealed class SiteConfigReader
 			Footer = MokaDefaults.ResolveString("LAYOUT_FOOTER", dto.Footer, ThemeLayouts.Default),
 			Toc = MokaDefaults.ResolveString("LAYOUT_TOC", dto.Toc, ThemeLayouts.Default),
 			Breadcrumbs = MokaDefaults.ResolveString("LAYOUT_BREADCRUMBS", dto.Breadcrumbs, ThemeLayouts.Default),
-			PageNav = MokaDefaults.ResolveString("LAYOUT_PAGE_NAV", dto.PageNav, ThemeLayouts.Default)
+			PageNav = MokaDefaults.ResolveString("LAYOUT_PAGE_NAV", dto.PageNav, ThemeLayouts.Default),
+			Sidebar = MokaDefaults.ResolveString("LAYOUT_SIDEBAR", dto.Sidebar, ThemeLayouts.Default),
+			SidebarScope = MokaDefaults.ResolveString("LAYOUT_SIDEBAR_SCOPE", dto.SidebarScope, ThemeLayouts.Default),
+			Home = MokaDefaults.ResolveString("LAYOUT_HOME", dto.Home, ThemeLayouts.Default),
+			Hero = MokaDefaults.ResolveString("LAYOUT_HERO", dto.Hero, ThemeLayouts.Default),
+			HeroBackground = MokaDefaults.ResolveString("LAYOUT_HERO_BACKGROUND", dto.HeroBackground, ThemeLayouts.Default),
+			Features = MokaDefaults.ResolveString("LAYOUT_FEATURES", dto.Features, ThemeLayouts.Default),
+			Admonitions = MokaDefaults.ResolveString("LAYOUT_ADMONITIONS", dto.Admonitions, ThemeLayouts.Default),
+			Tables = MokaDefaults.ResolveString("LAYOUT_TABLES", dto.Tables, ThemeLayouts.Default),
+			Density = MokaDefaults.ResolveString("LAYOUT_DENSITY", dto.Density, ThemeLayouts.Default),
+			Font = MokaDefaults.ResolveString("LAYOUT_FONT", dto.Font, ThemeLayouts.Default),
+			Headings = MokaDefaults.ResolveString("LAYOUT_HEADINGS", dto.Headings, ThemeLayouts.Default),
+			Links = MokaDefaults.ResolveString("LAYOUT_LINKS", dto.Links, ThemeLayouts.Default)
 		};
 	}
 
@@ -418,6 +529,7 @@ public sealed class SiteConfigReader
 				"GENERATE_SITEMAP", dto.Sitemap, MokaDefaults.GenerateSitemap),
 			Robots = MokaDefaults.ResolveBool(
 				"GENERATE_ROBOTS", dto.Robots, MokaDefaults.GenerateRobots),
+			Llms = MokaDefaults.ResolveBool("LLMS", dto.Llms, MokaDefaults.GenerateLlmsFiles),
 			Cache = dto.Cache ?? true,
 			Strict = dto.Strict ?? false,
 			BasePath = NormalizeBasePath(dto.BasePath)
@@ -470,10 +582,13 @@ public sealed class SiteConfigReader
 				// Read → ToYaml → Read cycle preserves the exact on-disk form.
 				Logo = config.Site.Logo?.RawValue,
 				Favicon = config.Site.Favicon?.RawValue,
+				Image = config.Site.Image?.RawValue,
 				Copyright = config.Site.Copyright,
 				EditLink = config.Site.EditLink is { } el
 					? new EditLinkConfigDto { Repo = el.Repo, Branch = el.Branch, Path = el.Path }
-					: null
+					: null,
+				Language = config.Site.Language == SiteLanguages.Default ? null : NullIfEmpty(config.Site.Language),
+				Direction = NullIfEmpty(config.Site.Direction)
 			},
 			Content = new ContentConfigDto
 			{
@@ -502,13 +617,18 @@ public sealed class SiteConfigReader
 					CodeThemeSelector = config.Theme.Options.CodeThemeSelector ? null : false,
 					CodeStyle = config.Theme.Options.CodeStyle == "plain" ? null : config.Theme.Options.CodeStyle,
 					CodeStyleSelector = config.Theme.Options.CodeStyleSelector ? null : false,
+					Preset = NullIfEmpty(config.Theme.Options.Preset),
 					Style = config.Theme.Options.Style == ThemeStyles.Default ? null : config.Theme.Options.Style,
 					StyleSelector = config.Theme.Options.StyleSelector ? null : false,
+					TextSizeSelector = config.Theme.Options.TextSizeSelector ? null : false,
+					WidthSelector = config.Theme.Options.WidthSelector ? null : false,
+					LayoutSelector = config.Theme.Options.LayoutSelector ? true : null,
 					Layout = MapLayoutToDto(config.Theme.Options.Layout),
 					Sidebar = config.Theme.Options.Sidebar == SidebarModes.Auto ? null : config.Theme.Options.Sidebar,
 					SidebarInlineLimit = config.Theme.Options.SidebarInlineLimit == MokaDefaults.SidebarInlineLimit
 						? null
 						: config.Theme.Options.SidebarInlineLimit,
+					SidebarToggle = config.Theme.Options.SidebarToggle ? true : null,
 					ShowFeedback = config.Theme.Options.ShowFeedback ? null : false,
 					ShowDarkModeToggle = config.Theme.Options.ShowDarkModeToggle ? null : false,
 					ShowAnimations = config.Theme.Options.ShowAnimations ? null : false,
@@ -519,6 +639,7 @@ public sealed class SiteConfigReader
 					ShowBackToTop = config.Theme.Options.ShowBackToTop ? null : false,
 					ShowCopyButton = config.Theme.Options.ShowCopyButton ? null : false,
 					ShowLineNumbers = config.Theme.Options.ShowLineNumbers ? null : false,
+					ImageZoom = config.Theme.Options.ImageZoom ? null : false,
 					TocDepth = config.Theme.Options.TocDepth != 3 ? config.Theme.Options.TocDepth : null,
 					ShowVersionSelector = config.Theme.Options.ShowVersionSelector ? null : false,
 					ShowBuiltWith = config.Theme.Options.ShowBuiltWith ? null : false,
@@ -531,6 +652,10 @@ public sealed class SiteConfigReader
 						: null,
 					DefaultColorTheme = config.Theme.Options.DefaultColorTheme != "ocean"
 						? config.Theme.Options.DefaultColorTheme
+						: null,
+					Banner = MapBannerToDto(config.Theme.Options.Banner),
+					Strings = config.Theme.Options.Strings.Count > 0
+						? config.Theme.Options.Strings.ToDictionary(entry => entry.Key, string? (entry) => entry.Value, StringComparer.Ordinal)
 						: null
 				}
 			},
@@ -541,10 +666,14 @@ public sealed class SiteConfigReader
 				Minify = config.Build.Minify ? true : null,
 				Sitemap = config.Build.Sitemap,
 				Robots = config.Build.Robots,
+				Llms = config.Build.Llms ? null : false,
 				Cache = config.Build.Cache,
 				Strict = config.Build.Strict ? true : null,
 				BasePath = config.Build.BasePath == "/" ? null : config.Build.BasePath
-			}
+			},
+			Glossary = config.Glossary.Count > 0
+				? config.Glossary.ToDictionary(entry => entry.Key, string? (entry) => entry.Value, StringComparer.Ordinal)
+				: null
 		};
 	}
 
@@ -561,13 +690,43 @@ public sealed class SiteConfigReader
 			Footer = NullIfDefaultLayout(layout.Footer),
 			Toc = NullIfDefaultLayout(layout.Toc),
 			Breadcrumbs = NullIfDefaultLayout(layout.Breadcrumbs),
-			PageNav = NullIfDefaultLayout(layout.PageNav)
+			PageNav = NullIfDefaultLayout(layout.PageNav),
+			Sidebar = NullIfDefaultLayout(layout.Sidebar),
+			SidebarScope = NullIfDefaultLayout(layout.SidebarScope),
+			Home = NullIfDefaultLayout(layout.Home),
+			Hero = NullIfDefaultLayout(layout.Hero),
+			HeroBackground = NullIfDefaultLayout(layout.HeroBackground),
+			Features = NullIfDefaultLayout(layout.Features),
+			Admonitions = NullIfDefaultLayout(layout.Admonitions),
+			Tables = NullIfDefaultLayout(layout.Tables),
+			Density = NullIfDefaultLayout(layout.Density),
+			Font = NullIfDefaultLayout(layout.Font),
+			Headings = NullIfDefaultLayout(layout.Headings),
+			Links = NullIfDefaultLayout(layout.Links)
 		};
 
-		return dto is { Width: null, Navbar: null, Footer: null, Toc: null, Breadcrumbs: null, PageNav: null }
+		return dto is
+		{
+			Width: null, Navbar: null, Footer: null, Toc: null, Breadcrumbs: null, PageNav: null, Sidebar: null,
+			SidebarScope: null, Home: null, Hero: null, HeroBackground: null, Features: null, Admonitions: null,
+			Tables: null, Density: null, Font: null, Headings: null, Links: null
+		}
 			? null
 			: dto;
 	}
+
+	private static ThemeBannerDto? MapBannerToDto(ThemeBanner? banner) =>
+		banner is null
+			? null
+			: new ThemeBannerDto
+			{
+				Text = banner.Text,
+				Link = banner.Link,
+				LinkText = banner.LinkText,
+				Id = banner.Id,
+				Dismissible = banner.Dismissible ? null : false,
+				Variant = banner.Variant == BannerVariants.Info ? null : banner.Variant
+			};
 
 	private static string? NullIfDefaultLayout(string? name) =>
 		string.IsNullOrWhiteSpace(name) || name.Trim().Equals(ThemeLayouts.Default, StringComparison.OrdinalIgnoreCase)

@@ -131,6 +131,8 @@ public sealed class TabGroupParser : BlockParser
 		StringSlice line = processor.Line;
 		if (line.CurrentChar != '=')
 		{
+			// The content keeps its indentation, so lists nested in a tab stay nested.
+			processor.GoToColumn(processor.ColumnBeforeIndent);
 			return BlockState.Continue;
 		}
 
@@ -160,6 +162,7 @@ public sealed class TabGroupParser : BlockParser
 		}
 
 		processor.Line = saved;
+		processor.GoToColumn(processor.ColumnBeforeIndent);
 		return BlockState.Continue;
 	}
 

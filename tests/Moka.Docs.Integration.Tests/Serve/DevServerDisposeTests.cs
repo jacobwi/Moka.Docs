@@ -68,7 +68,7 @@ public sealed class DevServerDisposeTests : IDisposable
 				await server.StartAsync(TestContext.Current.CancellationToken);
 				return (server, port);
 			}
-			catch (HttpListenerException) when (attempt < 5)
+			catch (IOException) when (attempt < 5)
 			{
 				server.Dispose();
 			}
