@@ -184,6 +184,11 @@ internal sealed class BuildSession : IAsyncDisposable
 			};
 		}
 
+		if (source.ReadableAssets && config.Build.MinifyAssets is null)
+		{
+			config = config with { Build = config.Build with { MinifyAssets = false } };
+		}
+
 		return config;
 	}
 
@@ -249,7 +254,12 @@ internal sealed class BuildSession : IAsyncDisposable
 /// <param name="Path">The full path of mokadocs.yaml.</param>
 /// <param name="Output">The <c>--output</c> value, or <c>null</c>.</param>
 /// <param name="BasePath">The <c>--base-path</c> value, or <c>null</c>.</param>
-internal sealed record ConfigSource(string Path, string? Output = null, string? BasePath = null)
+/// <param name="ReadableAssets">
+///     Whether the theme's CSS and JS stay unminified unless the configuration or the environment sets
+///     <c>build.minifyAssets</c>, as <c>serve</c> wants them for debugging. <c>build.minify</c> still
+///     minifies them.
+/// </param>
+internal sealed record ConfigSource(string Path, string? Output = null, string? BasePath = null, bool ReadableAssets = false)
 {
 	/// <summary>The folder holding the configuration file.</summary>
 	public string RootDirectory => System.IO.Path.GetDirectoryName(Path)!;

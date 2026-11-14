@@ -255,7 +255,9 @@ public sealed class RenderPhase(
 			return null;
 		}
 
-		byte[] script = new UTF8Encoding(false).GetBytes(EmbeddedThemeProvider.CreateSidebarScript(html));
+		string source = EmbeddedThemeProvider.CreateSidebarScript(html);
+		byte[] script = new UTF8Encoding(false).GetBytes(
+			context.Config.Build.ShouldMinifyAssets ? JsMinifier.Minify(source) : source);
 		context.DeferredOutputFiles[SidebarScriptPath] = script;
 		logger.LogInformation("The sidebar has {Entries} entries: written once to {Path} ({Bytes} bytes) for every page",
 			entries, SidebarScriptPath, script.Length);

@@ -25,6 +25,7 @@ public static partial class EmbeddedThemeProvider
 	                                        --toc-width: 220px;
 	                                        --header-height: 60px;
 	                                        --header-offset: var(--header-height);
+	                                        --header-button: 36px;
 	                                        --layout-max-width: 1440px;
 	                                        --content-max-width: 780px;
 	                                        --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -294,8 +295,8 @@ public static partial class EmbeddedThemeProvider
 	                                        display: flex;
 	                                        align-items: center;
 	                                        justify-content: center;
-	                                        width: 36px;
-	                                        height: 36px;
+	                                        width: var(--header-button);
+	                                        height: var(--header-button);
 	                                        border: 1px solid var(--color-border);
 	                                        border-radius: var(--radius);
 	                                        background: transparent;
@@ -320,8 +321,8 @@ public static partial class EmbeddedThemeProvider
 	                                        display: flex;
 	                                        align-items: center;
 	                                        justify-content: center;
-	                                        width: 36px;
-	                                        height: 36px;
+	                                        width: var(--header-button);
+	                                        height: var(--header-button);
 	                                        border: 1px solid var(--color-border);
 	                                        border-radius: var(--radius);
 	                                        background: transparent;
@@ -647,6 +648,13 @@ public static partial class EmbeddedThemeProvider
 	                                        padding: 2rem 2.5rem;
 	                                        max-width: calc(var(--content-max-width) + 5rem);
 	                                    }
+	                                    /* A word longer than its line (a URL, a dotted type name in code) breaks instead of pushing the page
+	                                       sideways. break-word only breaks what would overflow, so it changes nothing that fits. Flex rows
+	                                       of author text (card and admonition titles, summaries, buttons, the footers) take anywhere: a flex
+	                                       item is never narrower than its longest word under break-word. Tables keep break-word, since
+	                                       anywhere would change how their columns share the width. */
+	                                    #mokadocs-main { overflow-wrap: break-word; }
+	                                    :is(.site-footer, .landing-footer) { overflow-wrap: anywhere; }
 
 	                                    .page-content h1 { font-size: 2rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: -0.025em; }
 	                                    .page-content h2 { font-size: 1.5rem; font-weight: 700; margin: 2.5rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border); }
@@ -1329,6 +1337,8 @@ public static partial class EmbeddedThemeProvider
 	                                        display: flex;
 	                                        align-items: center;
 	                                        justify-content: space-between;
+	                                        gap: 0.75rem;
+	                                        overflow-wrap: anywhere;
 	                                        padding: 0.5rem 1rem;
 	                                        background: var(--color-bg-secondary);
 	                                        border-bottom: 1px solid var(--color-border);
@@ -1340,6 +1350,7 @@ public static partial class EmbeddedThemeProvider
 	                                    }
 	                                    .install-nuget-link {
 	                                        display: inline-flex;
+	                                        flex-shrink: 0;
 	                                        align-items: center;
 	                                        gap: 0.375rem;
 	                                        font-size: 0.75rem;
@@ -1374,6 +1385,10 @@ public static partial class EmbeddedThemeProvider
 	                                        margin-bottom: -1px;
 	                                    }
 	                                    .install-tab:hover { color: var(--color-text); }
+	                                    @media (max-width: 480px) {
+	                                        .install-tabs { overflow-x: auto; scrollbar-width: none; border-bottom: none; box-shadow: inset 0 -1px 0 var(--color-border); }
+	                                        .install-tab { flex-shrink: 0; margin-bottom: 0; }
+	                                    }
 	                                    .install-tab.active {
 	                                        color: var(--color-primary-text);
 	                                        border-bottom-color: var(--color-primary);
@@ -1507,6 +1522,7 @@ public static partial class EmbeddedThemeProvider
 	                                        display: flex;
 	                                        align-items: center;
 	                                        gap: 0.5rem;
+	                                        overflow-wrap: anywhere;
 	                                        font-weight: 600;
 	                                        font-size: 0.9375rem;
 	                                        margin-bottom: 0.5rem;
@@ -1583,6 +1599,7 @@ public static partial class EmbeddedThemeProvider
 	                                        display: flex;
 	                                        align-items: center;
 	                                        gap: 0.5rem;
+	                                        overflow-wrap: anywhere;
 	                                        margin-bottom: 0.625rem;
 	                                    }
 	                                    .component-card-icon {
@@ -1671,7 +1688,7 @@ public static partial class EmbeddedThemeProvider
 	                                    /* UI Components - Link Cards */
 	                                    .component-link-cards {
 	                                        display: grid;
-	                                        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+	                                        grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
 	                                        gap: 0.75rem;
 	                                        margin: 1.5rem 0;
 	                                    }
@@ -1888,7 +1905,7 @@ public static partial class EmbeddedThemeProvider
 	                                        list-style: none;
 	                                        gap: 0;
 	                                    }
-	                                    .breadcrumbs li { display: flex; align-items: center; }
+	                                    .breadcrumbs li { display: flex; align-items: center; min-width: 0; overflow-wrap: anywhere; }
 	                                    .breadcrumbs li:not(:last-child)::after {
 	                                        content: '/';
 	                                        margin: 0 0.5rem;
@@ -2038,7 +2055,10 @@ public static partial class EmbeddedThemeProvider
 	                                        .mobile-nav-toggle { display: flex; }
 	                                        .content { padding: 1.5rem 1rem; }
 	                                        .search-label, .search-trigger kbd { display: none; }
-	                                        .search-trigger { padding: 0.375rem; }
+	                                        /* Bigger touch targets, and search as an icon button like the ones beside it. A style or navbar variant
+	                                           that sets its own --header-button keeps it. */
+	                                        :root { --header-button: 40px; }
+	                                        .site-header .header-actions .search-trigger { justify-content: center; width: var(--header-button); height: var(--header-button); padding: 0; }
 	                                        .header-inner { padding: 0 0.75rem; gap: 0.5rem; }
 	                                        .site-logo { gap: 0.375rem; min-width: 0; }
 	                                        .site-name { font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2046,6 +2066,10 @@ public static partial class EmbeddedThemeProvider
 	                                        .search-modal { padding-top: 5vh; }
 	                                        .search-dialog { width: 95%; max-height: 70vh; }
 	                                        .footer-inner { flex-direction: column; gap: 0.5rem; align-items: center; }
+	                                    }
+	                                    /* The site name keeps its room beside four buttons on the smallest phones. */
+	                                    @media (max-width: 359px) {
+	                                        :root { --header-button: 36px; }
 	                                    }
 
 	                                    /* Search Modal */
@@ -2188,6 +2212,8 @@ public static partial class EmbeddedThemeProvider
 	                                        text-align: center;
 	                                    }
 	                                    .feedback-prompt {
+	                                        min-width: 0;
+	                                        overflow-wrap: anywhere;
 	                                        font-size: 0.875rem;
 	                                        font-weight: 500;
 	                                        color: var(--color-text-secondary);
@@ -2265,16 +2291,17 @@ public static partial class EmbeddedThemeProvider
 	                                        padding: 0 2rem;
 	                                    }
 
-	                                    /* Subtle hero background glow */
+	                                    /* Subtle hero background glow, an 800x500 ellipse at the top. The box spans the page and the gradient
+	                                       has the size an 800px box gave it, so it paints as before: the 800px box stuck out past both edges
+	                                       of a narrower screen, which then scrolled sideways. */
 	                                    .landing::before {
 	                                        content: '';
 	                                        position: absolute;
 	                                        top: 0;
-	                                        left: 50%;
-	                                        transform: translateX(-50%);
-	                                        width: 800px;
+	                                        left: 0;
+	                                        right: 0;
 	                                        height: 500px;
-	                                        background: radial-gradient(ellipse, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 70%);
+	                                        background: radial-gradient(565.69px 353.55px at 50% 50%, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 70%);
 	                                        pointer-events: none;
 	                                        z-index: 0;
 	                                    }
@@ -2284,7 +2311,7 @@ public static partial class EmbeddedThemeProvider
 	                                    /* Hero - first h1 + first p */
 	                                    .landing .landing-content > h1:first-child,
 	                                    .landing .landing-content > h1:first-of-type {
-	                                        font-size: clamp(2.75rem, 6vw, 4.5rem);
+	                                        font-size: clamp(2.25rem, 6vw, 4.5rem);
 	                                        font-weight: 800;
 	                                        text-align: center;
 	                                        margin: 5rem auto 1.25rem;
@@ -2368,7 +2395,7 @@ public static partial class EmbeddedThemeProvider
 
 	                                    .landing .landing-content > ul {
 	                                        display: grid;
-	                                        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	                                        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 	                                        gap: 1.5rem;
 	                                        list-style: none;
 	                                        padding: 0;
@@ -2441,7 +2468,7 @@ public static partial class EmbeddedThemeProvider
 	                                    @media (max-width: 768px) {
 	                                        .landing .landing-content { padding: 0 1rem; }
 	                                        .landing .landing-content > h1:first-of-type { margin-top: 2rem; }
-	                                        .landing .landing-content > ul { grid-template-columns: 1fr; }
+	                                        .landing .landing-content > ul { grid-template-columns: minmax(0, 1fr); }
 	                                    }
 
 	                                    /* Version selector */
@@ -2484,6 +2511,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .version-badge-default { background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
 	                                    .version-badge-pre { background: color-mix(in srgb, #f59e0b 15%, transparent); color: #d97706; }
 	                                    @media (max-width: 768px) {
+	                                        .version-trigger { min-height: var(--header-button); padding-left: 0.5rem; padding-right: 0.5rem; }
 	                                        .version-trigger .version-label { display: none; }
 	                                        .version-dropdown { right: auto; left: 0; }
 	                                    }
@@ -2848,7 +2876,7 @@ public static partial class EmbeddedThemeProvider
 	                                    }
 	                                    .landing-hero > * { position: relative; z-index: 1; }
 	                                    .landing-hero-title {
-	                                        font-size: clamp(2.75rem, 6vw, 4.5rem);
+	                                        font-size: clamp(2.25rem, 6vw, 4.5rem);
 	                                        font-weight: 800;
 	                                        letter-spacing: -0.03em;
 	                                        line-height: 1.1;
@@ -2886,6 +2914,7 @@ public static partial class EmbeddedThemeProvider
 	                                        border: none;
 	                                        cursor: pointer;
 	                                        min-width: 200px;
+	                                        overflow-wrap: anywhere;
 	                                    }
 	                                    .landing-btn-primary {
 	                                        background: var(--color-primary-fill);
@@ -2931,7 +2960,7 @@ public static partial class EmbeddedThemeProvider
 	                                    }
 	                                    .landing-features-grid {
 	                                        display: grid;
-	                                        grid-template-columns: repeat(3, 1fr);
+	                                        grid-template-columns: repeat(3, minmax(0, 1fr));
 	                                        gap: 1.5rem;
 	                                        list-style: none;
 	                                        padding: 0;
@@ -3007,6 +3036,9 @@ public static partial class EmbeddedThemeProvider
 	                                    .landing-md-content th { background: var(--color-bg-secondary); font-weight: 600; text-align: left; }
 	                                    .landing-md-content th, .landing-md-content td { padding: 0.625rem 1rem; border: 1px solid var(--color-border); }
 	                                    .landing-md-content tr:hover td { background: var(--color-bg-secondary); }
+	                                    @media (max-width: 768px) {
+	                                        .landing-md-content table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+	                                    }
 
 	                                    /* Landing footer */
 	                                    .landing-footer {
@@ -3030,13 +3062,23 @@ public static partial class EmbeddedThemeProvider
 
 	                                    /* Responsive */
 	                                    @media (max-width: 900px) {
-	                                        .landing-features-grid { grid-template-columns: repeat(2, 1fr); }
+	                                        .landing-features-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 	                                    }
 	                                    @media (max-width: 600px) {
 	                                        .landing-hero { padding: 3rem 1rem 2.5rem; }
 	                                        .landing-features { padding: 2rem 1rem; }
-	                                        .landing-features-grid { grid-template-columns: 1fr; }
+	                                        .landing-features-grid { grid-template-columns: minmax(0, 1fr); }
+	                                        .landing-feature-card { padding: 1.5rem 1.25rem; }
 	                                        .landing-md-content { padding: 0 1rem 2rem; }
+	                                    }
+	                                    /* The hero and call to action buttons stack at full width, labels wrapping inside them. */
+	                                    @media (max-width: 480px) {
+	                                        .landing-hero-actions { flex-direction: column; align-items: stretch; }
+	                                        .landing-btn { width: 100%; min-width: 0; text-align: center; }
+	                                        .landing .landing-content > h1:first-of-type + p + p,
+	                                        .landing .landing-content > h1:first-of-type + p + ul { flex-direction: column; align-items: stretch; }
+	                                        .landing .landing-content > h1:first-of-type + p + p a,
+	                                        .landing .landing-content > h1:first-of-type + p + ul a { justify-content: center; }
 	                                    }
 
 	                                    /* Blog: index cards, post header, tags and pager. Accent text is mixed toward black (light)
@@ -3142,7 +3184,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .page-content .blog-cover { display: block; width: 100%; max-height: 380px; object-fit: cover; margin-top: 1.25rem; }
 	                                    .blog-pager {
 	                                        display: grid;
-	                                        grid-template-columns: 1fr auto 1fr;
+	                                        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	                                        align-items: center;
 	                                        gap: 0.75rem 1rem;
 	                                        margin: 0 0 1rem;
@@ -3167,7 +3209,7 @@ public static partial class EmbeddedThemeProvider
 	                                        .blog-card { flex-direction: column; gap: 0.875rem; padding: 1rem; }
 	                                        .blog-card-image { flex-basis: auto; }
 	                                        .page-content .blog-card-image img { width: 100%; height: 168px; }
-	                                        .blog-pager { grid-template-columns: 1fr 1fr; }
+	                                        .blog-pager { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 	                                        .blog-pager-status { grid-column: 1 / -1; order: -1; }
 	                                    }
 
@@ -3327,7 +3369,6 @@ public static partial class EmbeddedThemeProvider
 	                                        font-weight: 600;
 	                                        text-decoration: underline;
 	                                        text-underline-offset: 0.2em;
-	                                        white-space: nowrap;
 	                                    }
 	                                    .site-banner-link:hover { text-decoration-thickness: 2px; }
 	                                    .site-banner-link svg { flex-shrink: 0; }

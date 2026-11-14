@@ -1,12 +1,14 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using FluentAssertions;
+using Moka.Docs.Engine.Minification;
 
 namespace Moka.Docs.Engine.Tests.Theming;
 
 /// <summary>
 ///     Runs a script under Node for the theme tests that execute parts of main.js. Tests skip when
-///     Node is not on PATH.
+///     Node is not on PATH. Every script runs twice, as written and minified the way the build
+///     publishes main.js, and both runs must print the same output.
 /// </summary>
 internal static class NodeScript
 {
@@ -30,6 +32,13 @@ internal static class NodeScript
 	public static bool Available => _available.Value;
 
 	public static string Run(string script)
+	{
+		string output = RunOnce(script);
+		RunOnce(JsMinifier.Minify(script)).Should().Be(output, "the minified script should behave like the script as written");
+		return output;
+	}
+
+	private static string RunOnce(string script)
 	{
 		string path = Path.Combine(Path.GetTempPath(), "mokadocs-runtime-" + Guid.NewGuid().ToString("N") + ".js");
 		File.WriteAllText(path, script);

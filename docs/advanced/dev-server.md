@@ -31,6 +31,8 @@ The server listens on port 5080 by default: open `http://localhost:5080`. It ope
 
 `serve` has no `--no-cache` option; it follows `build.cache`. See [CLI Commands](/advanced/cli-reference) for the other commands.
 
+`serve` writes the default theme's CSS and JavaScript readable, with their comments and indentation, so the browser's developer tools show the source. `mokadocs build` minifies them. Set [`build.minifyAssets: true`](/configuration/site-config#minifyassets) (or `MOKADOCS_MINIFY_ASSETS=true`) to serve the minified files, or [`build.minify: true`](/configuration/site-config#minify), which minifies the pages too.
+
 ### Examples
 
 ```bash

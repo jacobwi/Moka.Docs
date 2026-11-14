@@ -97,13 +97,12 @@ public static partial class EmbeddedThemeProvider
 	    html[data-width="boxed"] body { background: var(--color-bg); }
 	}
 
-	html[data-navbar="compact"] { --header-height: 48px; }
+	html[data-navbar="compact"] { --header-height: 48px; --header-button: 32px; }
 	html[data-navbar="compact"] .site-logo { font-size: 1rem; gap: 0.5rem; }
 	html[data-navbar="compact"] .site-logo-icon { width: 22px; height: 22px; }
 	html[data-navbar="compact"] .site-logo-img { height: 22px; }
 	html[data-navbar="compact"] .header-actions { gap: 0.375rem; }
 	html[data-navbar="compact"] .site-header .search-trigger { padding-top: 0.25rem; padding-bottom: 0.25rem; font-size: 0.8125rem; }
-	html[data-navbar="compact"] .site-header :is(.theme-toggle, .mobile-nav-toggle, .appearance-trigger) { width: 32px; height: 32px; }
 	html[data-navbar="compact"] .site-header .version-trigger { padding-top: 0.25rem; padding-bottom: 0.25rem; }
 
 	html[data-navbar="floating"] { --header-offset: calc(var(--header-height) + 1.5rem); }
@@ -406,6 +405,9 @@ public static partial class EmbeddedThemeProvider
 	html[data-hero="split"] .landing-hero-media img { display: block; width: 100%; height: auto; border: 1px solid var(--color-border); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
 	@media (max-width: 900px) {
 	    html[data-hero="split"] .landing-hero-split { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; padding: 3.5rem 1.5rem 3rem; }
+	}
+	@media (max-width: 600px) {
+	    html[data-hero="split"] .landing-hero-split { gap: 2rem; padding: 3rem 1rem 2.5rem; }
 	}
 
 	html[data-hero="minimal"] .landing-hero { padding: 4.5rem max(2rem, calc((100% - 1200px) / 2)) 3rem; text-align: left; background: none; }
@@ -892,7 +894,7 @@ public static partial class EmbeddedThemeProvider
 	    margin: 0 auto;
 	    padding: 3rem 2rem;
 	}
-	html[data-home="portal"] .home-section { padding: 1.5rem; }
+	html[data-home="portal"] .home-section { padding: 1.5rem; overflow-wrap: anywhere; }
 	/* The card holds several links, so it doesn't lift as if it were one. */
 	html[data-home="portal"] .home-section:hover { transform: none !important; }
 	html[data-home="portal"] .home-section-title { margin: 0 0 0.875rem; padding: 0; border: none; font-size: 1.0625rem; font-weight: 650; line-height: 1.35; }

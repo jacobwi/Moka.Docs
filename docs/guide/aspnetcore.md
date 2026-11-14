@@ -108,7 +108,8 @@ builder.Services.AddMokaDocs(options =>
 | `BasePath` | `string` | `"/docs"` | URL prefix the site is served under. The site is built with it, so every link and asset URL includes it. |
 | `PathBase` | `string?` | `null` | The app's path base, such as `"/shop"` for an IIS sub-application, `UsePathBase("/shop")` or a proxy that sends `X-Forwarded-Prefix`. Links start with `PathBase` followed by `BasePath` (see [Path Base](#path-base)). |
 | `CacheOutput` | `bool` | `true` | When `true`, the site is built once (see `BuildOnStartup`) and kept in memory. When `false`, every request rebuilds it and waits for its build. |
-| `Minify` | `bool` | `false` | Minifies the pages and the theme's CSS and JS, like [`build.minify`](/configuration/site-config#minify). |
+| `Minify` | `bool` | `false` | Minifies the pages, like [`build.minify`](/configuration/site-config#minify). When `true`, the theme's CSS and JS are minified too. |
+| `MinifyAssets` | `bool?` | `null` | Minifies the theme's CSS and JS, like [`build.minifyAssets`](/configuration/site-config#minifyassets). `null` minifies them outside the Development environment and keeps them readable in Development. |
 | `Llms` | `bool` | `true` | Publishes a Markdown copy of each page next to its HTML, plus `llms.txt` and `llms-full.txt`, like [`build.llms`](/configuration/site-config#llms). Pages with a copy get a "Copy page" button. |
 | `BuildOnStartup` | `bool` | `true` | Builds the site in the background as soon as the app has started. Requests that arrive before it's done get `503` with `Retry-After`. When `false`, the first request starts the build. Ignored when `CacheOutput` is `false`. |
 | `WatchDocs` | `bool?` | `null` | Rebuilds the site when a file under `DocsPath` changes. `null` watches in Development only. Ignored when `CacheOutput` is `false`. |

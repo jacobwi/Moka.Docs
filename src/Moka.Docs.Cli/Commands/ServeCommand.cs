@@ -64,7 +64,7 @@ internal static class ServeCommand
 			AnsiConsole.WriteLine();
 
 			string resolvedConfigPath = ConfigPath.Resolve(configPath);
-			var source = new ConfigSource(resolvedConfigPath, output, basePath);
+			var source = new ConfigSource(resolvedConfigPath, output, basePath, ReadableAssets: true);
 			string rootDir = source.RootDirectory;
 
 			// Load config, with the CLI overrides applied

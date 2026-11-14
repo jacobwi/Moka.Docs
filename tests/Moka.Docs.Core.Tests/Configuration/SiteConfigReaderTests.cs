@@ -480,6 +480,41 @@ public sealed class SiteConfigReaderTests
 	}
 
 	[Fact]
+	public void MinifyAssets_IsUnsetByDefault_AndMinifiesTheAssets()
+	{
+		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
+
+		defaults.Build.MinifyAssets.Should().BeNull();
+		defaults.Build.ShouldMinifyAssets.Should().BeTrue();
+		defaults.Warnings.Should().BeEmpty();
+		SiteConfigReader.ToYaml(defaults).Should().NotContain("minifyAssets");
+	}
+
+	[Theory]
+	[InlineData("minifyAssets: false", false, false)]
+	[InlineData("minifyAssets: true", true, true)]
+	[InlineData("minify: true\n  minifyAssets: false", false, true)]
+	public void MinifyAssets_IsReadAndRoundTripsWhenSet(string build, bool minifyAssets, bool minified)
+	{
+		SiteConfig config = SiteConfigReader.Parse("site:\n  title: Small\nbuild:\n  " + build + "\n");
+
+		config.Warnings.Should().BeEmpty();
+		config.Build.MinifyAssets.Should().Be(minifyAssets);
+		config.Build.ShouldMinifyAssets.Should().Be(minified, "minify: true minifies the assets too");
+		// An explicit true round-trips: unset and true differ under mokadocs serve.
+		SiteConfigReader.Parse(SiteConfigReader.ToYaml(config)).Build.MinifyAssets.Should().Be(minifyAssets);
+	}
+
+	[Fact]
+	public void MinifyAssets_MisspelledKeyWarnsWithTheRightName()
+	{
+		SiteConfig config = SiteConfigReader.Parse("site:\n  title: Small\nbuild:\n  minifyassets: false\n");
+
+		config.Build.MinifyAssets.Should().BeNull();
+		config.Warnings.Should().ContainSingle().Which.Should().Contain("'minifyAssets'");
+	}
+
+	[Fact]
 	public void ReaderSelectors_AreOnByDefaultAndRoundTripWhenOff()
 	{
 		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");

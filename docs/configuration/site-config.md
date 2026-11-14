@@ -1704,10 +1704,11 @@ build:
 
 - **Type:** `bool`
 - **Default:** `false`
+- **Environment variable:** `MOKADOCS_MINIFY_OUTPUT`
 
-When `true`, the build writes smaller files. In HTML pages (`404.html` included), each run of whitespace becomes one character (a line break when the run had one) and comments are removed, except conditional comments such as `<!--[if IE]>`. Tags and the contents of `pre`, `code`, `textarea`, `script` and `style` elements are written as they are, so code blocks keep their layout. The default theme's stylesheets (`main.css`, the style stylesheets and `layouts.css`) lose their comments and the spaces they don't need, and `main.js` its comments and indentation; its line breaks stay. A custom theme's files are copied as they are.
+When `true`, the build minifies the HTML pages (`404.html` included): each run of whitespace becomes one character (a line break when the run had one) and comments are removed, except conditional comments such as `<!--[if IE]>`. Tags and the contents of `pre`, `code`, `textarea`, `script` and `style` elements are written as they are, so code blocks keep their layout. It also minifies the theme's CSS and JavaScript, whatever [`minifyAssets`](#minifyassets) says.
 
-The default layouts carry no indentation of their own, so the HTML shrinks little: on this repository's documentation from 9.59 MB to 9.56 MB. `main.css` goes from 140 KB to 108 KB (27 KB to 19 KB gzipped), each style's stylesheet loses about 15% gzipped, and `main.js` goes from 82 KB to 51 KB (20 KB to 14 KB gzipped). Most hosts compress files anyway, so the saving on the wire is smaller than on disk. The `?v=` hash on the theme's URLs is computed from the files as written, minified or not.
+The default layouts carry no indentation of their own, so the HTML shrinks little: on this repository's documentation from 12.11 MB to 12.08 MB. Most hosts compress files anyway, so the saving on the wire is smaller than on disk.
 
 ```yaml
 build:
@@ -1715,6 +1716,37 @@ build:
 ```
 
 In the ASP.NET Core host, set `MokaDocsOptions.Minify`.
+
+### `minifyAssets`
+
+- **Type:** `bool`
+- **Default:** on for `mokadocs build`, off for `mokadocs serve`
+- **Environment variable:** `MOKADOCS_MINIFY_ASSETS`
+
+Minifies the default theme's stylesheets and scripts: `main.css`, the style stylesheets (`style-<name>.css`), `layouts.css`, `rtl.css`, `main.js` and the shared sidebar script (`sidebar.js`, see [`sidebar`](#options.sidebar)). The stylesheets lose their comments and the spaces they don't need. The scripts lose their comments and indentation, and keep their line breaks. Strings, `url(...)` values, regular expressions and template literals are written as they are. `icons.svg` is written as it is.
+
+`mokadocs build` minifies these files unless you set `minifyAssets: false`. `mokadocs serve` keeps them readable for debugging in the browser, unless `minifyAssets: true` (or the environment variable) is set explicitly, or [`minify`](#minify) is `true`. Pages are the same either way: only the files and their `?v=` hashes change, since the hash is computed from the bytes written.
+
+A [custom theme's](/themes/customization#choosing-a-theme) own CSS and JavaScript are copied as you wrote them, minified or not: MokaDocs doesn't change files it didn't write. Minify them in your own build step if you want them smaller.
+
+On this repository's documentation:
+
+| File | Readable | Minified | Readable, gzipped | Minified, gzipped |
+|---|---:|---:|---:|---:|
+| `main.css` | 157 KB | 121 KB | 30 KB | 21 KB |
+| `main.js` | 100 KB | 63 KB | 25 KB | 17 KB |
+| `layouts.css` | 72 KB | 62 KB | 12 KB | 9.6 KB |
+| `style-moka.css` | 42 KB | 37 KB | 6.5 KB | 5.6 KB |
+| `rtl.css` | 40 KB | 37 KB | 5.3 KB | 4.8 KB |
+
+The other style stylesheets lose about 12% raw and 15% gzipped. A page with the default style downloads `main.css` and `main.js`: 38 KB gzipped instead of 55 KB.
+
+```yaml
+build:
+  minifyAssets: false
+```
+
+In the ASP.NET Core host, set `MokaDocsOptions.MinifyAssets`. Its default minifies outside the Development environment and keeps the files readable in Development.
 
 ### `sitemap`
 
@@ -1866,6 +1898,7 @@ MOKADOCS_PRIMARY_COLOR="#7c3aed" MOKADOCS_SHOW_FEEDBACK=false mokadocs build
 | `MOKADOCS_SEARCH_ENABLED` | `features.search.enabled` |
 | `MOKADOCS_CLEAN_OUTPUT` | `build.clean` |
 | `MOKADOCS_MINIFY_OUTPUT` | `build.minify` |
+| `MOKADOCS_MINIFY_ASSETS` | `build.minifyAssets` |
 | `MOKADOCS_GENERATE_SITEMAP` | `build.sitemap` |
 | `MOKADOCS_GENERATE_ROBOTS` | `build.robots` |
 | `MOKADOCS_LLMS` | `build.llms` |

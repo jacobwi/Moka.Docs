@@ -5,6 +5,44 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🔄 Changed
+
+- **Theme CSS and JS ship minified.** main.css and main.js together go from 55 KB to 38 KB
+  gzipped on this repo's docs; every published theme file is smaller. Custom themes' own files
+  are left as written.
+- **Phones get a roomier header and hero.** Header buttons are 40px (36px under 360px) and the
+  search button matches them; the hero title starts smaller; hero and call-to-action buttons stack
+  at full width under 480px; feature cards get less inner padding.
+
+### ⚠️ Behavior changes
+
+- **`mokadocs build` minifies the default theme's CSS and JS by default** (main.css, the style
+  files, layouts.css, rtl.css, main.js, sidebar.js). `build.minifyAssets: false` keeps them
+  readable. `build.minify` now covers page HTML only; `true` still minifies the assets too.
+- **`mokadocs serve` keeps theme files readable** unless `build.minifyAssets: true`,
+  `MOKADOCS_MINIFY_ASSETS` or `build.minify: true` is set. The ASP.NET Core host keeps them
+  readable in Development and minifies them elsewhere.
+
+### ✨ New
+
+- **`build.minifyAssets`** (`MOKADOCS_MINIFY_ASSETS`, `MokaDocsOptions.MinifyAssets`, unset by
+  default so each host picks its own default).
+
+### 🐛 Fixed
+
+- **The landing page scrolled sideways on phones and narrow windows** (683px wide on a 565px
+  screen, already in 1.9.0). The hero's background glow now spans the page and paints as before.
+- **Long URLs, type and package names widened the page.** They now break in page and landing
+  content, card and admonition titles, summaries, breadcrumbs, portal cards, buttons, the package
+  widget and footers; badges and key combinations wrap on phones. Landing grids and link cards
+  can shrink below their content, and wide landing tables scroll inside their own box.
+- **The banner link and the package widget's tabs ran off phone screens.** The link wraps and the
+  tabs scroll.
+- **A hidden glossary tooltip near the right edge made the page scroll sideways.**
+- **The CSS minifier dropped an escaped space** (`.a\ b`) and read `\/*` as the start of a comment.
+
 ## [1.10.0] - 2026-11-13
 
 ### 🔒 Security

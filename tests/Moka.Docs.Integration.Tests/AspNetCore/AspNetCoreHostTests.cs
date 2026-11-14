@@ -189,6 +189,25 @@ public sealed class AspNetCoreHostTests : IDisposable
 		}
 	}
 
+	[Theory]
+	[InlineData("Production", null, false, true)]
+	[InlineData("Staging", null, false, true)]
+	[InlineData(null, null, false, true)]
+	[InlineData("Development", null, false, false)]
+	[InlineData("Development", true, false, true)]
+	[InlineData("Production", false, false, false)]
+	[InlineData("Development", null, true, true)]
+	public void MinifyAssets_DefaultsToReadableInDevelopmentOnly(string? environment, bool? minifyAssets, bool minify,
+		bool minified)
+	{
+		IHostEnvironment? host = environment is null ? null : new ContentRootEnvironment(_root) { EnvironmentName = environment };
+
+		BuildConfig build = SiteConfigFactory.Create(new MokaDocsOptions { MinifyAssets = minifyAssets, Minify = minify }, host).Build;
+
+		build.ShouldMinifyAssets.Should().Be(minified);
+		build.Minify.Should().Be(minify, "Minify keeps controlling the pages");
+	}
+
 	[Fact]
 	public void BlazorPreview_PublishHostSetInTheEntry_IsKept()
 	{

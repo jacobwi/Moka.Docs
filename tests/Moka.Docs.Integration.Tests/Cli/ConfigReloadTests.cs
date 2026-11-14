@@ -162,6 +162,26 @@ public sealed class ConfigReloadTests : IDisposable
 		}
 	}
 
+	[Theory]
+	[InlineData("", false, true)]
+	[InlineData("", true, false)]
+	[InlineData("  minifyAssets: true\n", true, true)]
+	[InlineData("  minifyAssets: false\n", false, false)]
+	[InlineData("  minify: true\n", true, true)]
+	public async Task ThemeAssets_AreReadableUnderServeUnlessTheConfigurationSetsThem(string build, bool serve, bool minified)
+	{
+		WriteYaml("Alphanav", "#111111", folders: "content:\n  docs: ./docs\nbuild:\n  output: ./_site\n  cache: false\n" + build);
+		BuildSession session = await StartAsync(new ConfigSource(Yaml, ReadableAssets: serve));
+		await using (session)
+		{
+			session.Config.Build.ShouldMinifyAssets.Should().Be(minified);
+
+			WriteYaml("Betanav", "#111111", folders: "content:\n  docs: ./docs\nbuild:\n  output: ./_site\n  cache: false\n" + build);
+			(await session.ReloadIfChangedAsync(serve, Ct)).Outcome.Should().Be(ConfigReloadOutcome.Reloaded);
+			session.Config.Build.ShouldMinifyAssets.Should().Be(minified, "a reload keeps the serve default");
+		}
+	}
+
 	[Fact]
 	public async Task BuildWatch_ReloadsTheConfigAndSkipsBuildsWhileItIsBroken()
 	{
@@ -197,6 +217,10 @@ public sealed class ConfigReloadTests : IDisposable
 		try
 		{
 			await EventuallyAsync(() => Home().Contains("Alphanav"), null);
+			Get(http, $"http://127.0.0.1:{port}/_theme/css/main.css").Should()
+				.Contain("/*").And.Contain("\n    ", "serve keeps the theme's CSS readable");
+			Get(http, $"http://127.0.0.1:{port}/_theme/js/main.js").Should()
+				.Contain("//").And.Contain("\n    ", "and its JS");
 
 			await EventuallyAsync(() => Home().Contains("Betanav") && Home().Contains("--color-primary:#ab12cd"),
 				() => WriteYaml("Betanav", "#ab12cd", basePath: "/sub"));

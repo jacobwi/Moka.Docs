@@ -94,7 +94,7 @@ public static partial class EmbeddedThemeProvider
 	                                    html:where([dir="rtl"])[data-sidebar="lines"] .sidebar .nav-children .nav-link { padding-left: 0.75rem !important; }
 	                                    html:where([dir="rtl"])[data-sidebar="pills"][data-style="moka"] .sidebar .nav-link { border-left: 1px solid transparent !important; }
 	                                    html:where([dir="rtl"])[data-sidebar="pills"][data-style="brutal"] .sidebar .nav-link { border-left: 2px solid transparent !important; }
-	                                    :where(html[dir="rtl"]) .glossary-tip { left: 50%; right: auto; transform: translateX(calc(-50% + var(--tip-shift, 0px))); }
+	                                    :where(html[dir="rtl"]) .glossary-tip { left: 50%; right: auto; transform: translateX(calc(-50% + var(--tip-shift, 0px))) scale(var(--tip-scale, 0)); }
 	                                    /* A card's other side has the border the style gives every side of a card. */
 	                                    html:where([dir="rtl"])[data-style="soft"] :is(.component-card-info, .component-card-success, .component-card-warning) { border-left-color: transparent; }
 	                                    html:where([dir="rtl"])[data-style="contrast"] :is(.component-card-info, .component-card-success, .component-card-warning) { border-left-width: 2px; }

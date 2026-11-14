@@ -715,10 +715,24 @@ public sealed record BuildConfig
 	public bool Clean { get; init; } = MokaDefaults.CleanOutput;
 
 	/// <summary>
-	///     Minify the HTML pages and the default theme's CSS and JS: whitespace collapsed and comments
-	///     removed. Off by default.
+	///     Minify the HTML pages: whitespace collapsed and comments removed. Off by default. When on,
+	///     the default theme's CSS and JS are minified too, whatever <see cref="MinifyAssets" /> says.
 	/// </summary>
 	public bool Minify { get; init; } = MokaDefaults.MinifyOutput;
+
+	/// <summary>
+	///     Minify the default theme's CSS and JS (<c>build.minifyAssets</c>, the
+	///     <c>MOKADOCS_MINIFY_ASSETS</c> environment variable). <c>null</c>, the default, leaves it to
+	///     the command: <c>mokadocs build</c> minifies (<see cref="MokaDefaults.MinifyAssets" />),
+	///     <c>mokadocs serve</c> keeps the files readable. A custom theme's files are copied as written.
+	/// </summary>
+	public bool? MinifyAssets { get; init; }
+
+	/// <summary>
+	///     Whether this build minifies the default theme's CSS and JS: <see cref="Minify" />, else
+	///     <see cref="MinifyAssets" />, else <see cref="MokaDefaults.MinifyAssets" />.
+	/// </summary>
+	public bool ShouldMinifyAssets => Minify || (MinifyAssets ?? MokaDefaults.MinifyAssets);
 
 	/// <summary>Generate sitemap.xml.</summary>
 	public bool Sitemap { get; init; } = MokaDefaults.GenerateSitemap;

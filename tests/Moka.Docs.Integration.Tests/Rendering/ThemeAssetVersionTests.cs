@@ -94,13 +94,18 @@ public sealed class ThemeAssetVersionTests
 		fs.File.ReadAllText("/project/_site/index.html").Should().Contain(css).And.Contain(js);
 	}
 
-	[Fact]
-	public async Task MinifiedBuild_WritesSmallerThemeFilesAndHashesThem()
+	[Theory]
+	[InlineData(null, false)]
+	[InlineData(true, false)]
+	[InlineData(false, true)]
+	public async Task MinifiedBuild_WritesSmallerThemeFilesAndHashesThem(bool? minifyAssets, bool minify)
 	{
+		// Assets are minified by default, and minify: true minifies them even with minifyAssets: false.
 		Dictionary<string, MockFileData> Files() => new() { ["/project/docs/index.md"] = new("---\ntitle: Home\n---\nBody.\n") };
-		(_, MockFileSystem plain) = await MockSite.BuildAsync(MockSite.Config(), Files());
+		(_, MockFileSystem plain) = await MockSite.BuildAsync(
+			MockSite.Config() with { Build = new BuildConfig { MinifyAssets = false } }, Files());
 		(_, MockFileSystem minified) = await MockSite.BuildAsync(
-			MockSite.Config() with { Build = new BuildConfig { Minify = true } }, Files());
+			MockSite.Config() with { Build = new BuildConfig { MinifyAssets = minifyAssets, Minify = minify } }, Files());
 
 		foreach (string file in new[] { "/project/_site/_theme/css/main.css", "/project/_site/_theme/js/main.js" })
 		{
@@ -120,6 +125,8 @@ public sealed class ThemeAssetVersionTests
 
 		minified.FileInfo.New("/project/_site/_theme/css/layouts.css").Length.Should()
 			.BeLessThan(plain.FileInfo.New("/project/_site/_theme/css/layouts.css").Length * 9 / 10);
+		minified.FileInfo.New("/project/_site/_theme/css/rtl.css").Length.Should()
+			.BeLessThan(plain.FileInfo.New("/project/_site/_theme/css/rtl.css").Length);
 	}
 
 	[Fact]

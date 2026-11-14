@@ -1267,7 +1267,7 @@ public static partial class EmbeddedThemeProvider
 	                                  html[data-style="terminal"] .site-name::before { content: '~/'; content: '~/' / ''; color: var(--st-link); }
 	                                  html[data-style="terminal"] .search-trigger { background: transparent; border-color: var(--color-border); font-size: 0.75rem; }
 	                                  html[data-style="terminal"] .search-trigger kbd { background: transparent; border-color: var(--color-border); }
-	                                  html[data-style="terminal"] :is(.theme-toggle, .mobile-nav-toggle, .appearance-trigger) { width: 32px; height: 32px; }
+	                                  html[data-style="terminal"] { --header-button: 32px; }
 	                                  html[data-style="terminal"] :is(.theme-toggle, .mobile-nav-toggle, .appearance-trigger, .version-trigger, .search-trigger):hover { background: var(--tm-hover); border-color: var(--tm-line); color: var(--color-text); }
 	                                  html[data-style="terminal"] :is(.appearance-panel, .version-dropdown) { border-color: var(--tm-line); }
 	                                  html[data-style="terminal"] :is(.appearance-option, .version-option):hover { background: var(--tm-hover); }
@@ -2322,6 +2322,9 @@ public static partial class EmbeddedThemeProvider
 	                                      html[data-style="glass"] .sidebar { background: var(--gl-panel-strong); box-shadow: var(--shadow-lg); }
 	                                      html[data-style="brutal"] .sidebar { box-shadow: var(--shadow-lg); }
 	                                      html[data-style="brutal"] .page-content h1 { font-size: 2rem !important; }
+	                                  }
+	                                  @media (max-width: 600px) {
+	                                      html[data-style="classic"] .landing-hero { padding: 3rem 1rem 2.5rem; }
 	                                  }
 
 	                                  /* Styles: version selector. The open trigger's label is text, unlike the other pickers' icons, and white on the

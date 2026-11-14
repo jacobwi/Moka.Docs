@@ -69,6 +69,7 @@ public static partial class EmbeddedThemeProvider
 	                                          display: flex;
 	                                          align-items: baseline;
 	                                          gap: 0.625rem;
+	                                          overflow-wrap: anywhere;
 	                                          padding: 0.625rem 1rem;
 	                                          font-weight: 600;
 	                                          line-height: 1.5;
@@ -316,6 +317,11 @@ public static partial class EmbeddedThemeProvider
 	                                          text-align: center;
 	                                          vertical-align: 0.1em;
 	                                      }
+	                                      /* On a phone a long badge wraps, and a key combination wraps between its keys. */
+	                                      @media (max-width: 768px) {
+	                                          .component-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+	                                          .component-kbd { white-space: normal; }
+	                                      }
 
 	                                      /* Glossary terms: the definition shows on hover and keyboard focus, a click or tap keeps it open, Escape
 	                                         hides it, and the pointer can move onto it. */
@@ -335,6 +341,8 @@ public static partial class EmbeddedThemeProvider
 	                                          cursor: help;
 	                                      }
 	                                      .glossary-term-button:hover { text-decoration-style: solid; }
+	                                      /* A hidden tip is scaled to nothing: it still has its box, and one near the right edge made the page scroll
+	                                         sideways. It scales down only once it has faded out. */
 	                                      .glossary-tip {
 	                                          position: absolute;
 	                                          left: 50%;
@@ -357,10 +365,10 @@ public static partial class EmbeddedThemeProvider
 	                                          text-align: left;
 	                                          text-transform: none;
 	                                          white-space: normal;
-	                                          transform: translateX(calc(-50% + var(--tip-shift, 0px)));
+	                                          transform: translateX(calc(-50% + var(--tip-shift, 0px))) scale(var(--tip-scale, 0));
 	                                          visibility: hidden;
 	                                          opacity: 0;
-	                                          transition: opacity var(--transition), visibility var(--transition);
+	                                          transition: opacity var(--transition), visibility var(--transition), transform 0s var(--transition);
 	                                      }
 	                                      .glossary-tip::after {
 	                                          content: "";
@@ -374,8 +382,8 @@ public static partial class EmbeddedThemeProvider
 	                                      .glossary-term.is-below > .glossary-tip::after { top: auto; bottom: 100%; }
 	                                      .glossary-term:hover > .glossary-tip,
 	                                      .glossary-term:focus-within > .glossary-tip,
-	                                      .glossary-term.is-open > .glossary-tip { visibility: visible; opacity: 1; }
-	                                      .glossary-term.is-dismissed > .glossary-tip { visibility: hidden; opacity: 0; }
+	                                      .glossary-term.is-open > .glossary-tip { --tip-scale: 1; visibility: visible; opacity: 1; transition: opacity var(--transition), visibility var(--transition); }
+	                                      .glossary-term.is-dismissed > .glossary-tip { --tip-scale: 0; visibility: hidden; opacity: 0; transition: opacity var(--transition), visibility var(--transition), transform 0s var(--transition); }
 	                                      html .page-content .glossary-tip code {
 	                                          padding: 0 0.25rem !important;
 	                                          border: 0 !important;

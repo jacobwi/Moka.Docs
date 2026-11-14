@@ -73,7 +73,7 @@ public sealed class ThemeAssetPhase(
 	// RenderPhase and the 404 page hash these same bytes into the ?v= of the URLs they write, so the
 	// minified build hashes the minified files, and a change to the site's text changes main.js's ?v=.
 	internal static IReadOnlyDictionary<string, byte[]> EmbeddedAssets(BuildContext context) =>
-		EmbeddedAssets(context.Config.Build.Minify, ThemeText.For(context.Config));
+		EmbeddedAssets(context.Config.Build.ShouldMinifyAssets, ThemeText.For(context.Config));
 
 	internal static IReadOnlyDictionary<string, byte[]> EmbeddedAssets(bool minify, ThemeText text)
 	{

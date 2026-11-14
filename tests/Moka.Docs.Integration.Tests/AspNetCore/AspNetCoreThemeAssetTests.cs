@@ -37,15 +37,21 @@ public sealed class AspNetCoreThemeAssetTests : IDisposable
 	}
 
 	[Theory]
-	[InlineData(false)]
-	[InlineData(true)]
-	public async Task Pages_LinkThemeFilesWithTheHashOfWhatTheHostServes(bool minify)
+	[InlineData(false, null, "Production", true)]
+	[InlineData(false, null, "Development", false)]
+	[InlineData(false, false, "Production", false)]
+	[InlineData(false, true, "Development", true)]
+	[InlineData(true, null, "Development", true)]
+	[InlineData(true, false, "Production", true)]
+	public async Task Pages_LinkThemeFilesWithTheHashOfWhatTheHostServes(bool minify, bool? minifyAssets, string environment,
+		bool minifiedAssets)
 	{
 		await using DocsTestHost host = await DocsTestHost.StartAsync(_root, options =>
 		{
 			options.DocsPath = "docs";
 			options.Minify = minify;
-		});
+			options.MinifyAssets = minifyAssets;
+		}, environment: environment);
 
 		string page = await host.GetTextAsync("/docs/");
 		page.Contains("\n\n", StringComparison.Ordinal).Should().Be(!minify, "minify drops the blank lines a condition leaves");
@@ -67,7 +73,7 @@ public sealed class AspNetCoreThemeAssetTests : IDisposable
 			Convert.ToHexStringLower(SHA256.HashData(body))[..10].Should().Be(link.Groups[2].Value);
 			if (link != index)
 			{
-				body.Should().Equal(ThemeAssetPhase.EmbeddedAssets(minify, ThemeText.English)[link.Groups[1].Value["/docs".Length..]]);
+				body.Should().Equal(ThemeAssetPhase.EmbeddedAssets(minifiedAssets, ThemeText.English)[link.Groups[1].Value["/docs".Length..]]);
 			}
 		}
 

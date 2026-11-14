@@ -244,6 +244,7 @@ internal sealed class BuildConfigDto
 	public string? Output { get; set; }
 	public bool? Clean { get; set; }
 	public bool? Minify { get; set; }
+	public bool? MinifyAssets { get; set; }
 	public bool? Sitemap { get; set; }
 	public bool? Robots { get; set; }
 	public bool? Llms { get; set; }

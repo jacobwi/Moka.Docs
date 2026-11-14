@@ -31,6 +31,8 @@ public sealed class SiteConfigTests
 		config.Theme.Options.PrimaryColor.Should().Be(MokaDefaults.PrimaryColor);
 		config.Build.Clean.Should().BeTrue();
 		config.Build.Minify.Should().BeFalse();
+		config.Build.MinifyAssets.Should().BeNull();
+		config.Build.ShouldMinifyAssets.Should().BeTrue();
 		config.Build.Sitemap.Should().BeTrue();
 		config.Plugins.Should().BeEmpty();
 		config.Nav.Should().BeEmpty();

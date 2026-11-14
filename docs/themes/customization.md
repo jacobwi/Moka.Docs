@@ -84,7 +84,7 @@ With the default theme, `css_files` contains `/_theme/css/main.css`, then the st
 That leaves two options:
 
 - `primaryColor` and `accentColor` in `theme.options` change the brand colors. See [Config-Driven Customization](#config-driven-customization).
-- A [custom theme](#choosing-a-theme) can ship its own stylesheets. It replaces the default theme entirely, layouts included. Building a site with the default theme writes its stylesheets to `_theme/css/` (`main.css`, a `style-<name>.css` for each style and `layouts.css`), its icons to `_theme/icons.svg` and its script to `_theme/js/main.js`, which you can copy into your theme as a starting point. The default layouts are defined in `EmbeddedThemeProvider.cs` in the MokaDocs source.
+- A [custom theme](#choosing-a-theme) can ship its own stylesheets. It replaces the default theme entirely, layouts included. Building a site with the default theme writes its stylesheets to `_theme/css/` (`main.css`, a `style-<name>.css` for each style and `layouts.css`), its icons to `_theme/icons.svg` and its script to `_theme/js/main.js`, which you can copy into your theme as a starting point. `mokadocs build` minifies them; `mokadocs serve`, or a build with [`build.minifyAssets: false`](/configuration/site-config#minifyassets), writes them readable. The default layouts are defined in `EmbeddedThemeProvider.cs` in the MokaDocs source.
 
 A stylesheet in a custom theme can override any of the properties above:
 
@@ -147,7 +147,7 @@ Layouts are [Scriban](https://github.com/scriban/scriban) templates. A minimal `
 </html>
 ```
 
-Everything under `css/`, `js/` and `assets/`, subfolders included, is copied to `_theme/` in the output. `css_files` lists every `.css` file under `css/`, subfolders included, in alphabetical order of path. `js_files` lists only the `.js` files directly inside `js/`. Each URL ends in `?v=` and a hash of the file, so browsers and CDNs fetch a changed file instead of a cached copy. The built-in stylesheet and script are not included, so a custom theme owns its styling completely.
+Everything under `css/`, `js/` and `assets/`, subfolders included, is copied to `_theme/` in the output. `css_files` lists every `.css` file under `css/`, subfolders included, in alphabetical order of path. `js_files` lists only the `.js` files directly inside `js/`. Each URL ends in `?v=` and a hash of the file, so browsers and CDNs fetch a changed file instead of a cached copy. The files are copied as written: [`build.minifyAssets`](/configuration/site-config#minifyassets) applies to the default theme's files only. The built-in stylesheet and script are not included, so a custom theme owns its styling completely.
 
 A few things to know when writing layouts:
 

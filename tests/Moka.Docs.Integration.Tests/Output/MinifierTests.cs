@@ -1,8 +1,12 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using FluentAssertions;
+using Moka.Docs.Core.Theming;
 using Moka.Docs.Engine.Minification;
+using Moka.Docs.Engine.Phases;
 using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Integration.Tests.Output;
@@ -111,8 +115,27 @@ public sealed class MinifierTests
 	[InlineData(":root { --empty: ; --x: 1; }", ":root{--empty: ;--x: 1}")]
 	[InlineData("p { color: red !important; }", "p{color: red !important}")]
 	[InlineData("a/**/b { }", "a b{}")]
+	[InlineData(":root { --gap:  1rem  2rem ; --font: a , b; --v: var(--gap , 0); }", ":root{--gap: 1rem 2rem;--font: a,b;--v: var(--gap,0)}")]
+	[InlineData("@layer base , theme ; @layer base { a { color: red; } }", "@layer base,theme;@layer base{a{color: red}}")]
+	[InlineData("@supports (inset: 0) and (not (display: grid)) { a { b: c; } }", "@supports (inset: 0) and (not (display: grid)){a{b: c}}")]
+	[InlineData("@media screen and (min-width: 768px) , print { a { b: c; } }", "@media screen and (min-width: 768px),print{a{b: c}}")]
+	[InlineData("a::after { content: \"\\2192\" / \"\"; }", "a::after{content: \"\\2192\" / \"\"}")]
+	[InlineData(":is(.a, .b) > :where(p, li):has(> img, + p) { x: y; }", ":is(.a,.b) > :where(p,li):has(> img,+ p){x: y}")]
+	[InlineData("p { content: \"*/ a /* b\" ' /* c */ '; }", "p{content: \"*/ a /* b\" ' /* c */ '}")]
+	[InlineData(".a\\ b , .c\\/*d { x: y; }", ".a\\ b,.c\\/*d{x: y}")]
 	public void Css_KeepsWhatChangesMeaning(string css, string expected) =>
 		CssMinifier.Minify(css).Should().Be(expected);
+
+	[Fact]
+	public void Css_KeepsDataUriMasksAsWritten()
+	{
+		// The github admonition icons are SVG masks in quoted data URIs with spaces, quotes and slashes.
+		const string mask = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z'/%3E%3C/svg%3E\")";
+		string css = ".icon {\n    -webkit-mask: " + mask + " center / contain no-repeat;\n    mask: " + mask + " center / contain no-repeat;\n}";
+
+		CssMinifier.Minify(css).Should()
+			.Be(".icon{-webkit-mask: " + mask + " center / contain no-repeat;mask: " + mask + " center / contain no-repeat}");
+	}
 
 	[Fact]
 	public void Js_DropsCommentsAndIndentationButKeepsLineBreaks()
@@ -179,9 +202,14 @@ public sealed class MinifierTests
 			minifiedLines.Should().Contain(Squeeze(line));
 		}
 
+		NodeCheck(minified);
+	}
+
+	private static void NodeCheck(string js)
+	{
 		Assert.SkipUnless(_nodeAvailable.Value, "node is not on PATH");
 		string path = Path.Combine(Path.GetTempPath(), "mokadocs-min-" + Guid.NewGuid().ToString("N") + ".js");
-		File.WriteAllText(path, minified);
+		File.WriteAllText(path, js);
 		try
 		{
 			using Process node = Process.Start(new ProcessStartInfo("node", ["--check", path])
@@ -199,15 +227,72 @@ public sealed class MinifierTests
 		}
 	}
 
-	[Fact]
-	public void ThemeStylesheet_LosesOnlyCommentsAndWhitespace()
+	public static TheoryData<string> ThemeStylesheets() =>
+		new(["main", "layouts", "rtl", .. EmbeddedThemeProvider.StyleFileNames.Select(style => "style-" + style)]);
+
+	[Theory]
+	[MemberData(nameof(ThemeStylesheets))]
+	public void ThemeStylesheet_LosesOnlyCommentsAndWhitespace(string name)
 	{
-		string css = EmbeddedThemeProvider.GetCss();
+		string css = name switch
+		{
+			"main" => EmbeddedThemeProvider.GetCss(),
+			"layouts" => EmbeddedThemeProvider.GetLayoutsCss(),
+			"rtl" => EmbeddedThemeProvider.GetRtlCss(),
+			_ => EmbeddedThemeProvider.GetStyleCss(name["style-".Length..])
+		};
 		string minified = CssMinifier.Minify(css);
 
-		minified.Length.Should().BeLessThan(css.Length * 9 / 10);
+		minified.Length.Should().BeLessThan(css.Length * 19 / 20);
 		minified.Should().NotContain("/*").And.NotContain("\n");
 		Squeeze(minified).Should().Be(Squeeze(StripCssComments(css)).Replace(";}", "}"));
+		// The space in "and (" or "> img" is part of the meaning; only the spaces next to { } ; , go.
+		string[] words = Regex.Split(StripCssComments(css).Trim(), "\\s*[{};,]\\s*|\\s+")
+			.Where(word => word.Length > 0).ToArray();
+		Regex.Split(minified, "[{};,]| ").Where(word => word.Length > 0).Should().Equal(words);
+	}
+
+	public static TheoryData<string, string> ScriptTexts() => new()
+	{
+		{ "en", "" },
+		{ "de", "" },
+		{ "ja", "" },
+		{ "zh", "" },
+		{ "en", "*/ `${x}` </script> \" ' \\ // /re/ \u2028 {}" }
+	};
+
+	[Theory]
+	[MemberData(nameof(ScriptTexts))]
+	public void ThemeScript_FillsItsPlaceholdersBeforeItIsMinified(string language, string copyText)
+	{
+		// The placeholders are comments, so the JSON goes in first: minifying first would drop them
+		// and leave the site's text and the style files' hashes out.
+		ThemeText text = copyText.Length == 0
+			? ThemeText.For(language)
+			: ThemeText.For(language, new Dictionary<string, string> { ["code.copy"] = copyText });
+		string readable = Encoding.UTF8.GetString(ThemeAssetPhase.EmbeddedAssets(false, text)[EmbeddedThemeProvider.MainJsPath]);
+		IReadOnlyDictionary<string, byte[]> assets = ThemeAssetPhase.EmbeddedAssets(true, text);
+		string minified = Encoding.UTF8.GetString(assets[EmbeddedThemeProvider.MainJsPath]);
+
+		foreach (string constant in new[] { "strings", "codeThemePairs", "darkFirstStyles", "appearanceOptions" })
+		{
+			Match value = Regex.Match(readable, $"const {constant} = (.+?);\r?\n");
+			value.Success.Should().BeTrue("main.js should fill in {0}", constant);
+			value.Groups[1].Value.Should().NotStartWith("/*");
+			minified.Should().Contain($"const {constant}={value.Groups[1].Value};", "the minified script holds the same {0}", constant);
+		}
+
+		Dictionary<string, string> styleFiles = EmbeddedThemeProvider.StyleFileNames.ToDictionary(style => style,
+			style => ThemeAssetPhase.ContentHash(assets[EmbeddedThemeProvider.StyleCssPath(style)!]), StringComparer.Ordinal);
+		minified.Should().Contain($"const styleFiles={JsonSerializer.Serialize(styleFiles)};", "it names the minified style files");
+		minified.Should().NotContainAny("/*style-files*/", "/*theme-strings*/", "/*appearance-options*/", "/*code-theme-pairs*/",
+			"/*dark-first-styles*/");
+		if (copyText.Length > 0)
+		{
+			minified.Should().Contain(JsonSerializer.Serialize(copyText));
+		}
+
+		NodeCheck(minified);
 	}
 
 	private static string Squeeze(string text) => new(text.Where(c => !char.IsWhiteSpace(c)).ToArray());

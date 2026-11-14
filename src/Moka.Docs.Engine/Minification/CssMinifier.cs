@@ -3,8 +3,8 @@ using System.Text;
 namespace Moka.Docs.Engine.Minification;
 
 // Drops comments, turns each run of whitespace into one space and removes the spaces next to
-// { } ; and , plus the last ; of a block. Strings and url(...) are copied as written. Spaces around
-// ':' stay: "a :hover" and "a:hover" are different selectors.
+// { } ; and , plus the last ; of a block. Strings, url(...) and escapes are copied as written.
+// Spaces around ':' stay: "a :hover" and "a:hover" are different selectors.
 internal static class CssMinifier
 {
 	public static string Minify(string css)
@@ -55,6 +55,14 @@ internal static class CssMinifier
 				int end = StringEnd(css, i);
 				sb.Append(css, i, end - i);
 				i = end;
+				continue;
+			}
+
+			// An escaped character is part of a name: ".a\ b" holds a space and ".a\/*b" no comment.
+			if (c == '\\' && i + 1 < css.Length)
+			{
+				sb.Append(css, i, 2);
+				i += 2;
 				continue;
 			}
 

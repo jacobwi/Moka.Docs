@@ -27,7 +27,9 @@ internal static class SiteConfigFactory
 	/// <param name="options">The options.</param>
 	/// <param name="environment">
 	///     The app's environment. Outside Development the Blazor preview plugin gets
-	///     <c>publishHost: false</c>, unless its entry sets the option. <c>null</c> leaves it alone.
+	///     <c>publishHost: false</c>, unless its entry sets the option; in Development the theme's CSS
+	///     and JS stay readable unless <see cref="MokaDocsOptions.MinifyAssets" /> is set. <c>null</c>
+	///     leaves both alone.
 	/// </param>
 	public static SiteConfig Create(MokaDocsOptions options, IHostEnvironment? environment = null)
 	{
@@ -173,6 +175,7 @@ internal static class SiteConfigFactory
 				Sitemap = false,
 				Robots = false,
 				Minify = options.Minify,
+				MinifyAssets = options.MinifyAssets ?? (environment?.IsDevelopment() == true ? false : null),
 				Llms = options.Llms,
 				// The pipeline prefixes every route, asset and search result with this and tells the
 				// theme script where the site lives. It used to stay "/" while the finished HTML was

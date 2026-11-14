@@ -17,6 +17,8 @@ mokadocs build
 
 The build exits with code 1 when it fails or reports an error, so a CI job stops before deploying a broken site. See [CLI Commands](/advanced/cli-reference) for the options.
 
+The build minifies the default theme's CSS and JavaScript ([`build.minifyAssets`](/configuration/site-config#minifyassets)), which takes `main.css` and `main.js` from 55 KB to 38 KB gzipped on this site. The HTML pages are written as rendered unless [`build.minify`](/configuration/site-config#minify) is on; they carry little whitespace, so it saves less.
+
 For a build from scratch:
 
 ```bash

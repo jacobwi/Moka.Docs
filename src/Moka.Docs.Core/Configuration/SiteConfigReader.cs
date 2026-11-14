@@ -525,6 +525,7 @@ public sealed class SiteConfigReader
 				"CLEAN_OUTPUT", dto.Clean, MokaDefaults.CleanOutput),
 			Minify = MokaDefaults.ResolveBool(
 				"MINIFY_OUTPUT", dto.Minify, MokaDefaults.MinifyOutput),
+			MinifyAssets = MokaDefaults.ResolveOptionalBool("MINIFY_ASSETS", dto.MinifyAssets),
 			Sitemap = MokaDefaults.ResolveBool(
 				"GENERATE_SITEMAP", dto.Sitemap, MokaDefaults.GenerateSitemap),
 			Robots = MokaDefaults.ResolveBool(
@@ -664,6 +665,8 @@ public sealed class SiteConfigReader
 				Output = config.Build.Output,
 				Clean = config.Build.Clean,
 				Minify = config.Build.Minify ? true : null,
+				// An explicit true is written too: unset and true differ under mokadocs serve.
+				MinifyAssets = config.Build.MinifyAssets,
 				Sitemap = config.Build.Sitemap,
 				Robots = config.Build.Robots,
 				Llms = config.Build.Llms ? null : false,

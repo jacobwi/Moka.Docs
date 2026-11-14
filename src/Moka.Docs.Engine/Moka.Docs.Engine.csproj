@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Moka.Docs.Engine.Tests" />
     <InternalsVisibleTo Include="Moka.Docs.Integration.Tests" />
   </ItemGroup>
 

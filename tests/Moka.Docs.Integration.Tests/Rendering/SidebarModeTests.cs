@@ -77,6 +77,24 @@ public sealed class SidebarModeTests
 		}
 	}
 
+	[Theory]
+	[InlineData(null, true)]
+	[InlineData(false, false)]
+	public async Task SharedMode_SidebarScriptIsMinifiedLikeTheThemeScript(bool? minifyAssets, bool minified)
+	{
+		SiteConfig config = Config("shared");
+		config = config with { Build = config.Build with { MinifyAssets = minifyAssets } };
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, Files());
+
+		string text = fs.File.ReadAllText(_sidebarFile);
+		text.Contains("// ", StringComparison.Ordinal).Should().Be(!minified, "the script's comments go");
+		text.Contains("\n    ", StringComparison.Ordinal).Should().Be(!minified, "and its indentation");
+		text.Should().Contain("href=\\\"/guide/intro\\\"", "the sidebar markup is a string and stays as it is");
+		string hash = Convert.ToHexStringLower(SHA256.HashData(fs.File.ReadAllBytes(_sidebarFile)))[..10];
+		fs.File.ReadAllText("/project/_site/guide/intro/index.html").Should().Contain($"/_theme/js/sidebar.js?v={hash}");
+	}
+
 	[Fact]
 	public async Task SharedMode_PageKeepsTheTopLevelAndItsOwnSection()
 	{

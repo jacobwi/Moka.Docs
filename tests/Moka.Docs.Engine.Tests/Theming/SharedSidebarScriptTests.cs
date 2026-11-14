@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Content;
 using Moka.Docs.Core.Navigation;
+using Moka.Docs.Engine.Minification;
 using Moka.Docs.Rendering.Scriban;
 using Moka.Docs.Themes.Default;
 
@@ -15,7 +16,8 @@ namespace Moka.Docs.Engine.Tests.Theming;
 /// <summary>
 ///     Runs the shared sidebar script under Node, when it is on PATH, against a small DOM made from
 ///     the rendered pages: for every page, the sidebar the script builds must equal the one the
-///     layout writes into the page in the inline mode.
+///     layout writes into the page in the inline mode. The script runs as written and minified, as the
+///     build publishes it.
 /// </summary>
 public sealed class SharedSidebarScriptTests
 {
@@ -127,11 +129,11 @@ public sealed class SharedSidebarScriptTests
 	private static NavigationNode Node(string label, string? route, params NavigationNode[] children) =>
 		new() { Label = label, Route = route, Children = [.. children] };
 
-	public static TheoryData<string> BasePaths() => ["/", "/Repo"];
+	public static TheoryData<string, bool> BasePaths() => new() { { "/", false }, { "/Repo", false }, { "/", true }, { "/Repo", true } };
 
 	[Theory]
 	[MemberData(nameof(BasePaths))]
-	public void Script_BuildsTheSidebarTheLayoutWritesForEveryPage(string basePath)
+	public void Script_BuildsTheSidebarTheLayoutWritesForEveryPage(string basePath, bool minified)
 	{
 		Assert.SkipUnless(_nodeAvailable.Value, "node is not on PATH");
 
@@ -182,6 +184,10 @@ public sealed class SharedSidebarScriptTests
 
 		string script = EmbeddedThemeProvider.CreateSidebarScript(
 			_engine.RenderSidebar(EmbeddedThemeProvider.GetSidebarTemplate(), Context(null), TestContext.Current.CancellationToken));
+		if (minified)
+		{
+			script = JsMinifier.Minify(script);
+		}
 		ThemeRenderContext inline = Context(null);
 		ThemeRenderContext shared = Context("/_theme/js/sidebar.js?v=0123456789");
 

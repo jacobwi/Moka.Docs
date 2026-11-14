@@ -211,6 +211,19 @@ public sealed class SiteConfigEnvironmentTests
 		config.Build.Minify.Should().Be(expected);
 	}
 
+	[Theory]
+	[InlineData("false", "build:\n  minifyAssets: true\n", false)]
+	[InlineData("true", "build:\n  minifyAssets: false\n", true)]
+	[InlineData("no", "", false)]
+	[InlineData("maybe", "build:\n  minifyAssets: false\n", false)]
+	[InlineData("maybe", "", null)]
+	public void EnvironmentOverride_MinifyAssets_WinsOverTheYaml(string value, string build, bool? expected)
+	{
+		SiteConfig config = ParseWith("MOKADOCS_MINIFY_ASSETS", value, "site:\n  title: Docs\n" + build);
+
+		config.Build.MinifyAssets.Should().Be(expected, "a value that isn't a bool leaves the yaml's");
+	}
+
 	[Fact]
 	public void EnvironmentOverride_AppliesWhenTheYamlHasNoSearchSection()
 	{

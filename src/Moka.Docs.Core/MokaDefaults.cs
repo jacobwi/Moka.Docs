@@ -129,8 +129,14 @@ public static class MokaDefaults
 	/// <summary>Clean output directory before build.</summary>
 	public static bool CleanOutput { get; set; } = true;
 
-	/// <summary>Minify the HTML pages and the default theme's CSS and JS. Off by default.</summary>
+	/// <summary>Minify the HTML pages, and with them the default theme's CSS and JS. Off by default.</summary>
 	public static bool MinifyOutput { get; set; }
+
+	/// <summary>
+	///     Minify the default theme's CSS and JS when <c>build.minifyAssets</c> isn't set. On by default;
+	///     <c>mokadocs serve</c> and the ASP.NET Core host in Development keep them readable instead.
+	/// </summary>
+	public static bool MinifyAssets { get; set; } = true;
 
 	#endregion
 
@@ -227,6 +233,24 @@ public static class MokaDefaults
 	}
 
 	/// <summary>
+	///     Resolves a bool value that stays unset when neither the environment nor the yaml sets it:
+	///     env var > yaml config > <c>null</c>. For settings whose default depends on the command.
+	/// </summary>
+	/// <param name="envVarName">The environment variable suffix (without MOKADOCS_ prefix).</param>
+	/// <param name="yamlValue">The value from the user's YAML config, or null if not specified.</param>
+	/// <returns>The resolved value, or <c>null</c> when neither sets one.</returns>
+	public static bool? ResolveOptionalBool(string envVarName, bool? yamlValue)
+	{
+		string? envValue = Environment.GetEnvironmentVariable(_envPrefix + envVarName);
+		if (!string.IsNullOrEmpty(envValue))
+		{
+			return ParseOptionalBool(envValue) ?? yamlValue;
+		}
+
+		return yamlValue;
+	}
+
+	/// <summary>
 	///     Resolves a string value: env var > yaml config > MokaDefaults.
 	/// </summary>
 	/// <param name="envVarName">The environment variable suffix (without MOKADOCS_ prefix).</param>
@@ -262,13 +286,15 @@ public static class MokaDefaults
 		return yamlValue ?? defaultValue;
 	}
 
-	private static bool ParseBool(string value, bool fallback)
+	private static bool ParseBool(string value, bool fallback) => ParseOptionalBool(value) ?? fallback;
+
+	private static bool? ParseOptionalBool(string value)
 	{
 		return value.Trim().ToLowerInvariant() switch
 		{
 			"true" or "1" or "yes" => true,
 			"false" or "0" or "no" => false,
-			_ => fallback
+			_ => null
 		};
 	}
 

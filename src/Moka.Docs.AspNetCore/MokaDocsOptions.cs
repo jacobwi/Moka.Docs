@@ -326,10 +326,18 @@ public sealed class MokaDocsOptions
 	public bool CacheOutput { get; set; } = true;
 
 	/// <summary>
-	///     Whether to minify the pages and the theme's CSS and JS, like <c>build.minify</c> in
-	///     <c>mokadocs.yaml</c>: whitespace collapsed and comments removed. Default: false.
+	///     Whether to minify the pages, like <c>build.minify</c> in <c>mokadocs.yaml</c>: whitespace
+	///     collapsed and comments removed. When true, the theme's CSS and JS are minified too, whatever
+	///     <see cref="MinifyAssets" /> says. Default: false.
 	/// </summary>
 	public bool Minify { get; set; }
+
+	/// <summary>
+	///     Whether to minify the theme's CSS and JS, like <c>build.minifyAssets</c> in
+	///     <c>mokadocs.yaml</c>. The default, <c>null</c>, minifies them outside the Development
+	///     environment and keeps them readable in Development, for debugging.
+	/// </summary>
+	public bool? MinifyAssets { get; set; }
 
 	/// <summary>
 	///     Whether to publish a Markdown copy of each page next to its HTML (<c>/docs/guide/intro</c>

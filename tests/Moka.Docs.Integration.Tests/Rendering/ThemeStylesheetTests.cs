@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using FluentAssertions;
 using Moka.Docs.Core.Configuration;
 using Moka.Docs.Core.Theming;
+using Moka.Docs.Engine.Minification;
 using Moka.Docs.Themes.Default;
 
 namespace Moka.Docs.Integration.Tests.Rendering;
@@ -23,10 +24,10 @@ public sealed class ThemeStylesheetTests
 	};
 
 	private static Task<(Core.Pipeline.BuildContext Context, MockFileSystem FileSystem)> BuildAsync(ThemeOptions options, string basePath = "/Repo",
-		bool search = true) =>
+		bool search = true, bool? minifyAssets = null) =>
 		MockSite.BuildAsync(MockSite.Config() with
 		{
-			Build = new BuildConfig { BasePath = basePath },
+			Build = new BuildConfig { BasePath = basePath, MinifyAssets = minifyAssets },
 			Theme = new ThemeConfig { Options = options },
 			Features = new FeaturesConfig { Search = new SearchFeatureConfig { Enabled = search } }
 		}, Files());
@@ -77,21 +78,27 @@ public sealed class ThemeStylesheetTests
 			.And.EndWith($"/Repo/_theme/css/style-paper.css?v={Hash(paper, "/project/_site/_theme/css/style-paper.css")}");
 	}
 
-	[Fact]
-	public async Task EveryStyleStylesheet_IsWrittenWithTheVersionThePagesName()
+	[Theory]
+	[InlineData(null)]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task EveryStyleStylesheet_IsWrittenWithTheVersionThePagesName(bool? minifyAssets)
 	{
-		(_, MockFileSystem fs) = await BuildAsync(new ThemeOptions());
+		(_, MockFileSystem fs) = await BuildAsync(new ThemeOptions(), minifyAssets: minifyAssets);
+		Func<string, string> written = minifyAssets == false ? css => css : CssMinifier.Minify;
 
 		string html = fs.File.ReadAllText("/project/_site/guide/index.html");
 		foreach (string style in ThemeStyles.Names.Where(s => s != ThemeStyles.Default))
 		{
 			string path = $"/project/_site/_theme/css/style-{style}.css";
-			fs.File.ReadAllText(path).Should().Be(EmbeddedThemeProvider.GetStyleCss(style));
+			fs.File.ReadAllText(path).Should().Be(written(EmbeddedThemeProvider.GetStyleCss(style)));
 			html.Should().Contain($"'{style}':'{Hash(fs, path)}',");
 		}
 
-		fs.File.ReadAllText("/project/_site/_theme/css/layouts.css").Should().Be(EmbeddedThemeProvider.GetLayoutsCss());
-		fs.File.ReadAllText("/project/_site/_theme/css/main.css").Should().Be(EmbeddedThemeProvider.GetCss());
+		fs.File.ReadAllText("/project/_site/_theme/css/layouts.css").Should().Be(written(EmbeddedThemeProvider.GetLayoutsCss()));
+		fs.File.ReadAllText("/project/_site/_theme/css/rtl.css").Should().Be(written(EmbeddedThemeProvider.GetRtlCss()));
+		fs.File.ReadAllText("/project/_site/_theme/css/main.css").Should().Be(written(EmbeddedThemeProvider.GetCss()));
+		fs.File.ReadAllText("/project/_site/_theme/icons.svg").Should().Be(EmbeddedThemeProvider.GetIconSprite(), "the sprite is written as it is");
 	}
 
 	[Fact]
