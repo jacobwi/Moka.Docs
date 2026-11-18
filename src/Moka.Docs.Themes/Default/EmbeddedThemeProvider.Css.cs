@@ -7,7 +7,8 @@ public static partial class EmbeddedThemeProvider
 	                                    /* ================================ */
 
 	                                    :root {
-	                                        --color-primary: #0ea5e9;
+	                                        --color-primary-base: #0ea5e9;
+	                                        --color-primary: var(--color-primary-base);
 	                                        --color-primary-light: #38bdf8;
 	                                        --color-primary-dark: #0284c7;
 	                                        --gradient-secondary: #06b6d4;
@@ -32,6 +33,9 @@ public static partial class EmbeddedThemeProvider
 	                                        --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 	                                        --radius: 8px;
 	                                        --radius-sm: 4px;
+	                                        --radius-scale: 1;
+	                                        --line-spacing: 1;
+	                                        --paragraph-spacing: 1;
 	                                        --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
 	                                        --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
 	                                        --shadow-lg: 0 10px 25px -3px rgba(0,0,0,0.15);
@@ -47,9 +51,9 @@ public static partial class EmbeddedThemeProvider
 	                                    }
 
 	                                    [data-theme="dark"] {
-	                                        --color-bg: #0f172a;
-	                                        --color-bg-secondary: #1e293b;
-	                                        --color-bg-code: #1e293b;
+	                                        --dark-bg: #0f172a;
+	                                        --dark-bg-secondary: #1e293b;
+	                                        --dark-bg-code: #1e293b;
 	                                        --color-text: #e2e8f0;
 	                                        --color-text-secondary: #94a3b8;
 	                                        --color-text-muted: #8091a9;
@@ -57,80 +61,103 @@ public static partial class EmbeddedThemeProvider
 	                                        --color-border-light: #1e293b;
 	                                    }
 
+	                                    /* Dark surfaces and the dark tone (Appearance panel). Every style names its dark page, panel and code backgrounds
+	                                       --dark-bg, --dark-bg-secondary and --dark-bg-code, and these rules turn them into the colors the theme paints with.
+	                                       A property can't be computed from its own value, so the tone needs the style's colors under names of their own.
+	                                       Dim mixes them in OKLab toward a soft gray, which keeps each style's hue, and black puts the page at #000 with the
+	                                       panels a little above it. Text and borders stay the style's. The selectors match a style's own dark block, which
+	                                       comes later: a style that still set --color-bg there would keep its colors and ignore the tone. The dim mix keeps
+	                                       every accent shade at 4.5:1 (PrimaryColorContrast checks the default style's shades on these surfaces too). */
+	                                    html:root[data-theme="dark"] {
+	                                        --color-bg: var(--dark-bg);
+	                                        --color-bg-secondary: var(--dark-bg-secondary);
+	                                        --color-bg-code: var(--dark-bg-code);
+	                                    }
+	                                    html[data-theme="dark"][data-dark-tone="dim"] {
+	                                        --color-bg: color-mix(in oklab, var(--dark-bg) 60%, #272727);
+	                                        --color-bg-secondary: color-mix(in oklab, var(--dark-bg-secondary) 40%, #272727);
+	                                        --color-bg-code: color-mix(in oklab, var(--dark-bg-code) 40%, #272727);
+	                                    }
+	                                    html[data-theme="dark"][data-dark-tone="black"] {
+	                                        --color-bg: #000000;
+	                                        --color-bg-secondary: color-mix(in oklab, var(--dark-bg-secondary) 70%, #000000);
+	                                        --color-bg-code: color-mix(in oklab, var(--dark-bg-code) 70%, #000000);
+	                                    }
+
 	                                    /* Color theme presets - override primary accent colors
 	                                       Uses html[] for higher specificity than inline :root overrides */
 	                                    html[data-color-theme="ocean"] {
-	                                        --color-primary: #0ea5e9 !important;
+	                                        --color-primary-base: #0ea5e9 !important;
 	                                        --color-primary-light: #38bdf8 !important;
 	                                        --color-primary-dark: #0284c7 !important;
 	                                        --gradient-secondary: #06b6d4;
 	                                        --gradient-tertiary: #3b82f6;
 	                                    }
 	                                    html[data-color-theme="emerald"] {
-	                                        --color-primary: #10b981 !important;
+	                                        --color-primary-base: #10b981 !important;
 	                                        --color-primary-light: #34d399 !important;
 	                                        --color-primary-dark: #059669 !important;
 	                                        --gradient-secondary: #06d6a0;
 	                                        --gradient-tertiary: #2dd4bf;
 	                                    }
 	                                    html[data-color-theme="violet"] {
-	                                        --color-primary: #8b5cf6 !important;
+	                                        --color-primary-base: #8b5cf6 !important;
 	                                        --color-primary-light: #a78bfa !important;
 	                                        --color-primary-dark: #7c3aed !important;
 	                                        --gradient-secondary: #a855f7;
 	                                        --gradient-tertiary: #6366f1;
 	                                    }
 	                                    html[data-color-theme="amber"] {
-	                                        --color-primary: #f59e0b !important;
+	                                        --color-primary-base: #f59e0b !important;
 	                                        --color-primary-light: #fbbf24 !important;
 	                                        --color-primary-dark: #d97706 !important;
 	                                        --gradient-secondary: #f97316;
 	                                        --gradient-tertiary: #ef4444;
 	                                    }
 	                                    html[data-color-theme="rose"] {
-	                                        --color-primary: #f43f5e !important;
+	                                        --color-primary-base: #f43f5e !important;
 	                                        --color-primary-light: #fb7185 !important;
 	                                        --color-primary-dark: #e11d48 !important;
 	                                        --gradient-secondary: #ec4899;
 	                                        --gradient-tertiary: #f97316;
 	                                    }
 	                                    html[data-color-theme="moka-red"] {
-	                                        --color-primary: #d32f2f !important;
+	                                        --color-primary-base: #d32f2f !important;
 	                                        --color-primary-light: #ff6659 !important;
 	                                        --color-primary-dark: #9a0007 !important;
 	                                        --gradient-secondary: #c62828;
 	                                        --gradient-tertiary: #e53935;
 	                                    }
 	                                    html[data-color-theme="slate"] {
-	                                        --color-primary: #64748b !important;
+	                                        --color-primary-base: #64748b !important;
 	                                        --color-primary-light: #94a3b8 !important;
 	                                        --color-primary-dark: #475569 !important;
 	                                        --gradient-secondary: #94a3b8;
 	                                        --gradient-tertiary: #475569;
 	                                    }
 	                                    html[data-color-theme="teal"] {
-	                                        --color-primary: #14b8a6 !important;
+	                                        --color-primary-base: #14b8a6 !important;
 	                                        --color-primary-light: #2dd4bf !important;
 	                                        --color-primary-dark: #0d9488 !important;
 	                                        --gradient-secondary: #06b6d4;
 	                                        --gradient-tertiary: #10b981;
 	                                    }
 	                                    html[data-color-theme="indigo"] {
-	                                        --color-primary: #6366f1 !important;
+	                                        --color-primary-base: #6366f1 !important;
 	                                        --color-primary-light: #818cf8 !important;
 	                                        --color-primary-dark: #4f46e5 !important;
 	                                        --gradient-secondary: #8b5cf6;
 	                                        --gradient-tertiary: #3b82f6;
 	                                    }
 	                                    html[data-color-theme="orange"] {
-	                                        --color-primary: #f97316 !important;
+	                                        --color-primary-base: #f97316 !important;
 	                                        --color-primary-light: #fb923c !important;
 	                                        --color-primary-dark: #ea580c !important;
 	                                        --gradient-secondary: #f59e0b;
 	                                        --gradient-tertiary: #ef4444;
 	                                    }
 	                                    html[data-color-theme="graphite"] {
-	                                        --color-primary: #52525b !important;
+	                                        --color-primary-base: #52525b !important;
 	                                        --color-primary-light: #a1a1aa !important;
 	                                        --color-primary-dark: #3f3f46 !important;
 	                                        --gradient-secondary: #a1a1aa;
@@ -143,27 +170,51 @@ public static partial class EmbeddedThemeProvider
 	                                       admonition tints. PrimaryColorContrast in Moka.Docs.Rendering computes these, and the
 	                                       same shades for a custom primaryColor. A preset whose primary already passes has no rule. */
 	                                    :root {
-	                                        --color-primary-text: var(--color-primary);
+	                                        --color-primary-text-base: var(--color-primary-base);
+	                                        --color-primary-text: var(--color-primary-text-base);
 	                                        --color-primary-text-hover: color-mix(in srgb, var(--color-primary-text) 80%, black);
 	                                    }
 	                                    [data-theme="dark"] { --color-primary-text-hover: color-mix(in srgb, var(--color-primary-text) 75%, white); }
-	                                    html[data-color-theme="ocean"] { --color-primary-text: #0076a9; }
-	                                    html[data-color-theme="emerald"] { --color-primary-text: #007f57; }
-	                                    html[data-color-theme="violet"] { --color-primary-text: #804fe8; }
-	                                    html[data-color-theme="amber"] { --color-primary-text: #9c6300; }
-	                                    html[data-color-theme="rose"] { --color-primary-text: #d81c49; }
-	                                    html[data-color-theme="moka-red"] { --color-primary-text: #d12d2d; }
-	                                    html[data-color-theme="slate"] { --color-primary-text: #607087; }
-	                                    html[data-color-theme="teal"] { --color-primary-text: #007d71; }
-	                                    html[data-color-theme="indigo"] { --color-primary-text: #5c5de8; }
-	                                    html[data-color-theme="orange"] { --color-primary-text: #b85000; }
-	                                    html[data-theme="dark"]:is([data-color-theme="ocean"], [data-color-theme="emerald"], [data-color-theme="amber"], [data-color-theme="teal"], [data-color-theme="orange"]) { --color-primary-text: var(--color-primary); }
-	                                    html[data-theme="dark"][data-color-theme="violet"] { --color-primary-text: #9b77ff; }
-	                                    html[data-theme="dark"][data-color-theme="rose"] { --color-primary-text: #ff4c67; }
-	                                    html[data-theme="dark"][data-color-theme="moka-red"] { --color-primary-text: #f9564f; }
-	                                    html[data-theme="dark"][data-color-theme="slate"] { --color-primary-text: #8090a8; }
-	                                    html[data-theme="dark"][data-color-theme="indigo"] { --color-primary-text: #7a82ff; }
-	                                    html[data-theme="dark"][data-color-theme="graphite"] { --color-primary-text: #8e8e98; }
+	                                    html[data-color-theme="ocean"] { --color-primary-text-base: #0076a9; }
+	                                    html[data-color-theme="emerald"] { --color-primary-text-base: #007f57; }
+	                                    html[data-color-theme="violet"] { --color-primary-text-base: #804fe8; }
+	                                    html[data-color-theme="amber"] { --color-primary-text-base: #9c6300; }
+	                                    html[data-color-theme="rose"] { --color-primary-text-base: #d81c49; }
+	                                    html[data-color-theme="moka-red"] { --color-primary-text-base: #d12d2d; }
+	                                    html[data-color-theme="slate"] { --color-primary-text-base: #607087; }
+	                                    html[data-color-theme="teal"] { --color-primary-text-base: #007d71; }
+	                                    html[data-color-theme="indigo"] { --color-primary-text-base: #5c5de8; }
+	                                    html[data-color-theme="orange"] { --color-primary-text-base: #b85000; }
+	                                    html[data-theme="dark"]:is([data-color-theme="ocean"], [data-color-theme="emerald"], [data-color-theme="amber"], [data-color-theme="teal"], [data-color-theme="orange"]) { --color-primary-text-base: var(--color-primary-base); }
+	                                    html[data-theme="dark"][data-color-theme="violet"] { --color-primary-text-base: #9b77ff; }
+	                                    html[data-theme="dark"][data-color-theme="rose"] { --color-primary-text-base: #ff4c67; }
+	                                    html[data-theme="dark"][data-color-theme="moka-red"] { --color-primary-text-base: #f9564f; }
+	                                    html[data-theme="dark"][data-color-theme="slate"] { --color-primary-text-base: #8090a8; }
+	                                    html[data-theme="dark"][data-color-theme="indigo"] { --color-primary-text-base: #7a82ff; }
+	                                    html[data-theme="dark"][data-color-theme="graphite"] { --color-primary-text-base: #8e8e98; }
+
+	                                    /* Accent strength (Appearance panel). Subtle moves the accent 45% of the way to the text color, which only adds
+	                                       contrast. Vivid gives the presets' text shades more chroma at the lightness 4.5:1 needs, up to the edge of sRGB;
+	                                       PrimaryColorContrast computes them like the shades above, and the styles boost their own accent (Styles.cs). A
+	                                       preset already that saturated has no vivid rule. */
+	                                    html:root[data-accent-strength="subtle"] {
+	                                        --color-primary: color-mix(in oklab, var(--color-primary-base) 55%, var(--color-text));
+	                                        --color-primary-text: color-mix(in oklab, var(--color-primary-text-base) 55%, var(--color-text));
+	                                    }
+	                                    html[data-accent-strength="vivid"]:not([data-theme="dark"])[data-color-theme="violet"] { --color-primary-text-base: #8249f2; }
+	                                    html[data-accent-strength="vivid"]:not([data-theme="dark"])[data-color-theme="rose"] { --color-primary-text-base: #dc0045; }
+	                                    html[data-accent-strength="vivid"]:not([data-theme="dark"])[data-color-theme="moka-red"] { --color-primary-text-base: #db001c; }
+	                                    html[data-accent-strength="vivid"]:not([data-theme="dark"])[data-color-theme="slate"] { --color-primary-text-base: #5b708f; }
+	                                    html[data-accent-strength="vivid"]:not([data-theme="dark"])[data-color-theme="indigo"] { --color-primary-text-base: #5c58f7; }
+	                                    html[data-accent-strength="vivid"]:not([data-theme="dark"])[data-color-theme="graphite"] { --color-primary-text-base: #52525e; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="ocean"] { --color-primary-text-base: #00a5ea; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="emerald"] { --color-primary-text-base: #00b981; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="amber"] { --color-primary-text-base: #f69e00; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="moka-red"] { --color-primary-text-base: #ff4f49; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="slate"] { --color-primary-text-base: #7a91b1; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="teal"] { --color-primary-text-base: #00b8a6; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="orange"] { --color-primary-text-base: #fc7100; }
+	                                    html[data-accent-strength="vivid"][data-theme="dark"][data-color-theme="graphite"] { --color-primary-text-base: #8e8e9b; }
 
 	                                    /* Fills in the accent color (buttons, step numbers) use the text shade too: white on it
 	                                       passes in light mode, and the dark page color on it in dark mode. The raw primary under
@@ -377,6 +428,19 @@ public static partial class EmbeddedThemeProvider
 	                                    }
 	                                    .appearance-close:hover { background: var(--color-bg-secondary); color: var(--color-text); }
 	                                    .appearance-section { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
+	                                    /* The Reading group's heading takes the place of its first section's divider. */
+	                                    .appearance-heading {
+	                                        margin: 1rem 0 0;
+	                                        padding-top: 0.75rem;
+	                                        border-top: 1px solid var(--color-border);
+	                                        font-size: 0.875rem;
+	                                        font-weight: 700;
+	                                        line-height: 1.3;
+	                                        color: var(--color-text);
+	                                    }
+	                                    .appearance-heading + .appearance-section { margin-top: 0.5rem; padding-top: 0; border-top: none; }
+	                                    /* The dark tone only changes dark mode, so its section shows only there. */
+	                                    html:not([data-theme="dark"]) .appearance-dark-only { display: none; }
 	                                    .appearance-label {
 	                                        margin: 0 0 0.5rem;
 	                                        font-size: 0.75rem;
@@ -504,9 +568,59 @@ public static partial class EmbeddedThemeProvider
 	                                    html:root[data-reader-width="wider"][data-width="full"] { --layout-max-width: none; --content-max-width: none; }
 	                                    html:root[data-reader-width="full"] { --layout-max-width: none; --content-max-width: none; }
 
+	                                    /* Corners (Appearance panel). :root lifts these above every style's own radii, square styles included, so the reader's
+	                                       choice wins. Rules use the variables; a length a rule writes itself, pills included, multiplies by --radius-scale,
+	                                       which sharp sets to 0, so round keeps pills round. Circles (50%) stay circles. */
+	                                    html:root[data-corners="sharp"] { --radius: 0px; --radius-sm: 0px; --radius-md: 0px; --radius-scale: 0; }
+	                                    html:root[data-corners="round"] { --radius: 14px; --radius-sm: 10px; --radius-md: 16px; }
+
+	                                    /* Line spacing (Appearance panel): the article's paragraphs and list items. Their line heights multiply by
+	                                       --line-spacing and their margins by --paragraph-spacing, in every style and the density variants; headings,
+	                                       tables, code and the page around the article keep theirs. */
+	                                    html:root[data-line-spacing="tight"] { --line-spacing: 0.88; --paragraph-spacing: 0.7; }
+	                                    html:root[data-line-spacing="relaxed"] { --line-spacing: 1.1; --paragraph-spacing: 1.35; }
+
+	                                    /* Focus mode (Appearance panel): the article alone under the header, centered at the reading width. On screens only,
+	                                       so a printed page looks the same either way. Phones lose the menu button with the sidebar, so there is no drawer to
+	                                       open. A layout variant that adds navigation around the article adds it to this list, and the tabs row and the "On this
+	                                       page" bar give back the room they reserved under the header. !important: variants and styles show these parts with
+	                                       selectors of every weight. The exit button stands where the floating buttons were. */
+	                                    .focus-exit { display: none; }
+	                                    @media screen {
+	                                        html[data-focus-mode="on"] :is(.sidebar, .sidebar-toggle, .toc-sidebar, .toc-inline, .toc-dropdown, .breadcrumbs, .header-tabs, .back-to-top, .toc-toggle-btn, .mobile-nav-toggle, .drawer-backdrop) { display: none !important; }
+	                                        html:root[data-focus-mode="on"] { --tabs-height: 0px; --toc-dropdown-offset: 0px; }
+	                                        html[data-focus-mode="on"] .content { margin-inline: auto; }
+	                                        html:not(.no-js)[data-focus-mode="on"] { --fab-stack: var(--fab-size); }
+	                                        html[data-focus-mode="on"] .focus-exit {
+	                                            position: fixed;
+	                                            bottom: var(--fab-bottom);
+	                                            inset-inline-end: var(--fab-right);
+	                                            z-index: var(--z-fab);
+	                                            display: inline-flex;
+	                                            align-items: center;
+	                                            gap: 0.375rem;
+	                                            min-height: var(--fab-size);
+	                                            padding: 0 0.875rem;
+	                                            border: 1px solid var(--color-border);
+	                                            border-radius: var(--radius);
+	                                            background: var(--color-bg);
+	                                            color: var(--color-text);
+	                                            box-shadow: var(--shadow-md);
+	                                            font: inherit;
+	                                            font-size: 0.8125rem;
+	                                            font-weight: 500;
+	                                            cursor: pointer;
+	                                        }
+	                                        html[data-focus-mode="on"] .focus-exit:hover { background: var(--color-bg-secondary); }
+	                                        html[data-focus-mode="on"] .focus-exit:focus-visible { outline: 2px solid var(--color-primary-text); outline-offset: 2px; }
+	                                        html[data-focus-mode="on"] .focus-exit svg { flex-shrink: 0; }
+	                                    }
+
 	                                    /* Markup that only some layout variants show. Pages that let readers switch layouts (theme.options.layoutSelector)
 	                                       carry it for every variant, and layouts.css shows it while its variant is on. */
 	                                    .header-tabs, .toc-inline, .site-footer-columns { display: none; }
+	                                    .sidebar-rail, .footer-version { display: none; }
+	                                    .toc-dropdown, .page-nav-desc { display: none; }
 
 	                                    .mobile-nav-toggle { display: none; }
 
@@ -572,7 +686,7 @@ public static partial class EmbeddedThemeProvider
 	                                        cursor: pointer;
 	                                        padding: 0.375rem 0.5rem;
 	                                        color: var(--color-text-muted);
-	                                        border-radius: 4px;
+	                                        border-radius: var(--radius-sm);
 	                                        display: flex;
 	                                        align-items: center;
 	                                    }
@@ -661,9 +775,9 @@ public static partial class EmbeddedThemeProvider
 	                                    .page-content h3 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 0.75rem; }
 	                                    .page-content h4 { font-size: 1.125rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
 
-	                                    .page-content p { margin-bottom: 1rem; }
-	                                    .page-content ul, .page-content ol { margin-bottom: 1rem; padding-left: 1.5rem; }
-	                                    .page-content li { margin-bottom: 0.25rem; }
+	                                    .page-content p { margin-bottom: calc(1rem * var(--paragraph-spacing)); }
+	                                    .page-content ul, .page-content ol { margin-bottom: calc(1rem * var(--paragraph-spacing)); padding-left: 1.5rem; }
+	                                    .page-content li { margin-bottom: calc(0.25rem * var(--paragraph-spacing)); }
 	                                    .page-content img { max-width: 100%; height: auto; border-radius: var(--radius); }
 
 	                                    .page-content code {
@@ -1466,7 +1580,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .api-badge-abstract { background: color-mix(in srgb, #a78bfa 15%, var(--color-bg)); color: var(--badge-lavender); }
 	                                    .api-badge-sealed { background: color-mix(in srgb, #f97316 15%, var(--color-bg)); color: var(--badge-orange); }
 	                                    .api-badge-obsolete { background: color-mix(in srgb, #ef4444 15%, var(--color-bg)); color: var(--badge-red); }
-	                                    .api-badge-sm { font-size: 0.625rem; padding: 0.125rem 0.375rem; border-radius: 3px; vertical-align: middle; }
+	                                    .api-badge-sm { font-size: 0.625rem; padding: 0.125rem 0.375rem; border-radius: calc(3px * var(--radius-scale)); vertical-align: middle; }
 	                                    .api-badge-sm.api-badge-static { background: color-mix(in srgb, #64748b 12%, var(--color-bg)); color: var(--badge-slate); }
 	                                    .api-badge-sm.api-badge-virtual { background: color-mix(in srgb, #06b6d4 12%, var(--color-bg)); color: var(--badge-cyan); }
 	                                    .api-badge-sm.api-badge-abstract { background: color-mix(in srgb, #a78bfa 12%, var(--color-bg)); color: var(--badge-lavender); }
@@ -1485,7 +1599,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .api-member-link code { color: inherit; background: none; padding: 0; font-weight: 500; }
 
 	                                    /* Source viewer */
-	                                    .source-viewer { margin-top: 2rem; border: 1px solid var(--color-border); border-radius: 8px; }
+	                                    .source-viewer { margin-top: 2rem; border: 1px solid var(--color-border); border-radius: var(--radius); }
 	                                    .source-viewer summary {
 	                                        display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;
 	                                        cursor: pointer; font-size: 0.875rem; font-weight: 500; color: var(--color-text-secondary);
@@ -1496,7 +1610,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .source-viewer summary:hover { color: var(--color-primary-text); }
 	                                    .source-viewer summary svg { flex-shrink: 0; }
 	                                    .source-viewer[open] summary { border-bottom: 1px solid var(--color-border); }
-	                                    .source-viewer pre { margin: 0; border: none; border-radius: 0 0 8px 8px; }
+	                                    .source-viewer pre { margin: 0; border: none; border-radius: 0 0 var(--radius) var(--radius); }
 
 	                                    /* Blockquotes */
 	                                    .page-content blockquote {
@@ -2505,7 +2619,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .version-option.active { color: var(--color-primary-text); font-weight: 600; }
 	                                    .version-badge {
 	                                        font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
-	                                        padding: 0.0625rem 0.375rem; border-radius: 9999px;
+	                                        padding: 0.0625rem 0.375rem; border-radius: calc(9999px * var(--radius-scale));
 	                                        letter-spacing: 0.02em;
 	                                    }
 	                                    .version-badge-default { background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
@@ -2598,7 +2712,7 @@ public static partial class EmbeddedThemeProvider
 	                                        width: 72px;
 	                                        height: 72px;
 	                                        margin-bottom: 1.5rem;
-	                                        border-radius: 18px;
+	                                        border-radius: calc(18px * var(--radius-scale));
 	                                        background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 	                                        color: var(--color-primary-text);
 	                                        font-size: 2rem;
@@ -2661,18 +2775,18 @@ public static partial class EmbeddedThemeProvider
 	                                        line-height: 1.3;
 	                                    }
 	                                    .page-content p {
-	                                        line-height: 1.8;
-	                                        margin-bottom: 1.15rem;
+	                                        line-height: calc(1.8 * var(--line-spacing));
+	                                        margin-bottom: calc(1.15rem * var(--paragraph-spacing));
 	                                    }
 	                                    .page-content li {
-	                                        line-height: 1.75;
+	                                        line-height: calc(1.75 * var(--line-spacing));
 	                                    }
 
 	                                    /* Better inline code styling */
 	                                    .page-content code {
 	                                        font-size: 0.84em !important;
 	                                        padding: 0.15rem 0.45rem !important;
-	                                        border-radius: 5px !important;
+	                                        border-radius: calc(5px * var(--radius-scale)) !important;
 	                                        border: 1px solid color-mix(in srgb, var(--color-primary-dark) 12%, var(--color-border));
 	                                        font-weight: 500;
 	                                    }
@@ -2999,7 +3113,7 @@ public static partial class EmbeddedThemeProvider
 	                                        justify-content: center;
 	                                        width: 44px;
 	                                        height: 44px;
-	                                        border-radius: 10px;
+	                                        border-radius: calc(10px * var(--radius-scale));
 	                                        background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 	                                        color: var(--color-primary-text);
 	                                        font-size: 1.25rem;
@@ -3142,7 +3256,7 @@ public static partial class EmbeddedThemeProvider
 	                                    .blog-draft {
 	                                        padding: 0 0.5rem;
 	                                        border: 1px solid var(--color-border);
-	                                        border-radius: 999px;
+	                                        border-radius: calc(999px * var(--radius-scale));
 	                                        font-size: 0.75rem;
 	                                        font-weight: 600;
 	                                        color: var(--color-text);
@@ -3156,7 +3270,7 @@ public static partial class EmbeddedThemeProvider
 	                                        gap: 0.375rem;
 	                                        padding: 0.125rem 0.625rem;
 	                                        border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
-	                                        border-radius: 999px;
+	                                        border-radius: calc(999px * var(--radius-scale));
 	                                        background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
 	                                        font-size: 0.8125rem;
 	                                        font-weight: 500;
@@ -3602,7 +3716,7 @@ public static partial class EmbeddedThemeProvider
 	                                            outline: 2px solid Highlight;
 	                                            outline-offset: -2px;
 	                                        }
-	                                        :is(.back-to-top, .toc-toggle-btn, .landing-btn, .component-step-number, .install-copy-btn, .copy-btn) { border: 1px solid ButtonText; }
+	                                        :is(.back-to-top, .toc-toggle-btn, .focus-exit, .landing-btn, .component-step-number, .install-copy-btn, .copy-btn) { border: 1px solid ButtonText; }
 	                                        .feedback-btn.selected { border: 3px solid Highlight; }
 	                                        .search-result-snippet mark { background: Mark; color: MarkText; }
 	                                        .code-block > pre > code > .line.highlighted { border-left: 3px solid Highlight; }

@@ -531,6 +531,22 @@ public sealed class SiteConfigReaderTests
 	}
 
 	[Fact]
+	public void NewReaderSelectors_AreOnByDefaultAndRoundTripWhenOff()
+	{
+		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");
+		SiteConfig off = SiteConfigReader.Parse("site:\n  title: Still\ntheme:\n  options:\n    lineSpacingSelector: false\n    focusModeSelector: false\n"
+		                                        + "    darkToneSelector: false\n    cornersSelector: false\n    accentStrengthSelector: false\n");
+		static bool[] Flags(ThemeOptions o) => [o.LineSpacingSelector, o.FocusModeSelector, o.DarkToneSelector, o.CornersSelector, o.AccentStrengthSelector];
+
+		Flags(defaults.Theme.Options).Should().AllSatisfy(flag => flag.Should().BeTrue());
+		SiteConfigReader.ToYaml(defaults).Should().NotContain("lineSpacingSelector").And.NotContain("focusModeSelector").And.NotContain("darkToneSelector")
+			.And.NotContain("cornersSelector").And.NotContain("accentStrengthSelector");
+		Flags(off.Theme.Options).Should().AllSatisfy(flag => flag.Should().BeFalse());
+		Flags(SiteConfigReader.Parse(SiteConfigReader.ToYaml(off)).Theme.Options).Should().AllSatisfy(flag => flag.Should().BeFalse());
+		off.Warnings.Should().BeEmpty();
+	}
+
+	[Fact]
 	public void LayoutSelector_IsOffByDefaultAndRoundTripsWhenOn()
 	{
 		SiteConfig defaults = SiteConfigReader.Parse("site:\n  title: Plain\n");

@@ -278,10 +278,11 @@ public sealed class EmbeddedThemeRuntimeTests
 		                  {{Slice("const appearanceListeners = [];", "// Mobile nav toggle and the")}}
 		                  // The page links the stylesheets of the styles picked here, so they apply at once.
 		                  ['moka', 'paper'].forEach(s => body.appendChild(h('link', { rel: 'stylesheet', href: '/_theme/css/style-' + s + '.css?v=' + styleFiles[s] })));
-		                  const sidebar = null, mobileToggle = null, tocSidebar = null, tocToggle = null, search = null;
+		                  const sidebar = null, mobileToggle = null, tocSidebar = null, tocToggle = null, tocDropdown = null, search = null;
 		                  const imageZoom = { close: () => false };
 		                  function setNavOpen() { return false; }
 		                  function setTocOpen() { return false; }
+		                  function closeTocDropdown() { return false; }
 		                  initDarkToggle(); followSystemMode(); initAppearance(); initVersionMenu();
 		                  {{Slice("// Capture phase: a click that", "window.addEventListener('scroll'")}}
 		                  const q = s => body.querySelector(s);
@@ -487,6 +488,65 @@ public sealed class EmbeddedThemeRuntimeTests
 			"/Repo/_theme/css/main.css?v=hash /Repo/_theme/css/style-soft.css?v=hash /Repo/_theme/css/style-moka.css?v=hash /Repo/_theme/css/layouts.css?v=hash");
 	}
 
+	[Fact]
+	public void AppearancePanel_ReaderOptionsApplyAtOnceAndFocusModeHasItsOwnWayOut()
+	{
+		// Dark tone, accent strength, corners, line spacing and focus mode are built on first open with the site's
+		// words, set their attribute on <html> at once (none at the default) and store the pick under the same name.
+		// The page's exit button turns focus mode off and moves focus to the article; Reset forgets them all.
+		Assert.SkipUnless(NodeScript.Available, "node is not on PATH");
+
+		string script = $$"""
+		                  {{_fakeDom}}
+		                  const group = name => h('div', { class: 'appearance-options', role: 'radiogroup', 'data-appearance': name });
+		                  const html = h('html', { 'data-theme': 'dark', 'data-style': 'default', 'data-color-theme': 'ocean', 'data-code-theme': 'nord', 'data-code-style': 'plain' });
+		                  const main = h('main', { id: 'mokadocs-main' });
+		                  const body = h('body', {},
+		                      h('div', { class: 'appearance' },
+		                          h('button', { class: 'appearance-trigger', 'aria-expanded': 'false' }),
+		                          h('div', { class: 'appearance-panel', hidden: '', 'data-default-style': 'default', 'data-default-color-theme': 'ocean', 'data-default-code-theme': 'nord', 'data-default-code-style': 'plain' },
+		                              h('button', { class: 'appearance-close' }),
+		                              group('dark-tone'), group('accent-strength'), group('corners'), group('line-spacing'), group('focus-mode'),
+		                              h('button', { class: 'appearance-reset' }))),
+		                      main,
+		                      h('button', { class: 'focus-exit js-only', type: 'button' }));
+		                  document.getElementById = id => body.querySelectorAll('main').filter(e => e.getAttribute('id') === id)[0] || null;
+		                  const saved = { 'mokadocs-focus-mode': 'on' };
+		                  html.attrs['data-focus-mode'] = 'on';
+		                  const store = { get: k => saved[k] || null, set: (k, v) => { saved[k] = v; }, remove: k => { delete saved[k]; } };
+		                  const window = { matchMedia: () => ({ matches: false }) };
+		                  {{Slice("const strings = ", "function closest(")}}
+		                  {{Slice("function closest(", "function scrollBehavior(")}}
+		                  {{Slice("const appearanceListeners = [];", "// Mobile nav toggle and the")}}
+		                  initAppearance();
+		                  const q = s => body.querySelector(s);
+		                  const sections = ['dark-tone', 'accent-strength', 'corners', 'line-spacing', 'focus-mode'];
+		                  const labels = () => sections.map(s => q('[data-appearance="' + s + '"]').children.map(c => c.getAttribute('data-value') + '=' + c.children.map(t => t.text).join('') + (c.getAttribute('aria-checked') === 'true' ? '*' : '')).join(',')).join(' | ');
+		                  const attrs = () => ['data-dark-tone', 'data-accent-strength', 'data-corners', 'data-line-spacing', 'data-focus-mode'].map(a => html.getAttribute(a) || '-').join(' ');
+		                  const keys = () => Object.keys(saved).sort().map(k => k.replace('mokadocs-', '') + '=' + saved[k]).join(',');
+		                  const pick = (s, v) => fire(q('[data-appearance="' + s + '"]').querySelector('[data-value="' + v + '"]'), 'click');
+		                  const seen = [];
+		                  fire(q('.appearance-trigger'), 'click');
+		                  seen.push(labels());
+		                  pick('dark-tone', 'black'); pick('accent-strength', 'vivid'); pick('corners', 'sharp'); pick('line-spacing', 'relaxed');
+		                  seen.push(attrs() + ' | ' + keys());
+		                  pick('dark-tone', 'dark'); pick('corners', 'default');
+		                  seen.push(attrs() + ' | ' + keys());
+		                  fire(q('.focus-exit'), 'click');
+		                  seen.push(attrs() + ' | ' + keys() + ' | ' + (document.activeElement === main) + ' | ' + q('[data-appearance="focus-mode"]').querySelector('[aria-checked="true"]').getAttribute('data-value'));
+		                  fire(q('.appearance-reset'), 'click');
+		                  seen.push(attrs() + ' | ' + keys());
+		                  process.stdout.write(JSON.stringify(seen));
+		                  """;
+
+		JsonSerializer.Deserialize<string[]>(NodeScript.Run(script)).Should().Equal(
+			"dim=Dim,dark=Dark*,black=Black | subtle=Subtle,default=Default*,vivid=Vivid | sharp=Sharp,default=Default*,round=Round | tight=Tight,default=Default*,relaxed=Relaxed | off=Off,on=On*",
+			"black vivid sharp relaxed on | accent-strength=vivid,corners=sharp,dark-tone=black,focus-mode=on,line-spacing=relaxed",
+			"- vivid - relaxed on | accent-strength=vivid,corners=default,dark-tone=dark,focus-mode=on,line-spacing=relaxed",
+			"- vivid - relaxed - | accent-strength=vivid,corners=default,dark-tone=dark,focus-mode=off,line-spacing=relaxed | true | off",
+			"- - - - - | ");
+	}
+
 	private static string SearchCore() => Slice("function prepareSearchIndex(", "function initSearch(");
 
 	private static string[] Search(string query, string entries)
@@ -608,7 +668,7 @@ public sealed class EmbeddedThemeRuntimeTests
 	public void Escape_ClosesTheTopmostLayerAndReturnsFocus()
 	{
 		Slice("// Escape closes the topmost thing", "window.addEventListener('scroll'").Should().Contain(
-			"if (imageZoom.close(true) || (search && search.close(true)) || closeOpenPopup() || setTocOpen(false, true) || setNavOpen(false, true)) {");
+			"if (imageZoom.close(true) || (search && search.close(true)) || closeOpenPopup() || closeTocDropdown(true) || setTocOpen(false, true) || setNavOpen(false, true)) {");
 	}
 
 	[Fact]
@@ -680,7 +740,9 @@ public sealed class EmbeddedThemeRuntimeTests
 		_js.Should().NotContain("rootMargin");
 		spy.Should().Contain("const line = headerOffset() + 32;");
 		spy.Should().Contain("if (atBottom && lastOnScreen) active = lastOnScreen;");
-		Slice("function headerOffset(", "// One requestAnimationFrame pass").Should().Contain("height:var(--header-offset,0px)");
+		// The dropdown "On this page" bar sticks under the header and covers what scrolls under it, like the header.
+		Slice("function headerOffset(", "// One requestAnimationFrame pass")
+			.Should().Contain("height:calc(var(--header-offset,0px) + var(--toc-dropdown-offset,0px))");
 	}
 
 	[Fact]
@@ -959,7 +1021,7 @@ public sealed class EmbeddedThemeRuntimeTests
 			"0",
 			"13 true",
 			"Top bar|Footer|On this page|Breadcrumbs|Previous and next|Sidebar|Sidebar lists|Admonitions|Tables|Spacing|Font|Headings|Links",
-			"Standard|Compact|Floating|Tabs (default)|Auto-hide|Centered|Transparent",
+			"Standard|Compact|Floating|Tabs (default)|Auto-hide|Centered|Transparent|Split",
 			"All sections (default)|Current section",
 			"tabs none inline default default default default default default default default default default",
 			"compact none inline - | density=spacious,navbar=compact",
@@ -1005,7 +1067,7 @@ public sealed class EmbeddedThemeRuntimeTests
 	public void TocSpy_MarksTheCurrentHeadingInBothCopiesOfTheList()
 	{
 		// With the Layout section on, a page carries "On this page" beside the content and inline. Each heading
-		// counts once, and its link in both lists is marked.
+		// counts once, and its link in both lists is marked. The dropdown's bar names the current section.
 		Assert.SkipUnless(NodeScript.Available, "node is not on PATH");
 
 		string result = NodeScript.Run($$"""
@@ -1014,12 +1076,16 @@ public sealed class EmbeddedThemeRuntimeTests
 		                                 const headings = { a: heading('a'), b: heading('b'), c: heading('c') };
 		                                 const link = (id, list) => {
 		                                     const classes = new Set(), attrs = { href: '#' + id };
-		                                     return { list, id, classes, attrs, classList: { add: c => classes.add(c), remove: c => classes.delete(c) },
+		                                     return { list, id, classes, attrs, textContent: ' Section ' + id.toUpperCase() + ' ', classList: { add: c => classes.add(c), remove: c => classes.delete(c) },
 		                                         getAttribute: n => n in attrs ? attrs[n] : null, setAttribute: (n, v) => { attrs[n] = v; }, removeAttribute: n => { delete attrs[n]; } };
 		                                 };
 		                                 const links = ['a', 'b', 'c'].map(id => link(id, 'inline')).concat(['a', 'b', 'c'].map(id => link(id, 'aside')));
 		                                 const counter = { textContent: '' };
+		                                 const current = { textContent: '' };
 		                                 const document = { querySelectorAll: () => links, getElementById: id => id === 'tocCounter' ? counter : id === 'tocProgress' ? null : headings[id] || null };
+		                                 const tocSidebar = null;
+		                                 const tocDropdown = { querySelector: s => s === '.toc-dropdown-current' ? current : null };
+		                                 const window = {};
 		                                 function headerOffset() { return 60; }
 		                                 let task = null;
 		                                 function onFrame(t) { task = t; }
@@ -1027,17 +1093,187 @@ public sealed class EmbeddedThemeRuntimeTests
 		                                 {{Slice("const strings =", "function closest(")}}
 		                                 {{Slice("function tocTarget(", "// Back to the top of the page.")}}
 		                                 initTocSpy();
-		                                 const marked = () => links.filter(l => l.classes.has('active')).map(l => l.list + ':' + l.id + ':' + l.attrs['aria-current']).join(' ') + ' | ' + counter.textContent;
+		                                 const marked = () => links.filter(l => l.classes.has('active')).map(l => l.list + ':' + l.id + ':' + l.attrs['aria-current']).join(' ') + ' | ' + counter.textContent + ' | ' + current.textContent;
 		                                 task({ y: 400, viewport: 800, height: 5000 })();
 		                                 const seen = [marked()];
 		                                 tops.c = 20;
 		                                 task({ y: 900, viewport: 800, height: 5000 })();
 		                                 seen.push(marked());
+		                                 tops.a = tops.b = tops.c = 300;
+		                                 task({ y: 0, viewport: 800, height: 5000 })();
+		                                 seen.push(marked());
 		                                 process.stdout.write(JSON.stringify(seen));
 		                                 """);
 
 		JsonSerializer.Deserialize<string[]>(result).Should().Equal(
-			"inline:b:location aside:b:location | Section 2 of 3",
-			"inline:c:location aside:c:location | Section 3 of 3");
+			"inline:b:location aside:b:location | Section 2 of 3 | Section B",
+			"inline:c:location aside:c:location | Section 3 of 3 | Section C",
+			" |  | ");
+	}
+
+	[Fact]
+	public void TocProgress_FillsToTheCurrentSectionsEntryAndFollowsTheAttributeOnAnOpenPage()
+	{
+		// The fill reaches an entry's middle when its heading reaches the line the current section is decided at
+		// (the 60px header + 32), moves in proportion to the scrolling between two such points, skips an entry a
+		// collapsed section hides and covers the list at the end of the page. It is worked out only while data-toc
+		// is progress, checked on every pass, so the Layout section and the theme lab switch it on an open page, and
+		// not for a reader who asks for less motion. The length goes on the first entry's link, which draws it.
+		Assert.SkipUnless(NodeScript.Available, "node is not on PATH");
+
+		string result = NodeScript.Run($$"""
+		                                 const attrs = { lang: 'en', 'data-toc': 'progress' };
+		                                 const html = { getAttribute: n => n in attrs ? attrs[n] : null };
+		                                 const motion = { matches: false };
+		                                 const window = { matchMedia: () => motion };
+		                                 let y = 0;
+		                                 const docTops = { a: 500, b: 900, c: 2500 };
+		                                 const heading = id => ({ getBoundingClientRect: () => ({ top: docTops[id] - y, width: 100, height: 20 }) });
+		                                 const headings = { a: heading('a'), b: heading('b'), c: heading('c') };
+		                                 const listTop = 100;
+		                                 const linkTops = { a: 0, b: 40, c: 80 };
+		                                 const hidden = new Set();
+		                                 const writes = [];
+		                                 const link = id => ({ attrs: { href: '#' + id }, textContent: id, classList: { add() { }, remove() { } },
+		                                     getAttribute(n) { return this.attrs[n]; }, setAttribute() { }, removeAttribute() { },
+		                                     style: { setProperty: (n, v) => writes.push(id + ' ' + n + ' ' + v) },
+		                                     getBoundingClientRect: () => hidden.has(id) ? { top: 0, height: 0 } : { top: listTop + linkTops[id], height: 20 } });
+		                                 const links = ['a', 'b', 'c'].map(link);
+		                                 const track = { querySelector: s => s === ':scope > .toc-item > a' ? links[0] : null, contains: () => true,
+		                                     getBoundingClientRect: () => ({ top: listTop, bottom: listTop + 120, height: 120 }) };
+		                                 const tocSidebar = { querySelector: s => s === '.toc-list' ? track : null };
+		                                 const tocDropdown = null;
+		                                 const document = { querySelectorAll: () => links, getElementById: id => headings[id] || null };
+		                                 function headerOffset() { return 60; }
+		                                 let task = null;
+		                                 function onFrame(t) { task = t; }
+		                                 {{Slice("const strings =", "function closest(")}}
+		                                 {{Slice("function tocTarget(", "// Back to the top of the page.")}}
+		                                 initTocSpy();
+		                                 const fillAt = scroll => { y = scroll; const before = writes.length; task({ y, viewport: 800, height: 4000 })(); return writes.length > before ? writes[writes.length - 1] : 'none'; };
+		                                 const seen = [0, 204, 408, 608, 1208, 3200].map(fillAt);
+		                                 attrs['data-toc'] = 'timeline';
+		                                 seen.push(fillAt(1000));
+		                                 attrs['data-toc'] = 'progress';
+		                                 motion.matches = true;
+		                                 seen.push(fillAt(1100));
+		                                 motion.matches = false;
+		                                 hidden.add('b');
+		                                 seen.push(fillAt(1208));
+		                                 process.stdout.write(JSON.stringify(seen));
+		                                 """);
+
+		JsonSerializer.Deserialize<string[]>(result).Should().Equal(
+			"a --toc-fill 0", "a --toc-fill 5", "a --toc-fill 10", "a --toc-fill 30", "a --toc-fill 60", "a --toc-fill 120",
+			"none", "none", "a --toc-fill 42");
+	}
+
+	[Fact]
+	public void TocDropdown_ClosesWhenALinkIsFollowedAndOnEscapeOrAClickOutside()
+	{
+		// The browser opens and closes the <details>; a followed link closes it too, through one listener on it, and
+		// Escape closes it with focus back on its summary.
+		Assert.SkipUnless(NodeScript.Available, "node is not on PATH");
+
+		string result = NodeScript.Run($$"""
+		                                 let focused = null;
+		                                 const summary = { focus: () => { focused = 'summary'; } };
+		                                 const listeners = {};
+		                                 const tocDropdown = { open: true, querySelector: s => s === 'summary' ? summary : null, addEventListener: (t, f) => { listeners[t] = f; } };
+		                                 const document = { getElementById: () => null };
+		                                 {{Slice("function closest(", "function mediaMatches(")}}
+		                                 {{Slice("// The \"On this page\" dropdown", "function initMobileNav(")}}
+		                                 {{Slice("function initTocDropdown(", "// Code blocks.")}}
+		                                 initTocDropdown();
+		                                 const target = selector => ({ closest: s => s === selector ? {} : null });
+		                                 const seen = [];
+		                                 listeners.click({ target: target('.toc-caret') });
+		                                 seen.push(tocDropdown.open);
+		                                 listeners.click({ target: target('.toc-item a') });
+		                                 seen.push(tocDropdown.open, focused);
+		                                 seen.push(closeTocDropdown(true));
+		                                 tocDropdown.open = true;
+		                                 seen.push(closeTocDropdown(true), tocDropdown.open, focused);
+		                                 process.stdout.write(JSON.stringify(seen));
+		                                 """);
+
+		result.Should().Be("[true,false,null,false,true,false,\"summary\"]");
+		Slice("// Capture phase: a click that", "// Escape closes the topmost thing")
+			.Should().Contain("if (tocDropdown && !tocDropdown.contains(target)) closeTocDropdown(false);");
+	}
+
+	[Fact]
+	public void Rail_IsBuiltWhenTheAttributeTurnsRail()
+	{
+		// layout.sidebar: rail. The rail is built from the sidebar's own entries the first time the attribute says
+		// rail, so the Layout section and the theme lab switch to it on an open page: a button per section (its
+		// icon, else its first letter) and a link per top-level page. The current page's section starts chosen, a
+		// pick shows another, the arrow keys move along the rail, and a pick brings back a list the sidebar toggle hid.
+		Assert.SkipUnless(NodeScript.Available, "node is not on PATH");
+
+		string script = $$"""
+		                  {{_fakeDom}}
+		                  Object.defineProperty(El.prototype, 'textContent', { get() { return this.children.map(c => c instanceof Text ? c.text : c.textContent).join(''); } });
+		                  El.prototype.cloneNode = function() { return new El(this.tag, this.attrs, []); };
+		                  const t = text => new Text(text);
+		                  const section = (classes, label, icon, ...links) => h('div', { class: classes },
+		                      h('div', { class: 'nav-header' },
+		                          h('a', { class: 'nav-link', href: '/' + label.toLowerCase() }, ...(icon ? [h('span', { class: 'nav-icon' }, h('svg', { class: 'icon' }))] : []), t(' ' + label + ' ')),
+		                          h('button', { class: 'nav-chevron-btn nav-toggle' })),
+		                      h('ul', { class: 'nav-children' }, ...links.map(l => h('li', {}, h('a', { class: 'nav-link', href: l }, t(l))))));
+		                  const nav = h('nav', { class: 'sidebar-nav' },
+		                      section('nav-section', 'Guide', true, '/guide/a'),
+		                      section('nav-section active', 'Reference', false, '/reference/b'),
+		                      h('div', { class: 'nav-section' }, h('a', { class: 'nav-link current', href: '/changelog' }, t('Changelog'))),
+		                      section('nav-section', 'éclair', false));
+		                  const sidebar = h('aside', { id: 'mokadocs-sidebar', class: 'sidebar' }, nav);
+		                  const toggle = h('button', { id: 'sidebarToggle', 'aria-expanded': 'false' });
+		                  const html = h('html', { lang: 'en', class: 'sidebar-hidden' });
+		                  const body = h('body', {}, sidebar, toggle);
+		                  document.getElementById = id => body.querySelector('[id="' + id + '"]');
+		                  const saved = { 'mokadocs-sidebar-hidden': 'true' };
+		                  const store = { get: k => saved[k] || null, set: (k, v) => { saved[k] = v; }, remove: k => { delete saved[k]; } };
+		                  {{Slice("const strings =", "function mediaMatches(")}}
+		                  {{Slice("function element(", "function optionRadio(")}}
+		                  {{Slice("function initSidebarToggle(", "function initTocDrawer(")}}
+		                  {{Slice("// The icon rail", "// Auto-hiding navbar")}}
+		                  const rails = () => sidebar.querySelectorAll('.sidebar-rail');
+		                  initRail();
+		                  const seen = [String(rails().length)];
+		                  html.setAttribute('data-sidebar', 'rail');
+		                  initRail();
+		                  const rail = rails()[0];
+		                  seen.push(sidebar.children.indexOf(rail) + ' ' + rail.outerHTML);
+		                  const buttons = () => rail.querySelectorAll('.sidebar-rail-button');
+		                  const state = () => buttons().map(b => b.getAttribute('aria-label') + ':' + (b.getAttribute('aria-pressed') || b.getAttribute('aria-current')) + ':' + b.getAttribute('tabindex')).join(' ')
+		                      + ' | ' + nav.children.map(s => s.classList.contains('rail-open') ? 1 : 0).join('');
+		                  seen.push(state());
+		                  fire(buttons()[0].children[0], 'click');
+		                  seen.push(state() + ' | ' + html.classList.contains('sidebar-hidden') + ' ' + toggle.getAttribute('aria-expanded') + ' ' + JSON.stringify(saved));
+		                  buttons()[0].focus();
+		                  const key = k => { fire(document.activeElement, 'keydown', { key: k }); return document.activeElement.getAttribute('aria-label'); };
+		                  seen.push(key('ArrowDown') + ' ' + state());
+		                  seen.push([key('End'), key('ArrowDown'), key('ArrowRight'), key('ArrowUp'), key('Home')].join(' '));
+		                  html.setAttribute('data-sidebar', 'lines');
+		                  initRail();
+		                  html.setAttribute('data-sidebar', 'rail');
+		                  initRail();
+		                  seen.push(String(rails().length));
+		                  process.stdout.write(JSON.stringify(seen));
+		                  """;
+
+		JsonSerializer.Deserialize<string[]>(NodeScript.Run(script)).Should().Equal(
+			"0",
+			"0 <div class=\"sidebar-rail\" role=\"toolbar\" aria-label=\"Sections\" aria-orientation=\"vertical\"><div class=\"sidebar-rail-items\">" +
+			"<button class=\"sidebar-rail-button\" type=\"button\" aria-label=\"Guide\" aria-controls=\"mokadocs-rail-section-0\" aria-pressed=\"false\" tabindex=\"-1\"><svg class=\"icon\" aria-hidden=\"true\"></svg></button>" +
+			"<button class=\"sidebar-rail-button\" type=\"button\" aria-label=\"Reference\" aria-controls=\"mokadocs-rail-section-1\" aria-pressed=\"true\" tabindex=\"0\"><span class=\"sidebar-rail-letter\" aria-hidden=\"true\">R</span></button>" +
+			"<a class=\"sidebar-rail-button\" href=\"/changelog\" aria-label=\"Changelog\" tabindex=\"-1\" aria-current=\"page\"><span class=\"sidebar-rail-letter\" aria-hidden=\"true\">C</span></a>" +
+			"<button class=\"sidebar-rail-button\" type=\"button\" aria-label=\"éclair\" aria-controls=\"mokadocs-rail-section-3\" aria-pressed=\"false\" tabindex=\"-1\"><span class=\"sidebar-rail-letter\" aria-hidden=\"true\">É</span></button>" +
+			"</div></div>",
+			"Guide:false:-1 Reference:true:0 Changelog:page:-1 éclair:false:-1 | 0100",
+			"Guide:true:0 Reference:false:-1 Changelog:page:-1 éclair:false:-1 | 1000 | false true {}",
+			"Reference Guide:true:-1 Reference:false:0 Changelog:page:-1 éclair:false:-1 | 1000",
+			"éclair Guide Guide éclair Guide",
+			"1");
 	}
 }

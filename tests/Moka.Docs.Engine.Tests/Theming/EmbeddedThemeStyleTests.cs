@@ -32,7 +32,7 @@ public sealed class EmbeddedThemeStyleTests
 		string dark = Rules(style, $"html[data-style=\"{style}\"][data-theme=\"dark\"] {{");
 
 		light.Should().Contain("--color-bg:").And.Contain("--color-text:").And.Contain("--color-text-muted:");
-		dark.Should().Contain("--color-bg:").And.Contain("--color-text:").And.Contain("--color-text-muted:");
+		dark.Should().Contain("--dark-bg:").And.Contain("--color-text:").And.Contain("--color-text-muted:", "dark surfaces are --dark-* sources the dark tone mixes");
 	}
 
 	[Theory]
@@ -144,7 +144,7 @@ public sealed class EmbeddedThemeStyleTests
 
 		js.Should().Contain("if (!store.get('mokadocs-theme')) html.setAttribute('data-theme', defaultMode());");
 		js.Should().Contain("return darkFirstStyles.indexOf(html.getAttribute('data-style')) !== -1 || mediaMatches('(prefers-color-scheme: dark)') ? 'dark' : 'light';");
-		js.Should().Contain("const darkFirstStyles = [\"moka\",\"terminal\"];");
+		js.Should().Contain("const darkFirstStyles = [\"moka\",\"terminal\",\"neon\"];");
 	}
 
 	[Theory]
@@ -204,6 +204,58 @@ public sealed class EmbeddedThemeStyleTests
 		{
 			themes.Should().Contain($"[data-code-theme=\"{theme.Name}\"]");
 		}
+	}
+
+	[Fact]
+	public void BlueprintStyle_PaintsDarkCodeThemesDeepBlueAndKeepsLightOnesLight()
+	{
+		// The blueprint's deep blue is painted in both modes, so a light code theme it missed would get dark tokens on it.
+		Match rule = Regex.Match(ThemeCss.Style("blueprint"), @"\nhtml\[data-style=""blueprint""\]:not\((?<themes>[^)]*)\) :is\(\.page-content, \.landing-content\) pre \{ background: #04142a; \}");
+
+		rule.Success.Should().BeTrue();
+		foreach (CodeThemeInfo theme in CodeThemes.All.Where(t => !t.IsDark))
+		{
+			rule.Groups["themes"].Value.Should().Contain($"[data-code-theme=\"{theme.Name}\"]");
+		}
+	}
+
+	[Fact]
+	public void BlueprintStyle_DrawsItsGridAsTwoLinesOnThePageOnly()
+	{
+		// Two 1px gradient lines a tile, on the page itself: no image, and every panel with a background covers it.
+		string css = ThemeCss.Style("blueprint");
+
+		Rule("html[data-style=\"blueprint\"] body {").Should()
+			.Contain("background-image: linear-gradient(var(--bp-grid) 1px, transparent 1px), linear-gradient(90deg, var(--bp-grid) 1px, transparent 1px);")
+			.And.Contain("background-size: 12px 12px;");
+		Regex.Matches(css, @"var\(--bp-grid\)").Should().HaveCount(2, "only the page draws the grid");
+		css.Should().NotContain("url(");
+	}
+
+	[Fact]
+	public void NewspaperStyle_DropCapOpensTheArticleOnly()
+	{
+		// The first paragraph straight in the article, after the title: not one in a list or a callout, not the
+		// home page's, not an API page's namespace line.
+		string css = ThemeCss.Style("newspaper");
+
+		css.Should().Contain("html[data-style=\"newspaper\"] .page-content:not(.home-docs) > h1 ~ p:not([class]):first-of-type::first-letter {")
+			.And.Contain("html[data-style=\"newspaper\"] .page-content:not(.home-docs) > h1 ~ p:not([class]):first-of-type { display: flow-root; }");
+		Regex.Matches(css, "::first-letter").Should().HaveCount(1);
+	}
+
+	[Fact]
+	public void RetroStyle_DrawsItsBevelsWithBorderColors()
+	{
+		// Pressing a button swaps its border colors; a stack of inset shadows would repaint on every hover and press.
+		string css = ThemeCss.Style("retro");
+		string own = css[css.IndexOf("/* Style: Retro", StringComparison.Ordinal)..];
+
+		Rules("retro", "html[data-style=\"retro\"] {").Should()
+			.Contain("--rt-raised: var(--rt-hi) var(--rt-dark) var(--rt-dark) var(--rt-hi);")
+			.And.Contain("--rt-sunken: var(--rt-shadow) var(--rt-hi) var(--rt-hi) var(--rt-shadow);");
+		css.Should().Contain("html[data-style=\"retro\"] :is(.feedback-btn, .install-copy-btn, .page-actions .page-action, .search-esc, .search-close):active,");
+		Regex.Matches(own, @"box-shadow: (?!none)[^;]+;").Should().BeEmpty();
 	}
 
 	[Fact]

@@ -77,6 +77,11 @@ internal sealed class ThemeOptionsDto
 	public bool? StyleSelector { get; set; }
 	public bool? TextSizeSelector { get; set; }
 	public bool? WidthSelector { get; set; }
+	public bool? LineSpacingSelector { get; set; }
+	public bool? FocusModeSelector { get; set; }
+	public bool? DarkToneSelector { get; set; }
+	public bool? CornersSelector { get; set; }
+	public bool? AccentStrengthSelector { get; set; }
 	public bool? LayoutSelector { get; set; }
 	public ThemeLayoutDto? Layout { get; set; }
 	public string? Sidebar { get; set; }

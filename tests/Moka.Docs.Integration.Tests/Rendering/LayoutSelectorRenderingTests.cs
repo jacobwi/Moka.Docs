@@ -26,7 +26,10 @@ public sealed partial class LayoutSelectorRenderingTests
 			MockSite.Root + "/docs/guide/intro.md",
 			new MockFileData("---\ntitle: Intro\norder: 1\n---\n# Intro\n\n## Setup\n\nText.\n\n### Details\n\nMore.\n\n## Usage\n\nMore.\n")
 		},
-		{ MockSite.Root + "/docs/guide/install.md", new MockFileData("---\ntitle: Install\norder: 2\n---\n# Install\n\n## Steps\n\nText.\n") },
+		{
+			MockSite.Root + "/docs/guide/install.md",
+			new MockFileData("---\ntitle: Install\ndescription: Add the package\norder: 2\n---\n# Install\n\n## Steps\n\nText.\n")
+		},
 		{ MockSite.Root + "/docs/reference/options.md", new MockFileData("---\ntitle: Options\n---\n# Options\n\n## Flags\n\nText.\n") }
 	};
 
@@ -53,7 +56,7 @@ public sealed partial class LayoutSelectorRenderingTests
 		string page = plain.File.ReadAllText(_page);
 		page.Should().NotContain("header-tabs").And.NotContain("toc-inline").And.NotContain("footer-columns")
 			.And.NotContain("site-footer-row").And.NotContain("appearance-layout").And.NotContain("mokadocs-layout-")
-			.And.NotContain("layouts.css");
+			.And.NotContain("layouts.css").And.NotContain("toc-dropdown").And.NotContain("page-nav-desc");
 		page.Should().Contain("<footer class=\"site-footer\">").And.Contain("id=\"tocSidebar\"").And.Contain("id=\"tocProgress\"");
 
 		string variants = configured.File.ReadAllText(_page);
@@ -84,7 +87,9 @@ public sealed partial class LayoutSelectorRenderingTests
 			page.Should().Contain("<details class=\"toc-inline\" id=\"tocInline\" open>").And.Contain("id=\"tocSidebar\"")
 				.And.Contain("id=\"tocToggle\"").And.Contain("id=\"tocProgress\"").And.Contain("id=\"tocBackToTop\"")
 				.And.Contain("id=\"tocCounter\"").And.Contain("h.after(t)");
-			Regex.Matches(page, "<ul class=\"toc-list\">").Should().HaveCount(2, "the list sits beside the page and inline");
+			page.Should().Contain("<details class=\"toc-dropdown\" id=\"tocDropdown\">", "a reader can switch the list to a dropdown");
+			page.Should().Contain("<span class=\"page-nav-desc\">Add the package</span>", "and the previous and next links to cards");
+			Regex.Matches(page, "<ul class=\"toc-list\">").Should().HaveCount(3, "the list sits beside the page, inline and in the dropdown");
 		}
 
 		string[] ids = [.. IdPattern().Matches(page).Select(m => m.Groups[1].Value)];
@@ -105,6 +110,11 @@ public sealed partial class LayoutSelectorRenderingTests
 	{
 		// main.css hides the markup only some variants show; layouts.css shows it under its own variant.
 		_mainCss.Should().Contain(".header-tabs, .toc-inline, .site-footer-columns { display: none; }");
+		_mainCss.Should().Contain(".toc-dropdown, .page-nav-desc { display: none; }");
+		_layoutsCss.Should().Contain("html[data-toc=\"dropdown\"] .toc-dropdown { display: block;");
+		_layoutsCss.Should().Contain("html[data-toc=\"dropdown\"] :is(.toc-sidebar, .toc-toggle-btn) { display: none; }");
+		_layoutsCss.Should().Contain("html[data-toc=\"dropdown\"]:not(.no-js):has(.toc-toggle-btn) { --fab-stack: 0px; }");
+		_layoutsCss.Should().MatchRegex(@"html\[data-page-nav=""cards""\] \.page-nav-desc \{\s*display: -webkit-box;");
 		_layoutsCss.Should().Contain("html[data-navbar=\"tabs\"] .header-tabs { display: block; }");
 		_layoutsCss.Should().Contain("html[data-footer=\"columns\"] .site-footer-columns { display: block; }");
 		_layoutsCss.Should().Contain("html[data-footer=\"columns\"] :is(.site-footer-row, .landing-footer) { display: none; }");

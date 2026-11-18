@@ -216,7 +216,7 @@ public sealed partial class EmbeddedThemeLayoutTests
 	{
 		// The links take the text color, so color alone can't mark them (WCAG 1.4.1).
 		string css = LayoutCss();
-		const string link = "html[data-links=\"subtle\"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline) *)";
+		const string link = "html[data-links=\"subtle\"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline, .toc-dropdown) *)";
 		Block(css, link + " {").Should().Contain("color: inherit;").And.Contain("text-decoration: underline dotted;");
 		Block(css, link + ":is(:hover, :focus-visible) {").Should().Contain("text-decoration: underline solid;")
 			.And.Contain("text-decoration-color: var(--st-link, var(--color-primary-text));");
@@ -266,6 +266,95 @@ public sealed partial class EmbeddedThemeLayoutTests
 
 		rules.Should().NotBeEmpty();
 		rules.Should().OnlyContain(r => r.Contains(".landing-features ", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void SplitNavbar_OffsetsTheStickyPartsByBothRowsAndScrollsItsTabsInsideItself()
+	{
+		string css = LayoutCss();
+		css.Should().Contain("html[data-navbar=\"split\"] { --tabs-height: 2.75rem; --header-offset: calc(var(--header-height) + var(--tabs-height)); }");
+		css.Should().Contain("html[data-navbar=\"split\"] .header-tabs { display: block; }");
+		Block(css, "html[data-navbar=\"split\"] .header-tabs-inner {").Should().Contain("overflow-x: auto;")
+			.And.Contain("max-width: var(--layout-max-width);");
+	}
+
+	[Fact]
+	public void MegaFooter_ShowsTheColumnsMarkupWithItsVersionMenuOpeningUpward()
+	{
+		string css = LayoutCss();
+		ThemeCss.Main.Should().Contain(".sidebar-rail, .footer-version { display: none; }");
+		css.Should().Contain("html[data-footer=\"mega\"] .site-footer-columns { display: block; }");
+		css.Should().Contain("html[data-footer=\"mega\"] :is(.site-footer-row, .landing-footer) { display: none; }");
+		css.Should().Contain("html[data-footer=\"mega\"] .footer-version { display: block; }");
+		css.Should().Contain("html[data-footer=\"mega\"] .footer-version .version-dropdown { top: auto; right: auto; bottom: calc(100% + 0.375rem); left: 0; }",
+			"the page ends at the footer, so the list opens above its button");
+		Block(css, "@media (max-width: 768px) {\n    html[data-footer=\"mega\"]").Should().Contain(
+			"html[data-footer=\"mega\"] .footer-columns { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }");
+	}
+
+	[Fact]
+	public void Rail_ShowsOnWiderScreensWithAScriptAndLetsAPickWinOverSidebarScope()
+	{
+		// Phones keep the drawer, and a page without JavaScript, which never gets the rail, keeps the whole sidebar.
+		string css = LayoutCss();
+		string wide = Block(css, "@media (min-width: 769px) {\n    html[data-sidebar=\"rail\"]");
+		string narrowDesktop = Block(css, "@media (min-width: 769px) and (max-width: 1200px) {\n    html[data-sidebar=\"rail\"]");
+		string forcedColors = Block(css, "@media (forced-colors: active) {\n    html[data-sidebar=\"accent\"]");
+		css.Replace(wide, "").Replace(narrowDesktop, "").Replace(forcedColors, "").Should().NotContain("data-sidebar=\"rail\"");
+		wide.Should().Contain("html[data-sidebar=\"rail\"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) {");
+		forcedColors.Should().Contain("html[data-sidebar=\"rail\"] .sidebar-rail-button:is([aria-pressed=\"true\"], [aria-current=\"page\"]) { border-inline-start: 3px solid Highlight; }");
+
+		// sidebarScope: section hides every section but the current page's. The section a reader picks in the rail
+		// shows anyway: its rule has the same specificity and comes later.
+		int scope = css.IndexOf("html[data-sidebar-scope=\"section\"] .sidebar-nav:has(> .nav-section.active > .nav-children) > .nav-section:not(.active) { display: none; }", StringComparison.Ordinal);
+		int pick = css.IndexOf(" > .sidebar-nav:has(> .nav-section.rail-open) > .nav-section.rail-open { display: block; }", StringComparison.Ordinal);
+		scope.Should().BeGreaterThan(0);
+		pick.Should().BeGreaterThan(scope);
+	}
+
+	[Fact]
+	public void TocDropdown_SticksUnderTheHeaderAndHeadingsClearIt()
+	{
+		// The bar covers the top of the page once it sticks, so a heading a link jumps to lands below it, and the
+		// script's current-section line (headerOffset) counts it like the header.
+		string css = LayoutCss();
+		Block(css, "html[data-toc=\"dropdown\"] {").Should().Contain("--toc-dropdown-offset: calc(var(--toc-dropdown-height) + 0.5rem);")
+			.And.Contain("scroll-padding-top: calc(var(--header-offset) + var(--toc-dropdown-offset) + 1rem);");
+		css.Should().Contain("html[data-toc=\"dropdown\"] .toc-dropdown { display: block; position: sticky; top: calc(var(--header-offset) + 0.5rem); z-index: var(--z-fab);");
+		Block(css, "html[data-toc=\"dropdown\"] .toc-dropdown > summary {").Should().Contain("height: var(--toc-dropdown-height);")
+			.And.Contain("white-space: nowrap;");
+		Block(css, "html[data-toc=\"dropdown\"] .toc-dropdown > .toc {").Should().Contain("position: absolute;")
+			.And.Contain("max-height: min(28rem, calc(100dvh - var(--header-offset) - var(--toc-dropdown-offset) - 1.5rem));");
+		css.Should().Contain("html[data-toc=\"dropdown\"] :is(.toc-sidebar, .toc-toggle-btn) { display: none; }",
+			"the dropdown replaces the column and, on narrow screens, the button that opens it as a drawer");
+		_js.Should().Contain("height:calc(var(--header-offset,0px) + var(--toc-dropdown-offset,0px))");
+	}
+
+	[Fact]
+	public void TocProgress_FillsFromTheFirstEntryAndMarksTheSectionsReached()
+	{
+		string css = LayoutCss();
+		const string fill = "html[data-toc=\"progress\"] .toc-sidebar .toc-list > .toc-item:first-child > a::before";
+		Block(css, fill + " {").Should().Contain("transform: scaleY(var(--toc-fill, 0));").And.Contain("transform-origin: top;")
+			.And.Contain("height: 1px;");
+		css.Should().Contain("html[data-toc=\"progress\"] .toc-sidebar .toc-list > .toc-item:is(:has(a.active), :has(~ .toc-item a.active)) > a::after {",
+			"a top-level entry's dot fills once its section or a later one is current");
+		Block(css, "@media (prefers-reduced-motion: reduce) {\n    " + fill).Should().Contain(fill + " { display: none; }");
+		Block(css, "@media (forced-colors: active) {\n    " + fill).Should().Contain("forced-color-adjust: none; background: Highlight;");
+		Regex.Matches(_css, @"var\(--toc-fill").Should().ContainSingle("only the fill reads the length");
+		Regex.Matches(_js, @"setProperty\('--toc-fill'").Should().ContainSingle();
+		_js.Should().Contain("fillHost.style.setProperty('--toc-fill', String(filled));", "the length goes on the link that draws the fill, so only it is styled again");
+	}
+
+	[Fact]
+	public void PageNavCards_ShowTheDescriptionInTwoLinesUnderATitleThatMayWrap()
+	{
+		string css = LayoutCss();
+		Block(css, "html[data-page-nav=\"cards\"] .page-nav-desc {").Should().Contain("display: -webkit-box;").And.Contain("-webkit-line-clamp: 2;");
+		Block(css, "html[data-page-nav=\"cards\"] .page-nav-title {").Should().Contain("white-space: normal;").And.Contain("-webkit-line-clamp: 2;");
+		css.Should().Contain("html[data-page-nav=\"cards\"] .page-nav-text { display: contents; }", "the label shares a row with the arrow");
+		css.Should().Contain(":where(html[data-page-nav=\"cards\"]) .page-nav-desc { color: var(--color-text-secondary); }");
+		BaseRule(".toc-dropdown, .page-nav-desc {").Should().Contain("display: none;", "pages that let readers switch layouts carry it for every variant");
 	}
 
 	[Fact]

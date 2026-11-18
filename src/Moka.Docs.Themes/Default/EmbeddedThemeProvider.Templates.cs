@@ -30,7 +30,7 @@ public static partial class EmbeddedThemeProvider
 	                                          {{ if for.first }}
 	                                      """ + _styleLoader + """
 	                                      {{ end }}{{ end }}
-	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color | html.escape }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color | html.escape }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color | html.escape }} 80%,#000)}{{ if theme.primary_text }}html:not([data-color-theme]){--color-primary-text:{{ theme.primary_text.light | html.escape }};--color-primary-text-hover:{{ theme.primary_text.light_hover | html.escape }};}html:not([data-color-theme])[data-theme="dark"]{--color-primary-text:{{ theme.primary_text.dark | html.escape }};--color-primary-text-hover:{{ theme.primary_text.dark_hover | html.escape }};}{{ end }}</style>{{ end }}
+	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary-base:{{ theme.primary_color | html.escape }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color | html.escape }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color | html.escape }} 80%,#000)}{{ if theme.primary_text }}html:not([data-color-theme]){--color-primary-text-base:{{ theme.primary_text.light | html.escape }}}html:not([data-color-theme])[data-theme="dark"]{--color-primary-text-base:{{ theme.primary_text.dark | html.escape }}}html:not([data-color-theme])[data-accent-strength="vivid"]:not([data-theme="dark"]){--color-primary-text-base:{{ theme.primary_text.vivid_light | html.escape }}}html:not([data-color-theme])[data-accent-strength="vivid"][data-theme="dark"]{--color-primary-text-base:{{ theme.primary_text.vivid_dark | html.escape }}}{{ end }}</style>{{ end }}
 	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color | html.escape }}}</style>{{ end }}
 	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url | html.escape }}" />{{ end }}
 	                                          {{ for feed in blog.feeds }}<link rel="alternate" type="{{ feed.type | html.escape }}" title="{{ feed.title | html.escape }}" href="{{ feed.url | html.escape }}" />
@@ -56,24 +56,8 @@ public static partial class EmbeddedThemeProvider
 	                                                  </a>
 	                                                  <div class="header-actions">
 	                                                      {{ if versions.size > 0 && theme.show_version_selector }}
-	                                                      <div class="version-selector">
-	                                                          <button class="version-trigger" type="button" aria-expanded="false" aria-controls="versionMenu">
-	                                                              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#pen"/></svg>
-	                                                              <span class="visually-hidden">{{ t.version_label | html.escape }} </span><span class="version-label">{{ current_version | html.escape }}</span>
-	                                                              <svg class="version-chevron" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="{{ icon_sprite | html.escape }}#chevron"/></svg>
-	                                                          </button>
-	                                                          <ul class="version-dropdown" id="versionMenu" hidden>
-	                                                              {{ for v in versions }}
-	                                                              <li>
-	                                                                  <a class="version-option{{ if v.is_current }} active{{ end }}" href="{{ v.url | html.escape }}" data-version-slug="{{ v.slug | html.escape }}"{{ if v.is_current }} aria-current="page"{{ end }}>
-	                                                                      <span class="version-option-label">{{ v.label | html.escape }}</span>
-	                                                                      {{ if v.is_default }}<span class="version-badge version-badge-default">{{ t.version_latest | html.escape }}</span>{{ end }}
-	                                                                      {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">{{ t.version_prerelease | html.escape }}</span>{{ end }}
-	                                                                  </a>
-	                                                              </li>
-	                                                              {{ end }}
-	                                                          </ul>
-	                                                      </div>
+	                                                      {{ version_menu_id = "versionMenu" }}
+	                                      """ + _versionSelector + """
 	                                                      {{ end }}
 	                                                      {{ if search_enabled }}
 	                                                      <button class="search-trigger" type="button" aria-label="{{ t.search_button | html.escape }}" aria-keyshortcuts="Control+K">
@@ -154,8 +138,16 @@ public static partial class EmbeddedThemeProvider
 	                                                          </nav>
 	                                                      </details>
 	                                                      {{ end }}
+	                                                      {{ if page.show_toc && (theme.layout.toc == "dropdown" || theme.layout_selector) }}
+	                                                      <details class="toc-dropdown" id="tocDropdown">
+	                                                          <summary><svg class="toc-dropdown-icon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#toc"/></svg><span class="toc-dropdown-title">{{ t.toc_title | html.escape }}</span><span class="toc-dropdown-current"></span></summary>
+	                                                          <nav class="toc" aria-label="{{ t.toc_title | html.escape }}">
+	                                      """ + _tocList + """
+	                                                          </nav>
+	                                                      </details>
+	                                                      {{ end }}
 	                                                      {{ page.content }}
-	                                                      {{ if page.show_toc && (theme.layout.toc == "inline" || theme.layout_selector) }}<script>(function(){var t=document.getElementById('tocInline'),h=t&&t.parentElement.querySelector(':scope > h1');if(h)h.after(t)})()</script>{{ end }}
+	                                                      {{ if page.show_toc && (theme.layout.toc == "inline" || theme.layout.toc == "dropdown" || theme.layout_selector) }}<script>(function(){['tocInline','tocDropdown'].forEach(function(i){var t=document.getElementById(i),h=t&&t.parentElement.querySelector(':scope > h1');if(h)h.after(t)})})()</script>{{ end }}
 
 	                                                      {{ if edit_url }}
 	                                                      <div class="edit-link">
@@ -211,6 +203,7 @@ public static partial class EmbeddedThemeProvider
 	                                                      <div class="page-nav-text">
 	                                                        <span class="page-nav-label">{{ if page.is_blog_post }}{{ t.page_nav_newer_post | html.escape }}{{ else }}{{ t.page_nav_previous | html.escape }}{{ end }}</span>
 	                                                        <span class="page-nav-title">{{ prev_page.title | html.escape }}</span>
+	                                                        {{ if (theme.layout.page_nav == "cards" || theme.layout_selector) && prev_page.description != "" }}<span class="page-nav-desc">{{ prev_page.description | html.escape }}</span>{{ end }}
 	                                                      </div>
 	                                                    </a>
 	                                                    {{ else }}
@@ -221,6 +214,7 @@ public static partial class EmbeddedThemeProvider
 	                                                      <div class="page-nav-text">
 	                                                        <span class="page-nav-label">{{ if page.is_blog_post }}{{ t.page_nav_older_post | html.escape }}{{ else }}{{ t.page_nav_next | html.escape }}{{ end }}</span>
 	                                                        <span class="page-nav-title">{{ next_page.title | html.escape }}</span>
+	                                                        {{ if (theme.layout.page_nav == "cards" || theme.layout_selector) && next_page.description != "" }}<span class="page-nav-desc">{{ next_page.description | html.escape }}</span>{{ end }}
 	                                                      </div>
 	                                                      <svg class="page-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#next"/></svg>
 	                                                    </a>
@@ -231,7 +225,7 @@ public static partial class EmbeddedThemeProvider
 	                                                  {{ end }}
 	                                              </main>
 
-	                                              {{ if page.show_toc && (theme.layout.toc != "inline" || theme.layout_selector) }}
+	                                              {{ if page.show_toc && ((theme.layout.toc != "inline" && theme.layout.toc != "dropdown") || theme.layout_selector) }}
 	                                              <aside class="toc-sidebar" id="tocSidebar">
 	                                                  <nav class="toc" aria-labelledby="tocTitle">
 	                                                      <p class="toc-title" id="tocTitle">{{ t.toc_title | html.escape }}</p>
@@ -246,10 +240,10 @@ public static partial class EmbeddedThemeProvider
 	                                              {{ end }}
 	                                          </div>
 
-	                                          {{ if theme.layout.footer == "columns" || theme.layout_selector }}
+	                                          {{ if theme.layout.footer == "columns" || theme.layout.footer == "mega" || theme.layout_selector }}
 	                                      """ + _columnsFooter + """
 	                                          {{ end }}
-	                                          {{ if (theme.layout.footer != "columns" && theme.layout.footer != "none") || theme.layout_selector }}
+	                                          {{ if (theme.layout.footer != "columns" && theme.layout.footer != "mega" && theme.layout.footer != "none") || theme.layout_selector }}
 	                                          <footer class="site-footer{{ if theme.layout_selector }} site-footer-row{{ end }}">
 	                                              <div class="footer-inner">
 	                                                  {{ if site.copyright }}<span>{{ site.copyright }}</span>{{ end }}
@@ -276,7 +270,7 @@ public static partial class EmbeddedThemeProvider
 	                                          </div>
 	                                          {{ end }}
 
-	                                          {{ if page.show_toc && (theme.layout.toc != "inline" || theme.layout_selector) }}
+	                                          {{ if page.show_toc && ((theme.layout.toc != "inline" && theme.layout.toc != "dropdown") || theme.layout_selector) }}
 	                                         <button class="toc-toggle-btn" id="tocToggle" type="button" aria-label="{{ t.toc_toggle | html.escape }}" aria-expanded="false" aria-controls="tocSidebar">
 	                                             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#toc"/></svg>
 	                                         </button>
@@ -284,6 +278,7 @@ public static partial class EmbeddedThemeProvider
 	                                         {{ if theme.show_back_to_top }}
 	                                         <button class="back-to-top" id="backToTop" type="button" aria-label="{{ t.page_back_to_top | html.escape }}">&#8593;</button>
 	                                         {{ end }}
+	                                      """ + _focusExit + """
 
 	                                          {{ for js in js_files }}<script src="{{ js | html.escape }}"></script>
 	                                          {{ end }}
@@ -318,7 +313,7 @@ public static partial class EmbeddedThemeProvider
 	                                          {{ if for.first }}
 	                                      """ + _styleLoader + """
 	                                      {{ end }}{{ end }}
-	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary:{{ theme.primary_color | html.escape }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color | html.escape }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color | html.escape }} 80%,#000)}{{ if theme.primary_text }}html:not([data-color-theme]){--color-primary-text:{{ theme.primary_text.light | html.escape }};--color-primary-text-hover:{{ theme.primary_text.light_hover | html.escape }};}html:not([data-color-theme])[data-theme="dark"]{--color-primary-text:{{ theme.primary_text.dark | html.escape }};--color-primary-text-hover:{{ theme.primary_text.dark_hover | html.escape }};}{{ end }}</style>{{ end }}
+	                                          {{ if theme.primary_color != "" }}<style>:root{--color-primary-base:{{ theme.primary_color | html.escape }};--color-primary-light:color-mix(in srgb,{{ theme.primary_color | html.escape }} 75%,#fff);--color-primary-dark:color-mix(in srgb,{{ theme.primary_color | html.escape }} 80%,#000)}{{ if theme.primary_text }}html:not([data-color-theme]){--color-primary-text-base:{{ theme.primary_text.light | html.escape }}}html:not([data-color-theme])[data-theme="dark"]{--color-primary-text-base:{{ theme.primary_text.dark | html.escape }}}html:not([data-color-theme])[data-accent-strength="vivid"]:not([data-theme="dark"]){--color-primary-text-base:{{ theme.primary_text.vivid_light | html.escape }}}html:not([data-color-theme])[data-accent-strength="vivid"][data-theme="dark"]{--color-primary-text-base:{{ theme.primary_text.vivid_dark | html.escape }}}{{ end }}</style>{{ end }}
 	                                          {{ if theme.accent_color != "" }}<style>:root{--color-accent:{{ theme.accent_color | html.escape }}}</style>{{ end }}
 	                                          {{ if site.favicon_url != "" }}<link rel="icon" href="{{ site.favicon_url | html.escape }}" />{{ end }}
 	                                          {{ for feed in blog.feeds }}<link rel="alternate" type="{{ feed.type | html.escape }}" title="{{ feed.title | html.escape }}" href="{{ feed.url | html.escape }}" />
@@ -344,24 +339,8 @@ public static partial class EmbeddedThemeProvider
 	                                                  </a>
 	                                                  <div class="header-actions">
 	                                                      {{ if versions.size > 0 && theme.show_version_selector }}
-	                                                      <div class="version-selector">
-	                                                          <button class="version-trigger" type="button" aria-expanded="false" aria-controls="versionMenu">
-	                                                              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#pen"/></svg>
-	                                                              <span class="visually-hidden">{{ t.version_label | html.escape }} </span><span class="version-label">{{ current_version | html.escape }}</span>
-	                                                              <svg class="version-chevron" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="{{ icon_sprite | html.escape }}#chevron"/></svg>
-	                                                          </button>
-	                                                          <ul class="version-dropdown" id="versionMenu" hidden>
-	                                                              {{ for v in versions }}
-	                                                              <li>
-	                                                                  <a class="version-option{{ if v.is_current }} active{{ end }}" href="{{ v.url | html.escape }}" data-version-slug="{{ v.slug | html.escape }}"{{ if v.is_current }} aria-current="page"{{ end }}>
-	                                                                      <span class="version-option-label">{{ v.label | html.escape }}</span>
-	                                                                      {{ if v.is_default }}<span class="version-badge version-badge-default">{{ t.version_latest | html.escape }}</span>{{ end }}
-	                                                                      {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">{{ t.version_prerelease | html.escape }}</span>{{ end }}
-	                                                                  </a>
-	                                                              </li>
-	                                                              {{ end }}
-	                                                          </ul>
-	                                                      </div>
+	                                                      {{ version_menu_id = "versionMenu" }}
+	                                      """ + _versionSelector + """
 	                                                      {{ end }}
 	                                                      {{ if search_enabled }}
 	                                                      <button class="search-trigger" type="button" aria-label="{{ t.search_button | html.escape }}" aria-keyshortcuts="Control+K">
@@ -507,10 +486,10 @@ public static partial class EmbeddedThemeProvider
 	                                          {{ end }}
 
 	                                          <!-- Footer -->
-	                                          {{ if theme.layout.footer == "columns" || theme.layout_selector }}
+	                                          {{ if theme.layout.footer == "columns" || theme.layout.footer == "mega" || theme.layout_selector }}
 	                                      """ + _columnsFooter + """
 	                                          {{ end }}
-	                                          {{ if (theme.layout.footer != "columns" && theme.layout.footer != "none") || theme.layout_selector }}
+	                                          {{ if (theme.layout.footer != "columns" && theme.layout.footer != "mega" && theme.layout.footer != "none") || theme.layout_selector }}
 	                                          <footer class="landing-footer">
 	                                              {{ if theme.show_built_with != false }}<p>{{ t.footer_built_with_love | html.escape | string.replace "{heart}" '<span class="landing-footer-heart">&#x2764;</span>' | string.replace "{mokadocs}" ('<a href="https://github.com/jacobwi/Moka.Docs">MokaDocs</a> v' + mokadocs_version) }}</p>{{ end }}
 	                                              {{ if site.copyright }}<p style="margin-top:0.5rem;">{{ site.copyright }}</p>{{ end }}
@@ -533,6 +512,7 @@ public static partial class EmbeddedThemeProvider
 	                                              </div>
 	                                          </div>
 	                                          {{ end }}
+	                                      """ + _focusExit + """
 
 	                                          {{ for js in js_files }}<script src="{{ js | html.escape }}"></script>
 	                                          {{ end }}
@@ -621,6 +601,31 @@ public static partial class EmbeddedThemeProvider
 	                                              </button>
 	                                              <script>try{if(localStorage.getItem('mokadocs-sidebar-hidden')==='true'){document.documentElement.classList.add('sidebar-hidden');document.getElementById('sidebarToggle').setAttribute('aria-expanded','false')}}catch(e){}</script>
 	                                              {{ end }}
+
+	                                      """;
+
+	// The version menu, in the header of both layouts and in the footer of layout.footer: mega. The
+	// layout sets version_menu_id first, so each copy's list has an id of its own.
+	private const string _versionSelector = """
+
+	                                                      <div class="version-selector">
+	                                                          <button class="version-trigger" type="button" aria-expanded="false" aria-controls="{{ version_menu_id | html.escape }}">
+	                                                              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#pen"/></svg>
+	                                                              <span class="visually-hidden">{{ t.version_label | html.escape }} </span><span class="version-label">{{ current_version | html.escape }}</span>
+	                                                              <svg class="version-chevron" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="{{ icon_sprite | html.escape }}#chevron"/></svg>
+	                                                          </button>
+	                                                          <ul class="version-dropdown" id="{{ version_menu_id | html.escape }}" hidden>
+	                                                              {{ for v in versions }}
+	                                                              <li>
+	                                                                  <a class="version-option{{ if v.is_current }} active{{ end }}" href="{{ v.url | html.escape }}" data-version-slug="{{ v.slug | html.escape }}"{{ if v.is_current }} aria-current="page"{{ end }}>
+	                                                                      <span class="version-option-label">{{ v.label | html.escape }}</span>
+	                                                                      {{ if v.is_default }}<span class="version-badge version-badge-default">{{ t.version_latest | html.escape }}</span>{{ end }}
+	                                                                      {{ if v.is_prerelease }}<span class="version-badge version-badge-pre">{{ t.version_prerelease | html.escape }}</span>{{ end }}
+	                                                                  </a>
+	                                                              </li>
+	                                                              {{ end }}
+	                                                          </ul>
+	                                                      </div>
 
 	                                      """;
 

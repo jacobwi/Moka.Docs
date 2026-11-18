@@ -154,7 +154,7 @@ Every text of the theme, with its English wording. The style, color, code style 
 | `nav.toggleSection` | `Toggle {label}` | Button that opens or closes a sidebar section or a table of contents entry; \{label} is its title |
 | `nav.toggleNavigation` | `Toggle navigation` | Button that opens the sidebar on phones |
 | `nav.toggleSidebar` | `Toggle sidebar` | Button that hides the sidebar on wide screens (sidebarToggle) |
-| `nav.sections` | `Sections` | Name of the tabs row (layout.navbar: tabs) for screen readers |
+| `nav.sections` | `Sections` | Name of the tabs row (layout.navbar: tabs and split) and the icon rail (layout.sidebar: rail) for screen readers |
 | `breadcrumbs.label` | `Breadcrumb` | Name of the breadcrumbs for screen readers |
 | `breadcrumbs.home` | `Home` | The first breadcrumb |
 | `banner.label` | `Announcement` | Name of the banner for screen readers |
@@ -195,6 +195,24 @@ Every text of the theme, with its English wording. The style, color, code style 
 | `appearance.width.wide` | `Wide` | Appearance panel: reading width |
 | `appearance.width.wider` | `Wider` | Appearance panel: reading width |
 | `appearance.width.full` | `Full` | Appearance panel: reading width |
+| `appearance.default` | `Default` | Appearance panel: the style's own line spacing, corners or accent |
+| `appearance.on` | `On` | Appearance panel: focus mode on |
+| `appearance.off` | `Off` | Appearance panel: focus mode off |
+| `appearance.darkTone` | `Dark tone` | Appearance panel section, shown in dark mode |
+| `appearance.tone.dim` | `Dim` | Appearance panel: dark tone with lighter gray backgrounds |
+| `appearance.tone.black` | `Black` | Appearance panel: dark tone with a black page |
+| `appearance.accentStrength` | `Accent strength` | Appearance panel section |
+| `appearance.accent.subtle` | `Subtle` | Appearance panel: accent strength |
+| `appearance.accent.vivid` | `Vivid` | Appearance panel: accent strength |
+| `appearance.corners` | `Corners` | Appearance panel section |
+| `appearance.corners.sharp` | `Sharp` | Appearance panel: square corners |
+| `appearance.corners.round` | `Round` | Appearance panel: rounder corners |
+| `appearance.reading` | `Reading` | Appearance panel: heading over text size, reading width, line spacing and focus mode |
+| `appearance.lineSpacing` | `Line spacing` | Appearance panel section |
+| `appearance.spacing.tight` | `Tight` | Appearance panel: line spacing |
+| `appearance.spacing.relaxed` | `Relaxed` | Appearance panel: line spacing |
+| `appearance.focusMode` | `Focus mode` | Appearance panel section: hides the sidebar, "On this page", the breadcrumbs and the floating buttons |
+| `appearance.focusMode.exit` | `Exit focus mode` | Button shown while focus mode is on, which turns it off |
 | `appearance.layout` | `Layout` | Appearance panel section (layoutSelector) |
 | `appearance.siteDefault` | `{label} (default)` | Layout section: the site's own choice; \{label} is its name |
 | `appearance.reset` | `Reset to site defaults` | Button at the end of the Appearance panel |
@@ -222,7 +240,7 @@ Every text of the theme, with its English wording. The style, color, code style 
 | `feedback.thanks` | `Thanks for your feedback!` | Feedback widget after a vote |
 | `footer.builtWith` | `Built with {mokadocs}` | Footer; \{mokadocs} is the MokaDocs link and version |
 | `footer.builtWithLove` | `Built with {heart} using {mokadocs}` | Home page footer; \{heart} is a heart |
-| `footer.label` | `Footer` | Name of the footer link columns (layout.footer: columns) for screen readers |
+| `footer.label` | `Footer` | Name of the footer link columns (layout.footer: columns and mega) for screen readers |
 | `footer.docs` | `Docs` | Footer column of top-level pages when the sidebar has no sections |
 | `footer.more` | `More` | Footer column of top-level pages after the section columns |
 | `landing.getStarted` | `Get Started` | Home page button, and a call to action without linkText |
@@ -316,6 +334,18 @@ Every text of the theme, with its English wording. The style, color, code style 
 | `style.glass.description` | `Frosted panels` | Appearance panel: under the style's name |
 | `style.brutal` | `Brutal` | Appearance panel: name of a style |
 | `style.brutal.description` | `Thick lines, flat fills` | Appearance panel: under the style's name |
+| `style.blueprint` | `Blueprint` | Appearance panel: name of a style |
+| `style.blueprint.description` | `Technical drawing` | Appearance panel: under the style's name |
+| `style.newspaper` | `Newspaper` | Appearance panel: name of a style |
+| `style.newspaper.description` | `Print, with a drop cap` | Appearance panel: under the style's name |
+| `style.retro` | `Retro` | Appearance panel: name of a style |
+| `style.retro.description` | `Beveled desktop windows` | Appearance panel: under the style's name |
+| `style.neon` | `Neon` | Appearance panel: name of a style |
+| `style.neon.description` | `Synthwave, dark first` | Appearance panel: under the style's name |
+| `style.tonal` | `Tonal` | Appearance panel: name of a style |
+| `style.tonal.description` | `Tinted surfaces, round` | Appearance panel: under the style's name |
+| `style.editor` | `Editor` | Appearance panel: name of a style |
+| `style.editor.description` | `Panels, tabs, status bar` | Appearance panel: under the style's name |
 | `color.ocean` | `Ocean` | Appearance panel: name of a color |
 | `color.emerald` | `Emerald` | Appearance panel: name of a color |
 | `color.violet` | `Violet` | Appearance panel: name of a color |
@@ -363,17 +393,21 @@ Every text of the theme, with its English wording. The style, color, code style 
 | `layout.variant.compact` | `Compact` | Appearance panel, Layout section: a choice |
 | `layout.variant.default` | `Standard` | Appearance panel, Layout section: a choice |
 | `layout.variant.dots` | `Dots` | Appearance panel, Layout section: a choice |
+| `layout.variant.dropdown` | `Dropdown` | Appearance panel, Layout section: a choice |
 | `layout.variant.filled` | `Filled` | Appearance panel, Layout section: a choice |
 | `layout.variant.floating` | `Floating` | Appearance panel, Layout section: a choice |
 | `layout.variant.humanist` | `Humanist` | Appearance panel, Layout section: a choice |
 | `layout.variant.inline` | `Inline` | Appearance panel, Layout section: a choice |
 | `layout.variant.lines` | `Lines` | Appearance panel, Layout section: a choice |
+| `layout.variant.mega` | `Large` | Appearance panel, Layout section: a choice |
 | `layout.variant.minimal` | `Minimal` | Appearance panel, Layout section: a choice |
 | `layout.variant.none` | `None` | Appearance panel, Layout section: a choice |
 | `layout.variant.numbered` | `Numbered` | Appearance panel, Layout section: a choice |
 | `layout.variant.outlined` | `Outlined` | Appearance panel, Layout section: a choice |
 | `layout.variant.path` | `Path` | Appearance panel, Layout section: a choice |
 | `layout.variant.pills` | `Pills` | Appearance panel, Layout section: a choice |
+| `layout.variant.progress` | `Progress` | Appearance panel, Layout section: a choice |
+| `layout.variant.rail` | `Icon rail` | Appearance panel, Layout section: a choice |
 | `layout.variant.rounded` | `Rounded` | Appearance panel, Layout section: a choice |
 | `layout.variant.serif` | `Serif` | Appearance panel, Layout section: a choice |
 | `layout.variant.spacious` | `Spacious` | Appearance panel, Layout section: a choice |

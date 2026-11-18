@@ -317,6 +317,15 @@ public sealed class AspNetCoreHostTests : IDisposable
 		off.Theme.Options.TextSizeSelector.Should().BeFalse();
 		off.Theme.Options.WidthSelector.Should().BeFalse();
 		config.Theme.Options.LayoutSelector.Should().BeFalse();
+		ThemeOptions defaults = config.Theme.Options;
+		new[] { defaults.LineSpacingSelector, defaults.FocusModeSelector, defaults.DarkToneSelector, defaults.CornersSelector, defaults.AccentStrengthSelector }
+			.Should().AllSatisfy(flag => flag.Should().BeTrue());
+		ThemeOptions without = SiteConfigFactory.Create(new MokaDocsOptions
+		{
+			LineSpacingSelector = false, FocusModeSelector = false, DarkToneSelector = false, CornersSelector = false, AccentStrengthSelector = false
+		}).Theme.Options;
+		new[] { without.LineSpacingSelector, without.FocusModeSelector, without.DarkToneSelector, without.CornersSelector, without.AccentStrengthSelector }
+			.Should().AllSatisfy(flag => flag.Should().BeFalse());
 		SiteConfigFactory.Create(new MokaDocsOptions { LayoutSelector = true }).Theme.Options.LayoutSelector.Should().BeTrue();
 	}
 

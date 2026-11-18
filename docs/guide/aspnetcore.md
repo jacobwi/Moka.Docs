@@ -93,6 +93,11 @@ builder.Services.AddMokaDocs(options =>
 | `StyleSelector` | `bool` | `true` | Shows the Style section of the Appearance panel, where readers pick another style. When `false`, every page uses `Style`. |
 | `TextSizeSelector` | `bool` | `true` | Shows the Text size section of the Appearance panel (90% to 125%), like [`theme.options.textSizeSelector`](/configuration/site-config#options.textsizeselector). |
 | `WidthSelector` | `bool` | `true` | Shows the Reading width section of the Appearance panel (narrow, default, wide, wider or full), like [`theme.options.widthSelector`](/configuration/site-config#options.widthselector). |
+| `LineSpacingSelector` | `bool` | `true` | Shows the Line spacing section of the Appearance panel (tight, default or relaxed), like [`theme.options.lineSpacingSelector`](/configuration/site-config#options.linespacingselector). |
+| `FocusModeSelector` | `bool` | `true` | Shows the Focus mode section of the Appearance panel, like [`theme.options.focusModeSelector`](/configuration/site-config#options.focusmodeselector). |
+| `DarkToneSelector` | `bool` | `true` | Shows the Dark tone section of the Appearance panel (dim, dark or black), like [`theme.options.darkToneSelector`](/configuration/site-config#options.darktoneselector). |
+| `CornersSelector` | `bool` | `true` | Shows the Corners section of the Appearance panel (sharp, default or round), like [`theme.options.cornersSelector`](/configuration/site-config#options.cornersselector). |
+| `AccentStrengthSelector` | `bool` | `true` | Shows the Accent strength section of the Appearance panel (subtle, default or vivid), like [`theme.options.accentStrengthSelector`](/configuration/site-config#options.accentstrengthselector). |
 | `LayoutSelector` | `bool` | `false` | Adds a Layout section to the Appearance panel, where readers switch the layout variants of a docs page; `Layout` stays the default. Like [`theme.options.layoutSelector`](/configuration/site-config#options.layoutselector). |
 | `ImageZoom` | `bool` | `true` | Opens a content image full size when the reader clicks it, like [`theme.options.imageZoom`](/configuration/site-config#options.imagezoom). |
 | `Layout` | `MokaDocsLayoutOptions` | every part `"default"` | Layout variants for the page width, top bar, footer, "On this page" panel, breadcrumbs, previous/next links, sidebar, home page, landing hero, feature cards, admonitions, tables, spacing, typeface, headings and links (see Page Layout). An unknown name renders as `"default"` and logs a warning. |
@@ -423,7 +428,7 @@ MokaDocs reads the document as JSON itself and doesn't reference Microsoft.OpenA
 
 ### Theme Colors
 
-`PrimaryColor` sets the `--color-primary` CSS variable and the lighter and darker shades derived from it. When it differs from the default `#0ea5e9`, pages start without a color preset so your color shows. A reader who picks a preset from the color menu in the header overrides it in their own browser.
+`PrimaryColor` sets the `--color-primary-base` CSS variable, which `--color-primary` follows, and the lighter and darker shades derived from it. When it differs from the default `#0ea5e9`, pages start without a color preset so your color shows. A reader who picks a preset from the color menu in the header overrides it in their own browser.
 
 `AccentColor` sets `--color-accent`. The default theme uses it to highlight matches in search results.
 
@@ -437,7 +442,7 @@ builder.Services.AddMokaDocs(options =>
 
 ### Theme Styles
 
-`Style` picks the whole look of the pages, the same ten styles as `theme.options.style` in `mokadocs.yaml` (see [Styles](/themes/customization#styles)): `default`, `moka` (dense and dark first), `minimal`, `classic`, `soft`, `terminal` (monospace and dark first), `paper`, `contrast`, `glass` and `brutal`. Readers can switch styles in the header's Appearance panel, and their pick is saved in the browser. `StyleSelector = false` removes the panel's Style section, so every reader gets `Style`.
+`Style` picks the whole look of the pages, the same styles as `theme.options.style` in `mokadocs.yaml` (see [Styles](/themes/customization#styles)): `default`, `moka` (dense and dark first), `minimal`, `classic`, `soft`, `terminal` (monospace and dark first), `paper`, `contrast`, `glass`, `brutal`, `blueprint`, `newspaper`, `retro`, `neon` (synthwave and dark first), `tonal` and `editor`. Readers can switch styles in the header's Appearance panel, and their pick is saved in the browser. `StyleSelector = false` removes the panel's Style section, so every reader gets `Style`.
 
 ```csharp
 builder.Services.AddMokaDocs(options =>

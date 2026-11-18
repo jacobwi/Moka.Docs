@@ -106,17 +106,20 @@ internal static class ThemeLabCatalog
 	private const string _readerCodeStyleKey = "mokadocs-code-style";
 
 	// Layout variants a page can't show by switching its <html> attribute: the templates render other
-	// markup for them (tabs row, link columns, no footer, the inline or bare "On this page", the split
-	// or plain hero, every home page but the default). Every other variant is CSS scoped to the
-	// attribute, or read by the theme script on every pass (autohide). ThemeLabRebuildTests builds a
+	// markup for them (tabs row, link columns and the footer's version menu, no footer, the inline,
+	// dropdown or bare "On this page", the descriptions on the previous and next cards, the split or
+	// plain hero, every home page but the default). Every other variant is CSS scoped to the attribute,
+	// or read by the theme script on every pass or whenever the attribute changes (autohide, the
+	// progress track, and the icon rail it builds). ThemeLabRebuildTests builds a
 	// site with each variant and fails when this list and the rendered pages disagree. A site with
 	// theme.options.layoutSelector on renders the markup of every variant of ThemeLayouts.ReaderParts,
 	// so there only the landing page's parts (hero, home) need a rebuild.
 	private static readonly Dictionary<string, string[]> _rebuildVariants = new(StringComparer.Ordinal)
 	{
-		["navbar"] = ["tabs"],
-		["footer"] = ["columns", "none"],
-		["toc"] = ["minimal", "inline"],
+		["navbar"] = ["tabs", "split"],
+		["footer"] = ["columns", "none", "mega"],
+		["toc"] = ["minimal", "inline", "dropdown"],
+		["pageNav"] = ["cards"],
 		["home"] = ["portal", "showcase", "minimal", "docs"],
 		["hero"] = ["split", "minimal"]
 	};

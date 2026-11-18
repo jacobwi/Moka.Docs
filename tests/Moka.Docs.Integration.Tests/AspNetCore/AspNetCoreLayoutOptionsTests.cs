@@ -100,6 +100,6 @@ public sealed class AspNetCoreLayoutOptionsTests
 		InMemorySite site = await provider.GetRequiredService<MokaDocsService>().GetSiteAsync(TestContext.Current.CancellationToken);
 
 		site.Diagnostics.Should().ContainSingle(d => d.Source == "Render")
-			.Which.Message.Should().Be("Layout footer 'fat' is not one of default, minimal, columns, none, centered, compact; using 'default'");
+			.Which.Message.Should().Be("Layout footer 'fat' is not one of default, minimal, columns, none, centered, compact, mega; using 'default'");
 	}
 }

@@ -524,6 +524,11 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			{ "style_files", BuildStyleFiles(ctx.StyleVersions) },
 			{ "text_size_selector", ctx.Config.Theme.Options.TextSizeSelector },
 			{ "width_selector", ctx.Config.Theme.Options.WidthSelector },
+			{ "line_spacing_selector", ctx.Config.Theme.Options.LineSpacingSelector },
+			{ "focus_mode_selector", ctx.Config.Theme.Options.FocusModeSelector },
+			{ "dark_tone_selector", ctx.Config.Theme.Options.DarkToneSelector },
+			{ "corners_selector", ctx.Config.Theme.Options.CornersSelector },
+			{ "accent_strength_selector", ctx.Config.Theme.Options.AccentStrengthSelector },
 			{ "layout_selector", ctx.Config.Theme.Options.LayoutSelector },
 			{ "layout_parts", _layoutParts },
 			{ "style_options", _styleOptions },
@@ -589,9 +594,9 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		ThemeLayoutOptions layout = ctx.Config.Theme.Options.Layout;
 		bool layoutSelector = ctx.Config.Theme.Options.LayoutSelector;
 		so.SetValue("layout_tabs",
-			layoutSelector || ThemeLayouts.Navbar.Resolve(layout.Navbar) == "tabs" ? BuildLayoutTabs(index, page.Route, bp) : [], false);
+			layoutSelector || ThemeLayouts.Navbar.Resolve(layout.Navbar) is "tabs" or "split" ? BuildLayoutTabs(index, page.Route, bp) : [], false);
 		so.SetValue("footer_columns",
-			layoutSelector || ThemeLayouts.Footer.Resolve(layout.Footer) == "columns" ? BuildFooterColumns(index, bp, ctx.Text) : [], false);
+			layoutSelector || ThemeLayouts.Footer.Resolve(layout.Footer) is "columns" or "mega" ? BuildFooterColumns(index, bp, ctx.Text) : [], false);
 		bool portal = ThemeLayouts.Home.Resolve(layout.Home) == "portal"
 		              && string.Equals(page.FrontMatter.Layout, "landing", StringComparison.OrdinalIgnoreCase);
 		so.SetValue("home_sections", portal ? BuildHomeSections(index, page.Route, bp, sprite) : [], false);
@@ -653,20 +658,21 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 		(PageLink? previous, PageLink? next) = index.Neighbors(page.Route);
 		if (previous is not null)
 		{
-			so.SetValue("prev_page",
-				new ScriptObject { { "title", previous.Title }, { "route", PrefixRoute(previous.Route, bp) } }, false);
+			so.SetValue("prev_page", NeighborObject(previous, bp), false);
 		}
 
 		if (next is not null)
 		{
-			so.SetValue("next_page",
-				new ScriptObject { { "title", next.Title }, { "route", PrefixRoute(next.Route, bp) } }, false);
+			so.SetValue("next_page", NeighborObject(next, bp), false);
 		}
 
 		#endregion
 
 		return so;
 	}
+
+	private static ScriptObject NeighborObject(PageLink link, string basePath) =>
+		new() { { "title", link.Title }, { "route", PrefixRoute(link.Route, basePath) }, { "description", link.Description } };
 
 	/// <summary>
 	///     Where a version dropdown entry links from this page: the page itself for the current version,
@@ -718,9 +724,9 @@ public sealed class ScribanTemplateEngine(ILogger<ScribanTemplateEngine> logger)
 			? new ScriptObject
 			{
 				{ "light", colors.Light },
-				{ "light_hover", colors.LightHover },
 				{ "dark", colors.Dark },
-				{ "dark_hover", colors.DarkHover }
+				{ "vivid_light", colors.VividLight },
+				{ "vivid_dark", colors.VividDark }
 			}
 			: null;
 

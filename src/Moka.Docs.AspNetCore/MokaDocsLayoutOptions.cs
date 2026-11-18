@@ -27,16 +27,18 @@ public sealed class MokaDocsLayoutOptions
 	///     The top bar: <c>"default"</c> (sticky), <c>"compact"</c> (shorter), <c>"floating"</c> (a
 	///     rounded bar inset from the edges), <c>"tabs"</c> (a second row with a tab for each top-level
 	///     sidebar section), <c>"autohide"</c> (slides away while scrolling down), <c>"centered"</c> (the
-	///     logo in the middle, search on the left, the buttons on the right) or <c>"transparent"</c> (a
-	///     see-through, blurred bar over the page; solid when the reader asks for less transparency).
+	///     logo in the middle, search on the left, the buttons on the right), <c>"transparent"</c> (a
+	///     see-through, blurred bar over the page; solid when the reader asks for less transparency) or
+	///     <c>"split"</c> (two rows: the logo, a wide search box and the buttons, then the section tabs).
 	/// </summary>
 	public string Navbar { get; set; } = ThemeLayouts.Default;
 
 	/// <summary>
 	///     The footer: <c>"default"</c> (one row), <c>"minimal"</c> (one centered line),
 	///     <c>"columns"</c> (a column of links for each top-level sidebar section), <c>"none"</c>,
-	///     <c>"centered"</c> (stacked and centered under a row of social icons) or <c>"compact"</c> (one
-	///     small line, the parts separated by dots).
+	///     <c>"centered"</c> (stacked and centered under a row of social icons), <c>"compact"</c> (one
+	///     small line, the parts separated by dots) or <c>"mega"</c> (a large footer: the logo,
+	///     description and version menu beside the link columns).
 	/// </summary>
 	public string Footer { get; set; } = ThemeLayouts.Default;
 
@@ -45,7 +47,9 @@ public sealed class MokaDocsLayoutOptions
 	///     <c>"minimal"</c> (the column with the links only), <c>"inline"</c> (a collapsible box at the
 	///     top of the page), <c>"floating"</c> (a corner button that opens the list over the page),
 	///     <c>"numbered"</c> (entries numbered 1, 1.1, 1.1.1), <c>"timeline"</c> (a dot per entry on a
-	///     vertical line) or <c>"bordered"</c> (the column as a bordered card).
+	///     vertical line), <c>"bordered"</c> (the column as a bordered card), <c>"dropdown"</c> (a closed
+	///     disclosure under the title that sticks below the header and opens the list over the page) or
+	///     <c>"progress"</c> (a track along the list that fills as the reader moves down the page).
 	/// </summary>
 	public string Toc { get; set; } = ThemeLayouts.Default;
 
@@ -59,7 +63,8 @@ public sealed class MokaDocsLayoutOptions
 	/// <summary>
 	///     The previous and next links: <c>"default"</c> (two cards), <c>"minimal"</c> (plain links),
 	///     <c>"stacked"</c> (full-width rows), <c>"split"</c> (one ruled bar, previous left and next
-	///     right) or <c>"compact"</c> (small links on one line).
+	///     right), <c>"compact"</c> (small links on one line) or <c>"cards"</c> (larger cards with each
+	///     page's description).
 	/// </summary>
 	public string PageNav { get; set; } = ThemeLayouts.Default;
 
@@ -67,8 +72,9 @@ public sealed class MokaDocsLayoutOptions
 	///     The sidebar's look: <c>"default"</c>, <c>"lines"</c> (guide lines along nested levels),
 	///     <c>"pills"</c> (roomier rows, the current page as a filled pill), <c>"compact"</c> (dense
 	///     rows, smaller text), <c>"accent"</c> (an accent bar on the current page's edge, no fill),
-	///     <c>"cards"</c> (each top-level section in a card) or <c>"minimal"</c> (no icons or fills, the
-	///     current page bold and underlined).
+	///     <c>"cards"</c> (each top-level section in a card), <c>"minimal"</c> (no icons or fills, the
+	///     current page bold and underlined) or <c>"rail"</c> (a column of section icons at the
+	///     sidebar's edge, the sidebar listing the chosen section alone).
 	/// </summary>
 	public string Sidebar { get; set; } = ThemeLayouts.Default;
 

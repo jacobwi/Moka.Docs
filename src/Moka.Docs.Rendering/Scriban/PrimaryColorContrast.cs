@@ -7,17 +7,31 @@ namespace Moka.Docs.Rendering.Scriban;
 
 // The default style's accent text shades for a custom primaryColor, worked out like the color presets'
 // --color-primary-text: the OKLCH lightness moves (darker in light mode, lighter in dark mode) just far
-// enough for 4.5:1 on every background accent text sits on. The presets' values in the stylesheet come
-// from this code, and a test keeps the two in step.
+// enough for 4.5:1 on every background accent text sits on, in dark mode on the dim dark tone's lighter
+// surfaces too. The vivid shades (accent strength) start from a more saturated primary. The presets'
+// values in the stylesheet come from this code, and a test keeps the two in step.
 internal static partial class PrimaryColorContrast
 {
 	private const double _minimumContrast = 4.5;
 	private const double _lightnessStep = 0.001;
 
+	// Vivid multiplies the primary's OKLCH chroma by this, cut back to the edge of sRGB where it doesn't fit.
+	private const double _vividChroma = 1.35;
+
 	private static readonly double[] _lightPage = Hex("#ffffff");
 	private static readonly double[] _lightCode = Hex("#f1f5f9");
 	private static readonly double[] _darkPage = Hex("#0f172a");
 	private static readonly double[] _darkCode = Hex("#1e293b");
+
+	// The dim dark tone mixes the dark surfaces toward this neutral gray in OKLab, the page keeping 60% of its own
+	// color and the code background 40%, as html[data-dark-tone="dim"] does in the stylesheet.
+	private static readonly double[] _dimTarget = Hex("#272727");
+
+	private static readonly (double[] Page, double[] Code)[] _darkSurfaces =
+	[
+		(_darkPage, _darkCode),
+		(MixOklab(_darkPage, _dimTarget, 0.6), MixOklab(_darkCode, _dimTarget, 0.4))
+	];
 
 	// Admonition boxes are 8% of their color over the page, and links inside them use the accent.
 	private static readonly double[][] _admonitionColors =
@@ -28,11 +42,23 @@ internal static partial class PrimaryColorContrast
 	public static PrimaryTextColors? For(string? color) =>
 		string.IsNullOrWhiteSpace(color) ? null : _cache.GetOrAdd(color.Trim(), Compute);
 
+	// The primary with more chroma at the same OKLCH lightness and hue, cut to the edge of sRGB. A color that
+	// is already as saturated as sRGB allows at its lightness stays as it is.
+	public static double[] Vivid(double[] primary)
+	{
+		(double lightness, double chroma, double hue) = ToOklch(primary);
+		return FromOklch(lightness, chroma * _vividChroma, hue);
+	}
+
 	public static string TextColor(double[] primary, bool dark)
 	{
-		double[] page = dark ? _darkPage : _lightPage;
-		List<double[]> backgrounds = [dark ? _darkCode : _lightCode, Mix(primary, page, 0.08)];
-		backgrounds.AddRange(_admonitionColors.Select(admonition => Mix(admonition, page, 0.08)));
+		List<double[]> backgrounds = [];
+		foreach ((double[] page, double[] code) in dark ? _darkSurfaces : [(_lightPage, _lightCode)])
+		{
+			backgrounds.Add(code);
+			backgrounds.Add(Mix(primary, page, 0.08));
+			backgrounds.AddRange(_admonitionColors.Select(admonition => Mix(admonition, page, 0.08)));
+		}
 
 		string original = ToHex(primary);
 		if (Passes(Hex(original), backgrounds))
@@ -127,13 +153,8 @@ internal static partial class PrimaryColorContrast
 			return null;
 		}
 
-		string light = TextColor(primary, false);
-		string dark = TextColor(primary, true);
-		return new PrimaryTextColors(
-			light,
-			ToHex(Mix(Hex(light), [0, 0, 0], 0.8)),
-			dark,
-			ToHex(Mix(Hex(dark), [1, 1, 1], 0.75)));
+		double[] vivid = Vivid(primary);
+		return new PrimaryTextColors(TextColor(primary, false), TextColor(primary, true), TextColor(vivid, false), TextColor(vivid, true));
 	}
 
 	private static bool Passes(double[] text, List<double[]> backgrounds) =>
@@ -200,6 +221,16 @@ internal static partial class PrimaryColorContrast
 
 	private static double? Number(string value) =>
 		double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? number : null;
+
+	// color-mix(in oklab, color amount, other).
+	private static double[] MixOklab(double[] color, double[] other, double amount)
+	{
+		(double l1, double c1, double h1) = ToOklch(color);
+		(double l2, double c2, double h2) = ToOklch(other);
+		double a = c1 * Math.Cos(h1) * amount + c2 * Math.Cos(h2) * (1 - amount);
+		double b = c1 * Math.Sin(h1) * amount + c2 * Math.Sin(h2) * (1 - amount);
+		return [.. OklchToRgb(l1 * amount + l2 * (1 - amount), Math.Sqrt(a * a + b * b), Math.Atan2(b, a)).Select(channel => Math.Clamp(channel, 0, 1))];
+	}
 
 	private static double[] Mix(double[] color, double[] background, double amount) =>
 	[
@@ -289,4 +320,4 @@ internal static partial class PrimaryColorContrast
 	private static partial Regex NamePattern();
 }
 
-internal sealed record PrimaryTextColors(string Light, string LightHover, string Dark, string DarkHover);
+internal sealed record PrimaryTextColors(string Light, string Dark, string VividLight, string VividDark);

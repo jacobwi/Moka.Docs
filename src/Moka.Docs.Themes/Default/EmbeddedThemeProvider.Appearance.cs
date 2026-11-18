@@ -4,7 +4,7 @@ public static partial class EmbeddedThemeProvider
 {
 	private const string _headBootstrap = """
 
-	                                          <script>document.documentElement.classList.remove('no-js');try{const d=document.documentElement,g=k=>{try{return localStorage.getItem(k)}catch(e){}return null};const s={{ if theme.style_selector }}g('mokadocs-style')||{{ end }}'{{ theme.style }}';d.setAttribute('data-style',s);const m=g('mokadocs-theme'),t=m||([{{ for option in theme.style_options }}{{ if option.dark_first }}'{{ option.name | html.escape | string.escape }}',{{ end }}{{ end }}].includes(s)||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');d.setAttribute('data-theme',t);const c={{ if theme.color_themes != false }}g('mokadocs-color-theme')||{{ end }}'{{ theme.initial_color_theme | html.escape | string.escape }}';if(c)d.setAttribute('data-color-theme',c);const p=[{{ for code in theme.code_themes }}{{ if code.is_dark && code.counterpart != "" }}['{{ code.name | html.escape | string.escape }}','{{ code.counterpart | html.escape | string.escape }}'],{{ end }}{{ end }}],b=d.getAttribute('data-code-theme'),f=m&&p.find(x=>x.includes(b));d.setAttribute('data-code-theme',{{ if theme.code_theme_selector != false }}g('mokadocs-code-theme')||{{ end }}(f?f[m==='light'?1:0]:b));const cs={{ if theme.code_style_selector != false }}g('mokadocs-code-style')||{{ end }}'{{ theme.code_style | html.escape | string.escape }}';d.setAttribute('data-code-style',cs){{ if theme.text_size_selector != false }};const z=g('mokadocs-text-size');if(['90','112.5','125'].includes(z))d.setAttribute('data-text-size',z){{ end }}{{ if theme.width_selector != false }};const w=g('mokadocs-reader-width');if(['narrow','wide','wider','full'].includes(w))d.setAttribute('data-reader-width',w){{ end }}{{ if theme.layout_selector }};const l={ {{ for part in theme.layout_parts }}'{{ part.name | html.escape | string.escape }}':'{{ part.names | html.escape | string.escape }}',{{ end }} };for(const k in l){const v=g('mokadocs-layout-'+k);if(v&&l[k].split(' ').includes(v)){if(v==='default')d.removeAttribute('data-'+k);else d.setAttribute('data-'+k,v)}}{{ end }};}catch(e){}</script>
+	                                          <script>document.documentElement.classList.remove('no-js');try{const d=document.documentElement,g=k=>{try{return localStorage.getItem(k)}catch(e){}return null};const s={{ if theme.style_selector }}g('mokadocs-style')||{{ end }}'{{ theme.style }}';d.setAttribute('data-style',s);const m=g('mokadocs-theme'),t=m||([{{ for option in theme.style_options }}{{ if option.dark_first }}'{{ option.name | html.escape | string.escape }}',{{ end }}{{ end }}].includes(s)||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');d.setAttribute('data-theme',t);const c={{ if theme.color_themes != false }}g('mokadocs-color-theme')||{{ end }}'{{ theme.initial_color_theme | html.escape | string.escape }}';if(c)d.setAttribute('data-color-theme',c);const p=[{{ for code in theme.code_themes }}{{ if code.is_dark && code.counterpart != "" }}['{{ code.name | html.escape | string.escape }}','{{ code.counterpart | html.escape | string.escape }}'],{{ end }}{{ end }}],b=d.getAttribute('data-code-theme'),f=m&&p.find(x=>x.includes(b));d.setAttribute('data-code-theme',{{ if theme.code_theme_selector != false }}g('mokadocs-code-theme')||{{ end }}(f?f[m==='light'?1:0]:b));const cs={{ if theme.code_style_selector != false }}g('mokadocs-code-style')||{{ end }}'{{ theme.code_style | html.escape | string.escape }}';d.setAttribute('data-code-style',cs){{ if theme.text_size_selector != false }};const z=g('mokadocs-text-size');if(['90','112.5','125'].includes(z))d.setAttribute('data-text-size',z){{ end }}{{ if theme.width_selector != false }};const w=g('mokadocs-reader-width');if(['narrow','wide','wider','full'].includes(w))d.setAttribute('data-reader-width',w){{ end }}{{ if theme.dark_tone_selector != false || theme.corners_selector != false || theme.line_spacing_selector != false || theme.accent_strength_selector != false || theme.focus_mode_selector != false }};for(const[k,v]of[{{ if theme.dark_tone_selector != false }}['dark-tone','dim black'],{{ end }}{{ if theme.corners_selector != false }}['corners','sharp round'],{{ end }}{{ if theme.line_spacing_selector != false }}['line-spacing','tight relaxed'],{{ end }}{{ if theme.accent_strength_selector != false }}['accent-strength','subtle vivid'],{{ end }}{{ if theme.focus_mode_selector != false }}['focus-mode','on'],{{ end }}]){const x=g('mokadocs-'+k);if(x&&v.split(' ').includes(x))d.setAttribute('data-'+k,x)}{{ end }}{{ if theme.layout_selector }};const l={ {{ for part in theme.layout_parts }}'{{ part.name | html.escape | string.escape }}':'{{ part.names | html.escape | string.escape }}',{{ end }} };for(const k in l){const v=g('mokadocs-layout-'+k);if(v&&l[k].split(' ').includes(v)){if(v==='default')d.removeAttribute('data-'+k);else d.setAttribute('data-'+k,v)}}{{ end }};}catch(e){}</script>
 
 	                                      """;
 
@@ -19,7 +19,7 @@ public static partial class EmbeddedThemeProvider
 
 	private const string _appearanceMenu = """
 
-	                                                      {{ if theme.show_dark_mode_toggle || theme.style_selector || theme.color_themes != false || theme.code_theme_selector != false || theme.code_style_selector != false || theme.text_size_selector != false || theme.width_selector != false || theme.layout_selector }}
+	                                                      {{ if theme.show_dark_mode_toggle || theme.style_selector || theme.color_themes != false || theme.code_theme_selector != false || theme.code_style_selector != false || theme.text_size_selector != false || theme.width_selector != false || theme.line_spacing_selector != false || theme.focus_mode_selector != false || theme.dark_tone_selector != false || theme.corners_selector != false || theme.accent_strength_selector != false || theme.layout_selector }}
 	                                                      <div class="appearance js-only">
 	                                                          <button class="appearance-trigger" type="button" aria-label="{{ t.appearance_title | html.escape }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="appearancePanel">
 	                                                              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ icon_sprite | html.escape }}#sliders"/></svg>
@@ -39,6 +39,13 @@ public static partial class EmbeddedThemeProvider
 	                                                                  </div>
 	                                                              </div>
 	                                                              {{ end }}
+	                                                              {{ if theme.dark_tone_selector != false }}
+	                                                              <div class="appearance-section appearance-dark-only">
+	                                                                  <p class="appearance-label" id="appearanceDarkToneLabel">{{ t.appearance_dark_tone | html.escape }}</p>
+	                                                                  <div class="appearance-options appearance-segments" role="radiogroup" aria-labelledby="appearanceDarkToneLabel" data-appearance="dark-tone">
+	                                                                  </div>
+	                                                              </div>
+	                                                              {{ end }}
 	                                                              {{ if theme.style_selector }}
 	                                                              <div class="appearance-section">
 	                                                                  <p class="appearance-label" id="appearanceStyleLabel">{{ t.appearance_style | html.escape }}</p>
@@ -50,6 +57,20 @@ public static partial class EmbeddedThemeProvider
 	                                                              <div class="appearance-section">
 	                                                                  <p class="appearance-label" id="appearanceColorThemeLabel">{{ t.appearance_color | html.escape }}</p>
 	                                                                  <div class="appearance-options appearance-swatches" role="radiogroup" aria-labelledby="appearanceColorThemeLabel" data-appearance="color-theme">
+	                                                                  </div>
+	                                                              </div>
+	                                                              {{ end }}
+	                                                              {{ if theme.accent_strength_selector != false }}
+	                                                              <div class="appearance-section">
+	                                                                  <p class="appearance-label" id="appearanceAccentStrengthLabel">{{ t.appearance_accent_strength | html.escape }}</p>
+	                                                                  <div class="appearance-options appearance-segments" role="radiogroup" aria-labelledby="appearanceAccentStrengthLabel" data-appearance="accent-strength">
+	                                                                  </div>
+	                                                              </div>
+	                                                              {{ end }}
+	                                                              {{ if theme.corners_selector != false }}
+	                                                              <div class="appearance-section">
+	                                                                  <p class="appearance-label" id="appearanceCornersLabel">{{ t.appearance_corners | html.escape }}</p>
+	                                                                  <div class="appearance-options appearance-segments" role="radiogroup" aria-labelledby="appearanceCornersLabel" data-appearance="corners">
 	                                                                  </div>
 	                                                              </div>
 	                                                              {{ end }}
@@ -68,6 +89,9 @@ public static partial class EmbeddedThemeProvider
 	                                                                  <div class="appearance-options appearance-segments" role="radiogroup" aria-labelledby="appearanceCodeStyleLabel" data-appearance="code-style">
 	                                                                  </div>
 	                                                              </div>
+	                                                              {{ end }}
+	                                                              {{ if theme.text_size_selector != false || theme.width_selector != false || theme.line_spacing_selector != false || theme.focus_mode_selector != false }}
+	                                                              <h3 class="appearance-heading">{{ t.appearance_reading | html.escape }}</h3>
 	                                                              {{ end }}
 	                                                              {{ if theme.text_size_selector != false }}
 	                                                              <div class="appearance-section">
@@ -92,6 +116,20 @@ public static partial class EmbeddedThemeProvider
 	                                                                  </div>
 	                                                              </div>
 	                                                              {{ end }}
+	                                                              {{ if theme.line_spacing_selector != false }}
+	                                                              <div class="appearance-section">
+	                                                                  <p class="appearance-label" id="appearanceLineSpacingLabel">{{ t.appearance_line_spacing | html.escape }}</p>
+	                                                                  <div class="appearance-options appearance-segments" role="radiogroup" aria-labelledby="appearanceLineSpacingLabel" data-appearance="line-spacing">
+	                                                                  </div>
+	                                                              </div>
+	                                                              {{ end }}
+	                                                              {{ if theme.focus_mode_selector != false }}
+	                                                              <div class="appearance-section">
+	                                                                  <p class="appearance-label" id="appearanceFocusModeLabel">{{ t.appearance_focus_mode | html.escape }}</p>
+	                                                                  <div class="appearance-options appearance-segments" role="radiogroup" aria-labelledby="appearanceFocusModeLabel" data-appearance="focus-mode">
+	                                                                  </div>
+	                                                              </div>
+	                                                              {{ end }}
 	                                                              {{ if theme.layout_selector }}
 	                                                              <div class="appearance-section">
 	                                                                  <p class="appearance-label" id="appearanceLayoutLabel">{{ t.appearance_layout | html.escape }}</p>
@@ -105,4 +143,9 @@ public static partial class EmbeddedThemeProvider
 	                                                      {{ end }}
 
 	                                      """;
+
+	// Focus mode hides the sidebar and every floating button, so the page itself offers the way out.
+	private const string _focusExit = """
+	                                  {{ if theme.focus_mode_selector != false }}<button class="focus-exit js-only" type="button"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="{{ icon_sprite | html.escape }}#close"/></svg><span>{{ t.appearance_focus_mode_exit | html.escape }}</span></button>{{ end }}
+	                                  """;
 }

@@ -59,7 +59,7 @@ A page without a `title` is called "Untitled" everywhere, and the build doesn't 
 - **Type:** `string`
 - **Default:** `""`
 
-A short summary of the page. It fills the `<meta name="description">` tag, and both layouts also write it to `og:description` and `twitter:description` when `site.url` is set. `llms.txt` shows it after the page's link. A page without a description uses `site.description` in those tags instead. The `landing` layout also shows the description under the site title and appends it to the `<title>` tag.
+A short summary of the page. It fills the `<meta name="description">` tag, and both layouts also write it to `og:description` and `twitter:description` when `site.url` is set. `llms.txt` shows it after the page's link. A page without a description uses `site.description` in those tags instead. The `landing` layout also shows the description under the site title and appends it to the `<title>` tag. With [`layout.pageNav: cards`](/configuration/site-config#layout.pagenav), the previous and next links show it under the page title.
 
 Search results don't use it. The snippet under a result comes from the page text.
 

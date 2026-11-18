@@ -112,14 +112,15 @@ The lists come from MokaDocs itself, so a new style, preset or layout variant sh
 
 Style, color preset, code theme, code style and most layout variants switch an attribute on the page's `<html>` element, so the page shows them as soon as you pick them. The others change the HTML the build writes, and the lab marks them **Needs a rebuild: shows after Save**:
 
-- `layout.navbar`: `tabs`, which adds a row of section links
-- `layout.footer`: `columns` and `none`
-- `layout.toc`: `inline` and `minimal`
+- `layout.navbar`: `tabs` and `split`, which add a row of section links
+- `layout.footer`: `columns`, `mega` and `none`
+- `layout.toc`: `inline`, `dropdown` and `minimal`
+- `layout.pageNav`: `cards`, which adds each page's description
 - `layout.home`: every variant but `default`
 - `layout.hero`: `split` and `minimal`
 - `sidebarToggle` and the banner
 
-Leaving one of these variants needs a rebuild too, since the page was built with its markup. On a site with [`layoutSelector`](/configuration/site-config#options.layoutselector) on, pages carry the markup of every docs-page variant, so there only `home`, `hero`, `sidebarToggle` and the banner need a rebuild. A preset shows through the options it sets: the ones that switch an attribute change at once and the rest are marked, each with "From the ... preset" under it. Picking a dark-first style (`moka` or `terminal`) also switches the page to dark mode, unless you picked a mode with the dark mode button, as on a first visit.
+Leaving one of these variants needs a rebuild too, since the page was built with its markup. On a site with [`layoutSelector`](/configuration/site-config#options.layoutselector) on, pages carry the markup of every docs-page variant, so there only `home`, `hero`, `sidebarToggle` and the banner need a rebuild. A preset shows through the options it sets: the ones that switch an attribute change at once and the rest are marked, each with "From the ... preset" under it. Picking a dark-first style (`moka`, `terminal` or `neon`) also switches the page to dark mode, unless you picked a mode with the dark mode button, as on a first visit.
 
 Unsaved choices survive the reload that follows a docs edit, in the same browser tab. **Reset** goes back to the values in the file.
 

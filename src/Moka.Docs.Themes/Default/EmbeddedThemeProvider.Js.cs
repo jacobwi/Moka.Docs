@@ -98,13 +98,14 @@ public static partial class EmbeddedThemeProvider
 	                                       }
 
 	                                       // --header-offset is a calc() of the bar, the tabs row and the floating gap, and 0px while
-	                                       // autohide has hidden the bar. An element sized by it resolves it to pixels.
+	                                       // autohide has hidden the bar. --toc-dropdown-offset is the "On this page" bar that sticks under
+	                                       // it (layout.toc: dropdown). An element sized by them resolves them to pixels.
 	                                       let offsetProbe = null;
 	                                       function headerOffset() {
 	                                           if (!offsetProbe) {
 	                                               offsetProbe = document.createElement('div');
 	                                               offsetProbe.setAttribute('aria-hidden', 'true');
-	                                               offsetProbe.style.cssText = 'position:absolute;top:0;left:0;width:0;height:var(--header-offset,0px);visibility:hidden;pointer-events:none';
+	                                               offsetProbe.style.cssText = 'position:absolute;top:0;left:0;width:0;height:calc(var(--header-offset,0px) + var(--toc-dropdown-offset,0px));visibility:hidden;pointer-events:none';
 	                                               document.body.appendChild(offsetProbe);
 	                                           }
 	                                           return offsetProbe.offsetHeight;
@@ -145,7 +146,11 @@ public static partial class EmbeddedThemeProvider
 	                                           listener();
 	                                       }
 
-	                                       new MutationObserver(appearanceChanged).observe(html, { attributes: true, attributeFilter: ['data-theme', 'data-style', 'data-color-theme', 'data-code-theme', 'data-code-style', 'data-text-size', 'data-reader-width'] });
+	                                       // The reader's own settings: each is an attribute on <html> while it isn't the default, and its pick is stored under
+	                                       // the same name (data-text-size, mokadocs-text-size).
+	                                       const readerAttributes = ['data-text-size', 'data-reader-width', 'data-dark-tone', 'data-corners', 'data-line-spacing', 'data-accent-strength', 'data-focus-mode'];
+
+	                                       new MutationObserver(appearanceChanged).observe(html, { attributes: true, attributeFilter: ['data-theme', 'data-style', 'data-color-theme', 'data-code-theme', 'data-code-style'].concat(readerAttributes) });
 
 	                                       // Dark mode toggle
 	                                       const storedTheme = store.get('mokadocs-theme');
@@ -394,6 +399,13 @@ public static partial class EmbeddedThemeProvider
 	                                           return element('button', { class: className, type: 'button', role: 'radio', 'aria-checked': 'false', tabindex: '-1', 'data-value': value }, children);
 	                                       }
 
+	                                       // A section of short choices, each a value and its label. The labels are looked up when the panel first opens.
+	                                       function segments(choices) {
+	                                           return function(group) {
+	                                               choices().forEach(function(choice) { group.appendChild(optionRadio('appearance-option', choice[0], [choice[1]])); });
+	                                           };
+	                                       }
+
 	                                       const optionBuilders = {
 	                                           'style': function(group) {
 	                                               appearanceOptions['style'].forEach(function(o) {
@@ -424,7 +436,12 @@ public static partial class EmbeddedThemeProvider
 	                                               appearanceOptions['code-style'].forEach(function(o) {
 	                                                   group.appendChild(optionRadio('appearance-option', o.name, [o.label]));
 	                                               });
-	                                           }
+	                                           },
+	                                           'dark-tone': segments(function() { return [['dim', i18n('appearance.tone.dim')], ['dark', i18n('appearance.dark')], ['black', i18n('appearance.tone.black')]]; }),
+	                                           'accent-strength': segments(function() { return [['subtle', i18n('appearance.accent.subtle')], ['default', i18n('appearance.default')], ['vivid', i18n('appearance.accent.vivid')]]; }),
+	                                           'corners': segments(function() { return [['sharp', i18n('appearance.corners.sharp')], ['default', i18n('appearance.default')], ['round', i18n('appearance.corners.round')]]; }),
+	                                           'line-spacing': segments(function() { return [['tight', i18n('appearance.spacing.tight')], ['default', i18n('appearance.default')], ['relaxed', i18n('appearance.spacing.relaxed')]]; }),
+	                                           'focus-mode': segments(function() { return [['off', i18n('appearance.off')], ['on', i18n('appearance.on')]]; })
 	                                       };
 
 	                                       function buildAppearanceOptions(panel) {
@@ -505,7 +522,8 @@ public static partial class EmbeddedThemeProvider
 	                                       }
 
 	                                       // Every key the panel stores. Reset removes them all, the sections the site turned off included.
-	                                       const appearanceKeys = ['mokadocs-theme', 'mokadocs-style', 'mokadocs-color-theme', 'mokadocs-code-theme', 'mokadocs-code-style', 'mokadocs-text-size', 'mokadocs-reader-width']
+	                                       const appearanceKeys = ['mokadocs-theme', 'mokadocs-style', 'mokadocs-color-theme', 'mokadocs-code-theme', 'mokadocs-code-style']
+	                                           .concat(readerAttributes.map(function(attribute) { return 'mokadocs-' + attribute.slice('data-'.length); }))
 	                                           .concat(layoutParts.map(layoutStoreKey));
 
 	                                       // The Appearance panel: a non-modal dialog under its header button, with one radiogroup per setting the site
@@ -523,7 +541,7 @@ public static partial class EmbeddedThemeProvider
 	                                               codeStyle: panel.getAttribute('data-default-code-style') || 'plain'
 	                                           };
 
-	                                           // The default text size and reading width are no attribute at all, so the page is unchanged.
+	                                           // A reader setting at its default is no attribute at all, so the page is unchanged.
 	                                           function attributeSetting(attribute, key, fallback, removeFallback) {
 	                                               return {
 	                                                   current: function() { return html.getAttribute(attribute) || fallback; },
@@ -564,13 +582,30 @@ public static partial class EmbeddedThemeProvider
 	                                               'code-theme': attributeSetting('data-code-theme', 'mokadocs-code-theme', ''),
 	                                               'code-style': attributeSetting('data-code-style', 'mokadocs-code-style', 'plain'),
 	                                               'text-size': attributeSetting('data-text-size', 'mokadocs-text-size', '100', true),
-	                                               'reader-width': attributeSetting('data-reader-width', 'mokadocs-reader-width', 'default', true)
+	                                               'reader-width': attributeSetting('data-reader-width', 'mokadocs-reader-width', 'default', true),
+	                                               'dark-tone': attributeSetting('data-dark-tone', 'mokadocs-dark-tone', 'dark', true),
+	                                               'accent-strength': attributeSetting('data-accent-strength', 'mokadocs-accent-strength', 'default', true),
+	                                               'corners': attributeSetting('data-corners', 'mokadocs-corners', 'default', true),
+	                                               'line-spacing': attributeSetting('data-line-spacing', 'mokadocs-line-spacing', 'default', true),
+	                                               'focus-mode': attributeSetting('data-focus-mode', 'mokadocs-focus-mode', 'off', true)
 	                                           };
 	                                           panel.querySelectorAll('.appearance-options').forEach(function(group) {
 	                                               const setting = settings[group.getAttribute('data-appearance')];
 	                                               if (setting) radioGroup(group, setting.current, setting.choose);
 	                                           });
 	                                           const layout = initLayoutSection(panel);
+
+	                                           // Focus mode hides the sidebar and the floating buttons, so the page has a button of its own that turns it off.
+	                                           // It disappears with the mode, so focus moves on to the article.
+	                                           const focusExit = document.querySelector('.focus-exit');
+	                                           if (focusExit) {
+	                                               focusExit.addEventListener('click', function() {
+	                                                   settings['focus-mode'].choose('off');
+	                                                   appearanceChanged();
+	                                                   const main = document.getElementById('mokadocs-main');
+	                                                   if (main) main.focus({ preventScroll: true });
+	                                               });
+	                                           }
 
 	                                           const reset = panel.querySelector('.appearance-reset');
 	                                           if (reset) {
@@ -583,8 +618,7 @@ public static partial class EmbeddedThemeProvider
 	                                                   else html.removeAttribute('data-color-theme');
 	                                                   if (site.codeTheme) html.setAttribute('data-code-theme', site.codeTheme);
 	                                                   html.setAttribute('data-code-style', site.codeStyle);
-	                                                   html.removeAttribute('data-text-size');
-	                                                   html.removeAttribute('data-reader-width');
+	                                                   readerAttributes.forEach(function(attribute) { html.removeAttribute(attribute); });
 	                                                   if (layout) layout.reset();
 	                                                   appearanceChanged();
 	                                               });
@@ -631,13 +665,13 @@ public static partial class EmbeddedThemeProvider
 	                                       }
 
 	                                       // A list of links: opening it with the mouse leaves focus on the button, the arrow keys move
-	                                       // through the versions.
+	                                       // through the versions. The header has one, and the footer another with layout.footer: mega.
 	                                       function initVersionMenu() {
-	                                           const container = document.querySelector('.version-selector');
-	                                           const trigger = container && container.querySelector('.version-trigger');
-	                                           const panel = container && container.querySelector('.version-dropdown');
-	                                           if (!trigger || !panel) return null;
-	                                           return popup(container, trigger, panel, '.version-option', false);
+	                                           document.querySelectorAll('.version-selector').forEach(function(container) {
+	                                               const trigger = container.querySelector('.version-trigger');
+	                                               const panel = container.querySelector('.version-dropdown');
+	                                               if (trigger && panel) popup(container, trigger, panel, '.version-option', false);
+	                                           });
 	                                       }
 
 	                                       // Mobile nav toggle and the "On this page" drawer. Only one of them is open at a time.
@@ -645,6 +679,7 @@ public static partial class EmbeddedThemeProvider
 	                                       const mobileToggle = document.querySelector('.mobile-nav-toggle');
 	                                       const tocSidebar = document.getElementById('tocSidebar');
 	                                       const tocToggle = document.getElementById('tocToggle');
+	                                       const tocDropdown = document.getElementById('tocDropdown');
 	                                       let navBackdrop = null;
 	                                       let tocBackdrop = null;
 
@@ -686,9 +721,20 @@ public static partial class EmbeddedThemeProvider
 	                                           if (open) {
 	                                               const target = tocSidebar.querySelector('.toc-item a.active') || focusableIn(tocSidebar)[0];
 	                                               if (target) target.focus({ preventScroll: true });
+	                                               // The scroll pass skipped the hidden list; the progress track (layout.toc: progress) catches up.
+	                                               queueFrame();
 	                                           } else if (returnFocus) {
 	                                               tocToggle.focus();
 	                                           }
+	                                           return true;
+	                                       }
+
+	                                       // The "On this page" dropdown (layout.toc: dropdown) is a <details>, which the browser opens and closes. A
+	                                       // link in it, Escape and a click outside close it too.
+	                                       function closeTocDropdown(returnFocus) {
+	                                           if (!tocDropdown || !tocDropdown.open) return false;
+	                                           tocDropdown.open = false;
+	                                           if (returnFocus) tocDropdown.querySelector('summary').focus({ preventScroll: true });
 	                                           return true;
 	                                       }
 
@@ -709,12 +755,17 @@ public static partial class EmbeddedThemeProvider
 	                                           const button = document.getElementById('sidebarToggle');
 	                                           if (!button) return;
 	                                           button.addEventListener('click', function() {
-	                                               const hidden = !html.classList.contains('sidebar-hidden');
-	                                               html.classList.toggle('sidebar-hidden', hidden);
-	                                               button.setAttribute('aria-expanded', hidden ? 'false' : 'true');
-	                                               if (hidden) store.set('mokadocs-sidebar-hidden', 'true');
-	                                               else store.remove('mokadocs-sidebar-hidden');
+	                                               setSidebarHidden(!html.classList.contains('sidebar-hidden'));
 	                                           });
+	                                       }
+
+	                                       function setSidebarHidden(hidden) {
+	                                           const button = document.getElementById('sidebarToggle');
+	                                           if (!button) return;
+	                                           html.classList.toggle('sidebar-hidden', hidden);
+	                                           button.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+	                                           if (hidden) store.set('mokadocs-sidebar-hidden', 'true');
+	                                           else store.remove('mokadocs-sidebar-hidden');
 	                                       }
 
 	                                       function initTocDrawer() {
@@ -725,6 +776,13 @@ public static partial class EmbeddedThemeProvider
 	                                           });
 	                                           tocSidebar.addEventListener('click', function(e) {
 	                                               if (closest(e.target, '.toc-item a')) setTocOpen(false);
+	                                           });
+	                                       }
+
+	                                       function initTocDropdown() {
+	                                           if (!tocDropdown) return;
+	                                           tocDropdown.addEventListener('click', function(e) {
+	                                               if (closest(e.target, '.toc-item a')) closeTocDropdown(false);
 	                                           });
 	                                       }
 
@@ -1056,6 +1114,7 @@ public static partial class EmbeddedThemeProvider
 	                                               if (!caret) return;
 	                                               const collapsed = caret.parentElement.classList.toggle('collapsed');
 	                                               caret.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+	                                               queueFrame();
 	                                           });
 	                                       }
 
@@ -1073,25 +1132,83 @@ public static partial class EmbeddedThemeProvider
 	                                       // viewports work). At the bottom of the page, where the last headings can never get there, it
 	                                       // is the last heading on screen.
 	                                       function initTocSpy() {
-	                                           // A page whose readers can switch the panel's layout has the list twice, beside the page and inline; one entry
-	                                           // per heading marks the link in both.
+	                                           // A page whose readers can switch the panel's layout has the list more than once, beside the page and in it; one
+	                                           // entry per heading marks the link in each.
+	                                           const track = tocSidebar && tocSidebar.querySelector('.toc-list');
+	                                           // The fill is drawn by the first entry's link, so the length set on it restyles that link alone.
+	                                           const fillHost = track && track.querySelector(':scope > .toc-item > a');
 	                                           const headings = [];
 	                                           document.querySelectorAll('.toc-item > a[href^="#"]').forEach(function(link) {
 	                                               const el = tocTarget(link);
 	                                               if (!el) return;
-	                                               const known = headings.filter(function(heading) { return heading.el === el; })[0];
-	                                               if (known) known.links.push(link);
-	                                               else headings.push({ el: el, links: [link] });
+	                                               let heading = headings.filter(function(known) { return known.el === el; })[0];
+	                                               if (!heading) {
+	                                                   heading = { el: el, links: [], trackLink: null };
+	                                                   headings.push(heading);
+	                                               }
+	                                               heading.links.push(link);
+	                                               if (track && track.contains(link)) heading.trackLink = link;
 	                                           });
 	                                           const counter = document.getElementById('tocCounter');
 	                                           const progress = document.getElementById('tocProgress');
+	                                           const dropdownCurrent = tocDropdown && tocDropdown.querySelector('.toc-dropdown-current');
+	                                           const reducedMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 	                                           if (headings.length === 0 && !progress) return;
 	                                           let current = null;
+	                                           let fill = null;
+
+	                                           // The progress track (layout.toc: progress) is checked on every pass, so readers and the theme lab can switch it on
+	                                           // an open page. Without motion the stylesheet hides the fill, so it isn't worked out.
+	                                           function showsTrack() {
+	                                               return !!fillHost && html.getAttribute('data-toc') === 'progress' && !(reducedMotion && reducedMotion.matches);
+	                                           }
+
+	                                           function middle(link, top) {
+	                                               const rect = link.getBoundingClientRect();
+	                                               return rect.height === 0 ? null : rect.top + rect.height / 2 - top;
+	                                           }
+
+	                                           // How long the fill is, in pixels from the top of the list: to an entry's middle when its heading reaches the
+	                                           // line, in proportion to the scrolling between two such points, and the whole list at the end of the page. It
+	                                           // reads the list and the two entries around the position, past any that a collapsed section hides; null while
+	                                           // the list is hidden.
+	                                           function trackFill(state, line, shown) {
+	                                               const list = track.getBoundingClientRect();
+	                                               if (list.height === 0) return null;
+	                                               const top = fillHost.getBoundingClientRect().top;
+	                                               const length = list.bottom - top;
+	                                               const end = state.height - state.viewport;
+	                                               if (end <= 1) return 0;
+	                                               const points = [];
+	                                               let reached = 0;
+	                                               shown.forEach(function(entry) {
+	                                                   if (!entry.heading.trackLink) return;
+	                                                   const previous = points.length ? points[points.length - 1].at : 0;
+	                                                   const at = Math.min(end, Math.max(previous, state.y + entry.top - line));
+	                                                   points.push({ link: entry.heading.trackLink, at: at });
+	                                                   if (at <= state.y) reached = points.length;
+	                                               });
+	                                               let from = { at: 0, pos: 0 };
+	                                               for (let i = reached - 1; i >= 0; i--) {
+	                                                   const pos = middle(points[i].link, top);
+	                                                   if (pos !== null) { from = { at: points[i].at, pos: pos }; break; }
+	                                               }
+	                                               let to = { at: end, pos: length };
+	                                               for (let i = reached; i < points.length; i++) {
+	                                                   const pos = middle(points[i].link, top);
+	                                                   if (pos !== null) { to = { at: points[i].at, pos: pos }; break; }
+	                                               }
+	                                               const span = to.at - from.at;
+	                                               const pos = span > 0 ? from.pos + (to.pos - from.pos) * (state.y - from.at) / span : to.pos;
+	                                               return Math.round(Math.min(length, Math.max(0, pos)) * 2) / 2;
+	                                           }
+
 	                                           headerOffset();
 	                                           onFrame(function(state) {
 	                                               const line = headerOffset() + 32;
 	                                               const scrollable = state.height - state.viewport > 1;
 	                                               const atBottom = scrollable && state.y > 0 && state.y + state.viewport >= state.height - 2;
+	                                               const shown = [];
 	                                               let active = null;
 	                                               let lastOnScreen = null;
 	                                               headings.forEach(function(heading) {
@@ -1099,11 +1216,17 @@ public static partial class EmbeddedThemeProvider
 	                                                   if (rect.width === 0 && rect.height === 0) return;
 	                                                   if (rect.top <= line) active = heading;
 	                                                   if (rect.top < state.viewport) lastOnScreen = heading;
+	                                                   shown.push({ heading: heading, top: rect.top });
 	                                               });
 	                                               if (atBottom && lastOnScreen) active = lastOnScreen;
 	                                               const ratio = scrollable ? Math.min(1, Math.max(0, state.y / (state.height - state.viewport))) : 0;
+	                                               const filled = showsTrack() ? trackFill(state, line, shown) : null;
 	                                               return function() {
 	                                                   if (progress) progress.style.transform = 'scaleX(' + ratio + ')';
+	                                                   if (filled !== null && filled !== fill) {
+	                                                       fillHost.style.setProperty('--toc-fill', String(filled));
+	                                                       fill = filled;
+	                                                   }
 	                                                   if (active === current) return;
 	                                                   if (current) {
 	                                                       current.links.forEach(function(link) {
@@ -1118,6 +1241,7 @@ public static partial class EmbeddedThemeProvider
 	                                                       });
 	                                                   }
 	                                                   if (counter) counter.textContent = active ? i18nCount('toc.position', headings.length, { index: headings.indexOf(active) + 1 }) : '';
+	                                                   if (dropdownCurrent) dropdownCurrent.textContent = active ? active.links[0].textContent.trim() : '';
 	                                                   current = active;
 	                                               };
 	                                           });
@@ -1479,6 +1603,87 @@ public static partial class EmbeddedThemeProvider
 	                                           });
 	                                       }
 
+	                                       // The icon rail (layout.sidebar: rail): a button for each top-level section and a link for each top-level page, in
+	                                       // a column at the sidebar's edge, and the sidebar lists the chosen section alone (layouts.css). It is built from the
+	                                       // sidebar's own entries the first time the attribute says rail, so pages carry no markup for it and a switch on an
+	                                       // open page (the Layout section, the theme lab) shows it at once. The arrow keys move along it, as in a toolbar.
+	                                       let railBuilt = false;
+	                                       function initRail() {
+	                                           if (railBuilt || !sidebar || html.getAttribute('data-sidebar') !== 'rail') return;
+	                                           const nav = childrenWithClass(sidebar, 'sidebar-nav')[0];
+	                                           const sections = nav ? childrenWithClass(nav, 'nav-section') : [];
+	                                           if (!sections.some(function(section) { return childrenWithClass(section, 'nav-header').length > 0; })) return;
+	                                           railBuilt = true;
+	                                           const items = element('div', { class: 'sidebar-rail-items' });
+	                                           const entries = [];
+	                                           sections.forEach(function(section, i) {
+	                                               const header = childrenWithClass(section, 'nav-header')[0];
+	                                               const link = childrenWithClass(header || section, 'nav-link')[0];
+	                                               if (!link) return;
+	                                               const label = link.textContent.trim();
+	                                               const iconBox = link.querySelector('.nav-icon');
+	                                               const icon = iconBox && iconBox.querySelector('svg');
+	                                               const mark = icon ? icon.cloneNode(true) : element('span', { class: 'sidebar-rail-letter' }, [(Array.from(label)[0] || '').toUpperCase()]);
+	                                               mark.setAttribute('aria-hidden', 'true');
+	                                               if (!header) {
+	                                                   const page = element('a', { class: 'sidebar-rail-button', href: link.getAttribute('href'), 'aria-label': label, tabindex: '-1' }, [mark]);
+	                                                   if (link.classList.contains('current')) page.setAttribute('aria-current', 'page');
+	                                                   items.appendChild(page);
+	                                                   return;
+	                                               }
+	                                               if (!section.id) section.id = 'mokadocs-rail-section-' + i;
+	                                               const button = element('button', { class: 'sidebar-rail-button', type: 'button', 'aria-label': label, 'aria-controls': section.id, 'aria-pressed': 'false', tabindex: '-1' }, [mark]);
+	                                               entries.push({ button: button, section: section });
+	                                               items.appendChild(button);
+	                                           });
+	                                           const rail = element('div', { class: 'sidebar-rail', role: 'toolbar', 'aria-label': i18n('nav.sections'), 'aria-orientation': 'vertical' }, [items]);
+
+	                                           function controls() {
+	                                               return Array.prototype.slice.call(items.children);
+	                                           }
+
+	                                           function makeTabStop(control) {
+	                                               controls().forEach(function(other) { other.setAttribute('tabindex', other === control ? '0' : '-1'); });
+	                                           }
+
+	                                           function choose(entry) {
+	                                               entries.forEach(function(other) {
+	                                                   other.section.classList.toggle('rail-open', other === entry);
+	                                                   other.button.setAttribute('aria-pressed', other === entry ? 'true' : 'false');
+	                                               });
+	                                               makeTabStop(entry.button);
+	                                           }
+
+	                                           choose(entries.filter(function(entry) { return entry.section.classList.contains('active'); })[0] || entries[0]);
+	                                           rail.addEventListener('click', function(e) {
+	                                               const button = closest(e.target, 'button.sidebar-rail-button');
+	                                               const entry = entries.filter(function(other) { return other.button === button; })[0];
+	                                               if (!entry) return;
+	                                               choose(entry);
+	                                               sidebar.scrollTop = 0;
+	                                               if (html.classList.contains('sidebar-hidden')) setSidebarHidden(false);
+	                                           });
+	                                           rail.addEventListener('keydown', function(e) {
+	                                               const list = controls();
+	                                               const i = list.indexOf(document.activeElement);
+	                                               if (i === -1) return;
+	                                               let next = -1;
+	                                               if (e.key === 'ArrowDown') next = (i + 1) % list.length;
+	                                               else if (e.key === 'ArrowUp') next = (i - 1 + list.length) % list.length;
+	                                               else if (e.key === 'Home') next = 0;
+	                                               else if (e.key === 'End') next = list.length - 1;
+	                                               if (next === -1) return;
+	                                               e.preventDefault();
+	                                               makeTabStop(list[next]);
+	                                               list[next].focus();
+	                                           });
+	                                           sidebar.insertBefore(rail, nav);
+	                                       }
+
+	                                       function childrenWithClass(el, name) {
+	                                           return Array.prototype.filter.call(el.children, function(child) { return child.classList.contains(name); });
+	                                       }
+
 	                                       // Auto-hiding navbar (layout.navbar: autohide). It stays while a menu in it is open, while it
 	                                       // has focus and while the mobile sidebar it toggles is open. The attribute is read on every pass:
 	                                       // readers (the Appearance panel's Layout section) and the theme lab switch it on an open page.
@@ -1517,11 +1722,13 @@ public static partial class EmbeddedThemeProvider
 	                                       }
 
 	                                       // A layout variant switched on an open page (the Layout section, the theme lab) can move the header and
-	                                       // "On this page": the scroll work runs again, and a tabs row that just appeared starts at the current tab.
+	                                       // "On this page": the scroll work runs again, a tabs row that just appeared starts at the current tab, and the
+	                                       // icon rail is built the first time it's needed.
 	                                       function followLayoutChanges() {
 	                                           new MutationObserver(function() {
 	                                               queueFrame();
 	                                               initHeaderTabs();
+	                                               initRail();
 	                                           }).observe(html, { attributes: true, attributeFilter: layoutParts.map(layoutAttribute) });
 	                                       }
 
@@ -1723,6 +1930,8 @@ public static partial class EmbeddedThemeProvider
 	                                       initVersionMenu();
 	                                       initMobileNav();
 	                                       initTocDrawer();
+	                                       initRail();
+	                                       initTocDropdown();
 	                                       initSidebar();
 	                                       initSidebarToggle();
 	                                       initHeadingAnchors();
@@ -1746,12 +1955,13 @@ public static partial class EmbeddedThemeProvider
 	                                           popups.forEach(function(p) { if (p.isOpen() && !p.container.contains(target)) p.close(false); });
 	                                           if (sidebar && !sidebar.contains(target) && !(mobileToggle && mobileToggle.contains(target))) setNavOpen(false);
 	                                           if (tocSidebar && !tocSidebar.contains(target) && !(tocToggle && tocToggle.contains(target))) setTocOpen(false);
+	                                           if (tocDropdown && !tocDropdown.contains(target)) closeTocDropdown(false);
 	                                       }, true);
 
 	                                       // Escape closes the topmost thing that is open and returns focus to what opened it.
 	                                       document.addEventListener('keydown', function(e) {
 	                                           if (e.key !== 'Escape') return;
-	                                           if (imageZoom.close(true) || (search && search.close(true)) || closeOpenPopup() || setTocOpen(false, true) || setNavOpen(false, true)) {
+	                                           if (imageZoom.close(true) || (search && search.close(true)) || closeOpenPopup() || closeTocDropdown(true) || setTocOpen(false, true) || setNavOpen(false, true)) {
 	                                               e.preventDefault();
 	                                           }
 	                                       });

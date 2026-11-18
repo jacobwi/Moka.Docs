@@ -51,7 +51,7 @@ public sealed class ConfigReloadTests : IDisposable
 	{
 		await using BuildSession session = await StartAsync();
 		await BuildAsync(session);
-		File.ReadAllText(Index).Should().Contain("Alphanav").And.Contain("--color-primary:#111111");
+		File.ReadAllText(Index).Should().Contain("Alphanav").And.Contain("--color-primary-base:#111111");
 		ThemeResolver firstResolver = session.Services.GetRequiredService<ThemeResolver>();
 
 		WriteYaml("Betanav", "#ab12cd");
@@ -60,7 +60,7 @@ public sealed class ConfigReloadTests : IDisposable
 
 		reload.Outcome.Should().Be(ConfigReloadOutcome.Reloaded);
 		reload.Notes.Should().BeEmpty();
-		File.ReadAllText(Index).Should().Contain("Betanav").And.Contain("--color-primary:#ab12cd")
+		File.ReadAllText(Index).Should().Contain("Betanav").And.Contain("--color-primary-base:#ab12cd")
 			.And.NotContain("Alphanav");
 		session.Services.GetRequiredService<ThemeResolver>().Should().NotBeSameAs(firstResolver,
 			"the theme and template caches belong to the container and start over with it");
@@ -191,7 +191,7 @@ public sealed class ConfigReloadTests : IDisposable
 		{
 			await EventuallyAsync(() => Read(Index).Contains("Alphanav"), null);
 
-			await EventuallyAsync(() => Read(Index).Contains("--color-primary:#ab12cd") && Read(Index).Contains("Betanav"),
+			await EventuallyAsync(() => Read(Index).Contains("--color-primary-base:#ab12cd") && Read(Index).Contains("Betanav"),
 				() => WriteYaml("Betanav", "#ab12cd"));
 
 			await BreakTheYamlAndEditAPageAsync(() => Read(Index));
@@ -222,7 +222,7 @@ public sealed class ConfigReloadTests : IDisposable
 			Get(http, $"http://127.0.0.1:{port}/_theme/js/main.js").Should()
 				.Contain("//").And.Contain("\n    ", "and its JS");
 
-			await EventuallyAsync(() => Home().Contains("Betanav") && Home().Contains("--color-primary:#ab12cd"),
+			await EventuallyAsync(() => Home().Contains("Betanav") && Home().Contains("--color-primary-base:#ab12cd"),
 				() => WriteYaml("Betanav", "#ab12cd", basePath: "/sub"));
 			Home().Should().NotContain("/sub/", "serve keeps the base path it started with");
 

@@ -22,9 +22,12 @@ public sealed partial class ThemeLabRebuildTests
 	private static readonly Lazy<Task<Dictionary<string, string>>> _defaultSelectorPages =
 		new(() => BuildPagesAsync("width", "default", layoutSelector: true));
 
-	// Variants the theme script names but reads on every pass, so they switch on an open page:
-	// initAutohide checks data-navbar each frame (EmbeddedThemeRuntimeTests.Autohide_FollowsTheAttributeOnAnOpenPage).
-	private static readonly HashSet<string> _readOnEveryPass = new(StringComparer.Ordinal) { "data-navbar=autohide" };
+	// Variants the theme script names but reads on every pass or whenever the attribute changes, so they
+	// switch on an open page: initAutohide checks data-navbar each frame (EmbeddedThemeRuntimeTests.Autohide_FollowsTheAttributeOnAnOpenPage),
+	// the "On this page" spy checks data-toc for the progress track
+	// (EmbeddedThemeRuntimeTests.TocProgress_FillsToTheCurrentSectionsEntryAndFollowsTheAttributeOnAnOpenPage),
+	// and initRail builds the icon rail the first time data-sidebar says rail (EmbeddedThemeRuntimeTests.Rail_IsBuiltWhenTheAttributeTurnsRail).
+	private static readonly HashSet<string> _readOnEveryPass = new(StringComparer.Ordinal) { "data-navbar=autohide", "data-toc=progress", "data-sidebar=rail" };
 
 	private static Dictionary<string, MockFileData> Files() => new()
 	{
@@ -41,7 +44,7 @@ public sealed partial class ThemeLabRebuildTests
 		},
 		{
 			MockSite.Root + "/docs/guide/install.md",
-			new MockFileData("---\ntitle: Install\norder: 2\n---\n# Install\n\n## Steps\n\nText.\n\n## Check\n\nText.\n")
+			new MockFileData("---\ntitle: Install\ndescription: Add the package\norder: 2\n---\n# Install\n\n## Steps\n\nText.\n\n## Check\n\nText.\n")
 		},
 		{
 			MockSite.Root + "/docs/reference/options.md",

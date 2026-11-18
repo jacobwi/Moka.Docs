@@ -90,9 +90,9 @@ public sealed class ThemeAccessibilityRenderingTests
 			.Contain("aria-label=\"Appearance\"").And.Contain("aria-haspopup=\"dialog\"").And.Contain("aria-expanded=\"false\"")
 			.And.Contain("aria-controls=\"appearancePanel\"");
 		page.Should().Contain("id=\"appearancePanel\" role=\"dialog\" aria-labelledby=\"appearanceTitle\"");
-		Regex.Matches(page, "role=\"radiogroup\" aria-labelledby=\"\\w+\" data-appearance=").Count.Should().Be(7);
+		Regex.Matches(page, "role=\"radiogroup\" aria-labelledby=\"\\w+\" data-appearance=").Count.Should().Be(12);
 		Regex.Matches(page, "role=\"radio\" aria-checked=\"false\" tabindex=\"-1\"").Count.Should()
-			.Be(3 + 4 + 5, "main.js builds the style, color, code theme and code style options when the panel opens");
+			.Be(3 + 4 + 5, "main.js builds the style, color, code theme, code style, dark tone, accent, corners, line spacing and focus options when the panel opens");
 		page.Should().NotContain("menuitemradio").And.NotContain("role=\"menu\"");
 		int panel = page.IndexOf("<div class=\"appearance js-only\">", StringComparison.Ordinal);
 		string markup = page[panel..page.IndexOf("class=\"appearance-reset\"", panel, StringComparison.Ordinal)];

@@ -404,7 +404,7 @@ The name is matched without regard to case. An unknown name applies nothing, and
 
 - **Type:** `string`
 - **Default:** `"default"`
-- **Values:** `default`, `moka`, `minimal`, `classic`, `soft`, `terminal`, `paper`, `contrast`, `glass`, `brutal`
+- **Values:** `default`, `moka`, `minimal`, `classic`, `soft`, `terminal`, `paper`, `contrast`, `glass`, `brutal`, `blueprint`, `newspaper`, `retro`, `neon`, `tonal`, `editor`
 
 The whole look of the default theme: surfaces, borders, corner radii, shadows, fonts and spacing. It applies on top of the color preset, the code theme and the code frame, in light and dark mode. When [`styleSelector`](#options.styleselector) is on, readers can pick another style in the Appearance panel.
 
@@ -420,6 +420,12 @@ The whole look of the default theme: surfaces, borders, corner radii, shadows, f
 | `contrast` | Accessibility first: 7:1 body text and links, 4.5:1 for the rest, underlined links, thick focus rings, no state shown by color alone, no transparency |
 | `glass` | Translucent, blurred header, sidebar, cards and menus over a soft gradient; solid where blur is missing or the reader asks for less transparency |
 | `brutal` | Thick solid lines, flat fills, square corners, heavy headings and hard offset shadows |
+| `blueprint` | A technical drawing: ink-blue lines on pale blue paper over a fine grid (deep blue in dark mode), dashed rules, monospace headings, deep blue code blocks |
+| `newspaper` | Editorial print: newsprint colors, a serif body and headline face, a double rule under the header, column rules, a drop cap, italic callouts |
+| `retro` | A classic desktop: the page in a white window on a gray desktop, beveled frames, a navy title bar, buttons that press in, Tahoma |
+| `neon` | Flat synthwave: a deep purple page, thin colored lines, hot pink and cyan accents, no glows or blur. Starts in dark mode like `moka` |
+| `tonal` | Tonal surfaces instead of borders and shadows, tinted pills for the current page, the search field and tips, large rounded corners |
+| `editor` | A code editor: gray side panels with full-width selected rows, square corners, the breadcrumbs as a file tab, the footer as a status bar |
 
 The name is matched without regard to case. An unknown name renders as `default`, and the build reports a warning (`mokadocs validate` lists it). See [Styles](/themes/customization#styles).
 
@@ -434,7 +440,7 @@ theme:
 - **Type:** `bool`
 - **Default:** `true`
 
-Shows the Style section of the Appearance panel, the header button where readers change the site's look (see [Appearance Panel](/themes/customization#appearance-panel)), for picking one of the 10 styles. The choice is saved in `localStorage` and applied before the page is drawn. With `false`, every page uses [`style`](#options.style), including for readers who picked another style earlier.
+Shows the Style section of the Appearance panel, the header button where readers change the site's look (see [Appearance Panel](/themes/customization#appearance-panel)), for picking one of the [styles](#options.style). The choice is saved in `localStorage` and applied before the page is drawn. With `false`, every page uses [`style`](#options.style), including for readers who picked another style earlier.
 
 ```yaml
 theme:
@@ -468,6 +474,71 @@ theme:
     widthSelector: false
 ```
 
+#### `options.lineSpacingSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows the Line spacing section of the Appearance panel: Tight, Default or Relaxed. It changes the line height and the space between the article's paragraphs and list items, starting from the style's own spacing; headings, tables, code blocks and the page around the article keep theirs. The choice is saved in `localStorage` as `mokadocs-line-spacing` and applied before the page is drawn, and only while the section is shown. `MOKADOCS_SHOW_LINE_SPACING_SELECTOR` sets it for one build.
+
+```yaml
+theme:
+  options:
+    lineSpacingSelector: false
+```
+
+#### `options.focusModeSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows the Focus mode section of the Appearance panel. Focus mode hides the sidebar, "On this page", the breadcrumbs and the floating buttons, and centers the article at the reader's reading width; the header stays. While it's on, an "Exit focus mode" button in the bottom corner of the page turns it off. Printed pages look the same either way. The choice is saved as `mokadocs-focus-mode` and applied before the page is drawn, and only while the section is shown. `MOKADOCS_SHOW_FOCUS_MODE_SELECTOR` sets it for one build.
+
+```yaml
+theme:
+  options:
+    focusModeSelector: false
+```
+
+#### `options.darkToneSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows the Dark tone section of the Appearance panel while the page is in dark mode: Dim (the style's dark surfaces mixed toward a soft gray), Dark (the style as it is) or Black (a pure black page for OLED screens). It works with every style and keeps each style's tint; text keeps a 4.5:1 contrast ratio on every tone. The choice is saved as `mokadocs-dark-tone` and applied before the page is drawn, and only while the section is shown. `MOKADOCS_SHOW_DARK_TONE_SELECTOR` sets it for one build.
+
+```yaml
+theme:
+  options:
+    darkToneSelector: false
+```
+
+#### `options.cornersSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows the Corners section of the Appearance panel: Sharp (square corners), Default (the style's own) or Round (about 14px on cards and 10px on controls). The reader's choice wins over the style, so `terminal` and `brutal` round off too. The choice is saved as `mokadocs-corners` and applied before the page is drawn, and only while the section is shown. `MOKADOCS_SHOW_CORNERS_SELECTOR` sets it for one build.
+
+```yaml
+theme:
+  options:
+    cornersSelector: false
+```
+
+#### `options.accentStrengthSelector`
+
+- **Type:** `bool`
+- **Default:** `true`
+
+Shows the Accent strength section of the Appearance panel: Subtle (the [primary color](#options.primarycolor) moved toward the text color), Default or Vivid (more saturated links and buttons). It applies to every color preset and to `primaryColor`, and accent text keeps a 4.5:1 contrast ratio with each. The choice is saved as `mokadocs-accent-strength` and applied before the page is drawn, and only while the section is shown. `MOKADOCS_SHOW_ACCENT_STRENGTH_SELECTOR` sets it for one build.
+
+```yaml
+theme:
+  options:
+    accentStrengthSelector: false
+```
+
 #### `options.layoutSelector`
 
 - **Type:** `bool`
@@ -481,9 +552,9 @@ theme:
     layoutSelector: true
 ```
 
-Pages then carry the markup of every variant (the tabs row, the link columns footer, the inline "On this page" box and the progress bar, Top link and counter of the panel) and the stylesheet shows only what the current variants use. On the MokaDocs site that adds 4 to 9 KB to a page (1 to 2 KB compressed), most of it the footer's link columns and a second copy of the "On this page" list, and every page links `_theme/css/layouts.css`. `MOKADOCS_SHOW_LAYOUT_SELECTOR` sets it for one build.
+Pages then carry the markup of every variant (the tabs row, the link columns footer with its version menu, the inline "On this page" box and the progress bar, Top link and counter of the panel) and the stylesheet shows only what the current variants use. On the MokaDocs site that adds 4 to 9 KB to a page (1 to 2 KB compressed), most of it the footer's link columns and a second copy of the "On this page" list, and every page links `_theme/css/layouts.css`. `MOKADOCS_SHOW_LAYOUT_SELECTOR` sets it for one build.
 
-With every section of the panel off (`showDarkModeToggle`, `styleSelector`, `colorThemes`, `codeThemeSelector`, `codeStyleSelector`, `textSizeSelector`, `widthSelector` and `layoutSelector`), the header has no Appearance button.
+With every section of the panel off (`showDarkModeToggle`, `styleSelector`, `colorThemes`, `codeThemeSelector`, `codeStyleSelector`, `textSizeSelector`, `widthSelector`, `lineSpacingSelector`, `focusModeSelector`, `darkToneSelector`, `cornersSelector`, `accentStrengthSelector` and `layoutSelector`), the header has no Appearance button.
 
 #### `options.layout`
 
@@ -518,7 +589,7 @@ theme:
 
 Only the default theme reads these settings. Every reader gets the layout you set, unless [`layoutSelector`](#options.layoutselector) lets them switch the parts of a docs page in the Appearance panel. The landing layout (`layout: landing` in front matter) uses the `home`, `navbar`, `footer`, `hero`, `heroBackground`, `features`, `tables`, `links`, `width` and `font` settings too, and with `home: docs` the sidebar settings as well.
 
-Names are matched without regard to case. An unknown name renders that part as `default`, and the build reports a warning (`mokadocs validate` lists it), for example `Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent; using 'default'`. Each part also has an [environment variable](#environment-variables), such as `MOKADOCS_LAYOUT_NAVBAR`.
+Names are matched without regard to case. An unknown name renders that part as `default`, and the build reports a warning (`mokadocs validate` lists it), for example `Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent, split; using 'default'`. Each part also has an [environment variable](#environment-variables), such as `MOKADOCS_LAYOUT_NAVBAR`.
 
 ##### `layout.width`
 
@@ -544,6 +615,7 @@ A reader who picks a [reading width](#options.widthselector) in the Appearance p
 | `autohide` | Slides away while scrolling down, and comes back on scrolling up or when it gets keyboard focus |
 | `centered` | The logo in the middle, the search button on the left and the other buttons on the right. On a phone it's laid out like `default` |
 | `transparent` | No border, and the page shows through the bar, blurred, as it scrolls underneath. The bar keeps enough of the page color for its text to stay readable over any content. Readers who ask their system for less transparency, and browsers without blur, get a solid bar |
+| `split` | Two rows. The top one has the logo, a wide search box and the other buttons; the second has a tab for each top-level sidebar entry on a tinted band, the current one in the page's color like a folder tab. The sidebar, "On this page" and links to headings stop below both rows. On a phone the top row is laid out like `default` and the tabs row scrolls sideways |
 
 ##### `layout.footer`
 
@@ -555,6 +627,7 @@ A reader who picks a [reading width](#options.widthselector) in the Appearance p
 | `none` | No footer |
 | `centered` | Everything stacked and centered: the social links as a row of icons, then the copyright and "Built with" |
 | `compact` | One small line with the parts separated by dots |
+| `mega` | A large footer on a tinted band: the logo, site name, [description](#description), social links and, on a site with [versions](#versioning), a version menu, beside the same link columns as `columns`. The copyright and "Built with" sit in a row under a rule. On a phone it stacks, two link columns to a row. The version menu opens upward and follows [`showVersionSelector`](#options.showversionselector) |
 
 ##### `layout.toc`
 
@@ -567,8 +640,10 @@ A reader who picks a [reading width](#options.widthselector) in the Appearance p
 | `numbered` | The right-hand column with each entry numbered: 1, 1.1, 1.1.1. Pairs with [`headings: numbered`](#layout.headings) |
 | `timeline` | The entries as dots on a vertical line, the section in view filled in |
 | `bordered` | The right-hand column as a bordered card |
+| `dropdown` | A closed "On this page" bar under the page title, in place of the right-hand column and of its button on narrow screens. Once you scroll past it, it sticks below the header and shows the section you're reading. It opens the list over the page and closes when you follow a link, press Escape or click elsewhere. Without JavaScript it still opens and closes, above the title |
+| `progress` | The right-hand column with a line beside the list that fills as you read down the page, and a dot for each top-level section that fills once you reach it. Readers who ask their system for less motion get the dots without the moving line |
 
-[`showTableOfContents: false`](#options.showtableofcontents) and `toc: false` in a page's front matter still turn it off.
+[`showTableOfContents: false`](#options.showtableofcontents) and `toc: false` in a page's front matter still turn it off. Every variant follows [`tocDepth`](#options.tocdepth).
 
 ##### `layout.breadcrumbs`
 
@@ -593,6 +668,7 @@ A reader who picks a [reading width](#options.widthselector) in the Appearance p
 | `stacked` | Each link a full-width row, previous above next |
 | `split` | One bar between two rules, previous on the left and next on the right, without cards |
 | `compact` | Small links on one line, such as "Previous: Install" and "Next: Usage" |
+| `cards` | Two roomier cards, each with the direction, the page title and the page's front matter [`description`](/configuration/front-matter) in up to two lines. A page without a description gets a card without that line. The whole card is the link |
 
 [`showPrevNext: false`](#options.showprevnext) still hides them. Every variant sits under the article and lines up with it. On a phone the two links stack, except with `split` and `compact`, which keep them side by side.
 
@@ -607,6 +683,7 @@ A reader who picks a [reading width](#options.widthselector) in the Appearance p
 | `accent` | A bar in the accent color on the current page's left edge, and no fill |
 | `cards` | Each top-level section in a card. Top-level pages without entries below them stay plain rows |
 | `minimal` | Plain text without icons or fills, the current page in bold and underlined |
+| `rail` | A narrow column of icons at the sidebar's edge, one button for each top-level section (its [icon](/configuration/navigation#icon-support), or its first letter) and one link for each top-level page, like an editor's activity bar. The sidebar lists the chosen section alone, open; the current page's section is chosen when the page loads. Hovering a button or reaching it with the keyboard shows the section's name, and the arrow keys move along the column. On a phone, and without JavaScript, the sidebar is the usual one |
 
 ##### `layout.sidebarScope`
 
@@ -615,7 +692,7 @@ A reader who picks a [reading width](#options.widthselector) in the Appearance p
 | `default` | The sidebar lists every section |
 | `section` | The sidebar lists only the top-level section the current page is in. A page outside every section, such as a top-level page, still gets all of them |
 
-`section` pairs with [`navbar: tabs`](#layout.navbar): the tabs switch between sections, and the sidebar lists the current one. It works the same with [`sidebar: shared`](#options.sidebar), and readers without JavaScript see the same sidebar.
+`section` pairs with [`navbar: tabs`](#layout.navbar): the tabs switch between sections, and the sidebar lists the current one. It works the same with [`sidebar: shared`](#options.sidebar), and readers without JavaScript see the same sidebar. With [`sidebar: rail`](#layout.sidebar) the sidebar already lists one section at a time, and a section a reader picks in the rail shows even when `section` would hide it.
 
 ##### `layout.home`
 
@@ -781,7 +858,7 @@ theme:
 - **Type:** `bool`
 - **Default:** `false`
 
-Adds a button at the top left of the content that hides and shows the sidebar on wide screens, giving the page the whole width. The reader's choice is kept in `localStorage` and applied on later pages before they are drawn. Phones keep their menu button, and readers without JavaScript don't get the button.
+Adds a button at the top left of the content that hides and shows the sidebar on wide screens, giving the page the whole width. The reader's choice is kept in `localStorage` and applied on later pages before they are drawn. Phones keep their menu button, and readers without JavaScript don't get the button. With [`sidebar: rail`](#layout.sidebar) the button hides the list and leaves the column of icons, and picking a section there shows the list again.
 
 ```yaml
 theme:
@@ -794,7 +871,7 @@ theme:
 - **Type:** `string`
 - **Default:** `"#0ea5e9"`
 
-The main brand color, used for links, the current navigation item and hover states. Any CSS color value works. MokaDocs sets the `--color-primary` CSS variable to it and derives lighter and darker shades with `color-mix()`.
+The main brand color, used for links, the current navigation item and hover states. Any CSS color value works. MokaDocs sets the `--color-primary-base` CSS variable to it, which `--color-primary` follows (moved by the reader's [accent strength](#options.accentstrengthselector)), and derives lighter and darker shades with `color-mix()`.
 
 Text and buttons don't use the color as written. When the site is built, MokaDocs works out a text shade for light mode and one for dark mode (`--color-primary-text`): the same hue, darkened or lightened just far enough for a 4.5:1 contrast ratio on the code background, the current sidebar link and the admonition boxes. A color that already passes is kept. This covers hex, `rgb()`, `hsl()` and named colors. Any other syntax, such as `oklch()` or `var()`, is used for text as written, so check its contrast yourself. See [Primary Color](/themes/customization#primary-color).
 
@@ -1136,7 +1213,7 @@ theme:
 - **Type:** `bool`
 - **Default:** `true`
 
-Shows the version dropdown in the page header. It appears only when [versioning](#versioning) is enabled.
+Shows the version dropdown in the page header, and in the footer with [`footer: mega`](#layout.footer). It appears only when [versioning](#versioning) is enabled.
 
 ```yaml
 theme:
@@ -1849,6 +1926,11 @@ MOKADOCS_PRIMARY_COLOR="#7c3aed" MOKADOCS_SHOW_FEEDBACK=false mokadocs build
 | `MOKADOCS_SHOW_STYLE_SELECTOR` | `theme.options.styleSelector` |
 | `MOKADOCS_SHOW_TEXT_SIZE_SELECTOR` | `theme.options.textSizeSelector` |
 | `MOKADOCS_SHOW_WIDTH_SELECTOR` | `theme.options.widthSelector` |
+| `MOKADOCS_SHOW_LINE_SPACING_SELECTOR` | `theme.options.lineSpacingSelector` |
+| `MOKADOCS_SHOW_FOCUS_MODE_SELECTOR` | `theme.options.focusModeSelector` |
+| `MOKADOCS_SHOW_DARK_TONE_SELECTOR` | `theme.options.darkToneSelector` |
+| `MOKADOCS_SHOW_CORNERS_SELECTOR` | `theme.options.cornersSelector` |
+| `MOKADOCS_SHOW_ACCENT_STRENGTH_SELECTOR` | `theme.options.accentStrengthSelector` |
 | `MOKADOCS_SHOW_LAYOUT_SELECTOR` | `theme.options.layoutSelector` |
 | `MOKADOCS_LAYOUT_WIDTH` | `theme.options.layout.width` |
 | `MOKADOCS_LAYOUT_NAVBAR` | `theme.options.layout.navbar` |
@@ -1959,6 +2041,11 @@ theme:
     styleSelector: true
     textSizeSelector: true
     widthSelector: true
+    lineSpacingSelector: true
+    focusModeSelector: true
+    darkToneSelector: true
+    cornersSelector: true
+    accentStrengthSelector: true
     layoutSelector: false
     layout:
       width: "default"

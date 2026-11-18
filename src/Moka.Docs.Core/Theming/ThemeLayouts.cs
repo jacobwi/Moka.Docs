@@ -84,28 +84,35 @@ public static class ThemeLayouts
 	///     The top bar: <c>default</c>, <c>compact</c> (shorter), <c>floating</c> (a rounded bar
 	///     detached from the edges), <c>tabs</c> (a second row with the top-level sections),
 	///     <c>autohide</c> (slides away while scrolling down and back on scrolling up), <c>centered</c>
-	///     (the logo in the middle, search on the left and the buttons on the right) or
-	///     <c>transparent</c> (a see-through, blurred bar over the page).
+	///     (the logo in the middle, search on the left and the buttons on the right),
+	///     <c>transparent</c> (a see-through, blurred bar over the page) or <c>split</c> (two rows: the logo, a
+	///     wide search box and the buttons, then the top-level sections as tabs on a band of their own).
 	/// </summary>
 	public static ThemeLayoutPart Navbar { get; } =
-		new("navbar", Default, "compact", "floating", "tabs", "autohide", "centered", "transparent");
+		new("navbar", Default, "compact", "floating", "tabs", "autohide", "centered", "transparent", "split");
 
 	/// <summary>
 	///     The footer: <c>default</c>, <c>minimal</c> (one centered line), <c>columns</c> (link
 	///     columns built from the top-level sections), <c>none</c>, <c>centered</c> (everything stacked
-	///     and centered under a row of social icons) or <c>compact</c> (one small line, the parts
-	///     separated by dots).
+	///     and centered under a row of social icons), <c>compact</c> (one small line, the parts
+	///     separated by dots) or <c>mega</c> (a large footer: the logo, title and description with the
+	///     version menu beside the link columns, then the copyright and "Built with").
 	/// </summary>
-	public static ThemeLayoutPart Footer { get; } = new("footer", Default, "minimal", "columns", "none", "centered", "compact");
+	public static ThemeLayoutPart Footer { get; } =
+		new("footer", Default, "minimal", "columns", "none", "centered", "compact", "mega");
 
 	/// <summary>
 	///     The "On this page" panel: <c>default</c>, <c>minimal</c> (the links only), <c>inline</c> (a
 	///     collapsible box at the top of the page), <c>floating</c> (a button that opens it over the
 	///     page), <c>numbered</c> (entries numbered 1, 1.1, 1.1.1), <c>timeline</c> (a dot per entry on a
-	///     vertical line, the current one filled) or <c>bordered</c> (the column as a bordered card).
+	///     vertical line, the current one filled), <c>bordered</c> (the column as a bordered card),
+	///     <c>dropdown</c> (a closed disclosure under the page title in place of the column, which sticks below
+	///     the header, shows the current section and opens the list over the page) or
+	///     <c>progress</c> (a track along the list that fills as the reader moves down the page, with a dot
+	///     per top-level section that fills once the reader has reached it).
 	/// </summary>
 	public static ThemeLayoutPart Toc { get; } =
-		new("toc", Default, "minimal", "inline", "floating", "numbered", "timeline", "bordered");
+		new("toc", Default, "minimal", "inline", "floating", "numbered", "timeline", "bordered", "dropdown", "progress");
 
 	/// <summary>
 	///     Breadcrumbs: <c>default</c>, <c>chevrons</c>, <c>pills</c>, <c>path</c> (a monospace path),
@@ -118,19 +125,21 @@ public static class ThemeLayouts
 	/// <summary>
 	///     The previous and next links under a page: <c>default</c> (cards), <c>minimal</c> (plain
 	///     links), <c>stacked</c> (full-width rows), <c>split</c> (one ruled bar, previous on the left and
-	///     next on the right) or <c>compact</c> (small links on one line).
+	///     next on the right), <c>compact</c> (small links on one line) or <c>cards</c> (larger cards with the
+	///     page's front matter <c>description</c> under its title).
 	/// </summary>
-	public static ThemeLayoutPart PageNav { get; } = new("pageNav", Default, "minimal", "stacked", "split", "compact");
+	public static ThemeLayoutPart PageNav { get; } = new("pageNav", Default, "minimal", "stacked", "split", "compact", "cards");
 
 	/// <summary>
 	///     The sidebar's look: <c>default</c>, <c>lines</c> (guide lines along nested levels),
 	///     <c>pills</c> (roomier rows, the current page as a filled pill), <c>compact</c> (dense rows,
 	///     smaller text), <c>accent</c> (an accent bar on the current page's left edge, no fill),
-	///     <c>cards</c> (each top-level section in a card) or <c>minimal</c> (no icons or fills, the
-	///     current page bold and underlined).
+	///     <c>cards</c> (each top-level section in a card), <c>minimal</c> (no icons or fills, the
+	///     current page bold and underlined) or <c>rail</c> (a narrow column of section icons beside the
+	///     sidebar, which lists the chosen section alone; phones keep the usual sidebar).
 	/// </summary>
 	public static ThemeLayoutPart Sidebar { get; } =
-		new("sidebar", Default, "lines", "pills", "compact", "accent", "cards", "minimal");
+		new("sidebar", Default, "lines", "pills", "compact", "accent", "cards", "minimal", "rail");
 
 	/// <summary>
 	///     What the sidebar lists: <c>default</c> (every section) or <c>section</c> (only the top-level

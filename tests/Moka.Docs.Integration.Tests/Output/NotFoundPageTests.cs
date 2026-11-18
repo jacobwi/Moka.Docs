@@ -57,7 +57,7 @@ public sealed class NotFoundPageTests
 
 		html.Should().Contain("data-style=\"moka\"").And.Contain("data-width=\"wide\"");
 		html.Should().Contain("g('mokadocs-theme')", "the dark mode bootstrap runs before first paint");
-		html.Should().Contain("--color-primary:#123456");
+		html.Should().Contain("--color-primary-base:#123456");
 		html.Should().Contain("<link rel=\"icon\" href=\"/Repo/favicon.png\" />");
 		html.Should().Contain($"href=\"/Repo/_theme/css/main.css?v={cssHash}\"");
 		html.Should().Contain("<title>Page not found - Test Site</title>");

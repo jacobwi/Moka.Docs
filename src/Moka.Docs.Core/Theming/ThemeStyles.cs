@@ -59,6 +59,36 @@ public static class ThemeStyles
 	/// <summary>Thick solid borders, flat fills, square corners and hard offset shadows.</summary>
 	public const string Brutal = "brutal";
 
+	/// <summary>
+	///     A technical drawing: ink-blue lines on pale blue paper over a fine grid, dashed rules, monospace
+	///     headings and square corners.
+	/// </summary>
+	public const string Blueprint = "blueprint";
+
+	/// <summary>
+	///     Editorial print: newsprint colors, a serif body under a high-contrast headline face, column rules and a
+	///     drop cap.
+	/// </summary>
+	public const string Newspaper = "newspaper";
+
+	/// <summary>A classic desktop: gray windows in beveled frames, a navy title bar and buttons that press in.</summary>
+	public const string Retro = "retro";
+
+	/// <summary>
+	///     Synthwave colors kept flat: a deep purple page, hot pink and cyan accents, thin colored lines,
+	///     dark first.
+	/// </summary>
+	public const string Neon = "neon";
+
+	/// <summary>Tonal surfaces in place of borders and shadows, tinted pills and large rounded corners.</summary>
+	public const string Tonal = "tonal";
+
+	/// <summary>
+	///     A code editor: side panels, thin lines, square corners, the breadcrumbs as a file tab and the
+	///     footer as a status bar.
+	/// </summary>
+	public const string Editor = "editor";
+
 	/// <summary>Every style with its picker label, in the order the reader's picker lists them.</summary>
 	public static IReadOnlyList<ThemeStyleInfo> All { get; } =
 	[
@@ -71,7 +101,13 @@ public static class ThemeStyles
 		new() { Name = Paper, Label = "Paper", Description = "Serif, like a book" },
 		new() { Name = Contrast, Label = "Contrast", Description = "High contrast, clear focus" },
 		new() { Name = Glass, Label = "Glass", Description = "Frosted panels" },
-		new() { Name = Brutal, Label = "Brutal", Description = "Thick lines, flat fills" }
+		new() { Name = Brutal, Label = "Brutal", Description = "Thick lines, flat fills" },
+		new() { Name = Blueprint, Label = "Blueprint", Description = "Technical drawing" },
+		new() { Name = Newspaper, Label = "Newspaper", Description = "Print, with a drop cap" },
+		new() { Name = Retro, Label = "Retro", Description = "Beveled desktop windows" },
+		new() { Name = Neon, Label = "Neon", Description = "Synthwave, dark first", DarkFirst = true },
+		new() { Name = Tonal, Label = "Tonal", Description = "Tinted surfaces, round" },
+		new() { Name = Editor, Label = "Editor", Description = "Panels, tabs, status bar" }
 	];
 
 	/// <summary>Every style name, in the order the reader's picker lists them.</summary>

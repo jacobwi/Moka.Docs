@@ -13,8 +13,8 @@ The built-in theme includes:
 
 - **Responsive layout**: on screens 768px wide or less, the sidebar moves behind a menu button.
 - **Dark and light mode**: follows the system setting on a first visit, with a header toggle that remembers the reader's choice.
-- **Appearance panel**: one header button where readers pick light, dark or system mode, the style, the color, the code theme and frame, the text size and the reading width, on phones too, and, when you turn it on, the page layout. See [Appearance Panel](#appearance-panel).
-- **Styles**: ten whole looks (default, moka, minimal, classic, soft, terminal, paper, contrast, glass and brutal) that readers can switch between in the Appearance panel. See [Styles](#styles).
+- **Appearance panel**: one header button where readers pick light, dark or system mode, how dark dark mode is, the style, the color and how strong it is, the corners, the code theme and frame, the text size, the reading width, the line spacing and focus mode, on phones too, and, when you turn it on, the page layout. See [Appearance Panel](#appearance-panel).
+- **Styles**: whole looks (default, moka, minimal, classic, soft, terminal, paper, contrast, glass, brutal, blueprint, newspaper, retro, neon, tonal and editor) that readers can switch between in the Appearance panel. See [Styles](#styles).
 - **Page layouts**: variants for the page width, top bar, footer, "On this page" panel, breadcrumbs, previous/next links, sidebar, landing hero, admonitions, tables, spacing, typeface, headings and links, set in `mokadocs.yaml`. See [Page Layout](#page-layout).
 - **Syntax highlighting**: done when the site is built, with sixteen color themes.
 - **Search**: a dialog opened from the header button or with `Ctrl+K` / `Cmd+K`. It matches page titles, headings, tags and the first 300 characters of each page's text, and forgives one typo in longer words. See [Search](/guide/search).
@@ -32,17 +32,20 @@ The default theme's stylesheet defines these custom properties. The default them
 
 | Property | Light | Dark | Used for |
 |----------|-------|------|----------|
-| `--color-primary` | `#0ea5e9` | unchanged | Borders, icons, tints and the code line highlight |
-| `--color-primary-text` | the preset's text shade | the preset's text shade | Links, inline code, page titles, the current sidebar and table of contents entries. See [Color Theme Presets](#color-theme-presets) |
+| `--color-primary-base` | `#0ea5e9` | unchanged | The primary color as the preset or `primaryColor` sets it |
+| `--color-primary` | `--color-primary-base` | unchanged | Borders, icons, tints and the code line highlight. The reader's accent strength moves it |
+| `--color-primary-text-base` | the preset's text shade | the preset's text shade | The text shade before the accent strength |
+| `--color-primary-text` | `--color-primary-text-base` | `--color-primary-text-base` | Links, inline code, page titles, the current sidebar and table of contents entries. See [Color Theme Presets](#color-theme-presets) |
 | `--color-primary-text-hover` | 80% of `--color-primary-text`, 20% black | 75% of `--color-primary-text`, 25% white | Link hover, the end of the page title gradient |
 | `--color-primary-fill` | `--color-primary-text` | `--color-primary-text` | Filled buttons: back to top, "On this page", Get Started, step numbers |
 | `--color-on-primary` | `#ffffff` | `#0f172a` | Text and icons on `--color-primary-fill` |
 | `--color-primary-light` | `#38bdf8` | unchanged | Lighter shade of the primary color (the landing feature cards' top edge) |
 | `--color-primary-dark` | `#0284c7` | unchanged | Darker shade of the primary color (the inline code border tint) |
 | `--color-accent` | `#f59e0b` | unchanged | Highlight behind matched words in search results |
-| `--color-bg` | `#ffffff` | `#0f172a` | Page background |
-| `--color-bg-secondary` | `#f8fafc` | `#1e293b` | Secondary surfaces and hover backgrounds |
-| `--color-bg-code` | `#f1f5f9` | `#1e293b` | Inline code background |
+| `--color-bg` | `#ffffff` | `--dark-bg` | Page background |
+| `--color-bg-secondary` | `#f8fafc` | `--dark-bg-secondary` | Secondary surfaces and hover backgrounds |
+| `--color-bg-code` | `#f1f5f9` | `--dark-bg-code` | Inline code background |
+| `--dark-bg`, `--dark-bg-secondary`, `--dark-bg-code` | | `#0f172a`, `#1e293b`, `#1e293b` | The dark surfaces before the reader's [dark tone](#appearance-panel) |
 | `--color-text` | `#1e293b` | `#e2e8f0` | Body text |
 | `--color-text-secondary` | `#64748b` | `#94a3b8` | Secondary text |
 | `--color-text-muted` | `#667488` | `#8091a9` | Muted text, at least 4.5:1 on both backgrounds |
@@ -70,12 +73,15 @@ Code block colors come from the selected [code theme](#code-syntax-themes), whic
 | `--font-mono` | `'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace` |
 | `--radius` | `8px` |
 | `--radius-sm` | `4px` |
+| `--radius-scale` | `1`, `0` with the reader's Sharp corners. A corner length a rule writes itself multiplies by it |
+| `--line-spacing` | `1`, `0.88` with Tight and `1.1` with Relaxed line spacing. The article's paragraph and list item line heights multiply by it |
+| `--paragraph-spacing` | `1`, `0.7` with Tight and `1.35` with Relaxed. The space after paragraphs, lists and list items multiplies by it |
 | `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` |
 | `--shadow-md` | `0 4px 6px -1px rgba(0,0,0,0.1)` |
 | `--shadow-lg` | `0 10px 25px -3px rgba(0,0,0,0.15)` |
 | `--transition` | `150ms ease` |
 
-The theme doesn't load web fonts, so Inter and JetBrains Mono are only used when they're installed on the reader's machine. The body font size (`1rem`, 16px at the browser's default size) and line height (1.7) are fixed values, not properties. Every font size in the theme and its styles is in `rem`, so the text follows the font size set in the reader's browser and the panel's [text size](#appearance-panel).
+The theme doesn't load web fonts, so Inter and JetBrains Mono are only used when they're installed on the reader's machine. The body font size (`1rem`, 16px at the browser's default size) and line height (1.7) are fixed values, not properties; paragraphs (1.8) and list items (1.75) follow the reader's line spacing. Every font size in the theme and its styles is in `rem`, so the text follows the font size set in the reader's browser and the panel's [text size](#appearance-panel).
 
 ### Changing Styles
 
@@ -233,19 +239,29 @@ The sliders button in the header opens the Appearance panel, where readers chang
 | Section | Choices | Option (default) | Saved as |
 |---|---|---|---|
 | Mode | Light, Dark, System | `showDarkModeToggle` (on) | `mokadocs-theme` |
+| Dark tone (dark mode only) | Dim, Dark, Black | `darkToneSelector` (on) | `mokadocs-dark-tone` |
 | Style | The ten [styles](#styles), each with a preview | `styleSelector` (on) | `mokadocs-style` |
 | Color | The eleven [color presets](#color-theme-presets) | `colorThemes` (on) | `mokadocs-color-theme` |
+| Accent strength | Subtle, Default, Vivid | `accentStrengthSelector` (on) | `mokadocs-accent-strength` |
+| Corners | Sharp, Default, Round | `cornersSelector` (on) | `mokadocs-corners` |
 | Code theme | The sixteen [code themes](#code-syntax-themes), dark ones first | `codeThemeSelector` (off) | `mokadocs-code-theme` |
 | Code style | The four [code block frames](#code-block-window-styles) | `codeStyleSelector` (off) | `mokadocs-code-style` |
 | Text size | 90%, 100%, 112.5%, 125% | `textSizeSelector` (on) | `mokadocs-text-size` |
 | Reading width | Narrow, Default, Wide, Wider, Full | `widthSelector` (on) | `mokadocs-reader-width` |
+| Line spacing | Tight, Default, Relaxed | `lineSpacingSelector` (on) | `mokadocs-line-spacing` |
+| Focus mode | Off, On | `focusModeSelector` (on) | `mokadocs-focus-mode` |
 | Layout | A list for each [layout part](#page-layout) of a docs page | `layoutSelector` (off) | `mokadocs-layout-<part>`, such as `mokadocs-layout-page-nav` |
 
-A choice applies at once and is saved in `localStorage`. A script at the top of every page applies the saved choices before the page is drawn, so there is no flash of the site's own look. A saved choice only applies while its section is shown: turning a section off also drops what readers chose with it. With every section off, there is no Appearance button.
+Text size, reading width, line spacing and focus mode sit under a Reading heading. A choice applies at once and is saved in `localStorage`. A script at the top of every page applies the saved choices before the page is drawn, so there is no flash of the site's own look. A saved choice only applies while its section is shown: turning a section off also drops what readers chose with it. With every section off, there is no Appearance button.
 
 - **System** forgets the saved mode. The page goes back to what a first visit gets: the system's light or dark setting, followed live while the page is open, except that `moka` and `terminal` start dark.
+- **Dark tone** changes dark mode only, so the section shows only while the page is dark. Dim mixes the style's dark page and panels toward a soft gray, keeping the style's own tint: the default style's navy page becomes `#181e29`. Black puts the page at pure `#000000` for OLED screens, with panels a little above it. Text, borders and code themes keep their colors, and every text color still meets a 4.5:1 contrast ratio on the lighter dim surfaces.
+- **Accent strength** changes the [primary color](#primary-color) for every preset and a custom `primaryColor`. Subtle moves it 45% of the way to the text color, for links, the current page in the sidebar, buttons, tints and icons. Vivid gives links and buttons more color at the same lightness. In the default style the presets' text shades are already as saturated as the screen's colors allow, so Vivid changes them only a little (violet, rose, moka-red, slate, indigo and graphite most); the other styles mix their accent with black or white and show it clearly. Both keep every accent text at 4.5:1 or more.
+- **Corners** sets the corner radius of every card, panel, button and code block, whatever the style uses: Sharp makes them square, Round raises them to about 14px for cards and 10px for controls. Pill-shaped tags stay pills with Round, and circles stay circles.
 - **Text size** scales the root font size, so all text grows or shrinks with it. Column widths stay as they are.
 - **Reading width** sets the width of the page column: Narrow is about 60 characters, Wide 1040px, Wider 1280px, and Full takes away every limit, so the column, the header and the footer fill the window. Where the column wouldn't fit between the sidebar and "On this page", the page grows with it: up to 1680px for Wide and 1920px for Wider. A pick never makes the column narrower than the site's own [`layout.width`](#page-layout), except Narrow. See [Reading width and layout.width](#reading-width-and-layout.width).
+- **Line spacing** changes the line height and the space between paragraphs and list items in the article: Tight is about 12% closer and Relaxed about 10% looser, starting from the style's own spacing. Headings, tables, code blocks, the sidebar and the header keep theirs.
+- **Focus mode** hides the sidebar, "On this page", the breadcrumbs and the floating buttons, and centers the article at the reading width. The header stays, and an **Exit focus mode** button in the bottom corner turns it off again. On phones the menu and "On this page" buttons go too. A printed page looks the same with focus mode on or off.
 - **Layout** has one list for each part of a docs page in [Page Layout](#page-layout) except `width` (Reading width covers it) and the landing page's `hero` and `heroBackground`: top bar, footer, "On this page", breadcrumbs, previous and next links, sidebar, what the sidebar lists, admonitions, tables, spacing, font, headings and links. The site's own variant is marked "(default)" and is what the list shows until the reader picks another. Picking it again forgets the saved pick, so a later change to `mokadocs.yaml` reaches that reader too.
 - **Reset to site defaults** removes every saved choice, those of hidden sections included, and goes back to the values in `mokadocs.yaml`.
 
@@ -256,9 +272,12 @@ theme:
   options:
     textSizeSelector: false
     widthSelector: false
+    focusModeSelector: false
     codeThemeSelector: true
     layoutSelector: true
 ```
+
+Sites can't set a starting value for these reader choices (a text size, a dark tone and so on): every reader starts from the site's own look.
 
 #### Reading width and layout.width
 
@@ -297,6 +316,12 @@ theme:
 | `contrast` | Accessibility first. Body text and links at 7:1 or more and everything else at 4.5:1 or more in both modes, underlined links, a thick focus ring, bold markers on the current page and tab so no state relies on color alone, nothing translucent or blurred, and outlines that hold up in Windows high contrast mode. |
 | `glass` | Frosted glass. A translucent, blurred header, sidebar, cards and menus over a soft gradient in the primary color. Where the browser can't blur, or the reader asks the system for less transparency, the panels turn solid. |
 | `brutal` | Neo-brutalist. Thick black lines (white in dark mode), flat fills in the primary color, square corners, heavy headings and hard offset shadows instead of soft ones. |
+| `blueprint` | A technical drawing. Ink-blue text and lines on pale blue paper with a faint 12px grid (deep blueprint blue with light-blue lines in dark mode), dashed rules, monospace headings and labels, square corners and code blocks in deep blue. A light code theme keeps its own light background. |
+| `newspaper` | Editorial print. Warm newsprint and near-black ink (cream on warm black in dark mode), a serif body under a high-contrast headline face, a double rule under the header, thin column rules beside the sidebar and "On this page", a drop cap on the article's first paragraph, italic callouts on a left rule, section labels in a dark red (coral in dark mode) and square corners. |
+| `retro` | A classic desktop. A gray desktop with the page in a white window, 2px beveled frames, a navy title bar (indigo in dark mode), buttons that press in when clicked, Tahoma, square corners, the current page highlighted in the primary color and tips as yellow tooltips. |
+| `neon` | Synthwave, kept flat. A deep purple page (pale lilac in light mode), thin colored lines, hot pink and cyan accents: pink for the current page's bar in the sidebar and the rule under the page title, cyan for inline code, the search shortcut, tips and the current heading in "On this page". No glows, blur or text shadows. Links, focus rings and buttons follow the color preset. Starts in dark mode, like `moka`. |
+| `tonal` | Tonal surfaces, in the manner of modern Material design. Panels step up in tone instead of casting shadows or drawing borders, the current sidebar entry, the search field and tips are tinted pills, corners are large (14px cards) and buttons fully round. Every tint is mixed from the color preset. |
+| `editor` | A code editor. Gray side panels for the sidebar and "On this page" with full-width selected rows, thin lines, square corners, the breadcrumbs as the open file's tab, content tabs as editor tabs and the footer as a status bar in the primary color. |
 
 In every style except `default`, text in the primary color is darkened in light mode and lightened in dark mode, and so are the colors of badges and callouts, so they keep a contrast ratio of at least 4.5:1 with each preset. Links in these styles are a deeper or paler shade than the preset's swatch.
 
@@ -304,7 +329,7 @@ An unknown name renders as `default`, and the build reports a warning that `moka
 
 #### Showing the Style Selector
 
-The Style section of the [Appearance panel](#appearance-panel) lists the ten styles, each with a small preview. The reader's pick is saved in `localStorage` and applies to every page before it's drawn, so there is no flash of another style. The section is shown by default, on every screen size.
+The Style section of the [Appearance panel](#appearance-panel) lists every style, each with a small preview. The reader's pick is saved in `localStorage` and applies to every page before it's drawn, so there is no flash of another style. The section is shown by default, on every screen size.
 
 Every style other than `default` is a stylesheet of its own, `_theme/css/style-<name>.css`, so a page downloads only the styles it shows. Pages link the stylesheet of the configured `style`. When a reader has picked another one, a script in the page's `<head>` loads that stylesheet before the page is drawn. A style picked in the panel shows as selected at once and applies as soon as its stylesheet has loaded.
 
@@ -328,12 +353,12 @@ theme:
   options:
     layout:
       width: wide              # default, wide, wider, full, boxed or narrow
-      navbar: tabs             # default, compact, floating, tabs, autohide, centered or transparent
-      footer: columns          # default, minimal, columns, none, centered or compact
-      toc: floating            # default, minimal, inline, floating, numbered, timeline or bordered
+      navbar: tabs             # default, compact, floating, tabs, autohide, centered, transparent or split
+      footer: columns          # default, minimal, columns, none, centered, compact or mega
+      toc: floating            # default, minimal, inline, floating, numbered, timeline, bordered, dropdown or progress
       breadcrumbs: pills       # default, chevrons, pills, path, back, arrows or dots
-      pageNav: minimal         # default, minimal, stacked, split or compact
-      sidebar: lines           # default, lines, pills, compact, accent, cards or minimal
+      pageNav: minimal         # default, minimal, stacked, split, compact or cards
+      sidebar: lines           # default, lines, pills, compact, accent, cards, minimal or rail
       sidebarScope: section    # default or section
       home: portal             # default, portal, showcase, minimal or docs
       hero: split              # default, split, minimal or banner
@@ -361,11 +386,13 @@ theme:
     layoutSelector: true
 ```
 
-Some variants need markup of their own: the tabs row of `navbar: tabs`, the link columns of `footer: columns`, the box of `toc: inline`, and the progress bar, Top link and section counter that `toc: minimal` leaves out. With `layoutSelector` on, every page carries all of it and the stylesheet shows only what the current variants use, and pages always link `_theme/css/layouts.css`. On this site that adds 4 to 9 KB to a page (1 to 2 KB compressed), most of it the footer's link columns and a second copy of the "On this page" list. Without JavaScript, pages show your own variants.
+Some variants need markup of their own: the tabs row of `navbar: tabs` and `split`, the link columns of `footer: columns` and `mega` (and the footer's version menu), the box of `toc: inline`, the bar of `toc: dropdown`, the page descriptions of `pageNav: cards`, and the progress bar, Top link and section counter that `toc: minimal` leaves out. The column of icons of `sidebar: rail` needs none: the theme's script builds it from the sidebar. With `layoutSelector` on, every page carries all of it and the stylesheet shows only what the current variants use, and pages always link `_theme/css/layouts.css`. On this site that adds 4 to 14 KB to a page (1 to 2 KB compressed), most of it the footer's link columns and two more copies of the "On this page" list. Without JavaScript, pages show your own variants.
 
 Some pairs work well together:
 
 - `navbar: tabs` with `sidebarScope: section`: the tabs switch between the top-level sections, and the sidebar lists only the current one.
+- `sidebar: rail` with `sidebarToggle: true` for an editor-like page: the icons stay at the edge, and the toggle folds the list away.
+- `navbar: split` with `footer: mega` for a product site with many sections.
 - `width: full` with `sidebar: compact` and `density: compact` for large API references.
 - `hero: split` with a `heroCode` sample in the landing page's front matter, to show the library in use first thing.
 - `home: portal` with `heroBackground: gradient` for a docs hub whose first thing is the search box.
@@ -389,7 +416,7 @@ theme:
     primaryColor: "#e11d48"
 ```
 
-The value becomes `--color-primary` in an inline style, and `--color-primary-light` and `--color-primary-dark` are derived from it with CSS `color-mix()`: 75% of your color mixed with white, and 80% mixed with black. You only set one value.
+The value becomes `--color-primary-base` in an inline style, which `--color-primary` follows, and `--color-primary-light` and `--color-primary-dark` are derived from it with CSS `color-mix()`: 75% of your color mixed with white, and 80% mixed with black. You only set one value.
 
 Text in your color (links, inline code, page titles, the current page in the sidebar) and filled buttons use a text shade that MokaDocs works out when it builds the site, one for light mode and one for dark mode. It keeps the hue and moves the lightness just far enough for a 4.5:1 contrast ratio on the code background, the current sidebar link's tint and the admonition boxes, the same way the presets' shades are made. A color that already passes is used as it is. A light yellow such as `#facc15`, for example, becomes `#876c00` for text in light mode and stays `#facc15` in dark mode.
 
@@ -535,7 +562,7 @@ In the `default` style, text in the primary color (links, inline code, page titl
 
 #### Presets and `primaryColor`
 
-Presets set `--color-primary` with `!important`, so while a preset is applied, `primaryColor` has no visible effect. `defaultColorTheme` (default `ocean`) names the preset applied on a reader's first visit:
+Presets set `--color-primary-base` with `!important`, so while a preset is applied, `primaryColor` has no visible effect. `defaultColorTheme` (default `ocean`) names the preset applied on a reader's first visit:
 
 - If you change `primaryColor` and leave `defaultColorTheme` unset or `ocean`, no preset is applied and your color shows.
 - If you set `defaultColorTheme` to another preset, that preset is applied and `primaryColor` doesn't show.
@@ -639,15 +666,15 @@ The button reports its state to screen readers as pressed (dark) or not pressed 
 
 ### Customizing Dark Mode Colors
 
-Dark mode colors are defined under a `[data-theme="dark"]` selector, which redefines the background, text and border properties listed in [Colors](#colors). `--color-primary` and its shades are not redefined, so the primary color is the same in both modes.
+Dark mode colors are defined under a `[data-theme="dark"]` selector, which redefines the text and border properties listed in [Colors](#colors) and names the three surfaces `--dark-bg`, `--dark-bg-secondary` and `--dark-bg-code`. A rule on `html:root[data-theme="dark"]` turns those into `--color-bg`, `--color-bg-secondary` and `--color-bg-code`, mixed with the reader's [dark tone](#appearance-panel). `--color-primary` and its shades are not redefined, so the primary color is the same in both modes.
 
-To change the dark colors, override them in a custom theme's stylesheet:
+To change the dark colors, override them in a custom theme's stylesheet. Set the surfaces through their `--dark-*` names, so the dark tone still applies:
 
 ```css
 [data-theme="dark"] {
-    --color-bg: #0a0a0a;
-    --color-bg-secondary: #171717;
-    --color-bg-code: #1c1c1e;
+    --dark-bg: #0a0a0a;
+    --dark-bg-secondary: #171717;
+    --dark-bg-code: #1c1c1e;
     --color-text: #fafafa;
     --color-text-secondary: #a1a1aa;
     --color-border: #27272a;
@@ -949,9 +976,14 @@ theme:
   name: default
   options:
     # Look
-    style: default                # default, moka, minimal, classic, soft, terminal, paper, contrast, glass or brutal
+    style: default                # default, moka, minimal, classic, soft, terminal, paper, contrast, glass, brutal, blueprint, newspaper, retro, neon, tonal or editor
     styleSelector: true           # Style section of the Appearance panel
     textSizeSelector: true        # Text size section
+    lineSpacingSelector: true     # Line spacing section
+    focusModeSelector: true       # Focus mode section
+    darkToneSelector: true        # Dark tone section (dark mode)
+    cornersSelector: true         # Corners section
+    accentStrengthSelector: true  # Accent strength section
     widthSelector: true           # Reading width section
     layoutSelector: false         # Layout section: readers switch the layout variants
 

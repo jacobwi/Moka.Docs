@@ -629,7 +629,7 @@ public sealed class BuildPipelineIntegrationTests
 
 		// A stored mokadocs-theme wins; without one, the dark-first styles are dark and the others follow the OS.
 		fs.File.ReadAllText("/project/_site/guide/intro/index.html").Should().Contain(
-			"const m=g('mokadocs-theme'),t=m||(['moka','terminal',].includes(s)||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');");
+			"const m=g('mokadocs-theme'),t=m||(['moka','terminal','neon',].includes(s)||matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');");
 	}
 
 	[Fact]
@@ -719,7 +719,12 @@ public sealed class BuildPipelineIntegrationTests
 					CodeThemeSelector = false,
 					CodeStyleSelector = false,
 					TextSizeSelector = false,
-					WidthSelector = false
+					WidthSelector = false,
+					LineSpacingSelector = false,
+					FocusModeSelector = false,
+					DarkToneSelector = false,
+					CornersSelector = false,
+					AccentStrengthSelector = false
 				}
 			}
 		};
@@ -728,7 +733,7 @@ public sealed class BuildPipelineIntegrationTests
 
 		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
 		page.Should().NotContain("class=\"appearance").And.NotContain("appearancePanel").And.NotContain("class=\"theme-toggle\"");
-		page.Should().NotContain("mokadocs-text-size").And.NotContain("mokadocs-reader-width");
+		page.Should().NotContain("mokadocs-text-size").And.NotContain("mokadocs-reader-width").And.NotContain("'mokadocs-'+k").And.NotContain("focus-exit");
 	}
 
 	[Fact]
@@ -741,6 +746,23 @@ public sealed class BuildPipelineIntegrationTests
 		page.Should().Contain(";const z=g('mokadocs-text-size');if(['90','112.5','125'].includes(z))d.setAttribute('data-text-size',z)");
 		page.Should().Contain(";const w=g('mokadocs-reader-width');if(['narrow','wide','wider','full'].includes(w))d.setAttribute('data-reader-width',w)");
 		page.Should().NotContain("data-text-size=").And.NotContain("data-reader-width=", "only the head script sets them, from a stored pick");
+	}
+
+	[Fact]
+	public async Task FullPipeline_DefaultOptions_OfferTheOtherReaderOptionsAndTheFocusExit()
+	{
+		MockFileSystem fs = await BuildSiteAsync(MinimalConfig());
+
+		string page = fs.File.ReadAllText("/project/_site/guide/intro/index.html");
+		foreach (string section in new[] { "dark-tone", "accent-strength", "corners", "line-spacing", "focus-mode" })
+		{
+			page.Should().Contain($"data-appearance=\"{section}\"");
+		}
+
+		page.Should().Contain(";for(const[k,v]of[['dark-tone','dim black'],['corners','sharp round'],['line-spacing','tight relaxed'],['accent-strength','subtle vivid'],['focus-mode','on'],]){const x=g('mokadocs-'+k);if(x&&v.split(' ').includes(x))d.setAttribute('data-'+k,x)}");
+		page.Should().Contain("<h3 class=\"appearance-heading\">Reading</h3>");
+		page.Should().Contain("<button class=\"focus-exit js-only\" type=\"button\">");
+		page.Should().NotContain("data-dark-tone=").And.NotContain("data-focus-mode=", "only the head script sets them, from a stored pick");
 	}
 
 	[Fact]

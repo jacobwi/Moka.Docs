@@ -28,6 +28,21 @@ public static class MokaDefaults
 	/// <summary>Show the reading width choice in the Appearance panel.</summary>
 	public static bool ShowWidthSelector { get; set; } = true;
 
+	/// <summary>Show the line spacing choice in the Appearance panel.</summary>
+	public static bool ShowLineSpacingSelector { get; set; } = true;
+
+	/// <summary>Show the focus mode choice in the Appearance panel.</summary>
+	public static bool ShowFocusModeSelector { get; set; } = true;
+
+	/// <summary>Show the dark tone choice (dim, dark or black) in the Appearance panel.</summary>
+	public static bool ShowDarkToneSelector { get; set; } = true;
+
+	/// <summary>Show the corners choice (sharp, default or round) in the Appearance panel.</summary>
+	public static bool ShowCornersSelector { get; set; } = true;
+
+	/// <summary>Show the accent strength choice (subtle, default or vivid) in the Appearance panel.</summary>
+	public static bool ShowAccentStrengthSelector { get; set; } = true;
+
 	/// <summary>Show the Layout section, which lets readers switch layout variants, in the Appearance panel.</summary>
 	public static bool ShowLayoutSelector { get; set; }
 

@@ -37,7 +37,7 @@ public sealed class LayoutVariantWarningTests
 		Diagnostic warning = RenderDiagnostics(context).Should().ContainSingle("three pages render, one warning").Subject;
 		warning.Severity.Should().Be(DiagnosticSeverity.Warning);
 		warning.Message.Should().Be(
-			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent; using 'default'");
+			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent, split; using 'default'");
 	}
 
 	[Fact]
@@ -50,7 +50,7 @@ public sealed class LayoutVariantWarningTests
 			Footer = "fat",
 			Toc = "side",
 			Breadcrumbs = "slashes",
-			PageNav = "cards",
+			PageNav = "tiles",
 			Sidebar = "tree",
 			SidebarScope = "page",
 			Home = "landing",
@@ -69,12 +69,12 @@ public sealed class LayoutVariantWarningTests
 
 		RenderDiagnostics(context).Select(d => d.Message).Should().Equal(
 			"Layout width 'huge' is not one of default, wide, wider, full, boxed, narrow; using 'default'",
-			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent; using 'default'",
-			"Layout footer 'fat' is not one of default, minimal, columns, none, centered, compact; using 'default'",
-			"Layout toc 'side' is not one of default, minimal, inline, floating, numbered, timeline, bordered; using 'default'",
+			"Layout navbar 'tbs' is not one of default, compact, floating, tabs, autohide, centered, transparent, split; using 'default'",
+			"Layout footer 'fat' is not one of default, minimal, columns, none, centered, compact, mega; using 'default'",
+			"Layout toc 'side' is not one of default, minimal, inline, floating, numbered, timeline, bordered, dropdown, progress; using 'default'",
 			"Layout breadcrumbs 'slashes' is not one of default, chevrons, pills, path, back, arrows, dots; using 'default'",
-			"Layout pageNav 'cards' is not one of default, minimal, stacked, split, compact; using 'default'",
-			"Layout sidebar 'tree' is not one of default, lines, pills, compact, accent, cards, minimal; using 'default'",
+			"Layout pageNav 'tiles' is not one of default, minimal, stacked, split, compact, cards; using 'default'",
+			"Layout sidebar 'tree' is not one of default, lines, pills, compact, accent, cards, minimal, rail; using 'default'",
 			"Layout sidebarScope 'page' is not one of default, section; using 'default'",
 			"Layout home 'landing' is not one of default, portal, showcase, minimal, docs; using 'default'",
 			"Layout hero 'big' is not one of default, split, minimal, banner; using 'default'",

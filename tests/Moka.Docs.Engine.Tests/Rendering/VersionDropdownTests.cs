@@ -98,8 +98,45 @@ public sealed class VersionDropdownTests
 		menu.Should().Contain("<span class=\"visually-hidden\">Version </span><span class=\"version-label\">v2.0</span>");
 	}
 
+	[Theory]
+	[InlineData("default")]
+	[InlineData("landing")]
+	public void MegaFooter_HasAVersionMenuOfItsOwnWithTheSameLinks(string layout)
+	{
+		string html = Render("/guide/intro", _v1, layout, options: Footer("mega"));
+
+		MatchCollection menus = Regex.Matches(html, "<div class=\"version-selector\">.*?</ul>", RegexOptions.Singleline);
+		menus.Should().HaveCount(2, "the header has one and the footer another");
+		menus[0].Value.Should().Contain("aria-controls=\"versionMenu\"").And.Contain("<ul class=\"version-dropdown\" id=\"versionMenu\" hidden>");
+		menus[1].Value.Should().Contain("aria-controls=\"footerVersionMenu\"").And.Contain("<ul class=\"version-dropdown\" id=\"footerVersionMenu\" hidden>");
+		menus[1].Index.Should().BeGreaterThan(html.IndexOf("<div class=\"footer-brand\">", StringComparison.Ordinal));
+		Links(menus[1].Value).Should().Equal(Links(menus[0].Value));
+	}
+
+	[Theory]
+	[InlineData("default")]
+	[InlineData("columns")]
+	[InlineData("minimal")]
+	public void OtherFooters_LeaveTheVersionMenuToTheHeader(string footer)
+	{
+		string html = Render("/guide/intro", _v1, options: Footer(footer));
+
+		Regex.Matches(html, "class=\"version-selector\"").Should().ContainSingle();
+		html.Should().NotContain("footer-version").And.NotContain("footerVersionMenu");
+	}
+
+	[Fact]
+	public void MegaFooter_FollowsShowVersionSelector()
+	{
+		string html = Render("/guide/intro", _v1, options: Footer("mega") with { ShowVersionSelector = false });
+
+		html.Should().NotContain("version-selector").And.NotContain("footer-version");
+	}
+
+	private static ThemeOptions Footer(string variant) => new() { Layout = new ThemeLayoutOptions { Footer = variant } };
+
 	private string Render(string route, DocVersion current, string layout = "default",
-		IReadOnlyList<DocVersion>? versions = null, string? basePath = null)
+		IReadOnlyList<DocVersion>? versions = null, string? basePath = null, ThemeOptions? options = null)
 	{
 		var page = new DocPage
 		{
@@ -114,7 +151,8 @@ public sealed class VersionDropdownTests
 			Config = new SiteConfig
 			{
 				Site = new SiteMetadata { Title = "Test" },
-				Build = new BuildConfig { BasePath = basePath ?? (current.UrlPath is null ? "/" : BasePathOf(current)) }
+				Build = new BuildConfig { BasePath = basePath ?? (current.UrlPath is null ? "/" : BasePathOf(current)) },
+				Theme = new ThemeConfig { Options = options ?? new ThemeOptions() }
 			},
 			Templates = theme.Templates,
 			Partials = theme.Partials,

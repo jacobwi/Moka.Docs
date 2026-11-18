@@ -266,6 +266,16 @@ public sealed class SiteConfigReader
 						"SHOW_TEXT_SIZE_SELECTOR", o.TextSizeSelector, MokaDefaults.ShowTextSizeSelector),
 					WidthSelector = MokaDefaults.ResolveBool(
 						"SHOW_WIDTH_SELECTOR", o.WidthSelector, MokaDefaults.ShowWidthSelector),
+					LineSpacingSelector = MokaDefaults.ResolveBool(
+						"SHOW_LINE_SPACING_SELECTOR", o.LineSpacingSelector, MokaDefaults.ShowLineSpacingSelector),
+					FocusModeSelector = MokaDefaults.ResolveBool(
+						"SHOW_FOCUS_MODE_SELECTOR", o.FocusModeSelector, MokaDefaults.ShowFocusModeSelector),
+					DarkToneSelector = MokaDefaults.ResolveBool(
+						"SHOW_DARK_TONE_SELECTOR", o.DarkToneSelector, MokaDefaults.ShowDarkToneSelector),
+					CornersSelector = MokaDefaults.ResolveBool(
+						"SHOW_CORNERS_SELECTOR", o.CornersSelector, MokaDefaults.ShowCornersSelector),
+					AccentStrengthSelector = MokaDefaults.ResolveBool(
+						"SHOW_ACCENT_STRENGTH_SELECTOR", o.AccentStrengthSelector, MokaDefaults.ShowAccentStrengthSelector),
 					LayoutSelector = MokaDefaults.ResolveBool(
 						"SHOW_LAYOUT_SELECTOR", o.LayoutSelector, MokaDefaults.ShowLayoutSelector),
 					Layout = MapLayoutOptions(o.Layout),
@@ -623,6 +633,11 @@ public sealed class SiteConfigReader
 					StyleSelector = config.Theme.Options.StyleSelector ? null : false,
 					TextSizeSelector = config.Theme.Options.TextSizeSelector ? null : false,
 					WidthSelector = config.Theme.Options.WidthSelector ? null : false,
+					LineSpacingSelector = config.Theme.Options.LineSpacingSelector ? null : false,
+					FocusModeSelector = config.Theme.Options.FocusModeSelector ? null : false,
+					DarkToneSelector = config.Theme.Options.DarkToneSelector ? null : false,
+					CornersSelector = config.Theme.Options.CornersSelector ? null : false,
+					AccentStrengthSelector = config.Theme.Options.AccentStrengthSelector ? null : false,
 					LayoutSelector = config.Theme.Options.LayoutSelector ? true : null,
 					Layout = MapLayoutToDto(config.Theme.Options.Layout),
 					Sidebar = config.Theme.Options.Sidebar == SidebarModes.Auto ? null : config.Theme.Options.Sidebar,

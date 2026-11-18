@@ -17,6 +17,8 @@ internal static class ThemeLayoutLabels
 	private static readonly Dictionary<string, string> _variants = new(StringComparer.Ordinal)
 	{
 		["*.default"] = "Standard",
+		["*.mega"] = "Large",
+		["*.rail"] = "Icon rail",
 		["navbar.autohide"] = "Auto-hide",
 		["sidebarScope.default"] = "All sections",
 		["sidebarScope.section"] = "Current section",

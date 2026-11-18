@@ -202,6 +202,27 @@ public sealed class BlogBuildTests
 	}
 
 	[Fact]
+	public async Task PostCards_ShowTheNewerAndOlderPostsDescriptions()
+	{
+		SiteConfig config = Config() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { Layout = new ThemeLayoutOptions { PageNav = "cards" } } }
+		};
+
+		(_, MockFileSystem fs) = await BuildAsync(new Dictionary<string, string>
+		{
+			["blog/a.md"] = Post("First", "2026-01-01", "description: Where it began"),
+			["blog/b.md"] = Post("Second", "2026-01-02"),
+			["blog/c.md"] = Post("Third", "2026-01-03", "description: The latest news")
+		}, config);
+
+		string middle = Html(fs, "/blog/b");
+		middle.Should().Contain("<span class=\"page-nav-title\">Third</span>\n<span class=\"page-nav-desc\">The latest news</span>");
+		middle.Should().Contain("<span class=\"page-nav-title\">First</span>\n<span class=\"page-nav-desc\">Where it began</span>");
+		Html(fs, "/blog/c").Should().NotContain("page-nav-desc", "the older post, Second, has no description");
+	}
+
+	[Fact]
 	public async Task Pagination_WritesNumberedPages_WithPagerLinks()
 	{
 		var docs = new Dictionary<string, string>();

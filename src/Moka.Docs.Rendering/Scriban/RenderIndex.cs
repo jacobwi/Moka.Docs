@@ -52,9 +52,18 @@ internal sealed class RenderIndex
 			_neighbors.TryAdd(ordered[i].Route, (previous, next));
 		}
 
-		foreach (BlogPost post in blog?.Posts ?? [])
+		if (blog is not null)
 		{
-			_neighbors.TryAdd(post.Route, (Link(post.Newer), Link(post.Older)));
+			var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			foreach (DocPage page in pages)
+			{
+				descriptions.TryAdd(page.Route, page.FrontMatter.Description);
+			}
+
+			foreach (BlogPost post in blog.Posts)
+			{
+				_neighbors.TryAdd(post.Route, (Link(post.Newer, descriptions), Link(post.Older, descriptions)));
+			}
 		}
 	}
 
@@ -316,11 +325,12 @@ internal sealed class RenderIndex
 		return null;
 	}
 
-	private static PageLink Link(DocPage page) => new(page.FrontMatter.Title, page.Route);
+	private static PageLink Link(DocPage page) => new(page.FrontMatter.Title, page.Route, page.FrontMatter.Description);
 
-	private static PageLink? Link(BlogPostLink? post) => post is null ? null : new PageLink(post.Title, post.Route);
+	private static PageLink? Link(BlogPostLink? post, Dictionary<string, string> descriptions) =>
+		post is null ? null : new PageLink(post.Title, post.Route, descriptions.GetValueOrDefault(post.Route) ?? "");
 }
 
-internal sealed record PageLink(string Title, string Route);
+internal sealed record PageLink(string Title, string Route, string Description = "");
 
 internal sealed record NavSection(NavigationNode Node, string Label, string Route, IReadOnlyList<PageLink> Links);

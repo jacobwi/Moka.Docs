@@ -9,12 +9,12 @@ public sealed class ThemeLayoutsTests
 	public static TheoryData<string, string[]> Variants => new()
 	{
 		{ "width", ["default", "wide", "wider", "full", "boxed", "narrow"] },
-		{ "navbar", ["default", "compact", "floating", "tabs", "autohide", "centered", "transparent"] },
-		{ "footer", ["default", "minimal", "columns", "none", "centered", "compact"] },
-		{ "toc", ["default", "minimal", "inline", "floating", "numbered", "timeline", "bordered"] },
+		{ "navbar", ["default", "compact", "floating", "tabs", "autohide", "centered", "transparent", "split"] },
+		{ "footer", ["default", "minimal", "columns", "none", "centered", "compact", "mega"] },
+		{ "toc", ["default", "minimal", "inline", "floating", "numbered", "timeline", "bordered", "dropdown", "progress"] },
 		{ "breadcrumbs", ["default", "chevrons", "pills", "path", "back", "arrows", "dots"] },
-		{ "pageNav", ["default", "minimal", "stacked", "split", "compact"] },
-		{ "sidebar", ["default", "lines", "pills", "compact", "accent", "cards", "minimal"] },
+		{ "pageNav", ["default", "minimal", "stacked", "split", "compact", "cards"] },
+		{ "sidebar", ["default", "lines", "pills", "compact", "accent", "cards", "minimal", "rail"] },
 		{ "sidebarScope", ["default", "section"] },
 		{ "home", ["default", "portal", "showcase", "minimal", "docs"] },
 		{ "hero", ["default", "split", "minimal", "banner"] },
@@ -68,6 +68,9 @@ public sealed class ThemeLayoutsTests
 		ThemeLayouts.Admonitions.LabelOf("github").Should().Be("GitHub");
 		ThemeLayouts.Tables.LabelOf("striped").Should().Be("Striped");
 		ThemeLayouts.HeroBackground.Label.Should().Be("Hero background");
+		ThemeLayouts.Footer.LabelOf("mega").Should().Be("Large");
+		ThemeLayouts.Sidebar.LabelOf("rail").Should().Be("Icon rail");
+		ThemeLayouts.Navbar.LabelOf("split").Should().Be("Split");
 	}
 
 	[Fact]

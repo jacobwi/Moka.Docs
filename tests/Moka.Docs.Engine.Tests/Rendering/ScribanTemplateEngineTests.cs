@@ -365,9 +365,11 @@ public sealed class ScribanTemplateEngineTests
 		string other = _engine.RenderPage(page, Context([page], config: unreadable), TestContext.Current.CancellationToken);
 		string preset = _engine.RenderPage(page, Context([page]), TestContext.Current.CancellationToken);
 
-		html.Should().Contain("html:not([data-color-theme]){--color-primary-text:#876c00;--color-primary-text-hover:#6c5600;}"
-		                      + "html:not([data-color-theme])[data-theme=\"dark\"]{--color-primary-text:#facc15;--color-primary-text-hover:#fbd950;}</style>");
-		other.Should().Contain("<style>:root{--color-primary:oklch(0.8 0.15 90);").And.NotContain("html:not([data-color-theme])");
+		html.Should().Contain("html:not([data-color-theme]){--color-primary-text-base:#876c00}"
+		                      + "html:not([data-color-theme])[data-theme=\"dark\"]{--color-primary-text-base:#facc15}"
+		                      + "html:not([data-color-theme])[data-accent-strength=\"vivid\"]:not([data-theme=\"dark\"]){--color-primary-text-base:" + PrimaryColorContrast.For("#facc15")!.VividLight + "}"
+		                      + "html:not([data-color-theme])[data-accent-strength=\"vivid\"][data-theme=\"dark\"]{--color-primary-text-base:" + PrimaryColorContrast.For("#facc15")!.VividDark + "}</style>");
+		other.Should().Contain("<style>:root{--color-primary-base:oklch(0.8 0.15 90);").And.NotContain("html:not([data-color-theme])");
 		preset.Should().NotContain("html:not([data-color-theme])", "the default color always starts on the ocean preset");
 	}
 

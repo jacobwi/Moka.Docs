@@ -18,7 +18,8 @@ namespace Moka.Docs.Engine.Tests.Theming;
 /// </summary>
 public sealed class AppearanceDataTests
 {
-	private static readonly string[] _sections = ["mode", "style", "color-theme", "code-theme", "code-style", "text-size", "reader-width"];
+	private static readonly string[] _sections =
+		["mode", "dark-tone", "style", "color-theme", "accent-strength", "corners", "code-theme", "code-style", "text-size", "reader-width", "line-spacing", "focus-mode"];
 
 	private readonly ScribanTemplateEngine _engine = new(NullLogger<ScribanTemplateEngine>.Instance);
 
@@ -39,7 +40,7 @@ public sealed class AppearanceDataTests
 		Options(html, "mode").Should().Equal("light", "dark", "system");
 		Options(html, "text-size").Should().Equal("90", "100", "112.5", "125");
 		Options(html, "reader-width").Should().Equal("narrow", "default", "wide", "wider", "full");
-		foreach (string section in new[] { "style", "color-theme", "code-style" })
+		foreach (string section in new[] { "style", "color-theme", "code-style", "dark-tone", "accent-strength", "corners", "line-spacing", "focus-mode" })
 		{
 			Group(html, section).Trim().Should().BeEmpty();
 		}
@@ -188,12 +189,62 @@ public sealed class AppearanceDataTests
 		attrs["data-style"].Should().Be("default", "the rest of the script still ran");
 	}
 
+	[Theory]
+	[InlineData("""{"mokadocs-dark-tone":"black","mokadocs-corners":"round","mokadocs-line-spacing":"tight","mokadocs-accent-strength":"vivid","mokadocs-focus-mode":"on"}""", "", "black round tight vivid on")]
+	[InlineData("""{"mokadocs-dark-tone":"dim","mokadocs-corners":"sharp","mokadocs-line-spacing":"relaxed","mokadocs-accent-strength":"subtle"}""", "", "dim sharp relaxed subtle -")]
+	[InlineData("""{"mokadocs-dark-tone":"dark","mokadocs-corners":"default","mokadocs-line-spacing":"default","mokadocs-accent-strength":"default","mokadocs-focus-mode":"off"}""", "", "- - - - -")]
+	[InlineData("""{"mokadocs-dark-tone":"Black","mokadocs-corners":"pill","mokadocs-line-spacing":"2","mokadocs-accent-strength":"loud","mokadocs-focus-mode":"yes"}""", "", "- - - - -")]
+	[InlineData("""{"mokadocs-dark-tone":"black","mokadocs-corners":"round","mokadocs-line-spacing":"tight","mokadocs-accent-strength":"vivid","mokadocs-focus-mode":"on"}""", "dark-tone focus-mode", "- round tight vivid -")]
+	[InlineData("""{"mokadocs-dark-tone":"black","mokadocs-corners":"round","mokadocs-line-spacing":"tight","mokadocs-accent-strength":"vivid","mokadocs-focus-mode":"on"}""", "corners line-spacing accent-strength", "black - - - on")]
+	public void HeadScript_AppliesTheStoredReaderOptionsOnlyWhileTheirSectionIsOn(string stored, string off, string expected)
+	{
+		// Applied before the first paint, so a dark tone, corners, spacing, accent or focus mode never shows as a flash
+		// or a jump. Only the known values, and nothing while the site turns the section off.
+		Assert.SkipUnless(NodeScript.Available, "node is not on PATH");
+		string[] sectionsOff = off.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+		Dictionary<string, string> attrs = RunHeadScript(OnlySections([.. _sections.Where(s => !sectionsOff.Contains(s))]), stored, false);
+
+		string Value(string name) => attrs.TryGetValue(name, out string? value) ? value : "-";
+		$"{Value("data-dark-tone")} {Value("data-corners")} {Value("data-line-spacing")} {Value("data-accent-strength")} {Value("data-focus-mode")}".Should().Be(expected);
+		attrs["data-style"].Should().Be("default", "the rest of the script still ran");
+	}
+
+	[Fact]
+	public void Panel_GroupsTheReadingSectionsUnderAHeadingAndShowsTheDarkToneOnlyInDarkMode()
+	{
+		string html = Render(_allPickers);
+		string onlyLook = Render(OnlySections(["mode", "style"]));
+
+		int heading = html.IndexOf("<h3 class=\"appearance-heading\">Reading</h3>", StringComparison.Ordinal);
+		heading.Should().BeGreaterThan(html.IndexOf("data-appearance=\"code-style\"", StringComparison.Ordinal));
+		heading.Should().BeLessThan(html.IndexOf("data-appearance=\"text-size\"", StringComparison.Ordinal));
+		html.Should().Contain("<div class=\"appearance-section appearance-dark-only\">\n<p class=\"appearance-label\" id=\"appearanceDarkToneLabel\">Dark tone</p>");
+		onlyLook.Should().NotContain("appearance-heading", "the heading leads the reading sections only when there are some");
+		RenderedSections(Render(OnlySections(["focus-mode"]))).Should().Equal("focus-mode");
+	}
+
+	[Theory]
+	[MemberData(nameof(Layouts))]
+	public void FocusExit_IsOnPagesWhoseSiteOffersFocusMode(string layout)
+	{
+		string html = Render(_allPickers, layout);
+		string without = Render(_allPickers with { FocusModeSelector = false }, layout);
+
+		html.Should().Contain("<button class=\"focus-exit js-only\" type=\"button\">").And.Contain("<span>Exit focus mode</span></button>");
+		without.Should().NotContain("focus-exit");
+	}
+
 	[Fact]
 	public void HeadScript_LeavesOutTheReaderKeysWhenTheirSectionsAreOff()
 	{
-		string bootstrap = HeadScript(Render(_allPickers with { TextSizeSelector = false, WidthSelector = false }));
+		string bootstrap = HeadScript(Render(_allPickers with
+		{
+			TextSizeSelector = false, WidthSelector = false, LineSpacingSelector = false, FocusModeSelector = false, DarkToneSelector = false,
+			CornersSelector = false, AccentStrengthSelector = false
+		}));
 
-		bootstrap.Should().NotContain("mokadocs-text-size").And.NotContain("mokadocs-reader-width");
+		bootstrap.Should().NotContain("mokadocs-text-size").And.NotContain("mokadocs-reader-width").And.NotContain("'mokadocs-'+k");
 		bootstrap.Should().EndWith("d.setAttribute('data-code-style',cs);}catch(e){}");
 	}
 
@@ -261,7 +312,7 @@ public sealed class AppearanceDataTests
 	{
 		HeadScript(Render(_allPickers)).Should().NotContain("mokadocs-layout-");
 		HeadScript(Render(_allPickers with { LayoutSelector = true })).Should().Contain(
-			"const l={ 'navbar':'default compact floating tabs autohide centered transparent','footer':'default minimal columns none centered compact',");
+			"const l={ 'navbar':'default compact floating tabs autohide centered transparent split','footer':'default minimal columns none centered compact mega',");
 	}
 
 	private Dictionary<string, string> RunHeadScript(ThemeOptions options, string stored, bool osDark)
@@ -293,7 +344,12 @@ public sealed class AppearanceDataTests
 		CodeThemeSelector = on.Contains("code-theme"),
 		CodeStyleSelector = on.Contains("code-style"),
 		TextSizeSelector = on.Contains("text-size"),
-		WidthSelector = on.Contains("reader-width")
+		WidthSelector = on.Contains("reader-width"),
+		LineSpacingSelector = on.Contains("line-spacing"),
+		FocusModeSelector = on.Contains("focus-mode"),
+		DarkToneSelector = on.Contains("dark-tone"),
+		CornersSelector = on.Contains("corners"),
+		AccentStrengthSelector = on.Contains("accent-strength")
 	};
 
 	private static List<string> RenderedSections(string html) =>

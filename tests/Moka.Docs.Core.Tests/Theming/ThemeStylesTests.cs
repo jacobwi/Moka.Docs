@@ -40,13 +40,13 @@ public sealed class ThemeStylesTests
 	[Fact]
 	public void Names_StartWithTheDefaultStyle()
 	{
-		ThemeStyles.Names.Should().Equal("default", "moka", "minimal", "classic", "soft", "terminal", "paper", "contrast", "glass", "brutal");
+		ThemeStyles.Names.Should().Equal("default", "moka", "minimal", "classic", "soft", "terminal", "paper", "contrast", "glass", "brutal", "blueprint", "newspaper", "retro", "neon", "tonal", "editor");
 	}
 
 	[Fact]
-	public void DarkFirst_IsMokaAndTerminal()
+	public void DarkFirst_IsMokaTerminalAndNeon()
 	{
-		ThemeStyles.All.Where(s => s.DarkFirst).Select(s => s.Name).Should().Equal(ThemeStyles.Moka, ThemeStyles.Terminal);
+		ThemeStyles.All.Where(s => s.DarkFirst).Select(s => s.Name).Should().Equal(ThemeStyles.Moka, ThemeStyles.Terminal, ThemeStyles.Neon);
 		ThemeStyles.All.Should().OnlyContain(s => s.Label.Length > 0 && s.Description.Length > 0);
 		ThemeStyles.Find(" Glass ")!.Label.Should().Be("Glass");
 	}

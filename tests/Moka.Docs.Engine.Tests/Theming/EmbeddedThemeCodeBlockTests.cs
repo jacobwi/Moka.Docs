@@ -166,6 +166,18 @@ public sealed class EmbeddedThemeCodeBlockTests
 	private static string CodeBackground(string codeTheme) =>
 		Regex.Match(_css, $@"\[data-code-theme=""{codeTheme}""\] :is\(\.page-content, \.landing-content\) pre \{{ background: (#[0-9a-f]{{6}});").Groups[1].Value;
 
+	// The backgrounds styles paint over the dark code themes' own: moka's in dark mode, blueprint's in both modes.
+	internal static string[] StyleCodeBackgrounds(string css)
+	{
+		string[] backgrounds =
+		[
+			.. Regex.Matches(css, @"\nhtml\[data-style=""\w+""\](?:\[data-theme=""dark""\])?:not\([^)]*\) :is\(\.page-content, \.landing-content\) pre \{ background: (#[0-9a-f]{6}); \}")
+				.Select(m => m.Groups[1].Value)
+		];
+		backgrounds.Should().Contain(["#0a0a0d", "#04142a"]);
+		return backgrounds;
+	}
+
 	private static string CodeText(string codeTheme) =>
 		Regex.Match(_css, $@"\[data-code-theme=""{codeTheme}""\] :is\(\.page-content, \.landing-content\) pre code \{{ color: (#[0-9a-f]{{6}});").Groups[1].Value;
 
@@ -199,7 +211,7 @@ public sealed class EmbeddedThemeCodeBlockTests
 		string text = CodeText(codeTheme);
 		background.Should().NotBeEmpty();
 		text.Should().NotBeEmpty();
-		string[] presets = Regex.Matches(_css, @"html\[data-color-theme=""[a-z-]+""\] \{\s*--color-primary: (#[0-9a-f]{6}) !important;")
+		string[] presets = Regex.Matches(_css, @"html\[data-color-theme=""[a-z-]+""\] \{\s*--color-primary-base: (#[0-9a-f]{6}) !important;")
 			.Select(m => m.Groups[1].Value).ToArray();
 		presets.Should().HaveCount(11);
 
@@ -219,8 +231,9 @@ public sealed class EmbeddedThemeCodeBlockTests
 			tokens.Add(("--sh-comment on a marked line", Regex.Match(_css, @"\[data-code-theme=""github-light""\] \.code-block \.line:is\([^)]*\) \{ --sh-comment: (#[0-9a-f]{6}); \}").Groups[1].Value));
 		}
 
-		// Moka darkens the dark code themes to #0a0a0d.
-		foreach (string bg in light ? new[] { background } : new[] { background, "#0a0a0d" })
+		// Moka darkens the dark code themes to #0a0a0d, blueprint paints them deep blue.
+		string[] backgrounds = light ? [background] : [background, .. StyleCodeBackgrounds(_css)];
+		foreach (string bg in backgrounds)
 		{
 			double[] shaded = lines["--sh-line-shade"] == "transparent" ? Hex(bg) : Over(Rgba(lines["--sh-line-shade"]).Color, Rgba(lines["--sh-line-shade"]).Alpha, Hex(bg));
 			foreach ((string tint, double[] color, double alpha) in tints)
@@ -243,7 +256,7 @@ public sealed class EmbeddedThemeCodeBlockTests
 	{
 		// Published palettes have comments and line numbers near 2.5:1 (catppuccin-latte most tokens);
 		// every theme is shifted to 4.5:1. Line numbers also sit on the VS Code style's gutter tint and
-		// on moka's #0a0a0d.
+		// on the backgrounds moka and blueprint paint over the dark themes.
 		double[] background = Hex(CodeBackground(codeTheme));
 		Dictionary<string, string> theme = Variables($"[data-code-theme=\"{codeTheme}\"] {{");
 		theme.Should().ContainKeys("--sh-comment", "--sh-string", "--sh-keyword", "--sh-number", "--sh-type", "--sh-attr", "--sh-tag", "--sh-property", "--sh-line-number");
@@ -255,7 +268,7 @@ public sealed class EmbeddedThemeCodeBlockTests
 
 		// The code title bar is 8% gray over the background.
 		Contrast(Hex(theme["--sh-punctuation"]), Over([128 / 255.0, 128 / 255.0, 128 / 255.0], 0.08, background)).Should().BeGreaterThanOrEqualTo(4.5);
-		string[] bases = IsLight(codeTheme) ? [CodeBackground(codeTheme)] : [CodeBackground(codeTheme), "#0a0a0d"];
+		string[] bases = IsLight(codeTheme) ? [CodeBackground(codeTheme)] : [CodeBackground(codeTheme), .. StyleCodeBackgrounds(_css)];
 		foreach (string bg in bases)
 		{
 			Contrast(Hex(theme["--sh-line-number"]), Hex(bg)).Should().BeGreaterThanOrEqualTo(4.5, "line numbers on {0}", bg);
@@ -270,28 +283,32 @@ public sealed class EmbeddedThemeCodeBlockTests
 		// The language label and the Copy button were white or black at 30 to 45% opacity: about
 		// 2.8:1 on the light code themes.
 		Dictionary<string, string> lines = LineVariables(codeTheme);
-		double[] background = Hex(CodeBackground(codeTheme));
+		string[] backgrounds = IsLight(codeTheme) ? [CodeBackground(codeTheme)] : [CodeBackground(codeTheme), .. StyleCodeBackgrounds(_css)];
 
-		double[] On(params string[] layers)
+		foreach (string background in backgrounds)
 		{
-			double[] under = background;
-			foreach (string layer in layers)
+			double[] On(params string[] layers)
 			{
-				(double[] c, double a) = Rgba(lines[layer]);
-				under = Over(c, a, under);
+				double[] under = Hex(background);
+				foreach (string layer in layers)
+				{
+					(double[] c, double a) = Rgba(lines[layer]);
+					under = Over(c, a, under);
+				}
+
+				return under;
 			}
 
-			return under;
+			double[] Text(string variable, double[] under) => lines[variable].StartsWith('#') ? Hex(lines[variable]) : Over(Rgba(lines[variable]).Color, Rgba(lines[variable]).Alpha, under);
+
+			double[] label = On("--sh-chrome-bg");
+			double[] copy = On("--sh-copy-bg");
+			double[] copyHover = On("--sh-copy-bg-hover");
+			Contrast(Text("--sh-chrome", label), label).Should().BeGreaterThanOrEqualTo(4.5, "the language label of {0} on {1}", codeTheme, background);
+			Contrast(Text("--sh-chrome", copy), copy).Should().BeGreaterThanOrEqualTo(4.5, "the Copy button of {0} on {1}", codeTheme, background);
+			Contrast(Text("--sh-chrome-strong", copyHover), copyHover).Should().BeGreaterThanOrEqualTo(4.5, "the hovered Copy button of {0} on {1}", codeTheme, background);
 		}
 
-		double[] Text(string variable, double[] under) => lines[variable].StartsWith('#') ? Hex(lines[variable]) : Over(Rgba(lines[variable]).Color, Rgba(lines[variable]).Alpha, under);
-
-		double[] label = On("--sh-chrome-bg");
-		double[] copy = On("--sh-copy-bg");
-		double[] copyHover = On("--sh-copy-bg-hover");
-		Contrast(Text("--sh-chrome", label), label).Should().BeGreaterThanOrEqualTo(4.5, "the language label on {0}", codeTheme);
-		Contrast(Text("--sh-chrome", copy), copy).Should().BeGreaterThanOrEqualTo(4.5, "the Copy button on {0}", codeTheme);
-		Contrast(Text("--sh-chrome-strong", copyHover), copyHover).Should().BeGreaterThanOrEqualTo(4.5, "the hovered Copy button on {0}", codeTheme);
 		Rule(_css, ".page-content pre .copy-btn {").Should().Contain("color: var(--sh-chrome);").And.Contain("background: var(--sh-copy-bg);");
 		Rule(_css, ".landing-content pre .copy-btn {").Should().Contain("color: var(--sh-chrome);");
 	}

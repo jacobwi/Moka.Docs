@@ -11,7 +11,7 @@ public static partial class EmbeddedThemeProvider
 
 	private const string _headerTabs = """
 
-	                                          {{ if (theme.layout.navbar == "tabs" || theme.layout_selector) && layout_tabs.size > 0 }}
+	                                          {{ if (theme.layout.navbar == "tabs" || theme.layout.navbar == "split" || theme.layout_selector) && layout_tabs.size > 0 }}
 	                                          <nav class="header-tabs" aria-label="{{ t.nav_sections | html.escape }}">
 	                                              <div class="header-tabs-inner">
 	                                                  {{ for tab in layout_tabs }}<a class="header-tab{{ if tab.is_current }} current{{ end }}" href="{{ tab.url | html.escape }}"{{ if tab.is_current }} aria-current="true"{{ end }}>{{ tab.label | html.escape }}</a>{{ end }}
@@ -41,6 +41,12 @@ public static partial class EmbeddedThemeProvider
 	                                                      <a class="footer-brand-name" href="{{ base_path | html.escape }}/">{{ if site.logo_url != "" }}<img src="{{ site.logo_url | html.escape }}" alt="" />{{ end }}<span>{{ site.title | html.escape }}</span></a>
 	                                                      {{ if site.description != "" }}<p class="footer-brand-desc">{{ site.description | html.escape }}</p>{{ end }}
 	                                                      {{ if theme.social_links.size > 0 }}<div class="footer-social">{{ for link in theme.social_links }}<a href="{{ link.url | html.escape }}" target="_blank" rel="noopener noreferrer" aria-label="{{ link.icon | html.escape }}">{{ link.icon_svg }}</a>{{ end }}</div>{{ end }}
+	                                                      {{ if (theme.layout.footer == "mega" || theme.layout_selector) && versions.size > 0 && theme.show_version_selector }}
+	                                                      {{ version_menu_id = "footerVersionMenu" }}
+	                                                      <div class="footer-version">
+	                                      """ + _versionSelector + """
+	                                                      </div>
+	                                                      {{ end }}
 	                                                  </div>
 	                                                  {{ if footer_columns.size > 0 }}
 	                                                  <nav class="footer-links" aria-label="{{ t.footer_label | html.escape }}">
@@ -112,7 +118,7 @@ public static partial class EmbeddedThemeProvider
 	    max-width: calc(var(--layout-max-width) - 2rem);
 	    margin: 0.75rem auto 0;
 	    border: 1px solid var(--color-border);
-	    border-radius: 14px;
+	    border-radius: calc(14px * var(--radius-scale));
 	}
 	:where(html[data-navbar="floating"]) .site-header {
 	    background: color-mix(in srgb, var(--color-bg) 86%, transparent);
@@ -164,6 +170,55 @@ public static partial class EmbeddedThemeProvider
 	html[data-style="classic"][data-navbar="tabs"] :is(.header-tab:hover, .header-tab.current) { color: var(--cs-on-bar); }
 	@media (max-width: 768px) {
 	    html[data-navbar="tabs"] .header-tabs-inner { padding: 0 0.25rem; }
+	}
+
+	/* Two rows: the logo, a wide search box and the buttons, then the section tabs on a band of their own, the current
+	   one in the page's color like a folder tab. The band scrolls sideways when the tabs don't fit; phones get the
+	   default bar above it. */
+	html[data-navbar="split"] { --tabs-height: 2.75rem; --header-offset: calc(var(--header-height) + var(--tabs-height)); }
+	html[data-navbar="split"] .site-header { height: auto; }
+	html[data-navbar="split"] .header-inner { height: var(--header-height); }
+	html[data-navbar="split"] .header-tabs { border-top: 1px solid var(--color-border); }
+	:where(html[data-navbar="split"]) .header-tabs { background: var(--color-bg-secondary); }
+	html[data-navbar="split"] .header-tabs-inner {
+	    display: flex;
+	    align-items: flex-end;
+	    gap: 0.25rem;
+	    max-width: var(--layout-max-width);
+	    height: var(--tabs-height);
+	    margin: 0 auto;
+	    padding: 0 1.5rem;
+	    overflow-x: auto;
+	    overflow-y: hidden;
+	    scrollbar-width: none;
+	}
+	html[data-navbar="split"] .header-tab {
+	    display: flex;
+	    flex-shrink: 0;
+	    align-items: center;
+	    height: calc(var(--tabs-height) - 0.375rem);
+	    padding: 0 0.875rem;
+	    border: 1px solid transparent;
+	    border-bottom: none;
+	    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+	    font-size: 0.875rem;
+	    font-weight: 500;
+	    white-space: nowrap;
+	    text-decoration: none;
+	    transition: color var(--transition), background-color var(--transition);
+	}
+	:where(html[data-navbar="split"]) .header-tab { color: var(--color-text-secondary); }
+	:where(html[data-navbar="split"]) .header-tab:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
+	:where(html[data-navbar="split"]) .header-tab.current { background: var(--color-bg); color: var(--color-text); }
+	html[data-navbar="split"] .header-tab.current { border-color: var(--color-border); box-shadow: inset 0 2px 0 var(--st-link, var(--color-primary-text)); font-weight: 600; }
+	html[data-navbar="split"] .header-tab:focus-visible { outline: 2px solid var(--st-link, var(--color-primary-text)); outline-offset: -2px; }
+	@media (min-width: 769px) {
+	    html[data-navbar="split"] .header-actions { flex: 1; min-width: 0; margin-inline-start: 2rem; }
+	    html[data-navbar="split"] .header-actions > .search-trigger { flex: 0 1 28rem; min-width: 10rem; margin-inline-end: auto; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+	    html[data-navbar="split"] .header-actions > .search-trigger .search-label { flex: 1; text-align: start; }
+	}
+	@media (max-width: 768px) {
+	    html[data-navbar="split"] .header-tabs-inner { padding: 0 0.5rem; }
 	}
 
 	html[data-navbar="autohide"] .site-header { transition: transform 0.2s ease; }
@@ -232,6 +287,57 @@ public static partial class EmbeddedThemeProvider
 	    html[data-footer="columns"] .footer-bottom { flex-direction: column; align-items: center; text-align: center; }
 	}
 
+	/* A large footer on a tinted band: the logo, title, description, social links and version menu beside the link
+	   columns, then the copyright and "Built with" under a rule. The version list opens upward, since the page ends
+	   here. It stacks on phones. */
+	html[data-footer="mega"] .site-footer { padding: 4rem 1.5rem 2rem; }
+	:where(html[data-footer="mega"]) .site-footer { background: var(--color-bg-secondary); }
+	html[data-footer="mega"] .footer-columns {
+	    display: grid;
+	    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+	    gap: 3rem 4rem;
+	    max-width: var(--layout-max-width);
+	    margin: 0 auto;
+	}
+	html[data-footer="mega"] .footer-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; min-width: 0; }
+	html[data-footer="mega"] .footer-brand-name { display: flex; align-items: center; gap: 0.75rem; font-size: 1.375rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.25; text-decoration: none; }
+	html[data-footer="mega"] .footer-brand-name img { width: auto; height: 40px; }
+	html[data-footer="mega"] .footer-brand-desc { max-width: 28rem; font-size: 0.9375rem; line-height: 1.65; }
+	html[data-footer="mega"] .footer-social { gap: 1rem; }
+	html[data-footer="mega"] .footer-social svg { width: 20px; height: 20px; }
+	html[data-footer="mega"] .footer-version { display: block; }
+	html[data-footer="mega"] .footer-version .version-dropdown { top: auto; right: auto; bottom: calc(100% + 0.375rem); left: 0; }
+	html[data-footer="mega"] .footer-links {
+	    display: grid;
+	    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+	    gap: 2.5rem 2rem;
+	}
+	html[data-footer="mega"] .footer-col-title { margin-bottom: 1rem; font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+	html[data-footer="mega"] .footer-col ul { display: flex; flex-direction: column; gap: 0.625rem; margin: 0; padding: 0; list-style: none; }
+	html[data-footer="mega"] .footer-col a { font-size: 0.9375rem; text-decoration: none; }
+	html[data-footer="mega"] .footer-col a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+	html[data-footer="mega"] .footer-bottom {
+	    display: flex;
+	    flex-wrap: wrap;
+	    justify-content: space-between;
+	    gap: 0.5rem 1.5rem;
+	    max-width: var(--layout-max-width);
+	    margin: 3.5rem auto 0;
+	    padding-top: 1.5rem;
+	    border-top: 1px solid var(--color-border);
+	    font-size: 0.8125rem;
+	}
+	:where(html[data-footer="mega"]) :is(.footer-brand-name, .footer-col-title) { color: var(--color-text); }
+	:where(html[data-footer="mega"]) :is(.footer-brand-desc, .footer-bottom, .footer-col a) { color: var(--color-text-secondary); }
+	:where(html[data-footer="mega"]) :is(.footer-col a, .footer-brand-name):hover { color: var(--st-link, var(--color-primary-text)); }
+	@media (max-width: 768px) {
+	    html[data-footer="mega"] .site-footer { padding: 2.5rem 1rem 1.5rem; }
+	    html[data-footer="mega"] .footer-columns { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }
+	    html[data-footer="mega"] .footer-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	    html[data-footer="mega"] .footer-version .version-trigger .version-label { display: inline; }
+	    html[data-footer="mega"] .footer-bottom { flex-direction: column; align-items: center; margin-top: 2.5rem; text-align: center; }
+	}
+
 	html[data-toc="minimal"] .toc-sidebar { border-left-color: transparent; }
 	html[data-toc="minimal"] .toc-list { margin-left: 0.25rem; border-left: none; }
 	html[data-toc="minimal"] .toc-item a { margin-left: 0; border-left: none; }
@@ -285,7 +391,7 @@ public static partial class EmbeddedThemeProvider
 	    padding: 1rem 0.5rem;
 	    overflow-y: auto;
 	    border: 1px solid var(--color-border);
-	    border-radius: 12px;
+	    border-radius: calc(12px * var(--radius-scale));
 	    z-index: var(--z-drawer);
 	}
 	:where(html[data-toc="floating"]) .toc-sidebar { background: var(--color-bg); box-shadow: var(--shadow-lg); }
@@ -556,9 +662,9 @@ public static partial class EmbeddedThemeProvider
 	html[data-tables="minimal"] :is(.page-content, .landing-md-content) tr:hover td { background: none; }
 
 	html[data-density="compact"] .content { padding-top: 1.5rem; padding-bottom: 1.5rem; }
-	html[data-density="compact"] .page-content { line-height: 1.6; }
-	html[data-density="compact"] .page-content :is(p, ul, ol) { margin-bottom: 0.75rem; }
-	html[data-density="compact"] .page-content li { margin-bottom: 0.125rem; }
+	html[data-density="compact"] .page-content { line-height: calc(1.6 * var(--line-spacing)); }
+	html[data-density="compact"] .page-content :is(p, ul, ol) { margin-bottom: calc(0.75rem * var(--paragraph-spacing)); }
+	html[data-density="compact"] .page-content li { margin-bottom: calc(0.125rem * var(--paragraph-spacing)); }
 	html[data-density="compact"] .page-content h2 { margin: 2rem 0 0.75rem; }
 	html[data-density="compact"] .page-content h3 { margin: 1.5rem 0 0.5rem; }
 	html[data-density="compact"] .page-content h4 { margin: 1.25rem 0 0.375rem; }
@@ -570,9 +676,9 @@ public static partial class EmbeddedThemeProvider
 	html[data-density="compact"] .toc-item a { padding-top: 0.1875rem; padding-bottom: 0.1875rem; }
 
 	html[data-density="spacious"] .content { padding-top: 2.75rem; padding-bottom: 2.75rem; }
-	html[data-density="spacious"] .page-content { line-height: 1.8; }
-	html[data-density="spacious"] .page-content :is(p, ul, ol) { margin-bottom: 1.375rem; }
-	html[data-density="spacious"] .page-content li { margin-bottom: 0.375rem; }
+	html[data-density="spacious"] .page-content { line-height: calc(1.8 * var(--line-spacing)); }
+	html[data-density="spacious"] .page-content :is(p, ul, ol) { margin-bottom: calc(1.375rem * var(--paragraph-spacing)); }
+	html[data-density="spacious"] .page-content li { margin-bottom: calc(0.375rem * var(--paragraph-spacing)); }
 	html[data-density="spacious"] .page-content h2 { margin: 3.25rem 0 1.25rem; }
 	html[data-density="spacious"] .page-content h3 { margin: 2.5rem 0 1rem; }
 	html[data-density="spacious"] .page-content h4 { margin: 2rem 0 0.75rem; }
@@ -686,6 +792,134 @@ public static partial class EmbeddedThemeProvider
 	    :where(html[data-toc="bordered"]) .toc-sidebar > .toc { background: var(--color-bg); box-shadow: var(--shadow-sm); }
 	}
 
+	/* A closed disclosure under the page title in place of the right-hand column (and of its button on narrow screens). It
+	   sticks below the header with the current section beside its title, and opens the list over the page. Its height
+	   is fixed: --toc-dropdown-offset is what it covers under the header, which a heading a link jumps to clears and
+	   main.js adds to the line a section becomes current at. */
+	html[data-toc="dropdown"] {
+	    --toc-dropdown-height: 2.75rem;
+	    --toc-dropdown-offset: calc(var(--toc-dropdown-height) + 0.5rem);
+	    scroll-padding-top: calc(var(--header-offset) + var(--toc-dropdown-offset) + 1rem);
+	}
+	html[data-toc="dropdown"] .toc-dropdown { display: block; position: sticky; top: calc(var(--header-offset) + 0.5rem); z-index: var(--z-fab); margin: 0 0 1.75rem; }
+	html[data-toc="dropdown"][data-navbar="autohide"] .toc-dropdown { transition: top 0.2s ease; }
+	html[data-toc="dropdown"] :is(.toc-sidebar, .toc-toggle-btn) { display: none; }
+	html[data-toc="dropdown"] .toc-dropdown > summary {
+	    display: flex;
+	    align-items: center;
+	    gap: 0.625rem;
+	    box-sizing: border-box;
+	    height: var(--toc-dropdown-height);
+	    padding: 0 0.875rem;
+	    border: 1px solid var(--color-border);
+	    border-radius: var(--radius);
+	    font-size: 0.875rem;
+	    line-height: 1.25;
+	    white-space: nowrap;
+	    list-style: none;
+	    cursor: pointer;
+	}
+	:where(html[data-toc="dropdown"]) .toc-dropdown > summary { background: var(--color-bg); color: var(--color-text); box-shadow: var(--shadow-sm); }
+	html[data-toc="dropdown"] .toc-dropdown > summary::-webkit-details-marker { display: none; }
+	html[data-toc="dropdown"] .toc-dropdown > summary::after {
+	    content: '';
+	    flex-shrink: 0;
+	    width: 0.45rem;
+	    height: 0.45rem;
+	    margin: -0.2rem 0.125rem 0 auto;
+	    border-right: 2px solid currentColor;
+	    border-bottom: 2px solid currentColor;
+	    opacity: 0.6;
+	    transform: rotate(45deg);
+	    transition: transform var(--transition);
+	}
+	html[data-toc="dropdown"] .toc-dropdown[open] > summary::after { margin-top: 0.25rem; transform: rotate(-135deg); }
+	html[data-toc="dropdown"] .toc-dropdown > summary:focus-visible { outline: 2px solid var(--st-link, var(--color-primary-text)); outline-offset: 2px; }
+	html[data-toc="dropdown"] .toc-dropdown-icon { flex-shrink: 0; }
+	html[data-toc="dropdown"] .toc-dropdown-title { flex-shrink: 0; font-weight: 600; }
+	html[data-toc="dropdown"] .toc-dropdown-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	html[data-toc="dropdown"] .toc-dropdown-current:not(:empty) { padding-inline-start: 0.625rem; border-inline-start: 1px solid var(--color-border); }
+	:where(html[data-toc="dropdown"]) :is(.toc-dropdown-icon, .toc-dropdown-current) { color: var(--color-text-secondary); }
+	html[data-toc="dropdown"] .toc-dropdown > .toc {
+	    position: absolute;
+	    top: calc(100% + 0.375rem);
+	    inset-inline: 0;
+	    max-height: min(28rem, calc(100vh - var(--header-offset) - var(--toc-dropdown-offset) - 1.5rem));
+	    max-height: min(28rem, calc(100dvh - var(--header-offset) - var(--toc-dropdown-offset) - 1.5rem));
+	    padding: 0.625rem 0.375rem;
+	    overflow-y: auto;
+	    overscroll-behavior: contain;
+	    border: 1px solid var(--color-border);
+	    border-radius: var(--radius);
+	}
+	:where(html[data-toc="dropdown"]) .toc-dropdown > .toc { background: var(--color-bg); box-shadow: var(--shadow-lg); }
+	html[data-toc="dropdown"] .page-content .toc-dropdown ul { margin: 0; padding-inline-start: 0; list-style: none; }
+	html[data-toc="dropdown"] .page-content .toc-dropdown li { margin: 0; }
+	html[data-toc="dropdown"] .page-content .toc-dropdown .toc-list { margin-inline-start: 0.375rem; }
+	html[data-toc="dropdown"] .page-content .toc-dropdown a { padding-top: 0.375rem; padding-bottom: 0.375rem; font-size: 0.875rem; font-weight: 400; text-decoration: none; }
+	html[data-style="brutal"][data-toc="dropdown"] .toc-dropdown > :is(summary, .toc) { border: 3px solid var(--bt-ink); box-shadow: var(--shadow-md); }
+	html[data-style="contrast"][data-toc="dropdown"] .toc-dropdown > :is(summary, .toc) { border: 2px solid var(--color-border); }
+	html[data-style="terminal"][data-toc="dropdown"] .toc-dropdown > :is(summary, .toc) { border-color: var(--tm-line); box-shadow: none; }
+	@media (max-width: 1200px) {
+	    html[data-toc="dropdown"]:not(.no-js):has(.toc-toggle-btn) { --fab-stack: 0px; }
+	    html[data-toc="dropdown"]:not(.no-js):has(.toc-toggle-btn):has(.back-to-top) { --fab-stack: var(--fab-size); }
+	}
+	@media print {
+	    html[data-toc="dropdown"] .toc-dropdown { display: none; }
+	}
+
+	/* A track beside the list that fills to the reading position, so the fill reaches an entry's middle as its heading
+	   becomes the current section. main.js sets the fill's length in pixels (--toc-fill) in its scroll pass on the
+	   first entry's link, which draws it from the top of the list: set on the list, it styled every entry again on
+	   every frame and quadrupled the page's style work while scrolling. Each top-level entry has a dot, filled once the
+	   reader has reached its section. Without motion only the dots show the way. The fill and the dots stack above
+	   the later entries, whose highlighted rows and (in forced colors) borders would cover the track. */
+	html[data-toc="progress"] .toc-progress { display: none; }
+	html[data-toc="progress"] .toc-sidebar .toc-list { margin-inline-start: 1rem; border-inline-start: 2px solid var(--color-border); }
+	html[data-toc="progress"] .toc-sidebar .toc-item a { position: relative; margin-inline-start: -2px; border-inline-start: 2px solid transparent !important; }
+	html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item:first-child > a::before {
+	    content: '';
+	    position: absolute;
+	    top: 0;
+	    inset-inline-start: -2px;
+	    z-index: 1;
+	    width: 2px;
+	    height: 1px;
+	    background: var(--st-link, var(--color-primary-text));
+	    transform: scaleY(var(--toc-fill, 0));
+	    transform-origin: top;
+	    transition: transform 0.15s ease;
+	}
+	html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item > a { padding-inline-start: 1rem; }
+	html[data-toc="progress"] .toc-sidebar .toc-level-3 a { padding-inline-start: 1.75rem; }
+	html[data-toc="progress"] .toc-sidebar .toc-level-4 a { padding-inline-start: 2.5rem; }
+	html[data-toc="progress"] .toc-sidebar :is(.toc-level-5, .toc-level-6) a { padding-inline-start: 3.25rem; }
+	html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item > a::after {
+	    content: '';
+	    position: absolute;
+	    top: calc(50% - 5px);
+	    inset-inline-start: -6px;
+	    z-index: 2;
+	    width: 10px;
+	    height: 10px;
+	    box-sizing: border-box;
+	    border: 2px solid var(--color-text-muted);
+	    border-radius: 50%;
+	    background: var(--color-bg);
+	    transition: background-color var(--transition), border-color var(--transition);
+	}
+	html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item:is(:has(a.active), :has(~ .toc-item a.active)) > a::after {
+	    border-color: var(--st-link, var(--color-primary-text));
+	    background: var(--st-link, var(--color-primary-text));
+	}
+	@media (prefers-reduced-motion: reduce) {
+	    html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item:first-child > a::before { display: none; }
+	}
+	@media (forced-colors: active) {
+	    html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item:first-child > a::before { forced-color-adjust: none; background: Highlight; }
+	    html[data-toc="progress"] .toc-sidebar .toc-list > .toc-item:is(:has(a.active), :has(~ .toc-item a.active)) > a::after { forced-color-adjust: none; border-color: Highlight; background: Highlight; }
+	}
+
 	html[data-breadcrumbs="arrows"] .breadcrumbs li:not(:last-child)::after { content: '\2192'; content: '\2192' / ''; margin: 0 0.5rem; opacity: 0.8; }
 	html[data-breadcrumbs="arrows"] .breadcrumbs [aria-current="page"] { font-weight: 600; }
 
@@ -734,6 +968,44 @@ public static partial class EmbeddedThemeProvider
 	html[data-page-nav="compact"] .page-nav-link:hover .page-nav-title { text-decoration: underline; text-underline-offset: 3px; }
 	html[data-page-nav="compact"] .page-nav-arrow { width: 14px; height: 14px; }
 
+	/* Roomier cards with the page's description (front matter, two lines at most) under a title that may wrap once. The
+	   card stays one link; its text box steps aside so the label shares the first row with the arrow. */
+	html[data-page-nav="cards"] .page-nav-link {
+	    display: grid;
+	    grid-template-columns: auto minmax(0, 1fr);
+	    align-content: start;
+	    align-items: center;
+	    gap: 0.375rem 0.5rem;
+	    padding: 1.125rem 1.25rem 1.25rem;
+	}
+	html[data-page-nav="cards"] .page-nav-next { grid-template-columns: minmax(0, 1fr) auto; }
+	html[data-page-nav="cards"] .page-nav-text { display: contents; }
+	html[data-page-nav="cards"] .page-nav-arrow { grid-row: 1; width: 14px; height: 14px; }
+	html[data-page-nav="cards"] .page-nav-label { grid-row: 1; }
+	html[data-page-nav="cards"] .page-nav-next .page-nav-arrow { grid-column: 2; }
+	html[data-page-nav="cards"] :is(.page-nav-title, .page-nav-desc) { grid-column: 1 / -1; }
+	html[data-page-nav="cards"] .page-nav-title {
+	    display: -webkit-box;
+	    margin-top: 0.125rem;
+	    overflow: hidden;
+	    font-size: 1rem;
+	    line-height: 1.4;
+	    white-space: normal;
+	    -webkit-box-orient: vertical;
+	    -webkit-line-clamp: 2;
+	}
+	html[data-page-nav="cards"] .page-nav-desc {
+	    display: -webkit-box;
+	    overflow: hidden;
+	    font-size: 0.875rem;
+	    line-height: 1.5;
+	    -webkit-box-orient: vertical;
+	    -webkit-line-clamp: 2;
+	}
+	:where(html[data-page-nav="cards"]) .page-nav-desc { color: var(--color-text-secondary); }
+	html[data-style="paper"][data-page-nav="cards"] .page-nav-link { padding: 1rem 0 0; }
+	html[data-style="minimal"][data-page-nav="cards"] .page-nav-link { padding: 0.75rem 0; }
+
 	html[data-sidebar="accent"] .sidebar .nav-link.current,
 	html[data-sidebar="accent"] .sidebar .nav-link.current:hover {
 	    border-color: transparent !important;
@@ -769,6 +1041,94 @@ public static partial class EmbeddedThemeProvider
 	    text-decoration-color: var(--st-link, var(--color-primary-text));
 	    text-decoration-thickness: 2px;
 	    text-underline-offset: 0.3em;
+	}
+
+	/* The icon rail on wider screens: main.js puts a button for each top-level section and a link for each top-level page
+	   in the sidebar's first column, and the sidebar lists the chosen section alone, open, under its title. Until the
+	   script has run it lists the current page's section, or every section on a page outside them. Phones keep the
+	   drawer; without JavaScript, or without any section, the sidebar stays as it is. The :where() parts keep the rules at
+	   the specificity of a style's sidebar rules, which they follow. The chosen section's rule matches sidebarScope's, so
+	   a section the reader picks shows even when that would hide it. */
+	@media (min-width: 769px) {
+	    html[data-sidebar="rail"] { --rail-width: 3.25rem; }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) {
+	        display: grid;
+	        grid-template-columns: var(--rail-width) minmax(0, 1fr);
+	        grid-template-rows: minmax(100%, auto);
+	        width: calc(var(--sidebar-width) + 2.5rem);
+	        padding: 0;
+	    }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav { grid-column: 2; grid-row: 1; min-width: 0; padding: 1.25rem 0.75rem 1.5rem; }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav:has(> .rail-open) > .nav-section:not(.rail-open),
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav:not(:has(> .rail-open)):has(> .nav-section.active > .nav-header) > .nav-section:not(.active) { display: none; }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav:has(> .nav-section.rail-open) > .nav-section.rail-open { display: block; }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav > .nav-section > .nav-header { margin-bottom: 0.375rem; }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav > .nav-section > .nav-header :is(.nav-chevron-btn, .nav-icon) { display: none; }
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) > .sidebar-nav > .nav-section > .nav-children { max-height: none !important; opacity: 1; visibility: visible; }
+	    html[data-sidebar="rail"] .sidebar > .sidebar-rail { display: block; z-index: 1; grid-column: 1; grid-row: 1; border-inline-end: 1px solid var(--color-border); }
+	    :where(html[data-sidebar="rail"]) .sidebar-rail { background: var(--color-bg-secondary); }
+	    html[data-sidebar="rail"] .sidebar-rail-items { display: flex; position: sticky; top: 0; flex-direction: column; gap: 0.125rem; padding: 0.75rem 0; }
+	    html[data-sidebar="rail"] .sidebar-rail-button {
+	        display: flex;
+	        position: relative;
+	        align-items: center;
+	        justify-content: center;
+	        width: 100%;
+	        height: 2.75rem;
+	        padding: 0;
+	        border: none;
+	        background: none;
+	        font: inherit;
+	        text-decoration: none;
+	        cursor: pointer;
+	        transition: color var(--transition), background-color var(--transition);
+	    }
+	    :where(html[data-sidebar="rail"]) .sidebar-rail-button { color: var(--color-text-secondary); }
+	    :where(html[data-sidebar="rail"]) .sidebar-rail-button:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
+	    :where(html[data-sidebar="rail"]) .sidebar-rail-button:is([aria-pressed="true"], [aria-current="page"]) { color: var(--st-link, var(--color-primary-text)); }
+	    html[data-sidebar="rail"] .sidebar-rail-button:is([aria-pressed="true"], [aria-current="page"]) { box-shadow: inset 3px 0 0 currentColor; }
+	    html[data-sidebar="rail"] .sidebar-rail-button:focus-visible { outline: 2px solid var(--st-link, var(--color-primary-text)); outline-offset: -2px; }
+	    html[data-sidebar="rail"] .sidebar-rail-button svg { width: 20px; height: 20px; }
+	    html[data-sidebar="rail"] .sidebar-rail-letter {
+	        display: flex;
+	        align-items: center;
+	        justify-content: center;
+	        width: 1.625rem;
+	        height: 1.625rem;
+	        border: 1.5px solid currentColor;
+	        border-radius: var(--radius-sm);
+	        font-size: 0.8125rem;
+	        font-weight: 700;
+	        line-height: 1;
+	    }
+	    /* The section's name beside its icon, on hover and on keyboard focus, which wins while the rail has it. Without
+	       one of them there is no box, so a hidden name never widens what the sidebar scrolls. */
+	    html[data-sidebar="rail"] .sidebar-rail:not(:has(:focus-visible)) .sidebar-rail-button:hover::after,
+	    html[data-sidebar="rail"] .sidebar-rail-button:focus-visible::after {
+	        content: attr(aria-label);
+	        position: absolute;
+	        top: 50%;
+	        inset-inline-start: calc(100% + 0.375rem);
+	        width: max-content;
+	        max-width: 14rem;
+	        padding: 0.3125rem 0.5rem;
+	        border-radius: var(--radius-sm);
+	        font-size: 0.75rem;
+	        font-weight: 600;
+	        line-height: 1.35;
+	        text-align: start;
+	        pointer-events: none;
+	        transform: translateY(-50%);
+	    }
+	    :where(html[data-sidebar="rail"]) .sidebar-rail-button:is(:hover, :focus-visible)::after { background: var(--color-text); box-shadow: var(--shadow-md); color: var(--color-bg); }
+	    /* The sidebar toggle folds the list away and leaves the rail; a rail button brings the list back. */
+	    html[data-sidebar="rail"].sidebar-hidden .sidebar { width: var(--rail-width); overflow: visible; }
+	    html[data-sidebar="rail"].sidebar-hidden .sidebar > .sidebar-nav { display: none; }
+	    html[data-style="brutal"][data-sidebar="rail"] .sidebar > .sidebar-rail { border-inline-end: 3px solid var(--bt-ink); }
+	}
+	/* Up to the width where "On this page" turns into a drawer, the rail comes out of the list's width. */
+	@media (min-width: 769px) and (max-width: 1200px) {
+	    html[data-sidebar="rail"]:where(:not(.no-js)) .sidebar:where(:has(> .sidebar-nav > .nav-section > .nav-header)) { width: var(--sidebar-width); }
 	}
 
 	/* A flat band in the accent fill, whatever heroBackground says: a backdrop would take the text on it
@@ -883,7 +1243,7 @@ public static partial class EmbeddedThemeProvider
 	}
 	html[data-home="portal"][data-hero="minimal"] .home-search { margin-left: 0; }
 	html[data-style="brutal"][data-home="portal"] .home-search { border: 3px solid var(--bt-ink); }
-	html[data-style="terminal"][data-home="portal"] .home-search { border-radius: 0; box-shadow: none; }
+	html[data-style="terminal"][data-home="portal"] .home-search { border-radius: var(--radius); box-shadow: none; }
 	html[data-home="portal"][data-hero="banner"] .home-search { border-color: transparent; }
 	html[data-home="portal"][data-hero="banner"] .home-search:focus-visible { outline-color: var(--st-on-fill, var(--color-on-primary)); }
 	html[data-home="portal"] .home-sections {
@@ -1086,7 +1446,7 @@ public static partial class EmbeddedThemeProvider
 	html[data-features="icons"] .landing-features .landing-feature-icon svg { width: 34px; height: 34px; }
 	html[data-features="icons"] .landing-features .landing-feature-name { font-size: 1.125rem; }
 	html[data-style="brutal"][data-features="icons"] .landing-features .landing-feature-icon { border: 3px solid var(--bt-ink); }
-	html[data-style="terminal"][data-features="icons"] .landing-features .landing-feature-icon { border: 1px solid var(--color-border); border-radius: 0; background: none; }
+	html[data-style="terminal"][data-features="icons"] .landing-features .landing-feature-icon { border: 1px solid var(--color-border); border-radius: var(--radius); background: none; }
 
 	html[data-features="compact"] .landing-features { max-width: 1200px; padding-top: 3rem; padding-bottom: 3rem; }
 	html[data-features="compact"] .landing-features-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
@@ -1238,23 +1598,23 @@ public static partial class EmbeddedThemeProvider
 	html[data-style="terminal"][data-headings="numbered"] .page-content > h2::before { content: '# ' counter(heading-2) '.'; content: '# ' counter(heading-2) '.' / ''; }
 	html[data-style="terminal"][data-headings="numbered"] .page-content > h3::before { content: '## ' counter(heading-2) '.' counter(heading-3); content: '## ' counter(heading-2) '.' counter(heading-3) / ''; }
 
-	html[data-links="underlined"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline) *) {
+	html[data-links="underlined"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline, .toc-dropdown) *) {
 	    text-decoration: underline;
 	    text-decoration-thickness: 1px;
 	    text-underline-offset: 0.2em;
 	}
-	html[data-links="underlined"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline) *):hover { text-decoration-thickness: 2px; }
+	html[data-links="underlined"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline, .toc-dropdown) *):hover { text-decoration-thickness: 2px; }
 
 	/* Body text color, so a link needs another cue than color (WCAG 1.4.1): a dotted underline at rest,
 	   a solid one in the accent color on hover and focus. */
-	html[data-links="subtle"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline) *) {
+	html[data-links="subtle"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline, .toc-dropdown) *) {
 	    color: inherit;
 	    text-decoration: underline dotted;
 	    text-decoration-color: var(--color-text-muted);
 	    text-decoration-thickness: 1px;
 	    text-underline-offset: 0.22em;
 	}
-	html[data-links="subtle"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline) *):is(:hover, :focus-visible) {
+	html[data-links="subtle"] :is(.page-content, .landing-md-content) a:not([class], :is(.breadcrumbs, .toc-inline, .toc-dropdown) *):is(:hover, :focus-visible) {
 	    color: inherit;
 	    text-decoration: underline solid;
 	    text-decoration-color: var(--st-link, var(--color-primary-text));
@@ -1264,6 +1624,8 @@ public static partial class EmbeddedThemeProvider
 	/* Forced colors drop box shadows and gradients, which draw the accent bars and the current dot above. */
 	@media (forced-colors: active) {
 	    html[data-sidebar="accent"] .sidebar .nav-link.current { border-left: 3px solid Highlight !important; }
+	    html[data-sidebar="rail"] .sidebar-rail-button:is([aria-pressed="true"], [aria-current="page"]) { border-inline-start: 3px solid Highlight; }
+	    html[data-sidebar="rail"] .sidebar-rail-button:is(:hover, :focus-visible)::after { border: 1px solid CanvasText; }
 	    html[data-toc="timeline"] .toc-item a.active::after { forced-color-adjust: none; border-color: Highlight; background: Highlight; }
 	    html[data-headings="accent"] .page-content > :is(h2, h3) { padding-left: 0.75rem; border-left: 0.25rem solid CanvasText; }
 	}
@@ -1272,8 +1634,11 @@ public static partial class EmbeddedThemeProvider
 	   main.css hides what only some variants show, these rules show it while its variant is on and hide what the
 	   variant replaces. */
 	html[data-navbar="tabs"] .header-tabs { display: block; }
+	html[data-navbar="split"] .header-tabs { display: block; }
 	html[data-footer="columns"] .site-footer-columns { display: block; }
 	html[data-footer="columns"] :is(.site-footer-row, .landing-footer) { display: none; }
+	html[data-footer="mega"] .site-footer-columns { display: block; }
+	html[data-footer="mega"] :is(.site-footer-row, .landing-footer) { display: none; }
 	html[data-footer="none"] :is(.site-footer, .landing-footer) { display: none; }
 	html[data-toc="inline"] .toc-inline { display: block; }
 	html[data-toc="inline"] :is(.toc-sidebar, .toc-toggle-btn) { display: none; }

@@ -188,6 +188,36 @@ public sealed class MokaDocsOptions
 	public bool WidthSelector { get; set; } = true;
 
 	/// <summary>
+	///     Whether the Appearance panel lets readers pick tight, default or relaxed line spacing for the article
+	///     text. The pick is saved in the browser. Default: true.
+	/// </summary>
+	public bool LineSpacingSelector { get; set; } = true;
+
+	/// <summary>
+	///     Whether the Appearance panel lets readers turn on focus mode, which hides the sidebar, "On this page",
+	///     the breadcrumbs and the floating buttons. The pick is saved in the browser. Default: true.
+	/// </summary>
+	public bool FocusModeSelector { get; set; } = true;
+
+	/// <summary>
+	///     Whether the Appearance panel lets readers pick a dim, dark or black dark mode. The pick is saved in the
+	///     browser. Default: true.
+	/// </summary>
+	public bool DarkToneSelector { get; set; } = true;
+
+	/// <summary>
+	///     Whether the Appearance panel lets readers pick sharp, default or round corners. The pick is saved in the
+	///     browser. Default: true.
+	/// </summary>
+	public bool CornersSelector { get; set; } = true;
+
+	/// <summary>
+	///     Whether the Appearance panel lets readers make the accent color subtle, default or vivid. The pick is
+	///     saved in the browser. Default: true.
+	/// </summary>
+	public bool AccentStrengthSelector { get; set; } = true;
+
+	/// <summary>
 	///     Whether the Appearance panel has a Layout section where readers switch the layout variants of a
 	///     docs page (the top bar, footer, "On this page", breadcrumbs, previous/next links, sidebar,
 	///     admonitions, tables, spacing, typeface, headings and links). The picks are saved in the browser;

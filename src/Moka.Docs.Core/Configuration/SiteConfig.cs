@@ -230,6 +230,37 @@ public sealed record ThemeOptions
 	public bool WidthSelector { get; init; } = MokaDefaults.ShowWidthSelector;
 
 	/// <summary>
+	///     Let readers pick the line spacing of the article text (tight, default or relaxed) in the Appearance
+	///     panel. The pick is saved in the browser and applies to every page. Default is true.
+	/// </summary>
+	public bool LineSpacingSelector { get; init; } = MokaDefaults.ShowLineSpacingSelector;
+
+	/// <summary>
+	///     Let readers turn on focus mode in the Appearance panel: the sidebar, "On this page", the breadcrumbs
+	///     and the floating buttons hide and the article stays centered. The pick is saved in the browser and
+	///     applies to every page. Default is true.
+	/// </summary>
+	public bool FocusModeSelector { get; init; } = MokaDefaults.ShowFocusModeSelector;
+
+	/// <summary>
+	///     Let readers pick how dark dark mode is (dim, dark or black) in the Appearance panel. The pick is saved
+	///     in the browser and applies to every page in dark mode. Default is true.
+	/// </summary>
+	public bool DarkToneSelector { get; init; } = MokaDefaults.ShowDarkToneSelector;
+
+	/// <summary>
+	///     Let readers pick sharp, default or round corners in the Appearance panel. The pick is saved in the
+	///     browser, applies to every page and wins over the style's own corners. Default is true.
+	/// </summary>
+	public bool CornersSelector { get; init; } = MokaDefaults.ShowCornersSelector;
+
+	/// <summary>
+	///     Let readers make the accent color subtle, default or vivid in the Appearance panel. The pick is saved
+	///     in the browser and applies to every page. Default is true.
+	/// </summary>
+	public bool AccentStrengthSelector { get; init; } = MokaDefaults.ShowAccentStrengthSelector;
+
+	/// <summary>
 	///     Let readers switch the layout variants of a docs page (every part of <see cref="Layout" /> in
 	///     <see cref="ThemeLayouts.ReaderParts" />) in a Layout section of the Appearance panel. Picks are
 	///     saved in the browser and apply to every page; the configured variants stay the defaults. Pages

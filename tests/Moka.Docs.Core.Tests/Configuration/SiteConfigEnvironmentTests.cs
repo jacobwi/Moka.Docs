@@ -85,6 +85,28 @@ public sealed class SiteConfigEnvironmentTests
 	}
 
 	[Theory]
+	[InlineData("MOKADOCS_SHOW_LINE_SPACING_SELECTOR", "lineSpacingSelector")]
+	[InlineData("MOKADOCS_SHOW_FOCUS_MODE_SELECTOR", "focusModeSelector")]
+	[InlineData("MOKADOCS_SHOW_DARK_TONE_SELECTOR", "darkToneSelector")]
+	[InlineData("MOKADOCS_SHOW_CORNERS_SELECTOR", "cornersSelector")]
+	[InlineData("MOKADOCS_SHOW_ACCENT_STRENGTH_SELECTOR", "accentStrengthSelector")]
+	public void EnvironmentOverride_NewReaderSelectors_WinOverTheYaml(string variable, string option)
+	{
+		SiteConfig config = ParseWith(variable, "false", $"site:\n  title: Docs\ntheme:\n  options:\n    {option}: true\n");
+		ThemeOptions o = config.Theme.Options;
+
+		bool selector = option switch
+		{
+			"lineSpacingSelector" => o.LineSpacingSelector,
+			"focusModeSelector" => o.FocusModeSelector,
+			"darkToneSelector" => o.DarkToneSelector,
+			"cornersSelector" => o.CornersSelector,
+			_ => o.AccentStrengthSelector
+		};
+		selector.Should().BeFalse();
+	}
+
+	[Theory]
 	[InlineData("true", "layoutSelector: false", true)]
 	[InlineData("false", "layoutSelector: true", false)]
 	[InlineData("yes", "showSearch: true", true)]

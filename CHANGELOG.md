@@ -5,6 +5,68 @@ All notable changes to MokaDocs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ New
+
+- **Six styles: `blueprint`, `newspaper`, `retro`, `neon`, `tonal` and `editor`.** Blueprint is a
+  technical drawing (ink-blue lines on pale blue paper over a 12px grid, dashed rules, monospace
+  headings, deep blue code blocks). Newspaper is editorial print (serif body and headlines, a double
+  rule under the header, column rules, a drop cap, italic callouts). Retro is a classic desktop
+  (beveled windows, a navy title bar, buttons that press in). Neon is flat synthwave (deep purple,
+  hot pink and cyan, thin colored lines; dark first). Tonal uses tinted surfaces instead of borders
+  and shadows, with pills and large corners. Editor looks like a code editor (gray side panels,
+  selected rows, the breadcrumbs as a file tab, the footer as a status bar). Each has light and
+  dark modes and meets AA with every color preset.
+- **Five reader options in the Appearance panel.** Dark tone (Dim, Dark, Black) lifts or deepens
+  dark mode and keeps each style's hue. Accent strength (Subtle, Default, Vivid) mutes or
+  saturates the accent and keeps links at 4.5:1. Corners (Sharp, Default, Round) wins over every
+  style's own radii. Line spacing (Tight, Default, Relaxed) changes article prose only. Focus mode
+  hides the sidebar, "On this page", breadcrumbs, the section tabs and the floating buttons, and
+  shows an Exit focus mode button. All apply before first paint and are translated; Text size,
+  Reading width, Line spacing and Focus mode sit under a new Reading heading.
+- **`theme.options` `darkToneSelector`, `accentStrengthSelector`, `cornersSelector`,
+  `lineSpacingSelector` and `focusModeSelector`** hide those sections (on by default;
+  `MOKADOCS_SHOW_*_SELECTOR`; host options of the same names).
+- **`layout.toc: dropdown`**: "On this page" as a closed bar under the page title that sticks
+  below the header, shows the current section and opens the list over the page. It replaces the
+  right column and the narrow-screen button.
+- **`layout.toc: progress`**: a line beside "On this page" that fills as you read, with a dot per
+  top-level section that fills once you reach it. Readers who ask for less motion get the dots.
+- **`layout.pageNav: cards`**: previous and next as cards with each page's front matter
+  description. Templates get `prev_page.description` and `next_page.description`.
+- **`layout.footer: mega`**: a large footer with the logo, description, social links and a version
+  menu beside the link columns, and copyright and "Built with" underneath.
+- **`layout.sidebar: rail`**: a column of section icons (or first letters) at the sidebar's edge;
+  the sidebar lists the chosen section. Keyboard and screen reader support; `sidebarToggle` folds
+  the list and keeps the rail. It switches live, with no rebuild.
+- **`layout.navbar: split`**: a two-row header with the logo, a wide search box and the buttons
+  on top and the section tabs on a band of their own.
+
+### 🔄 Changed
+
+- **Square styles take their corners from the radius variables**, so Round corners reach terminal
+  and brutal too.
+- **The version menu markup is shared by the header and the footer**, and every version menu on a
+  page gets the popup behavior.
+- **With `layoutSelector`, pages also carry the dropdown "On this page" and the card
+  descriptions** (at most a few hundred bytes gzipped per page).
+
+### ⚠️ Behavior changes
+
+- **Dark surfaces come from `--dark-bg`, `--dark-bg-secondary` and `--dark-bg-code`**, which the
+  theme maps to `--color-bg*` in dark mode. A custom theme that overrides dark colors should set
+  the `--dark-*` variables, or its colors ignore the reader's dark tone.
+- **Color presets and `primaryColor` set `--color-primary-base`** (and preset text shades
+  `--color-primary-text-base`); `--color-primary` and `--color-primary-text` follow them. The
+  custom color's inline style no longer writes hover colors; hover derives from the text color.
+
+### 🧪 Tests
+
+- **Contrast tests cover every style** with all 11 color presets in light and dark mode, every dark
+  tone and every accent strength, and the code block tests check the backgrounds moka and blueprint
+  paint over dark code themes.
+
 ## [1.10.1] - 2026-11-13
 
 ### 🔄 Changed

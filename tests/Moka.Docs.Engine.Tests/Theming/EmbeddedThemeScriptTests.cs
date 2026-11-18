@@ -86,13 +86,13 @@ public sealed class EmbeddedThemeScriptTests
 	public void AccentText_MeetsAaInTheDefaultStyle(string preset)
 	{
 		// Links and inline code used the raw preset color: ocean was 2.8:1 on white, amber 2.2:1.
-		string primary = Regex.Match(_css, $@"html\[data-color-theme=""{preset}""\] \{{\s*--color-primary: (#[0-9a-f]{{6}}) !important;").Groups[1].Value;
-		string light = Regex.Match(_css, $@"html\[data-color-theme=""{preset}""\] \{{ --color-primary-text: (#[0-9a-f]{{6}}); \}}") is { Success: true } l
+		string primary = Regex.Match(_css, $@"html\[data-color-theme=""{preset}""\] \{{\s*--color-primary-base: (#[0-9a-f]{{6}}) !important;").Groups[1].Value;
+		string light = Regex.Match(_css, $@"html\[data-color-theme=""{preset}""\] \{{ --color-primary-text-base: (#[0-9a-f]{{6}}); \}}") is { Success: true } l
 			? l.Groups[1].Value
 			: primary;
-		string dark = Regex.Match(_css, $@"html\[data-theme=""dark""\]\[data-color-theme=""{preset}""\] \{{ --color-primary-text: (#[0-9a-f]{{6}}); \}}") is { Success: true } d
+		string dark = Regex.Match(_css, $@"html\[data-theme=""dark""\]\[data-color-theme=""{preset}""\] \{{ --color-primary-text-base: (#[0-9a-f]{{6}}); \}}") is { Success: true } d
 			? d.Groups[1].Value
-			: Regex.IsMatch(_css, $@"html\[data-theme=""dark""\]:is\([^)]*\[data-color-theme=""{preset}""\][^)]*\) \{{ --color-primary-text: var\(--color-primary\); \}}")
+			: Regex.IsMatch(_css, $@"html\[data-theme=""dark""\]:is\([^)]*\[data-color-theme=""{preset}""\][^)]*\) \{{ --color-primary-text-base: var\(--color-primary-base\); \}}")
 				? primary
 				: light;
 
@@ -102,13 +102,16 @@ public sealed class EmbeddedThemeScriptTests
 		foreach (string background in new[] { "--color-bg", "--color-bg-secondary", "--color-bg-code" })
 		{
 			Contrast(light, Variable(":root {", background)).Should().BeGreaterThanOrEqualTo(4.5, "{0} {1} in light mode", preset, background);
-			Contrast(dark, Variable("[data-theme=\"dark\"] {", background)).Should().BeGreaterThanOrEqualTo(4.5, "{0} {1} in dark mode", preset, background);
+			Contrast(dark, Variable("[data-theme=\"dark\"] {", DarkSource(background))).Should().BeGreaterThanOrEqualTo(4.5, "{0} {1} in dark mode", preset, background);
 		}
 
 		// The current sidebar link sits on 8% of the preset over the page background.
 		Contrast(light, Mix(primary, 0.08, Variable(":root {", "--color-bg"))).Should().BeGreaterThanOrEqualTo(4.5, "{0} current link, light", preset);
-		Contrast(dark, Mix(primary, 0.08, Variable("[data-theme=\"dark\"] {", "--color-bg"))).Should().BeGreaterThanOrEqualTo(4.5, "{0} current link, dark", preset);
+		Contrast(dark, Mix(primary, 0.08, Variable("[data-theme=\"dark\"] {", "--dark-bg"))).Should().BeGreaterThanOrEqualTo(4.5, "{0} current link, dark", preset);
 	}
+
+	// Dark mode names the surfaces --dark-bg and so on; the dark tone turns them into --color-bg.
+	private static string DarkSource(string name) => name.Replace("--color-", "--dark-", StringComparison.Ordinal);
 
 	private static string Mix(string color, double amount, string background)
 	{
@@ -125,8 +128,9 @@ public sealed class EmbeddedThemeScriptTests
 		// It was 2.6:1 on white and 3.1:1 on the dark secondary background.
 		string muted = Variable(scope, "--color-text-muted");
 
-		Contrast(muted, Variable(scope, "--color-bg")).Should().BeGreaterThanOrEqualTo(4.5);
-		Contrast(muted, Variable(scope, "--color-bg-secondary")).Should().BeGreaterThanOrEqualTo(4.5);
+		bool dark = scope.Contains("dark", StringComparison.Ordinal);
+		Contrast(muted, Variable(scope, dark ? DarkSource("--color-bg") : "--color-bg")).Should().BeGreaterThanOrEqualTo(4.5);
+		Contrast(muted, Variable(scope, dark ? DarkSource("--color-bg-secondary") : "--color-bg-secondary")).Should().BeGreaterThanOrEqualTo(4.5);
 	}
 
 	[Fact]
@@ -166,8 +170,11 @@ public sealed class EmbeddedThemeScriptTests
 		lineNumber.Should().NotBeEmpty();
 		background.Should().NotBeEmpty();
 		Contrast(lineNumber, background).Should().BeGreaterThanOrEqualTo(4.5);
-		Contrast(lineNumber, "#0a0a0d").Should().BeGreaterThanOrEqualTo(light ? 0 : 4.5,
-			"the moka style darkens dark code themes to #0a0a0d");
+		foreach (string styleBackground in EmbeddedThemeCodeBlockTests.StyleCodeBackgrounds(ThemeCss.All))
+		{
+			Contrast(lineNumber, styleBackground).Should().BeGreaterThanOrEqualTo(light ? 0 : 4.5,
+				"moka and blueprint paint dark code themes {0}", styleBackground);
+		}
 	}
 
 	[Fact]

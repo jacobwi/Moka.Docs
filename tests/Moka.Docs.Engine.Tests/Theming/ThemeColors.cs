@@ -43,6 +43,20 @@ internal static class ThemeColors
 		return (Math.Atan2(lab[2], lab[1]) * 180 / Math.PI + 360) % 360;
 	}
 
+	public static double Chroma(double[] rgb)
+	{
+		double[] lab = ToOklab(rgb);
+		return Math.Sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+	}
+
+	// oklch(from color l calc(c * factor) h): more chroma at the same lightness, clipped to sRGB per channel the way
+	// browsers show a color past its edge.
+	public static double[] ScaleChroma(double[] rgb, double factor)
+	{
+		double[] lab = ToOklab(rgb);
+		return FromOklab([lab[0], lab[1] * factor, lab[2] * factor]);
+	}
+
 	private static double[] ToOklab(double[] rgb)
 	{
 		static double Linear(double c) => c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);

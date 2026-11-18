@@ -84,7 +84,7 @@ public sealed class ThemeLabExtensionTests : IDisposable
 		OptionIn(catalog, "style").GetProperty("attribute").GetString().Should().Be("data-style");
 		OptionIn(catalog, "layout.navbar").GetProperty("choices").EnumerateArray()
 			.Where(c => c.GetProperty("rebuild").GetBoolean()).Select(c => c.GetProperty("value").GetString())
-			.Should().Equal("tabs");
+			.Should().Equal("tabs", "split");
 		OptionIn(catalog, "layout.navbar").GetProperty("readerStorageKeys").EnumerateArray().Select(k => k.GetString())
 			.Should().Equal("mokadocs-layout-navbar");
 		OptionIn(catalog, "layout.navbar").GetProperty("liveWithLayoutSelector").GetBoolean().Should().BeTrue();

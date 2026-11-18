@@ -179,6 +179,38 @@ public sealed class LayoutVariantRenderingTests
 	}
 
 	[Fact]
+	public async Task NavbarSplit_PutsTheSectionTabsInASecondRowOfTheHeader()
+	{
+		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions { Navbar = "split" }, "/Repo");
+
+		string page = fs.File.ReadAllText(_page);
+		page.Should().Contain("<nav class=\"header-tabs\" aria-label=\"Sections\">");
+		page.Should().Contain("<a class=\"header-tab current\" href=\"/Repo/guide/intro\" aria-current=\"true\">Guide</a>");
+		page.IndexOf("class=\"header-tabs\"", StringComparison.Ordinal).Should()
+			.BeGreaterThan(page.IndexOf("class=\"header-actions\"", StringComparison.Ordinal))
+			.And.BeLessThan(page.IndexOf("</header>", StringComparison.Ordinal));
+		fs.File.ReadAllText(_landing).Should().Contain("<a class=\"header-tab current\" href=\"/Repo/\" aria-current=\"true\">Home</a>");
+	}
+
+	[Fact]
+	public async Task FooterMega_ShowsTheBrandTheLinkColumnsAndTheBottomRowOnBothLayouts()
+	{
+		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions { Footer = "mega" });
+
+		foreach (string path in new[] { _page, _landing })
+		{
+			string page = fs.File.ReadAllText(path);
+			page.Should().Contain("<footer class=\"site-footer\">", "the floating buttons keep clear of the footer through .site-footer::after");
+			page.Should().Contain("<a class=\"footer-brand-name\" href=\"/\"><span>Test Site</span></a>");
+			page.Should().Contain("<p class=\"footer-brand-desc\">Docs for &lt;tests&gt;</p>");
+			page.Should().Contain("<p class=\"footer-col-title\">Guide</p>").And.Contain("<p class=\"footer-col-title\">Reference</p>");
+			page.Should().Contain("<div class=\"footer-bottom\">").And.Contain("Copyright Test").And.Contain("Built with");
+			page.Should().NotContain("footer-version", "a site without versions has no version menu");
+			page.Should().NotContain("<div class=\"footer-inner\">").And.NotContain("class=\"landing-footer\"");
+		}
+	}
+
+	[Fact]
 	public async Task FooterColumns_ListTheSectionsOnBothLayouts()
 	{
 		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions { Footer = "columns" });
@@ -276,6 +308,61 @@ public sealed class LayoutVariantRenderingTests
 
 		string page = fs.File.ReadAllText(_page);
 		page.Should().Contain("<aside class=\"toc-sidebar\"").And.Contain("id=\"tocToggle\"");
+	}
+
+	[Fact]
+	public async Task TocDropdown_PutsAClosedListInThePageInsteadOfTheSideColumnAndItsButton()
+	{
+		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions { Toc = "dropdown" });
+
+		string page = fs.File.ReadAllText(_page);
+		page.Should().Contain("<details class=\"toc-dropdown\" id=\"tocDropdown\">", "it starts closed");
+		page.Should().Contain("<span class=\"toc-dropdown-title\">On this page</span><span class=\"toc-dropdown-current\"></span></summary>");
+		page.Should().Contain("<a href=\"#setup\">Setup</a>").And.Contain("<a href=\"#usage\">Usage</a>");
+		page.Should().NotContain("class=\"toc-sidebar\"").And.NotContain("id=\"tocToggle\"").And.NotContain("toc-inline");
+		page.Should().Contain("['tocInline','tocDropdown'].forEach(", "a script puts it under the page title before the first paint");
+		int details = page.IndexOf("toc-dropdown", StringComparison.Ordinal);
+		details.Should().BeGreaterThan(page.IndexOf("<article class=\"page-content\">", StringComparison.Ordinal));
+		details.Should().BeLessThan(page.IndexOf("<h1", details, StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task TocProgress_KeepsTheSideColumnAndItsButton()
+	{
+		MockFileSystem fs = await BuildAsync(new ThemeLayoutOptions { Toc = "progress" });
+
+		string page = fs.File.ReadAllText(_page);
+		page.Should().Contain("<aside class=\"toc-sidebar\"").And.Contain("id=\"tocToggle\"").And.NotContain("toc-dropdown");
+	}
+
+	[Fact]
+	public async Task PageNavCards_ShowEachPagesDescriptionAndNothingForAPageWithout()
+	{
+		static Dictionary<string, MockFileData> WithDescription()
+		{
+			Dictionary<string, MockFileData> files = Files();
+			files[MockSite.Root + "/docs/guide/install.md"] =
+				new MockFileData("---\ntitle: Install\ndescription: Add the <package> & build\norder: 2\n---\n# Install\n\n## Steps\n\nText.\n");
+			return files;
+		}
+
+		SiteConfig config = MockSite.Config() with
+		{
+			Theme = new ThemeConfig { Options = new ThemeOptions { Layout = new ThemeLayoutOptions { PageNav = "cards" } } }
+		};
+
+		(_, MockFileSystem fs) = await MockSite.BuildAsync(config, WithDescription());
+		(_, MockFileSystem plain) = await MockSite.BuildAsync(MockSite.Config(), WithDescription());
+
+		string intro = fs.File.ReadAllText(_page);
+		int next = intro.IndexOf("<a class=\"page-nav-link page-nav-next\"", StringComparison.Ordinal);
+		next.Should().BePositive();
+		intro[next..intro.IndexOf("</a>", next, StringComparison.Ordinal)]
+			.Should().Contain("<span class=\"page-nav-title\">Install</span>")
+			.And.Contain("<span class=\"page-nav-desc\">Add the &lt;package&gt; &amp; build</span>", "the description is part of the one link");
+		fs.File.ReadAllText(MockSite.Root + "/_site/guide/install/index.html").Should().Contain("page-nav-prev").And.NotContain("page-nav-desc",
+			"Intro has no description");
+		plain.File.ReadAllText(_page).Should().NotContain("page-nav-desc", "only the cards show descriptions");
 	}
 
 	[Fact]

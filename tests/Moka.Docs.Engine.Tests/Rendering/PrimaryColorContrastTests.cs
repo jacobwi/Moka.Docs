@@ -25,8 +25,6 @@ public sealed class PrimaryColorContrastTests
 
 		colors.Light.Should().Be(light);
 		colors.Dark.Should().Be(dark);
-		colors.LightHover.Should().Be(ToHex(Mix(Hex(light), 0.8, Black)));
-		colors.DarkHover.Should().Be(ToHex(Mix(Hex(dark), 0.75, White)));
 	}
 
 	[Theory]
@@ -55,13 +53,19 @@ public sealed class PrimaryColorContrastTests
 		PrimaryTextColors colors = PrimaryColorContrast.For(primary)!;
 		double[] color = Hex(primary);
 		string[] admonitions = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
+		(double[] Page, double[] Code)[] light = [(White, Hex("#f1f5f9"))];
+		(double[] Page, double[] Code)[] dark = [(Hex("#0f172a"), Hex("#1e293b")), DimSurfaces()];
 
-		foreach ((string text, double[] page, string code) in new[] { (colors.Light, White, "#f1f5f9"), (colors.Dark, Hex("#0f172a"), "#1e293b") })
+		// The vivid shades sit on the same backgrounds, and so does a tint of their own primary.
+		foreach ((string text, (double[] Page, double[] Code)[] surfaces) in new[] { (colors.Light, light), (colors.Dark, dark), (colors.VividLight, light), (colors.VividDark, dark) })
 		{
-			IEnumerable<double[]> backgrounds = new[] { Hex(code), Mix(color, 0.08, page) }.Concat(admonitions.Select(a => Mix(Hex(a), 0.08, page)));
-			foreach (double[] background in backgrounds)
+			foreach ((double[] page, double[] code) in surfaces)
 			{
-				Contrast(Hex(text), background).Should().BeGreaterThanOrEqualTo(4.5, "{0} as text ({1})", primary, text);
+				IEnumerable<double[]> backgrounds = new[] { code, Mix(color, 0.08, page) }.Concat(admonitions.Select(a => Mix(Hex(a), 0.08, page)));
+				foreach (double[] background in backgrounds)
+				{
+					Contrast(Hex(text), background).Should().BeGreaterThanOrEqualTo(4.5, "{0} as text ({1})", primary, text);
+				}
 			}
 
 			if (Hex(text).Max() - Hex(text).Min() > 0.15)
@@ -73,16 +77,47 @@ public sealed class PrimaryColorContrastTests
 	}
 
 	[Theory]
+	[InlineData("#64748b")]
+	[InlineData("#d32f2f")]
+	[InlineData("#52525b")]
+	[InlineData("#7c3aed")]
+	public void Vivid_GivesTheTextShadesMoreChromaNeverLess(string primary)
+	{
+		PrimaryTextColors colors = PrimaryColorContrast.For(primary)!;
+
+		Chroma(Hex(colors.VividLight)).Should().BeGreaterThanOrEqualTo(Chroma(Hex(colors.Light)) - 0.002);
+		Chroma(Hex(colors.VividDark)).Should().BeGreaterThanOrEqualTo(Chroma(Hex(colors.Dark)) - 0.002);
+		Chroma(PrimaryColorContrast.Vivid(Hex(primary))).Should().BeGreaterThan(Chroma(Hex(primary)), "{0} isn't at the edge of sRGB", primary);
+	}
+
+	[Fact]
+	public void DimTone_InTheStylesheet_IsTheMixTheShadesAreCheckedOn()
+	{
+		// PrimaryColorContrast keeps the default style's shades at 4.5:1 on the dim tone's page and code background.
+		Match dim = Regex.Match(_css, @"html\[data-theme=""dark""\]\[data-dark-tone=""dim""\] \{\s*--color-bg: color-mix\(in oklab, var\(--dark-bg\) (\d+)%, (#[0-9a-f]{6})\);\s*--color-bg-secondary: color-mix\(in oklab, var\(--dark-bg-secondary\) (\d+)%, (#[0-9a-f]{6})\);\s*--color-bg-code: color-mix\(in oklab, var\(--dark-bg-code\) (\d+)%, (#[0-9a-f]{6})\);");
+
+		dim.Success.Should().BeTrue();
+		$"{dim.Groups[1].Value} {dim.Groups[2].Value} {dim.Groups[3].Value} {dim.Groups[4].Value} {dim.Groups[5].Value} {dim.Groups[6].Value}"
+			.Should().Be("60 #272727 40 #272727 40 #272727");
+	}
+
+	internal static (double[] Page, double[] Code) DimSurfaces() =>
+		(MixOklab(Hex("#0f172a"), 0.6, Hex("#272727")), MixOklab(Hex("#1e293b"), 0.4, Hex("#272727")));
+
+	[Theory]
 	[MemberData(nameof(Presets))]
 	public void Presets_InTheStylesheet_AreThisComputation(string preset)
 	{
 		// The stylesheet's preset shades and a custom primaryColor's shades come from one method.
-		string primary = Regex.Match(_css, $@"html\[data-color-theme=""{preset}""\] \{{\s*--color-primary: (#[0-9a-f]{{6}}) !important;").Groups[1].Value;
+		string primary = Regex.Match(_css, $@"html\[data-color-theme=""{preset}""\] \{{\s*--color-primary-base: (#[0-9a-f]{{6}}) !important;").Groups[1].Value;
 		(double[] light, double[] dark) = EmbeddedThemeAccessibilityTests.TextShades(preset);
+		(double[] vividLight, double[] vividDark) = EmbeddedThemeAccessibilityTests.VividTextShades(preset);
 		PrimaryTextColors colors = PrimaryColorContrast.For(primary)!;
 
 		colors.Light.Should().Be(ToHex(light));
 		colors.Dark.Should().Be(ToHex(dark));
+		colors.VividLight.Should().Be(ToHex(vividLight), "a vivid rule holds the shade when it differs");
+		colors.VividDark.Should().Be(ToHex(vividDark));
 	}
 
 	[Theory]
